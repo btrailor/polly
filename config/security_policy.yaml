@@ -1,0 +1,87 @@
+# Polly Security Policy Configuration
+# Phase 23.5: Security Hardening
+# Last Updated: February 3, 2026
+
+security_mode: personal  # personal | team | public
+
+# Capability Broker Configuration
+capabilities:
+  # Package Installation
+  package_install:
+    enabled: true
+    allowlist_path: config/approved_packages.yaml
+    require_approval: true  # Always require approval for unlisted packages
+    show_pypi_metadata: true
+    show_context7_info: true  # Use Context7 trust scores
+    min_context7_trust: 7  # Auto-approve if trust score >= 7
+    block_on_deny: false  # Don't permanently block, just deny this time
+  
+  # Shell Command Execution
+  shell_exec:
+    enabled: false  # Disabled by default for personal use
+    allowed_commands: []
+    require_approval: true
+  
+  # API Calls (for rate limiting)
+  api_call:
+    enabled: true
+    rate_limit_per_minute: 60
+    log_all_requests: true
+
+# Code Execution Sandbox
+sandbox:
+  type: pyodide  # pyodide | docker (docker not used)
+  timeout_seconds: 10
+  memory_limit_mb: 512
+  network_access: false
+  filesystem_access: false
+
+# Content Security
+content_security:
+  scan_for_prompt_injection: true
+  prompt_injection_sensitivity: medium  # low | medium | high
+  warn_on_suspicious_content: true
+  block_suspicious_content: false  # Warning only for personal use
+  
+  pii_detection:
+    enabled: true
+    warn_only: true  # Warn but don't block
+    patterns:
+      - email
+      - phone
+      - ssn
+      - credit_card
+      - api_key
+    # Opt-in: user can disable warnings
+    user_can_disable: true
+
+# API Key Security
+api_keys:
+  use_secure_context_manager: true
+  auto_cleanup_memory: true
+  rotation_reminder_days: 90  # Remind user to rotate keys
+  
+# Audit Logging
+audit:
+  enabled: true
+  database_path: ~/.polly/audit.db
+  retention_days: 90
+  log_events:
+    - capability_request
+    - capability_grant
+    - capability_deny
+    - package_install_request
+    - package_install_approved
+    - package_install_denied
+    - code_execution
+    - api_call
+    - pii_detected
+    - suspicious_content_detected
+
+# CORS Policy (Fixed in Week 1)
+cors:
+  allowed_origins:
+    - http://localhost:*
+    - http://127.0.0.1:*
+    - http://100.64.0.0/10  # Tailscale CGNAT range
+  allow_credentials: true

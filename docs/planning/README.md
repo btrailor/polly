@@ -78,8 +78,9 @@ Phases are organized into tiers representing different stages of development:
 - Phase 21: Knowledge Base Deduplication ✅
 
 **In Progress/Pending:**
+- Phase 23.5: Security Hardening 🔐 (CRITICAL - planning complete, ready for implementation)
 - Phase 16c: AI Note Creation 🔄 (backend ready, frontend pending)
-- Phase 22: Teaching Mode 📋 (fully unblocked)
+- Phase 22: Teaching Mode 📋 (deferred until after Phase 23.5)
 - Phase 12a: Knowledge Graph Basic 📋
 - Phase 12b: Knowledge Graph Advanced 📋
 
@@ -180,9 +181,28 @@ See [/docs/status/CHANGELOG.md](/docs/status/CHANGELOG.md) for complete list and
 - Preview modal with edit capabilities
 - Save to `_Drafts/` workflow
 
+#### Phase 23.5: Security Hardening 🔐
+**Status:** Planning complete, ready for implementation  
+**Priority:** CRITICAL (must complete before Phase 24)  
+**Depends On:** Phase 23 ✅ (complete)  
+**Estimated Effort:** 2-3 weeks
+
+**Documentation:**
+- Spec: `PHASE23.5_SECURITY_HARDENING.md`
+- Implementation Plan: `PHASE23.5_IMPLEMENTATION_PLAN.md`
+
+**Scope:**
+- Capability Broker Pattern for security
+- Pyodide sandbox for code execution
+- Package allowlist with approval workflow
+- Context7 integration for package trust scores
+- Content sanitization (prompt injection detection)
+- PII detection (warn-only mode)
+- API key hardening with context managers
+
 #### Phase 22: Teaching Mode 📋
-**Status:** Fully unblocked  
-**Depends On:** Phase 14 ✅ (complete)  
+**Status:** Deferred until after Phase 23.5  
+**Depends On:** Phase 14 ✅ (complete), Phase 23.5 🔐 (security)  
 **Estimated Effort:** 2-3 days
 
 **Documentation:**

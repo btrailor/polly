@@ -11,7 +11,8 @@
 **Completed Phases:** 15.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22 [75%], 23)  
 **Status:** Production-ready, actively being enhanced  
 **Latest:** Phase 23 (Curriculum Learning System) - ALL 6 phases complete! ✅  
-**Next Recommended:** Complete Phase 22 frontend (1-2 days) or Phase 12a (Knowledge Graph)
+**Current Priority:** Phase 23.5 (Security Hardening) - CRITICAL before Phase 24 🔐  
+**Next Recommended:** Phase 23.5 (Security Hardening) - Must complete before Phase 24
 
 ---
 
@@ -398,6 +399,49 @@
 
 ---
 
+## Current Priority (IN PROGRESS)
+
+### Phase 23.5: Security Hardening 🔐
+**Status:** 📋 PLANNING COMPLETE - Ready for Implementation  
+**Started:** February 3, 2026 (Planning)  
+**Expected Completion:** [TBD + 2-3 weeks]  
+**Priority:** CRITICAL (blocking Phase 24)
+
+**Rationale:**
+- Phase 23 introduced code execution (currently unsandboxed via subprocess)
+- Phase 24 (Orchestrator) will compound security complexity (multi-persona workflows)
+- Phase 27 (Designer) will generate code with package imports (attack vector we're securing)
+- Phase 28 (Plugins) will introduce external untrusted code (highest risk)
+- Optimal time to refactor before building more features
+- Retrofitting security after these features = 10x harder
+
+**Architecture:**
+- **Capability Broker Pattern** - LLM requests capabilities, doesn't have direct access
+- **Pyodide Sandbox** - Replace subprocess with WebAssembly-based Python execution
+- **Package Allowlist** - Pre-approved packages + approval workflow for unknown packages
+- **Context7 Integration** - Leverage existing Context7 integration for package trust scores
+- **Content Sanitization** - Detect prompt injection patterns in documents
+- **PII Detection** - Warn-only mode for personal use
+- **API Key Hardening** - Context managers for secure key handling
+
+**Progress:**
+- [x] Planning complete (Feb 3, 2026)
+- [ ] Week 1: Foundation + Pyodide Sandbox (Days 1-7)
+- [ ] Week 2: Capability Broker Architecture (Days 8-14)
+- [ ] Week 3: API Security + Polish (Days 15-21)
+
+**Key Files:**
+- `docs/planning/phases/phase-23.5/PHASE23.5_SECURITY_HARDENING.md` - Complete specification
+- `docs/planning/phases/phase-23.5/PHASE23.5_IMPLEMENTATION_PLAN.md` - Week-by-week guide
+- `config/security_policy.yaml` - Security configuration
+- `config/approved_packages.yaml` - Package allowlist
+
+**Documentation:**
+- Full specification: `docs/planning/phases/phase-23.5/PHASE23.5_SECURITY_HARDENING.md`
+- Implementation plan: `docs/planning/phases/phase-23.5/PHASE23.5_IMPLEMENTATION_PLAN.md`
+
+---
+
 ## Pending/In-Progress Phases
 
 ### Phase 16c: AI Note Creation 🔄
@@ -418,7 +462,8 @@
 **Status:** BACKEND COMPLETE (~75% total implementation) ✅  
 **Date:** Backend complete (prior to Feb 2026), Frontend incomplete  
 **Priority:** HIGH  
-**Depends On:** Phase 14 ✅ (complete)
+**Depends On:** Phase 14 ✅ (complete)  
+**Note:** Deferred until after Phase 23.5 (security hardening)
 
 **What's Complete (Backend - 100%):**
 - ✅ LearningTracker system (`learners/learning_tracker.py`, 233 lines)
@@ -648,10 +693,10 @@ Comprehensive user profile system that learns user preferences, communication st
 **Reference:** `docs/planning/phases/other/PHASE13B_USER_PROFILE_SYSTEM.md`
 
 #### Phase 24: Orchestrator Mode & Multi-Persona Workflows 📋
-**Status:** Planned  
+**Status:** BLOCKED by Phase 23.5  
 **Priority:** HIGH (Foundation for power features)  
 **Estimated Effort:** 2-3 weeks  
-**Depends On:** Phase 11c ✅
+**Depends On:** Phase 11c ✅, Phase 23.5 🔐 (CRITICAL - security must be complete first)
 
 **Overview:**
 Multi-persona coordination system allowing complex, multi-step workflows in a single session.
