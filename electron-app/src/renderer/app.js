@@ -5271,6 +5271,74 @@ async function handleStartSection(curriculumId, sectionId) {
     // Enrich the section (get materials)
     const enrichment = await enrichSection(curriculumId, sectionId);
     
+    // Phase 23.5: Check for pending package approvals
+    if (enrichment.pending_approvals && enrichment.pending_approvals.length > 0) {
+      console.log('[Package Approval] Showing approval dialog for', enrichment.pending_approvals.length, 'packages');
+      
+      // Show package approval dialog
+      if (window.showPackageApprovalDialog) {
+        await new Promise((resolve) => {
+          window.showPackageApprovalDialog(
+            enrichment.pending_approvals,
+            async (approvalId, permanent) => {
+              // Approve callback
+              try {
+                const response = await fetch(
+                  `${API_URL}/polly/capabilities/approve/${approvalId}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ permanent })
+                  }
+                );
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  console.log('[Package Approval] Approved:', data);
+                  
+                  // If permanent, also add to package allowlist
+                  if (permanent) {
+                    const pkg = enrichment.pending_approvals.find(p => p.approval_id === approvalId);
+                    if (pkg) {
+                      await fetch(`${API_URL}/polly/packages/approve`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ packages: [pkg.package_name], permanent: true })
+                      });
+                    }
+                  }
+                }
+              } catch (error) {
+                console.error('[Package Approval] Error approving:', error);
+              }
+            },
+            async (approvalId, reason) => {
+              // Deny callback
+              try {
+                const response = await fetch(
+                  `${API_URL}/polly/capabilities/deny/${approvalId}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                  }
+                );
+                
+                if (response.ok) {
+                  console.log('[Package Approval] Denied:', approvalId);
+                }
+              } catch (error) {
+                console.error('[Package Approval] Error denying:', error);
+              }
+            }
+          );
+          
+          // Resolve after a short delay to allow dialog to be set up
+          setTimeout(resolve, 100);
+        });
+      }
+    }
+    
     // Get curriculum to determine template type
     const curriculum = await getCurriculum(curriculumId);
     const templateId = curriculum?.curriculum_template_id || curriculum?.template_id;
@@ -5326,6 +5394,74 @@ async function handleViewSection(curriculumId, sectionId) {
     
     // Get enriched materials (will use cached version if available)
     const enrichment = await enrichSection(curriculumId, sectionId);
+    
+    // Phase 23.5: Check for pending package approvals
+    if (enrichment.pending_approvals && enrichment.pending_approvals.length > 0) {
+      console.log('[Package Approval] Showing approval dialog for', enrichment.pending_approvals.length, 'packages');
+      
+      // Show package approval dialog
+      if (window.showPackageApprovalDialog) {
+        await new Promise((resolve) => {
+          window.showPackageApprovalDialog(
+            enrichment.pending_approvals,
+            async (approvalId, permanent) => {
+              // Approve callback
+              try {
+                const response = await fetch(
+                  `${API_URL}/polly/capabilities/approve/${approvalId}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ permanent })
+                  }
+                );
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  console.log('[Package Approval] Approved:', data);
+                  
+                  // If permanent, also add to package allowlist
+                  if (permanent) {
+                    const pkg = enrichment.pending_approvals.find(p => p.approval_id === approvalId);
+                    if (pkg) {
+                      await fetch(`${API_URL}/polly/packages/approve`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ packages: [pkg.package_name], permanent: true })
+                      });
+                    }
+                  }
+                }
+              } catch (error) {
+                console.error('[Package Approval] Error approving:', error);
+              }
+            },
+            async (approvalId, reason) => {
+              // Deny callback
+              try {
+                const response = await fetch(
+                  `${API_URL}/polly/capabilities/deny/${approvalId}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                  }
+                );
+                
+                if (response.ok) {
+                  console.log('[Package Approval] Denied:', approvalId);
+                }
+              } catch (error) {
+                console.error('[Package Approval] Error denying:', error);
+              }
+            }
+          );
+          
+          // Resolve after a short delay to allow dialog to be set up
+          setTimeout(resolve, 100);
+        });
+      }
+    }
     
     // Get curriculum to determine template type
     const curriculum = await getCurriculum(curriculumId);
