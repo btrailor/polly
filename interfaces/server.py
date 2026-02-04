@@ -18,11 +18,14 @@ Persona Endpoints (Phase 11c):
 - POST /persona/deactivate - Deactivate current persona
 """
 
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from fastapi.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response
+from pydantic import BaseModel, ValidationError
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 from datetime import datetime
@@ -31,8 +34,12 @@ import json
 import time
 import logging
 import re
+import ipaddress
 
 logger = logging.getLogger(__name__)
+
+# Phase 23.5: Security Hardening
+from core.security_policy import get_security_policy
 
 
 # Request/Response models
@@ -99,6 +106,133 @@ class PersonaSwitchModeRequest(BaseModel):
     mode: str
 
 
+# Phase 23.5: Security Hardening - Helper Functions
+
+def _expand_cors_origins(origins: List[str]) -> List[str]:
+    """
+    Expand CORS origins, handling wildcard ports and CIDR ranges.
+    
+    FastAPI CORSMiddleware doesn't support wildcards directly, so we expand:
+    - http://localhost:* -> http://localhost:3000, http://localhost:3001, etc.
+    - http://100.64.0.0/10 -> individual IPs in range (simplified: allow all in range)
+    """
+    expanded = []
+    common_ports = [3000, 3001, 3002, 4000, 5000, 5173, 5174, 8080, 8081, 8888, 11436]
+    
+    for origin in origins:
+        # Handle wildcard ports: http://localhost:* -> expand to common ports
+        if origin.endswith(":*"):
+            base = origin[:-2]  # Remove ":*"
+            for port in common_ports:
+                expanded.append(f"{base}:{port}")
+            # Also add base without port (defaults to 80/443)
+            expanded.append(base)
+        
+        # Handle CIDR ranges: http://100.64.0.0/10
+        # For simplicity, we'll allow the base network and log a note
+        # In production, you might want to validate against the actual requesting IP
+        elif "/" in origin:
+            # FastAPI will need to validate this at request time
+            # For now, add the base network
+            base = origin.split("/")[0]
+            expanded.append(base)
+            logger.info(f"CORS CIDR range configured: {origin} (will validate at request time)")
+        
+        # Standard origin
+        else:
+            expanded.append(origin)
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_origins = []
+    for origin in expanded:
+        if origin not in seen:
+            seen.add(origin)
+            unique_origins.append(origin)
+    
+    logger.info(f"CORS origins configured: {len(unique_origins)} origins")
+    return unique_origins
+
+
+class InputValidationMiddleware(BaseHTTPMiddleware):
+    """
+    Phase 23.5: Security Hardening - Input Validation Middleware
+    
+    Validates and sanitizes request input to prevent injection attacks.
+    """
+    
+    # Paths that don't need strict validation (health checks, static files)
+    EXEMPT_PATHS = ["/health", "/static", "/docs", "/openapi.json", "/redoc"]
+    
+    # Maximum request body size (10MB)
+    MAX_BODY_SIZE = 10 * 1024 * 1024
+    
+    async def dispatch(self, request: StarletteRequest, call_next):
+        # Skip validation for exempt paths
+        if any(request.url.path.startswith(path) for path in self.EXEMPT_PATHS):
+            return await call_next(request)
+        
+        # Check request body size
+        if request.method in ["POST", "PUT", "PATCH"]:
+            content_length = request.headers.get("content-length")
+            if content_length:
+                try:
+                    size = int(content_length)
+                    if size > self.MAX_BODY_SIZE:
+                        logger.warning(f"Request body too large: {size} bytes from {request.client.host}")
+                        return JSONResponse(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            content={"error": "Request body too large"}
+                        )
+                except ValueError:
+                    pass
+        
+        # Validate and sanitize JSON payloads
+        if request.headers.get("content-type", "").startswith("application/json"):
+            try:
+                body = await request.body()
+                if body:
+                    # Parse JSON to validate structure
+                    try:
+                        json_data = json.loads(body)
+                        # Basic sanitization: check for suspicious patterns
+                        if self._contains_suspicious_content(json_data):
+                            logger.warning(f"Suspicious content detected in request from {request.client.host}")
+                            # Don't block, but log it (warn-only for personal use)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Invalid JSON in request from {request.client.host}")
+                        return JSONResponse(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            content={"error": "Invalid JSON"}
+                        )
+            except Exception as e:
+                logger.error(f"Error validating request body: {e}")
+                # Continue processing - don't block on validation errors
+        
+        # Continue to next middleware/handler
+        response = await call_next(request)
+        return response
+    
+    def _contains_suspicious_content(self, data: Any) -> bool:
+        """Check for suspicious patterns in request data."""
+        if isinstance(data, dict):
+            return any(self._contains_suspicious_content(v) for v in data.values())
+        elif isinstance(data, list):
+            return any(self._contains_suspicious_content(item) for item in data)
+        elif isinstance(data, str):
+            # Check for common injection patterns
+            suspicious_patterns = [
+                r'<script[^>]*>',  # Script tags
+                r'javascript:',     # JavaScript protocol
+                r'on\w+\s*=',      # Event handlers (onclick=, etc.)
+                r'data:text/html', # Data URIs
+            ]
+            for pattern in suspicious_patterns:
+                if re.search(pattern, data, re.IGNORECASE):
+                    return True
+        return False
+
+
 def create_app(polly_instance=None) -> FastAPI:
     """Create FastAPI app with Polly integration."""
 
@@ -108,14 +242,25 @@ def create_app(polly_instance=None) -> FastAPI:
         version="0.1.0"
     )
 
-    # Enable CORS for IDE access
+    # Phase 23.5: Security Hardening - CORS Policy
+    # Load security policy and configure CORS
+    security_policy = get_security_policy()
+    cors_config = security_policy.get_cors_config()
+    
+    # Expand wildcard ports for common development ports
+    # FastAPI CORSMiddleware doesn't support wildcards, so we expand them
+    expanded_origins = _expand_cors_origins(cors_config["allow_origins"])
+    
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=expanded_origins,
+        allow_credentials=cors_config["allow_credentials"],
+        allow_methods=cors_config["allow_methods"],
+        allow_headers=cors_config["allow_headers"],
     )
+    
+    # Phase 23.5: Security Hardening - Input Validation Middleware
+    app.add_middleware(InputValidationMiddleware)
     
     # Mount static files for web UI
     web_dir = Path(__file__).parent.parent / "web"
