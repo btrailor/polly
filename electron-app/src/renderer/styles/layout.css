@@ -1,0 +1,596 @@
+/**
+ * Three-Column Layout System
+ * Obsidian-inspired layout with ribbon + two sidebars + main content
+ * Phase 0.5 - UI Redesign
+ */
+
+/* ========================================
+   TITLEBAR
+   ======================================== */
+
+.titlebar {
+  height: var(--titlebar-height);
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-4);
+  padding-left: 80px; /* Space for macOS traffic lights */
+  border-bottom: 1px solid var(--border-primary);
+  -webkit-app-region: drag;
+  z-index: var(--z-titlebar);
+}
+
+.titlebar-drag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--titlebar-height);
+  -webkit-app-region: drag;
+}
+
+.titlebar-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-status .status-dot {
+  width: 6px;
+  height: 6px;
+}
+
+/* ========================================
+   APP CONTAINER (THREE-COLUMN GRID)
+   ======================================== */
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg-primary);
+}
+
+.app-layout {
+  display: grid;
+  grid-template-columns: 
+    var(--ribbon-width) 
+    var(--sidebar-left-width, var(--sidebar-default-left)) 
+    1fr 
+    var(--sidebar-right-width, var(--sidebar-default-right));
+  grid-template-rows: 1fr;
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Collapsed states */
+.app-layout.left-collapsed {
+  grid-template-columns: 
+    var(--ribbon-width) 
+    0 
+    1fr 
+    var(--sidebar-right-width, var(--sidebar-default-right));
+}
+
+.app-layout.right-collapsed {
+  grid-template-columns: 
+    var(--ribbon-width) 
+    var(--sidebar-left-width, var(--sidebar-default-left)) 
+    1fr 
+    0;
+}
+
+.app-layout.both-collapsed {
+  grid-template-columns: 
+    var(--ribbon-width) 
+    0 
+    1fr 
+    0;
+}
+
+/* ========================================
+   RIBBON (ICON NAVIGATION)
+   ======================================== */
+
+.ribbon {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-secondary);
+  border-right: 1px solid var(--border-primary);
+  height: 100%;
+  width: var(--ribbon-width);
+  z-index: var(--z-ribbon);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.ribbon-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  width: var(--ribbon-width);
+  cursor: pointer;
+  color: var(--accent-purple);
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-muted);
+  transition: background-color var(--transition-fast);
+  position: relative;
+}
+
+.ribbon-logo:hover {
+  background-color: var(--bg-hover);
+}
+
+.ribbon-logo svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Ribbon Items */
+.ribbon-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) 0;
+  gap: var(--space-1);
+}
+
+.ribbon-divider {
+  height: 1px;
+  margin: var(--space-2) var(--space-2);
+  background-color: var(--border-muted);
+}
+
+.ribbon-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  width: var(--ribbon-width);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.ribbon-item:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-hover);
+}
+
+.ribbon-item.active {
+  color: var(--accent-purple);
+  background-color: var(--bg-active);
+}
+
+.ribbon-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 24px;
+  background-color: var(--accent-purple);
+}
+
+.ribbon-item svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Ribbon tooltip */
+.ribbon-tooltip {
+  position: absolute;
+  left: calc(var(--ribbon-width) + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  z-index: var(--z-tooltip);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-primary);
+}
+
+.ribbon-item:hover .ribbon-tooltip {
+  opacity: 1;
+}
+
+/* Bottom items (Settings) */
+.ribbon-bottom {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-muted);
+}
+
+/* ========================================
+   SIDEBARS
+   ======================================== */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-secondary);
+  height: 100%;
+  overflow: hidden;
+  border-right: 1px solid var(--border-primary);
+  transition: transform var(--transition-base);
+}
+
+/* Left Sidebar */
+.sidebar-left {
+  grid-column: 2;
+  min-width: var(--sidebar-min);
+  max-width: var(--sidebar-max);
+  position: relative;
+}
+
+.app-layout.left-collapsed .sidebar-left {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Right Sidebar */
+.sidebar-right {
+  grid-column: 4;
+  min-width: var(--sidebar-min);
+  max-width: var(--sidebar-max);
+  border-right: none;
+  border-left: 1px solid var(--border-primary);
+  position: relative;
+}
+
+.app-layout.right-collapsed .sidebar-right {
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Sidebar Header */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-muted);
+  min-height: 48px;
+  background-color: var(--bg-secondary);
+}
+
+.sidebar-title {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Icon-only button for collapse */
+.btn-icon-sm {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.btn-icon-sm:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.btn-icon-sm:active {
+  transform: scale(0.95);
+}
+
+/* Sidebar Content */
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-4);
+}
+
+/* Resize Handles */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: ew-resize;
+  z-index: var(--z-sidebar);
+  transition: background-color var(--transition-fast);
+}
+
+.resize-handle:hover,
+.resize-handle.dragging {
+  background-color: var(--accent-purple);
+}
+
+.resize-handle-left {
+  right: -2px;
+}
+
+.resize-handle-right {
+  left: -2px;
+}
+
+/* ========================================
+   MAIN CONTENT AREA
+   ======================================== */
+
+.main-content {
+  grid-column: 3;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-primary);
+  height: 100%;
+  overflow: hidden;
+  position: relative; /* For expand button positioning */
+}
+
+/* Expand buttons (shown when sidebars collapsed) */
+.expand-btn {
+  position: absolute;
+  top: var(--space-4);
+  z-index: 10;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: none; /* Hidden by default */
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.expand-btn:hover {
+  background: var(--accent-purple);
+  color: white;
+  border-color: var(--accent-purple);
+  transform: scale(1.05);
+}
+
+.expand-btn:active {
+  transform: scale(0.95);
+}
+
+.expand-btn-left {
+  left: var(--space-4);
+}
+
+.expand-btn-right {
+  right: var(--space-4);
+}
+
+/* Show expand buttons when sidebars are collapsed */
+.app-layout.left-collapsed .expand-btn-left {
+  display: inline-flex;
+}
+
+.app-layout.right-collapsed .expand-btn-right {
+  display: inline-flex;
+}
+
+/* Page container */
+.page {
+  display: none;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.page.active {
+  display: flex;
+}
+
+/* Page header */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border-muted);
+  background-color: var(--bg-secondary);
+  min-height: 56px;
+}
+
+.page-title {
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}
+
+.page-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Page content */
+.page-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-6);
+}
+
+/* Page with tabs */
+.page-tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--border-muted);
+  background-color: var(--bg-secondary);
+}
+
+.page-tab {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.page-tab:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-hover);
+}
+
+.page-tab.active {
+  color: var(--accent-purple);
+  border-bottom-color: var(--accent-purple);
+}
+
+/* ========================================
+   EMPTY STATES
+   ======================================== */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.empty-state-icon {
+  width: 64px;
+  height: 64px;
+  margin-bottom: var(--space-6);
+  color: var(--text-muted);
+}
+
+.empty-state-title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.empty-state-description {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  max-width: 400px;
+}
+
+/* ========================================
+   LOADING STATES
+   ======================================== */
+
+.loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-icon {
+  animation: spin 1s linear infinite;
+}
+
+/* ========================================
+   RESPONSIVE BEHAVIOR
+   ======================================== */
+
+@media (max-width: 1200px) {
+  .app-layout {
+    grid-template-columns: 
+      var(--ribbon-width) 
+      var(--sidebar-default-left) 
+      1fr 
+      var(--sidebar-default-right);
+  }
+}
+
+@media (max-width: 900px) {
+  /* Auto-collapse right sidebar on smaller screens */
+  .app-layout {
+    grid-template-columns: 
+      var(--ribbon-width) 
+      var(--sidebar-default-left) 
+      1fr 
+      0;
+  }
+  
+  .sidebar-right {
+    transform: translateX(100%);
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+@media (max-width: 700px) {
+  /* Auto-collapse both sidebars on small screens */
+  .app-layout {
+    grid-template-columns: 
+      var(--ribbon-width) 
+      0 
+      1fr 
+      0;
+  }
+  
+  .sidebar-left,
+  .sidebar-right {
+    transform: translateX(-100%);
+    opacity: 0;
+    pointer-events: none;
+  }
+  
+  .sidebar-right {
+    transform: translateX(100%);
+  }
+}

@@ -1,0 +1,204 @@
+/**
+ * Persona Switch Dialog Styles
+ * Modal dialog for context-aware persona switching
+ */
+
+/* Overlay */
+.persona-switch-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300; /* Above floating chat (250) and chat overlay (200) */
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Dialog */
+.persona-switch-dialog {
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.3s ease-out;
+  overflow: hidden;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Header */
+.persona-switch-header {
+  background: linear-gradient(135deg, #2a2a2a 0%, #1f1f1f 100%);
+  padding: 20px 24px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.persona-switch-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.persona-switch-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* Body */
+.persona-switch-body {
+  padding: 24px;
+}
+
+.persona-switch-message {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #e0e0e0;
+}
+
+.persona-switch-message strong {
+  color: #ff8c42;
+  font-weight: 600;
+}
+
+.persona-switch-description {
+  margin: 0 0 20px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #999;
+}
+
+.persona-switch-query {
+  background: #0f0f0f;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #ccc;
+}
+
+.persona-switch-query strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+  font-weight: 600;
+}
+
+/* Actions */
+.persona-switch-actions {
+  display: flex;
+  gap: 12px;
+  padding: 16px 24px 24px 24px;
+  justify-content: flex-end;
+}
+
+.persona-switch-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.persona-switch-btn:active {
+  transform: scale(0.97);
+}
+
+.persona-switch-btn i {
+  width: 16px;
+  height: 16px;
+}
+
+.persona-switch-btn-secondary {
+  background: #2a2a2a;
+  color: #ccc;
+  border: 1px solid #3a3a3a;
+}
+
+.persona-switch-btn-secondary:hover {
+  background: #333;
+  color: #fff;
+  border-color: #444;
+}
+
+.persona-switch-btn-primary {
+  background: linear-gradient(135deg, #ff8c42 0%, #ff6b35 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(255, 140, 66, 0.3);
+}
+
+.persona-switch-btn-primary:hover {
+  background: linear-gradient(135deg, #ff9d5c 0%, #ff7b45 100%);
+  box-shadow: 0 4px 12px rgba(255, 140, 66, 0.4);
+  transform: translateY(-1px);
+}
+
+.persona-switch-btn-primary:active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .persona-switch-dialog {
+    width: 95%;
+    margin: 20px;
+  }
+  
+  .persona-switch-header {
+    padding: 16px 20px;
+  }
+  
+  .persona-switch-body {
+    padding: 20px;
+  }
+  
+  .persona-switch-actions {
+    flex-direction: column-reverse;
+    padding: 12px 20px 20px 20px;
+  }
+  
+  .persona-switch-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

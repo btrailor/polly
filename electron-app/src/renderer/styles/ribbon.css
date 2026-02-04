@@ -1,0 +1,151 @@
+/**
+ * Icon Ribbon Navigation
+ * Phase 0.5 - Obsidian-inspired vertical icon nav
+ */
+
+.ribbon {
+  position: fixed;
+  left: 0;
+  top: 40px; /* Below titlebar (40px height) */
+  bottom: 0;
+  width: 48px;
+  background: #1e1e1e;
+  border-right: 1px solid #2a2a2a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  z-index: 100;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.ribbon::-webkit-scrollbar {
+  width: 4px;
+}
+
+.ribbon::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 2px;
+}
+
+.ribbon-logo {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #f0903b;
+  transition: all 0.15s ease;
+  margin: 2px 0 4px 0;
+}
+
+.ribbon-logo:hover {
+  background: #2a2a2a;
+  color: #ff9f4d;
+}
+
+.ribbon-logo svg {
+  width: 22px;
+  height: 22px;
+}
+
+.ribbon-divider {
+  width: 24px;
+  height: 1px;
+  background: #2a2a2a;
+  margin: 4px 0;
+}
+
+.ribbon-item {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #808080;
+  transition: all 0.15s ease;
+  margin: 2px 0;
+  position: relative;
+}
+
+.ribbon-item:hover {
+  background: #2a2a2a;
+  color: #b4b4b4;
+}
+
+.ribbon-item.active {
+  background: #f0903b;
+  color: white;
+}
+
+.ribbon-item.active::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  background: #f0903b;
+  border-radius: 0 2px 2px 0;
+}
+
+.ribbon-item svg {
+  width: 20px;
+  height: 20px;
+}
+
+.ribbon-spacer {
+  flex: 1;
+  min-height: 8px;
+}
+
+/* Status indicator in ribbon */
+.ribbon-status {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 2px 0;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.ribbon-status:hover {
+  background: #2a2a2a;
+}
+
+.ribbon-status .status-dot {
+  width: 10px;
+  height: 10px;
+}
+
+/* Adjust main container to account for ribbon */
+.main-container {
+  position: fixed !important;
+  left: 48px !important;
+  top: 40px !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: calc(100vw - 48px) !important;
+  height: calc(100vh - 40px) !important;
+  overflow: hidden !important;
+  flex: none !important;
+  display: block !important;
+}
+
+/* Override old sidebar width */
+.main-container .sidebar {
+  display: none; /* Hide old sidebar, we're using three-column now */
+}

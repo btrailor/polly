@@ -1,0 +1,359 @@
+/**
+ * Glitch Effects - Subtle Retro Accents
+ * Use sparingly (5-10% of UI elements)
+ * Phase 0.5 - UI Redesign
+ */
+
+/* ========================================
+   GLITCH ANIMATION
+   ======================================== */
+
+@keyframes glitch {
+  0% {
+    text-shadow: 
+      0.05em 0 0 var(--glitch-primary), 
+      -0.05em -0.025em 0 var(--glitch-secondary);
+  }
+  14% {
+    text-shadow: 
+      0.05em 0 0 var(--glitch-primary), 
+      -0.05em -0.025em 0 var(--glitch-secondary);
+  }
+  15% {
+    text-shadow: 
+      -0.05em -0.025em 0 var(--glitch-primary), 
+      0.025em 0.025em 0 var(--glitch-secondary);
+  }
+  49% {
+    text-shadow: 
+      -0.05em -0.025em 0 var(--glitch-primary), 
+      0.025em 0.025em 0 var(--glitch-secondary);
+  }
+  50% {
+    text-shadow: 
+      0.025em 0.05em 0 var(--glitch-primary), 
+      0.05em 0 0 var(--glitch-secondary);
+  }
+  99% {
+    text-shadow: 
+      0.025em 0.05em 0 var(--glitch-primary), 
+      0.05em 0 0 var(--glitch-secondary);
+  }
+  100% {
+    text-shadow: 
+      -0.025em 0 0 var(--glitch-primary), 
+      -0.025em -0.025em 0 var(--glitch-secondary);
+  }
+}
+
+@keyframes glitch-box {
+  0% {
+    box-shadow: 
+      2px 0 0 var(--glitch-primary), 
+      -2px -2px 0 var(--glitch-secondary);
+  }
+  14% {
+    box-shadow: 
+      2px 0 0 var(--glitch-primary), 
+      -2px -2px 0 var(--glitch-secondary);
+  }
+  15% {
+    box-shadow: 
+      -2px -2px 0 var(--glitch-primary), 
+      2px 2px 0 var(--glitch-secondary);
+  }
+  49% {
+    box-shadow: 
+      -2px -2px 0 var(--glitch-primary), 
+      2px 2px 0 var(--glitch-secondary);
+  }
+  50% {
+    box-shadow: 
+      2px 2px 0 var(--glitch-primary), 
+      2px 0 0 var(--glitch-secondary);
+  }
+  99% {
+    box-shadow: 
+      2px 2px 0 var(--glitch-primary), 
+      2px 0 0 var(--glitch-secondary);
+  }
+  100% {
+    box-shadow: 
+      -2px 0 0 var(--glitch-primary), 
+      -2px -2px 0 var(--glitch-secondary);
+  }
+}
+
+@keyframes glitch-glow {
+  0%, 100% {
+    box-shadow: 
+      0 0 5px var(--accent-purple),
+      0 0 10px var(--accent-purple),
+      0 0 15px var(--accent-purple);
+  }
+  50% {
+    box-shadow: 
+      0 0 10px var(--accent-purple),
+      0 0 20px var(--accent-purple),
+      0 0 30px var(--accent-purple);
+  }
+}
+
+@keyframes scan-line {
+  0% {
+    top: -10%;
+  }
+  100% {
+    top: 110%;
+  }
+}
+
+/* ========================================
+   GLITCH UTILITIES
+   ======================================== */
+
+/* Apply to text elements on hover */
+.glitch-hover:hover {
+  animation: glitch 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both infinite;
+}
+
+/* Apply to active/pressed state */
+.glitch-active {
+  animation: glitch 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* Apply to boxes/containers on hover */
+.glitch-box-hover:hover {
+  animation: glitch-box 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both infinite;
+}
+
+/* Pulsing glow effect */
+.glitch-glow {
+  animation: glitch-glow 2s ease-in-out infinite;
+}
+
+/* ========================================
+   RIBBON LOGO GLITCH
+   ======================================== */
+
+.ribbon-logo.glitch {
+  position: relative;
+}
+
+.ribbon-logo.glitch:hover {
+  animation: glitch 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.ribbon-logo.glitch:hover svg {
+  filter: drop-shadow(0 0 4px var(--glitch-primary));
+}
+
+/* ========================================
+   PRIMARY BUTTON GLITCH
+   ======================================== */
+
+.btn-primary.glitch {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary.glitch:hover {
+  box-shadow: 
+    0 0 8px var(--accent-purple),
+    0 0 16px var(--accent-purple);
+}
+
+.btn-primary.glitch::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(0, 255, 136, 0.1),
+    transparent
+  );
+  animation: scan-line 3s linear infinite;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.btn-primary.glitch:hover::before {
+  opacity: 1;
+}
+
+/* ========================================
+   ACTIVE TAB GLOW
+   ======================================== */
+
+.page-tab.active.glitch {
+  position: relative;
+}
+
+.page-tab.active.glitch::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent-purple),
+    transparent
+  );
+  animation: glitch-glow 2s ease-in-out infinite;
+}
+
+/* ========================================
+   RIBBON ITEM ACTIVE GLOW
+   ======================================== */
+
+.ribbon-item.active.glitch::before {
+  box-shadow: 
+    0 0 4px var(--accent-purple),
+    0 0 8px var(--accent-purple);
+  animation: glitch-glow 2s ease-in-out infinite;
+}
+
+/* ========================================
+   SEND BUTTON GLITCH
+   ======================================== */
+
+#btn-send.glitch:hover {
+  animation: glitch-box 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* ========================================
+   SECTION HEADERS (OPTIONAL)
+   ======================================== */
+
+.section-header.glitch {
+  position: relative;
+  display: inline-block;
+}
+
+.section-header.glitch::before {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--glitch-primary);
+  overflow: hidden;
+  clip: rect(0, 900px, 0, 0);
+  animation: glitch-clip 2s infinite;
+  opacity: 0.5;
+}
+
+@keyframes glitch-clip {
+  0% {
+    clip: rect(44px, 9999px, 56px, 0);
+  }
+  5% {
+    clip: rect(67px, 9999px, 78px, 0);
+  }
+  10% {
+    clip: rect(12px, 9999px, 23px, 0);
+  }
+  15% {
+    clip: rect(89px, 9999px, 91px, 0);
+  }
+  20% {
+    clip: rect(34px, 9999px, 45px, 0);
+  }
+  25% {
+    clip: rect(56px, 9999px, 67px, 0);
+  }
+  30% {
+    clip: rect(78px, 9999px, 89px, 0);
+  }
+  35% {
+    clip: rect(23px, 9999px, 34px, 0);
+  }
+  40% {
+    clip: rect(45px, 9999px, 56px, 0);
+  }
+  45% {
+    clip: rect(67px, 9999px, 78px, 0);
+  }
+  50% {
+    clip: rect(89px, 9999px, 91px, 0);
+  }
+  55% {
+    clip: rect(12px, 9999px, 23px, 0);
+  }
+  60% {
+    clip: rect(34px, 9999px, 45px, 0);
+  }
+  65% {
+    clip: rect(56px, 9999px, 67px, 0);
+  }
+  70% {
+    clip: rect(78px, 9999px, 89px, 0);
+  }
+  75% {
+    clip: rect(23px, 9999px, 34px, 0);
+  }
+  80% {
+    clip: rect(45px, 9999px, 56px, 0);
+  }
+  85% {
+    clip: rect(67px, 9999px, 78px, 0);
+  }
+  90% {
+    clip: rect(89px, 9999px, 91px, 0);
+  }
+  95% {
+    clip: rect(12px, 9999px, 23px, 0);
+  }
+  100% {
+    clip: rect(44px, 9999px, 56px, 0);
+  }
+}
+
+/* ========================================
+   USAGE GUIDELINES
+   ======================================== */
+
+/*
+  APPLY GLITCH EFFECTS TO (5-10% of UI):
+  ✓ Logo (.ribbon-logo.glitch)
+  ✓ Primary action buttons (.btn-primary.glitch)
+  ✓ Active ribbon items (.ribbon-item.active.glitch)
+  ✓ Active tabs (.page-tab.active.glitch)
+  ✓ Section headers (optional, .section-header.glitch)
+  
+  DO NOT APPLY TO:
+  ✗ Body text
+  ✗ Input fields
+  ✗ Forms
+  ✗ Data tables
+  ✗ Code editors
+  ✗ Menus/dropdowns
+  
+  EXAMPLES:
+  
+  <!-- Logo with glitch on hover -->
+  <button class="ribbon-logo glitch">
+    <svg>...</svg>
+  </button>
+  
+  <!-- Primary button with glitch -->
+  <button class="btn btn-primary glitch">
+    Send
+  </button>
+  
+  <!-- Active ribbon item with glow -->
+  <button class="ribbon-item active glitch">
+    <svg>...</svg>
+  </button>
+  
+  <!-- Active tab with glow -->
+  <button class="page-tab active glitch">
+    Overview
+  </button>
+*/

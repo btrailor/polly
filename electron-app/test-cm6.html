@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>CodeMirror 6 Test</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      background: #1e1e1e;
+      color: #fff;
+    }
+    #editor {
+      border: 1px solid #444;
+      min-height: 400px;
+      margin-top: 20px;
+    }
+    .cm-editor {
+      height: 400px;
+    }
+  </style>
+</head>
+<body>
+  <h1>CodeMirror 6 Live Preview Test</h1>
+  <p>Open the console to see debug logs</p>
+  <div id="editor"></div>
+  
+  <script src="src/renderer/markdown-editor-cm6.bundle.js"></script>
+  <script>
+    console.log('[Test] Bundle loaded, MarkdownEditorCM6:', typeof MarkdownEditorCM6)
+    
+    if (MarkdownEditorCM6 && MarkdownEditorCM6.MarkdownEditor) {
+      console.log('[Test] Creating editor...')
+      
+      const container = document.getElementById('editor')
+      const editor = new MarkdownEditorCM6.MarkdownEditor(container, {
+        initialContent: `# Test Heading
+
+This is **bold text** and *italic text*.
+
+Here's \`inline code\` and a [[wiki link]].
+
+Another line with **more formatting** here.
+
+Type something with **bold** or *italic* and watch the syntax!`,
+        theme: 'dark',
+        onChange: (content) => {
+          console.log('[Test] Content changed')
+        },
+        onSave: (content) => {
+          console.log('[Test] Save triggered')
+        },
+        onWikiLinkClick: (noteName) => {
+          console.log('[Test] Wiki link clicked:', noteName)
+          alert('Wiki link clicked: ' + noteName)
+        }
+      })
+      
+      console.log('[Test] Editor created:', editor)
+    } else {
+      console.error('[Test] MarkdownEditorCM6 not available')
+      document.getElementById('editor').innerHTML = '<p style="color: red">Failed to load CodeMirror 6 bundle</p>'
+    }
+  </script>
+</body>
+</html>

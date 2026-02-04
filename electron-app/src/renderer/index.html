@@ -1,0 +1,2913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:* http://127.0.0.1:*; img-src 'self' data:; font-src 'self' data:;">
+  <title>Polly</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/ribbon.css">
+  <link rel="stylesheet" href="styles/three-column.css">
+  <link rel="stylesheet" href="styles/glitch-effects.css">
+  <link rel="stylesheet" href="styles/chat-sidebar.css">
+  <link rel="stylesheet" href="styles/notes.css">
+  <link rel="stylesheet" href="styles/persona-ui.css">
+  <link rel="stylesheet" href="styles/floating-chat.css">
+  <link rel="stylesheet" href="styles/persona-switch-dialog.css">
+  <link rel="stylesheet" href="styles/template-gallery.css">
+  <link rel="stylesheet" href="styles/curriculum.css">
+  <link rel="stylesheet" href="components/mental-models-editor.css">
+  <script src="lucide.min.js"></script>
+  <script src="marked.js"></script>
+  <script src="mermaid.min.js"></script>
+  <script src="pyodide.js"></script>
+  <script src="components/question-form.js"></script>
+  <script src="components/preview-modal.js"></script>
+  <script src="components/template-gallery.js"></script>
+  <script src="components/mental-models-editor.js"></script>
+</head>
+<body>
+  <!-- Polly Initialization Overlay -->
+  <div id="polly-init-overlay" class="polly-init-overlay hidden">
+    <div class="init-content">
+      <div class="init-logo">
+        <i data-lucide="zap"></i>
+      </div>
+      <h2>Initializing Polly</h2>
+      <div class="init-spinner">
+        <div class="spinner"></div>
+      </div>
+      <p class="init-status" id="init-status-text">Loading AI models...</p>
+      <p class="init-tip">This usually takes 2-3 seconds</p>
+    </div>
+  </div>
+
+  <div id="app">
+    <!-- Titlebar - Obsidian Style -->
+    <div class="titlebar">
+      <div class="titlebar-drag"></div>
+      
+      <!-- Left sidebar controls -->
+      <div class="titlebar-left">
+        <button class="titlebar-btn" id="titlebar-toggle-left" title="Toggle left sidebar (Cmd+B)">
+          <i data-lucide="chevron-left"></i>
+        </button>
+      </div>
+      
+      <!-- Center (empty for now, draggable) -->
+      <div class="titlebar-center"></div>
+      
+      <!-- Right sidebar controls -->
+      <div class="titlebar-right">
+        <button class="titlebar-btn" id="titlebar-toggle-right" title="Toggle right sidebar (Cmd+/)">
+          <i data-lucide="chevron-right"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Icon Ribbon (Phase 0.5) -->
+    <div class="ribbon" id="icon-ribbon">
+      <button class="ribbon-logo glitch" data-view="dashboard" title="Polly Home">
+        <i data-lucide="zap"></i>
+      </button>
+      
+      <div class="ribbon-divider"></div>
+      
+      <button class="ribbon-item active glitch" data-view="dashboard" title="Dashboard">
+        <i data-lucide="layout-dashboard"></i>
+      </button>
+      <button class="ribbon-item" data-view="calendar" title="Calendar">
+        <i data-lucide="calendar"></i>
+      </button>
+      <button class="ribbon-item" data-view="mail" title="Mail">
+        <i data-lucide="mail"></i>
+      </button>
+      <button class="ribbon-item" data-view="code" title="Code">
+        <i data-lucide="code-2"></i>
+      </button>
+      <button class="ribbon-item" data-view="projects" title="Projects">
+        <i data-lucide="folder-kanban"></i>
+      </button>
+      <button class="ribbon-item" data-view="knowledge" title="Knowledge Graph">
+        <i data-lucide="network"></i>
+      </button>
+      <button class="ribbon-item" data-view="notes" title="Notes">
+        <i data-lucide="book-open"></i>
+      </button>
+      <button class="ribbon-item" data-view="learning" title="Learning">
+        <i data-lucide="graduation-cap"></i>
+      </button>
+      <button class="ribbon-item" data-view="search" title="Search">
+        <i data-lucide="search"></i>
+      </button>
+      <button class="ribbon-item" data-view="patterns" title="Patterns">
+        <i data-lucide="sparkles"></i>
+      </button>
+      <button class="ribbon-item" data-view="domains" title="Domains">
+        <i data-lucide="folder-tree"></i>
+      </button>
+      
+      <div class="ribbon-spacer"></div>
+      
+      <!-- Status Indicator -->
+      <div class="ribbon-status" id="ribbon-status" title="Server Status">
+        <div class="status-dot" id="status-dot"></div>
+      </div>
+      
+      <button class="ribbon-item" data-view="settings" title="Settings">
+        <i data-lucide="settings"></i>
+      </button>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-container">
+      <div class="three-column-layout">
+        <!-- Left Sidebar -->
+        <aside class="left-sidebar" id="left-sidebar">
+          <div class="sidebar-header">
+            <span class="sidebar-title">Navigation</span>
+          </div>
+          <div class="sidebar-content">
+            <div class="nav-section">
+              <button class="nav-item active" data-view="dashboard">
+                <i data-lucide="layout-dashboard" class="nav-icon"></i>
+                <span class="nav-label">dashboard</span>
+              </button>
+              <button class="nav-item" data-view="knowledge">
+                <i data-lucide="brain" class="nav-icon"></i>
+                <span class="nav-label">knowledge</span>
+              </button>
+              <button class="nav-item" data-view="patterns">
+                <i data-lucide="sparkles" class="nav-icon"></i>
+                <span class="nav-label">patterns</span>
+              </button>
+              <button class="nav-item" data-view="curricula">
+                <i data-lucide="graduation-cap" class="nav-icon"></i>
+                <span class="nav-label">curricula</span>
+              </button>
+            </div>
+
+            <div class="nav-section nav-bottom">
+              <button class="nav-item" data-view="settings">
+                <i data-lucide="settings" class="nav-icon"></i>
+                <span class="nav-label">settings</span>
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Center Content Area -->
+        <main class="center-content">
+        <!-- Setup View (shown first if not configured) -->
+        <div class="view" id="view-setup">
+          <div class="setup-container">
+            <div class="setup-header">
+              <i data-lucide="bird" class="setup-logo"></i>
+              <h1>welcome to polly</h1>
+              <p>your edge-native personal AI assistant</p>
+              <div class="ascii-art" style="margin-top: 1rem;">
+:>  polly  -&
+    setup wizard
+              </div>
+            </div>
+
+            <div class="setup-steps">
+              <!-- Step 1: Dependencies -->
+              <div class="setup-step active" id="step-1">
+                <h2>step 1: check dependencies</h2>
+                <p>let's make sure you have everything needed.</p>
+
+                <div class="dependency-list" id="dependency-list">
+                  <div class="dependency-item" id="dep-python">
+                    <span class="dep-icon">⏳</span>
+                    <span class="dep-name">Python 3.10+</span>
+                    <span class="dep-status">Checking...</span>
+                  </div>
+                  <div class="dependency-item" id="dep-ollama">
+                    <span class="dep-icon">⏳</span>
+                    <span class="dep-name">Ollama</span>
+                    <span class="dep-status">Checking...</span>
+                  </div>
+                </div>
+
+                <div class="setup-actions">
+                  <button class="btn btn-primary" id="btn-check-deps">Check Dependencies</button>
+                </div>
+              </div>
+
+              <!-- Step 2: Paths -->
+              <div class="setup-step" id="step-2">
+                <h2>step 2: configure paths</h2>
+                <p>tell polly where to find your knowledge.</p>
+
+                <div class="form-group">
+                  <label>obsidian vault</label>
+                  <div class="path-input">
+                    <input type="text" id="vault-path" placeholder="select your obsidian vault..." readonly>
+                    <button class="btn btn-secondary" id="btn-select-vault">browse</button>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label>code directories</label>
+                  <div class="path-list" id="code-paths">
+                    <div class="path-empty">no directories selected</div>
+                  </div>
+                  <button class="btn btn-secondary" id="btn-add-code">+ add directory</button>
+                </div>
+
+                <div class="setup-actions">
+                  <button class="btn btn-secondary" id="btn-back-1">back</button>
+                  <button class="btn btn-primary" id="btn-next-2">continue</button>
+                </div>
+              </div>
+
+              <!-- Step 3: Install -->
+              <div class="setup-step" id="step-3">
+                <h2>step 3: install & configure</h2>
+                <p>setting up polly's environment...</p>
+
+                <div class="install-options">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="opt-pull-models" checked>
+                    <span>download AI models (recommended, ~4GB)</span>
+                  </label>
+                </div>
+
+                <div class="progress-container" id="install-progress" style="display: none;">
+                  <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                  </div>
+                  <div class="progress-text" id="progress-text">preparing...</div>
+                </div>
+
+                <div class="setup-actions">
+                  <button class="btn btn-secondary" id="btn-back-2">back</button>
+                  <button class="btn btn-primary" id="btn-install">install polly</button>
+                </div>
+              </div>
+
+              <!-- Step 4: Complete -->
+              <div class="setup-step" id="step-4">
+                <h2><i data-lucide="check-circle" style="width: 24px; height: 24px; display: inline-block; vertical-align: middle; margin-right: 8px;"></i> setup complete!</h2>
+                <p>polly is ready to help you.</p>
+
+                <div class="setup-summary">
+                  <div class="summary-item">
+                    <i data-lucide="check" class="summary-icon"></i>
+                    <span>Python environment configured</span>
+                  </div>
+                  <div class="summary-item">
+                    <i data-lucide="check" class="summary-icon"></i>
+                    <span>AI models downloaded</span>
+                  </div>
+                  <div class="summary-item">
+                    <i data-lucide="check" class="summary-icon"></i>
+                    <span>Knowledge paths configured</span>
+                  </div>
+                </div>
+
+                <div class="setup-actions">
+                  <button class="btn btn-primary" id="btn-start-indexing">Index Knowledge Base</button>
+                  <button class="btn btn-secondary" id="btn-skip-index">Skip for Now</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat View -->
+        <!-- Dashboard View -->
+        <div class="view" id="view-dashboard">
+          <div class="dashboard-container">
+            <h2>> dashboard</h2>
+
+            <div class="stats-grid">
+              <div class="stat-card">
+                <i data-lucide="book-open" class="stat-icon"></i>
+                <div class="stat-value" id="stat-obsidian">-</div>
+                <div class="stat-label">Obsidian Chunks</div>
+              </div>
+              <div class="stat-card">
+                <i data-lucide="code-2" class="stat-icon"></i>
+                <div class="stat-value" id="stat-codebase">-</div>
+                <div class="stat-label">Code Chunks</div>
+              </div>
+              <div class="stat-card">
+                <i data-lucide="sparkles" class="stat-icon"></i>
+                <div class="stat-value" id="stat-patterns">-</div>
+                <div class="stat-label">Patterns</div>
+              </div>
+              <div class="stat-card">
+                <i data-lucide="network" class="stat-icon"></i>
+                <div class="stat-value" id="stat-entities">-</div>
+                <div class="stat-label">Graph Entities</div>
+              </div>
+            </div>
+
+            <div class="domains-section">
+              <h3>your domains</h3>
+              <div class="domains-grid">
+                <div class="domain-card sigils">
+                  <div class="domain-name">sigils</div>
+                  <div class="domain-desc">code & infrastructure</div>
+                </div>
+                <div class="domain-card signals">
+                  <div class="domain-name">signals</div>
+                  <div class="domain-desc">audio & synthesis</div>
+                </div>
+                <div class="domain-card scrolls">
+                  <div class="domain-name">scrolls</div>
+                  <div class="domain-desc">writing & pedagogy</div>
+                </div>
+                <div class="domain-card glyphs">
+                  <div class="domain-name">glyphs</div>
+                  <div class="domain-desc">visual & design</div>
+                </div>
+                <div class="domain-card grids">
+                  <div class="domain-name">grids</div>
+                  <div class="domain-desc">systems & frameworks</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="server-section">
+              <h3>Services Status</h3>
+              
+              <div class="server-status">
+                <div class="service-item">
+                  <div class="server-indicator" id="ollama-indicator"></div>
+                  <div class="service-info">
+                    <div class="service-name">Ollama</div>
+                    <span id="ollama-status-text">Checking...</span>
+                  </div>
+                </div>
+                
+                <div class="service-item">
+                  <div class="server-indicator" id="server-indicator"></div>
+                  <div class="service-info">
+                    <div class="service-name">Polly Server</div>
+                    <span id="server-status-text">Checking...</span>
+                  </div>
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-server">Start</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Knowledge View -->
+        <div class="view hidden" id="view-knowledge">
+          <div class="knowledge-container">
+            <h2>> knowledge base</h2>
+
+            <div class="knowledge-actions">
+              <button class="btn btn-primary" id="btn-reindex">
+                <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i> Re-index All
+              </button>
+              <button class="btn btn-secondary" id="btn-index-obsidian">
+                Index Obsidian
+              </button>
+              <button class="btn btn-secondary" id="btn-index-code">
+                Index Code
+              </button>
+            </div>
+
+            <div class="knowledge-sources">
+              <div class="source-card">
+                <h3><i data-lucide="book-open" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 8px;"></i> Notes</h3>
+                <div class="source-path" id="obsidian-path">Not configured</div>
+                <div class="source-stats">
+                  <span id="obsidian-files">0 files</span>
+                  <span id="obsidian-chunks">0 chunks</span>
+                </div>
+              </div>
+
+              <div class="source-card">
+                <h3><i data-lucide="code-2" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 8px;"></i> Codebases</h3>
+                <div class="source-paths" id="code-source-paths">
+                  <div class="path-empty">No directories configured</div>
+                </div>
+                <div class="source-stats">
+                  <span id="code-files">0 files</span>
+                  <span id="code-chunks">0 chunks</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="index-log" id="index-log" style="display: none;">
+              <h3>Indexing Log</h3>
+              <pre id="index-log-content"></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Patterns View -->
+        <div class="view hidden" id="view-patterns">
+          <div class="patterns-container">
+            <h2>> learned patterns</h2>
+            <p class="patterns-intro">
+              polly learns patterns from your work over time. these patterns help provide
+              more relevant and personalized responses.
+            </p>
+
+            <!-- Pattern Controls -->
+            <div class="patterns-controls">
+              <div class="patterns-filters">
+                <label class="filter-label">Show patterns from:</label>
+                <select id="pattern-time-filter" class="pattern-filter-select">
+                  <option value="all">All time</option>
+                  <option value="7">Last 7 days</option>
+                  <option value="30">Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                </select>
+              </div>
+              <div class="patterns-actions">
+                <button class="btn btn-secondary btn-sm" id="btn-refresh-patterns">
+                  <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+                  Refresh
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-export-patterns">
+                  <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+                  Export
+                </button>
+                <button class="btn btn-danger btn-sm" id="btn-reset-patterns">
+                  <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            <div class="patterns-list" id="patterns-list">
+              <div class="pattern-empty">
+                <i data-lucide="sparkles" class="pattern-empty-icon"></i>
+                <p>No patterns learned yet.</p>
+                <p class="pattern-empty-hint">Keep using Polly and patterns will emerge from your queries and knowledge base.</p>
+              </div>
+            </div>
+          </div>
+        </div> <!-- end patterns view -->
+
+        <!-- Curricula View (Phase 23) -->
+        <div class="view hidden" id="view-curricula">
+          <div class="curricula-container">
+            <h2>> my learning curricula</h2>
+            <p class="curricula-intro">
+              structured learning paths created with the Professor persona.
+              track your progress through courses, tutorials, and skill development.
+            </p>
+
+            <!-- Curricula List -->
+            <div class="curricula-list" id="curricula-list">
+              <div class="loading-spinner">Loading curricula...</div>
+            </div>
+          </div>
+        </div> <!-- end curricula view -->
+
+        <div class="view hidden" id="view-settings">
+          <div class="settings-container">
+            <h2>> settings</h2>
+
+            <!-- Tab: General -->
+            <div class="settings-tab-content" id="tab-general">
+              <div class="settings-section">
+                <h3>Paths</h3>
+
+                <div class="form-group">
+                  <label>Code Directories</label>
+                  <div class="path-list" id="settings-code-paths"></div>
+                  <button class="btn btn-secondary" id="btn-settings-add-code">+ Add</button>
+                </div>
+                
+                <p class="form-hint">
+                  <i data-lucide="info" style="width: 14px; height: 14px;"></i>
+                  To configure your Obsidian vault, go to Settings → Integrations → Obsidian
+                </p>
+              </div>
+
+              <div class="settings-section">
+                <h3>Model Routing</h3>
+
+                <div class="form-group">
+                  <label>Default Mode</label>
+                  <select id="settings-routing-mode">
+                    <option value="auto">Auto (Recommended)</option>
+                    <option value="local">Always Local</option>
+                    <option value="cloud">Always Cloud</option>
+                  </select>
+                </div>
+
+                <p class="form-hint">
+                  <i data-lucide="info" style="width: 14px; height: 14px;"></i>
+                  To configure API keys for cloud models, go to Settings → API Keys
+                </p>
+              </div>
+            </div>
+
+            <!-- Tab: Routing -->
+            <div class="settings-tab-content hidden" id="tab-routing">
+              <div class="routing-intro">
+                <h3>🔀 Hybrid Routing</h3>
+                <p>Control when Polly uses local models (Ollama) vs cloud providers (GitHub/OpenAI/Anthropic).</p>
+                <p style="margin-top: 8px; padding: 12px; background: var(--bg-hover); border-radius: 4px; border-left: 3px solid var(--signal); font-size: 13px;">
+                  <strong>How it works:</strong> When you ask a question, Polly searches your knowledge base (RAG). 
+                  If it finds strong, relevant context, it uses your <strong>free local Ollama model</strong>. 
+                  For complex queries or weak context, it routes to <strong>cloud providers</strong> for better reasoning.
+                </p>
+              </div>
+
+              <div class="settings-section">
+                <h3>RAG Quality Thresholds</h3>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+                  Adjust when Polly considers your knowledge base context "strong enough" for local models.
+                </p>
+
+                <!-- Minimum Top Score -->
+                <div class="form-group">
+                  <label>
+                    Minimum Top Result Score
+                    <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">
+                      (how relevant must the best RAG result be?)
+                    </span>
+                  </label>
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <input 
+                      type="range" 
+                      id="routing-min-top-score" 
+                      min="0.5" 
+                      max="0.95" 
+                      step="0.05" 
+                      value="0.75"
+                      style="flex: 1;"
+                    >
+                    <span id="routing-min-top-score-value" style="font-family: monospace; font-size: 14px; min-width: 40px; text-align: right;">0.75</span>
+                  </div>
+                  <p class="form-hint">Lower = more aggressive local routing. Higher = more conservative (prefer cloud).</p>
+                </div>
+
+                <!-- Minimum High Quality Results -->
+                <div class="form-group">
+                  <label>
+                    Minimum High-Quality Results
+                    <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">
+                      (how many good results needed?)
+                    </span>
+                  </label>
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <input 
+                      type="range" 
+                      id="routing-min-quality-results" 
+                      min="1" 
+                      max="5" 
+                      step="1" 
+                      value="2"
+                      style="flex: 1;"
+                    >
+                    <span id="routing-min-quality-results-value" style="font-family: monospace; font-size: 14px; min-width: 40px; text-align: right;">2</span>
+                  </div>
+                  <p class="form-hint">Number of RAG results with score > 0.7 required for local routing.</p>
+                </div>
+
+                <!-- Minimum Context Characters -->
+                <div class="form-group">
+                  <label>
+                    Minimum Context Size (characters)
+                    <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">
+                      (how much context needed?)
+                    </span>
+                  </label>
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <input 
+                      type="range" 
+                      id="routing-min-context-chars" 
+                      min="100" 
+                      max="2000" 
+                      step="100" 
+                      value="500"
+                      style="flex: 1;"
+                    >
+                    <span id="routing-min-context-chars-value" style="font-family: monospace; font-size: 14px; min-width: 60px; text-align: right;">500</span>
+                  </div>
+                  <p class="form-hint">Minimum total characters from RAG results to use local model.</p>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3>Exceptional Quality Override</h3>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+                  When RAG results are <em>exceptional</em>, always use local (ignore complexity checks).
+                </p>
+
+                <!-- Exceptional Score -->
+                <div class="form-group">
+                  <label>
+                    Exceptional Quality Score
+                    <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">
+                      (what score = exceptional?)
+                    </span>
+                  </label>
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <input 
+                      type="range" 
+                      id="routing-exceptional-score" 
+                      min="0.75" 
+                      max="0.95" 
+                      step="0.05" 
+                      value="0.85"
+                      style="flex: 1;"
+                    >
+                    <span id="routing-exceptional-score-value" style="font-family: monospace; font-size: 14px; min-width: 40px; text-align: right;">0.85</span>
+                  </div>
+                  <p class="form-hint">If top result exceeds this, use local regardless of query complexity.</p>
+                </div>
+
+                <!-- Exceptional Min Results -->
+                <div class="form-group">
+                  <label>
+                    Exceptional Minimum Results
+                    <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">
+                      (plus how many results?)
+                    </span>
+                  </label>
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <input 
+                      type="range" 
+                      id="routing-exceptional-min-results" 
+                      min="1" 
+                      max="5" 
+                      step="1" 
+                      value="3"
+                      style="flex: 1;"
+                    >
+                    <span id="routing-exceptional-min-results-value" style="font-family: monospace; font-size: 14px; min-width: 40px; text-align: right;">3</span>
+                  </div>
+                  <p class="form-hint">Minimum results needed (with exceptional score) to force local.</p>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3>Quick Presets</h3>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">
+                  Apply predefined threshold combinations:
+                </p>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                  <button class="btn btn-secondary btn-sm" id="routing-preset-aggressive">
+                    <i data-lucide="zap" style="width: 14px; height: 14px;"></i> Aggressive Local
+                  </button>
+                  <button class="btn btn-secondary btn-sm" id="routing-preset-balanced">
+                    <i data-lucide="scale" style="width: 14px; height: 14px;"></i> Balanced (Default)
+                  </button>
+                  <button class="btn btn-secondary btn-sm" id="routing-preset-conservative">
+                    <i data-lucide="cloud" style="width: 14px; height: 14px;"></i> Conservative Cloud
+                  </button>
+                </div>
+                <div style="margin-top: 12px; padding: 10px; background: var(--bg-hover); border-radius: 4px; font-size: 12px;">
+                  <p><strong>Aggressive:</strong> Use local whenever possible (min_score: 0.65, min_results: 1)</p>
+                  <p style="margin-top: 4px;"><strong>Balanced:</strong> Current default settings</p>
+                  <p style="margin-top: 4px;"><strong>Conservative:</strong> Prefer cloud for quality (min_score: 0.85, min_results: 3)</p>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3>Current Routing Stats</h3>
+                <div id="routing-stats" style="padding: 12px; background: var(--bg-hover); border-radius: 4px; font-family: monospace; font-size: 13px;">
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div>Local queries today: <span id="stat-local-today">-</span></div>
+                    <div>Cloud queries today: <span id="stat-cloud-today">-</span></div>
+                    <div>Avg local score: <span id="stat-avg-local-score">-</span></div>
+                    <div>Cost saved today: <span id="stat-cost-saved">-</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-actions" style="margin-top: 24px;">
+                <button class="btn btn-primary" id="btn-save-routing-settings">Save Routing Settings</button>
+                <button class="btn btn-secondary" id="btn-reset-routing-settings">Reset to Defaults</button>
+              </div>
+            </div>
+
+            <!-- Tab: API Keys -->
+            <div class="settings-tab-content hidden" id="tab-api-keys">
+              <div class="api-keys-intro">
+                <p>Manage your API keys for multi-provider routing. Keys are stored securely in your system keyring.</p>
+              </div>
+
+              <div class="settings-section">
+                <h3><i data-lucide="key" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 8px;"></i>Configured API Keys</h3>
+                
+                <div id="api-keys-list" class="api-keys-list">
+                  <div class="settings-loading-spinner">Loading keys...</div>
+                </div>
+
+                <button class="btn btn-primary" id="btn-add-api-key">
+                  <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
+                  Add API Key
+                </button>
+              </div>
+
+              <div class="settings-section">
+                <h3><i data-lucide="bar-chart-3" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 8px;"></i>Budget & Usage</h3>
+                
+                <div id="budget-status" class="budget-status">
+                  <div class="settings-loading-spinner">Loading budget...</div>
+                </div>
+                
+                <div class="form-group" style="margin-top: 16px;">
+                  <label>Daily Limit ($)</label>
+                  <input type="number" id="budget-daily-limit" step="0.01" min="0" placeholder="10.00">
+                </div>
+
+                <div class="form-group">
+                  <label>Monthly Limit ($)</label>
+                  <input type="number" id="budget-monthly-limit" step="0.01" min="0" placeholder="200.00">
+                </div>
+
+                <button class="btn btn-secondary" id="btn-save-budget">Save Budget Limits</button>
+              </div>
+            </div>
+
+            <!-- Tab: Domains -->
+            <div class="settings-tab-content hidden" id="tab-domains">
+              <div class="domains-intro">
+                <p>Configure your knowledge domains. Domains help organize your Obsidian vault and improve RAG relevance.</p>
+              </div>
+
+              <div class="settings-section">
+                <h3>Folder Structure</h3>
+                <div class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="folder-numbering-toggle">
+                    <span>Use numbered folders (e.g., 01-Sigils, 02-Signals)</span>
+                  </label>
+                  <p class="form-hint">Numbered folders maintain order in your file system</p>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3>Your Domains</h3>
+                <div class="domains-list-header">
+                  <span class="domain-count">Loading domains...</span>
+                  <button class="btn btn-primary btn-sm" id="btn-add-domain">
+                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
+                    Add Domain
+                  </button>
+                </div>
+                
+                <div id="domains-list" class="domains-list">
+                  <!-- Domain cards will be rendered here -->
+                  <div class="loading-spinner">Loading...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab: Integrations -->
+            <div class="settings-tab-content hidden" id="tab-integrations">
+              <div class="integrations-intro">
+                <p>Connect external services to enhance Polly's capabilities. Integration data is automatically indexed for RAG queries.</p>
+              </div>
+
+              <!-- Integration Cards -->
+              <div class="integrations-grid">
+                <!-- GitHub Integration Card -->
+                <div class="integration-card" data-integration="github">
+                  <div class="integration-header">
+                    <div class="integration-title">
+                      <svg class="integration-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+                      <h4>github</h4>
+                    </div>
+                    <span class="status-dot" id="github-status-dot"></span>
+                  </div>
+
+                  <p class="integration-desc">Access repositories, issues, and pull requests</p>
+
+                  <div class="integration-status" id="github-status">
+                    <span class="status-text">not connected</span>
+                  </div>
+
+                  <div class="integration-actions">
+                    <button class="btn btn-secondary btn-sm" id="github-connect-btn">connect</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="github-sync-btn">sync now</button>
+                    <button class="btn btn-secondary btn-sm" id="github-config-btn">configure</button>
+                  </div>
+
+                  <!-- Expandable Config Panel -->
+                  <div class="integration-config hidden" id="github-config">
+                    <h5>OAuth Configuration</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;">
+                      Create a GitHub OAuth app at <a href="#" id="github-oauth-link" style="color: var(--signal); text-decoration: underline;">github.com/settings/developers</a>
+                    </p>
+                    
+                    <div class="form-group">
+                      <label>Client ID</label>
+                      <input type="text" id="github-client-id" placeholder="Iv1.abc123..." />
+                    </div>
+                    
+                    <div class="form-group">
+                      <label>Client Secret</label>
+                      <input type="password" id="github-client-secret" placeholder="gho_xyz789..." />
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 8px;">
+                      <label>Callback URL (use this in OAuth app)</label>
+                      <input type="text" value="http://localhost:3000/oauth/callback" readonly style="background: var(--bg-hover); cursor: text;" />
+                    </div>
+                    
+                    <button class="btn btn-primary btn-sm" id="github-save-config-btn">save configuration</button>
+                  </div>
+                </div>
+
+                <!-- Context7 Integration Card -->
+                <div class="integration-card" data-integration="context7">
+                  <div class="integration-header">
+                    <div class="integration-title">
+                      <i data-lucide="library" class="integration-icon"></i>
+                      <h4>context7</h4>
+                    </div>
+                    <span class="status-dot" id="context7-status-dot"></span>
+                  </div>
+
+                  <p class="integration-desc">Up-to-date library docs for code generation</p>
+
+                  <div class="integration-status" id="context7-status">
+                    <span class="status-text">not connected</span>
+                  </div>
+
+                  <div class="integration-actions">
+                    <button class="btn btn-secondary btn-sm" id="context7-connect-btn">connect</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="context7-sync-btn">sync now</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="context7-config-btn">configure</button>
+                  </div>
+
+                  <div class="integration-config hidden" id="context7-config">
+                    <h5>Library Management</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;">
+                      Select popular libraries or add custom ones:
+                    </p>
+                    
+                    <!-- Popular Libraries Checkboxes -->
+                    <div style="margin-bottom: 20px;">
+                      <h6 style="font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 10px;">Popular Libraries</h6>
+                      <div id="context7-popular-libraries" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; max-height: 200px; overflow-y: auto; padding: 8px; background: var(--bg-hover); border-radius: 4px;">
+                        <!-- Will be populated by JavaScript -->
+                      </div>
+                    </div>
+                    
+                    <!-- Custom Libraries Input -->
+                    <div class="form-group" style="margin-bottom: 16px;">
+                      <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 8px;">Custom Libraries</label>
+                      <input 
+                        type="text" 
+                        id="context7-custom-libraries-input" 
+                        placeholder="e.g., svelte, deno, bun" 
+                        style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary);"
+                      >
+                      <p class="form-hint" style="margin-top: 4px; font-size: 11px; color: var(--text-secondary);">Comma-separated. For libraries not in the popular list.</p>
+                    </div>
+                    
+                    <!-- Selected Libraries Preview -->
+                    <div style="margin-bottom: 12px; padding: 8px; background: var(--bg-hover); border-radius: 4px; min-height: 32px;">
+                      <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">Selected libraries:</p>
+                      <div id="context7-selected-preview" style="font-size: 12px; color: var(--text-primary); font-family: monospace;">
+                        None selected
+                      </div>
+                    </div>
+                    
+                    <button class="btn btn-primary btn-sm" id="context7-save-libraries-btn">Save & Sync</button>
+                  </div>
+                </div>
+
+                <!-- Obsidian Integration Card -->
+                <div class="integration-card" data-integration="obsidian">
+                  <div class="integration-header">
+                    <div class="integration-title">
+                      <i data-lucide="diamond" class="integration-icon"></i>
+                      <h4>obsidian</h4>
+                    </div>
+                    <span class="status-dot" id="obsidian-status-dot"></span>
+                  </div>
+
+                  <p class="integration-desc">Optionally sync your Polly notes to Obsidian vault</p>
+
+                  <div class="integration-status" id="obsidian-status">
+                    <span class="status-text">not connected</span>
+                  </div>
+
+                  <div class="integration-actions">
+                    <button class="btn btn-secondary btn-sm" id="obsidian-connect-btn">connect</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="obsidian-sync-btn">sync now</button>
+                    <button class="btn btn-secondary btn-sm" id="obsidian-config-btn">configure</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="obsidian-write-test-btn">test write</button>
+                  </div>
+
+                  <!-- Configuration Panel -->
+                  <div class="integration-config hidden" id="obsidian-config">
+                    <h5>Vault Configuration</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;">
+                      Configure optional Obsidian sync. Notes are stored in Polly's native knowledge base, but can be synced to your Obsidian vault.
+                    </p>
+                    
+                    <div class="form-group">
+                      <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                        <input type="checkbox" id="obsidian-sync-enabled" style="width: auto;">
+                        <span>Enable Obsidian Sync</span>
+                      </label>
+                      <p class="form-hint" style="margin-top: -8px;">
+                        When enabled, new notes will be copied to your Obsidian vault
+                      </p>
+                    </div>
+                    
+                    <div class="form-group" id="obsidian-vault-path-group">
+                      <label>Vault Path</label>
+                      <div style="display: flex; gap: 8px; align-items: center;">
+                        <input 
+                          type="text" 
+                          id="obsidian-vault-path-input" 
+                          placeholder="Click 'Choose Folder' to select vault..." 
+                          readonly
+                          style="flex: 1; background: var(--bg-hover); cursor: pointer;"
+                        />
+                        <button class="btn btn-secondary btn-sm" id="obsidian-choose-folder-btn">Choose Folder</button>
+                      </div>
+                      <p class="form-hint">
+                        Example: ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MyVault
+                      </p>
+                    </div>
+                    
+                    <button class="btn btn-primary btn-sm" id="obsidian-save-config-btn">Save Configuration</button>
+                  </div>
+
+                  <div class="integration-stats hidden" id="obsidian-stats">
+                    <div class="stat-item">
+                      <span class="stat-label">Vault</span>
+                      <span class="stat-value" id="obsidian-vault-path-display">-</span>
+                    </div>
+                    <div class="stat-item">
+                      <span class="stat-label">Files Indexed</span>
+                      <span class="stat-value" id="obsidian-indexed-files">0</span>
+                    </div>
+                  </div>
+                  
+                  <!-- Write Test Panel (for Phase 2 testing) -->
+                  <div class="integration-config hidden" id="obsidian-write-test" style="margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+                    <h5>Test Write Operations</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+                      Test note creation (for development/testing)
+                    </p>
+                    
+                    <div class="form-group">
+                      <label>Note Title</label>
+                      <input type="text" id="obsidian-test-title" placeholder="Test Note">
+                    </div>
+                    
+                    <div class="form-group">
+                      <label>Content</label>
+                      <textarea id="obsidian-test-content" rows="3" placeholder="Note content..."></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                      <label>Folder</label>
+                      <input type="text" id="obsidian-test-folder" placeholder="30-Ideas">
+                    </div>
+                    
+                    <button class="btn btn-primary btn-sm" id="obsidian-test-create-btn">Create Test Note</button>
+                  </div>
+                </div>
+
+                <!-- Calendar Integration Card -->
+                <div class="integration-card" data-integration="calendar">
+                  <div class="integration-header">
+                    <div class="integration-title">
+                      <i data-lucide="calendar" class="integration-icon"></i>
+                      <h4>calendar</h4>
+                    </div>
+                    <span class="status-dot" id="calendar-status-dot"></span>
+                  </div>
+
+                  <p class="integration-desc">Access all your calendar events (iCloud, Google, Exchange)</p>
+
+                  <div class="integration-status" id="calendar-status">
+                    <span class="status-text">not connected</span>
+                  </div>
+
+                  <div class="integration-actions">
+                    <button class="btn btn-secondary btn-sm" id="calendar-connect-btn">enable</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="calendar-sync-btn">sync now</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="calendar-config-btn">configure</button>
+                  </div>
+
+                  <div class="integration-config hidden" id="calendar-config">
+                    <h5>Calendar Settings</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+                      Configure how many days ahead to sync:
+                    </p>
+                    <div class="form-group">
+                      <label>Days ahead</label>
+                      <input 
+                        type="number" 
+                        id="calendar-days-input" 
+                        value="7" 
+                        min="1" 
+                        max="90"
+                        style="width: 100px; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary);"
+                      >
+                      <p class="form-hint">Fetch events for the next N days (default: 7)</p>
+                    </div>
+                    <button class="btn btn-primary btn-sm" id="calendar-save-config-btn">Save & Sync</button>
+                  </div>
+                </div>
+
+                <!-- Reminders Integration Card -->
+                <div class="integration-card" data-integration="reminders">
+                  <div class="integration-header">
+                    <div class="integration-title">
+                      <i data-lucide="list-checks" class="integration-icon"></i>
+                      <h4>reminders</h4>
+                    </div>
+                    <span class="status-dot" id="reminders-status-dot"></span>
+                  </div>
+
+                  <p class="integration-desc">Access your tasks and to-do lists</p>
+
+                  <div class="integration-status" id="reminders-status">
+                    <span class="status-text">not connected</span>
+                  </div>
+
+                  <div class="integration-actions">
+                    <button class="btn btn-secondary btn-sm" id="reminders-connect-btn">enable</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="reminders-sync-btn">sync now</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="reminders-config-btn">configure</button>
+                  </div>
+
+                  <div class="integration-config hidden" id="reminders-config">
+                    <h5>Reminders Settings</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+                      Configure which reminders to sync:
+                    </p>
+                    <div class="form-group">
+                      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="reminders-completed-checkbox" style="width: 16px; height: 16px;">
+                        <span>Include completed reminders</span>
+                      </label>
+                      <p class="form-hint">By default, only incomplete reminders are synced</p>
+                    </div>
+                    <button class="btn btn-primary btn-sm" id="reminders-save-config-btn">Save & Sync</button>
+                  </div>
+                </div>
+
+                <!-- macOS Control Integration Card -->
+                <div class="integration-card" data-integration="macos">
+                  <div class="integration-header">
+                    <div class="integration-title">
+                      <svg class="integration-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"/><path d="M10 2c1 .5 2 2 2 5"/></svg>
+                      <h4>macos control</h4>
+                    </div>
+                    <span class="status-dot" id="macos-status-dot"></span>
+                  </div>
+
+                  <p class="integration-desc">File system access and terminal control</p>
+
+                  <div class="integration-status" id="macos-status">
+                    <span class="status-text">disabled</span>
+                  </div>
+
+                  <div class="integration-actions">
+                    <button class="btn btn-secondary btn-sm" id="macos-enable-btn">enable</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="macos-config-btn">configure</button>
+                  </div>
+
+                  <div class="integration-config hidden" id="macos-config">
+                    <h5>Permissions & Paths</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; font-style: italic;">
+                      Permission settings will be available after enabling.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab: Notes -->
+            <div class="settings-tab-content hidden" id="tab-notes">
+              
+              <!-- Info Banner for Obsidian Users -->
+              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px; border-radius: 8px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px;">
+                <i data-lucide="zap" style="width: 24px; height: 24px; flex-shrink: 0;"></i>
+                <div>
+                  <div style="font-weight: 600; margin-bottom: 4px;">Coming from Obsidian?</div>
+                  <div style="font-size: 0.9em; opacity: 0.9;">Scroll down to import your Obsidian vault into Polly's native notes system. Your notes will be copied and organized automatically.</div>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3><i data-lucide="folder" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 8px;"></i>Notes Source</h3>
+                <p class="form-hint" style="margin-bottom: 16px;">
+                  <i data-lucide="info" style="width: 14px; height: 14px;"></i>
+                  Choose where Polly should read and manage your notes.
+                </p>
+
+                <div class="form-group">
+                  <label>Current Source</label>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span id="notes-current-source" style="font-weight: 600; color: var(--accent);">Native</span>
+                    <span id="notes-current-path" style="color: var(--text-secondary); font-size: 0.9em;"></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Knowledge Base Location Section -->
+              <div class="settings-section" style="border-top: 1px solid var(--border-color); margin-top: 24px; padding-top: 24px;">
+                <h3>☁️ Knowledge Base Location</h3>
+                <p class="form-hint" style="margin-bottom: 16px;">
+                  <i data-lucide="folder" style="width: 14px; height: 14px;"></i>
+                  Choose where Polly stores your notes. Use a cloud-synced folder (Dropbox, iCloud, Google Drive) to access your notes across devices.
+                </p>
+
+                <!-- Current Location Display -->
+                <div class="form-group">
+                  <label>Current Location</label>
+                  <div style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; font-family: monospace; font-size: 0.9em; word-break: break-all; margin-bottom: 8px;">
+                    <span id="kb-current-path">Loading...</span>
+                  </div>
+                  <button class="btn btn-secondary" id="btn-change-kb-location" style="width: 100%;">
+                    <i data-lucide="folder-open" style="width: 16px; height: 16px; margin-right: 6px;"></i>
+                    <span>Change Location</span>
+                  </button>
+                </div>
+
+                <!-- Cloud Services Quick Suggestions -->
+                <div id="cloud-services-suggestions" class="hidden" style="margin-top: 16px;">
+                  <label style="display: block; margin-bottom: 8px; font-weight: 600;">Quick Setup with Cloud Services</label>
+                  <p class="form-hint" style="margin-bottom: 12px;">We detected these cloud storage services on your system:</p>
+                  <div id="cloud-services-list" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Populated by JavaScript -->
+                  </div>
+                </div>
+
+                <!-- Migration Modal -->
+                <div id="kb-migration-modal" class="modal hidden">
+                  <div class="modal-content" style="max-width: 600px;">
+                    <div class="modal-header">
+                      <h3>Move Knowledge Base</h3>
+                      <button class="modal-close" onclick="document.getElementById('kb-migration-modal').classList.add('hidden')">
+                        <i data-lucide="x"></i>
+                      </button>
+                    </div>
+                    <div class="modal-body">
+                      <!-- Step 1: Choose Location -->
+                      <div id="kb-migration-step-1">
+                        <p style="margin-bottom: 16px;">Choose where to move your knowledge base. Your notes, conversations, and attachments will be copied to the new location.</p>
+                        
+                        <!-- Cloud Services -->
+                        <div id="kb-cloud-services" style="margin-bottom: 24px;">
+                          <label style="display: block; margin-bottom: 12px; font-weight: 600;">Cloud Services</label>
+                          <div id="kb-cloud-services-list" style="display: flex; flex-direction: column; gap: 8px;">
+                            <!-- Populated by JavaScript -->
+                          </div>
+                        </div>
+
+                        <!-- Custom Path -->
+                        <div style="margin-bottom: 24px;">
+                          <label style="display: block; margin-bottom: 8px; font-weight: 600;">Or Choose Custom Location</label>
+                          <button class="btn btn-secondary" id="btn-choose-custom-path" style="width: 100%;">
+                            <i data-lucide="folder-search" style="width: 16px; height: 16px; margin-right: 6px;"></i>
+                            <span>Browse...</span>
+                          </button>
+                          <div id="kb-selected-path" class="hidden" style="margin-top: 8px; padding: 8px; background: var(--bg-secondary); border-radius: 4px; font-family: monospace; font-size: 0.9em;"></div>
+                        </div>
+
+                        <!-- Migration Preview -->
+                        <div id="kb-migration-preview" class="hidden" style="padding: 12px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 16px;">
+                          <div style="font-weight: 600; margin-bottom: 8px;">What will be moved:</div>
+                          <div id="kb-preview-stats" style="font-size: 0.9em; color: var(--text-secondary);">
+                            <!-- Populated by JavaScript -->
+                          </div>
+                        </div>
+
+                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                          <button class="btn btn-secondary" onclick="document.getElementById('kb-migration-modal').classList.add('hidden')">Cancel</button>
+                          <button class="btn btn-primary" id="btn-start-kb-migration" disabled>
+                            <i data-lucide="move" style="width: 16px; height: 16px; margin-right: 6px;"></i>
+                            <span>Start Migration</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <!-- Step 2: Migration Progress -->
+                      <div id="kb-migration-step-2" class="hidden">
+                        <div style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--accent);">
+                          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <span style="font-weight: 600;">Migrating Knowledge Base</span>
+                            <span id="kb-migration-progress-text" style="color: var(--text-secondary);">0%</span>
+                          </div>
+                          <div style="width: 100%; height: 8px; background: var(--bg-primary); border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
+                            <div id="kb-migration-progress-bar" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.3s;"></div>
+                          </div>
+                          <div id="kb-migration-status-text" style="font-size: 0.9em; color: var(--text-secondary);"></div>
+                        </div>
+                        <p class="form-hint">
+                          <i data-lucide="info" style="width: 14px; height: 14px;"></i>
+                          Please don't close this window until migration is complete.
+                        </p>
+                      </div>
+
+                      <!-- Step 3: Complete -->
+                      <div id="kb-migration-step-3" class="hidden">
+                        <div style="text-align: center; padding: 24px;">
+                          <i data-lucide="check-circle" style="width: 48px; height: 48px; color: #4ade80; margin-bottom: 16px;"></i>
+                          <h3 style="margin-bottom: 8px;">Migration Complete!</h3>
+                          <p style="color: var(--text-secondary); margin-bottom: 16px;">Your knowledge base has been successfully moved.</p>
+                          <div id="kb-migration-summary" style="text-align: left; padding: 12px; background: var(--bg-secondary); border-radius: 8px; font-size: 0.9em; margin-bottom: 16px;">
+                            <!-- Populated by JavaScript -->
+                          </div>
+                          <button class="btn btn-primary" onclick="window.location.reload()">Reload Polly</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- RAG Indexing Section -->
+              <div class="settings-section" style="border-top: 1px solid var(--border-color); margin-top: 24px; padding-top: 24px;">
+                <h3><i data-lucide="search" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 8px;"></i>Search Indexing</h3>
+                <p class="form-hint" style="margin-bottom: 16px;">
+                  <i data-lucide="database" style="width: 14px; height: 14px;"></i>
+                  Index your notes for semantic search and AI retrieval. This allows Polly to find and reference your notes during conversations.
+                </p>
+
+                <!-- Re-index Status (hidden by default) -->
+                <div id="reindex-status" class="hidden" style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--accent);">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="font-weight: 600;">Indexing Notes</span>
+                    <span id="reindex-progress-text" style="color: var(--text-secondary);">0%</span>
+                  </div>
+                  <div style="width: 100%; height: 8px; background: var(--bg-primary); border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
+                    <div id="reindex-progress-bar" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.3s;"></div>
+                  </div>
+                  <div id="reindex-current-file" style="font-size: 0.9em; color: var(--text-secondary); font-family: monospace;"></div>
+                  <div id="reindex-stats" style="font-size: 0.9em; color: var(--text-secondary); margin-top: 4px;"></div>
+                </div>
+
+                <!-- Re-index Complete (hidden by default) -->
+                <div id="reindex-complete" class="hidden" style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid #4ade80;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                    <i data-lucide="check-circle" style="width: 18px; height: 18px; color: #4ade80;"></i>
+                    <span style="font-weight: 600; color: #4ade80;">Indexing Complete!</span>
+                  </div>
+                  <div id="reindex-summary" style="font-size: 0.9em; color: var(--text-secondary);"></div>
+                </div>
+
+                <div class="form-group">
+                  <button class="btn btn-secondary" id="btn-reindex-notes" style="width: 100%;">
+                    <i data-lucide="refresh-cw" style="width: 16px; height: 16px; margin-right: 6px;"></i>
+                    <span>Re-index All Notes</span>
+                  </button>
+                  <p class="form-hint">
+                    Re-index all notes for semantic search. This may take 2-3 minutes for large vaults.
+                  </p>
+                </div>
+              </div>
+
+              <div class="settings-section" id="migration-section" style="border-top: 1px solid var(--border-color); margin-top: 24px; padding-top: 24px;">
+                <h3>📦 Import from Obsidian</h3>
+                <p class="form-hint" style="margin-bottom: 16px;">
+                  <i data-lucide="package" style="width: 14px; height: 14px;"></i>
+                  Copy your Obsidian vault to Polly's native notes system. This will merge notes into your existing notes directory.
+                </p>
+
+                <!-- Vault Path Display -->
+                <div id="migration-vault-info" style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; font-size: 0.9em;">
+                  <div style="color: var(--text-secondary); margin-bottom: 4px;">Obsidian Vault Location:</div>
+                  <div id="migration-vault-path" style="font-family: monospace; color: var(--text-primary); word-break: break-all;">Loading...</div>
+                </div>
+
+                <!-- Migration Status (hidden by default) -->
+                <div id="migration-status" class="hidden" style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid var(--accent);">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="font-weight: 600;">Migration in Progress</span>
+                    <span id="migration-progress-text" style="color: var(--text-secondary);">0%</span>
+                  </div>
+                  <div style="width: 100%; height: 8px; background: var(--bg-primary); border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
+                    <div id="migration-progress-bar" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.3s;"></div>
+                  </div>
+                  <div id="migration-current-file" style="font-size: 0.9em; color: var(--text-secondary); font-family: monospace;"></div>
+                  <div id="migration-stats" style="font-size: 0.9em; color: var(--text-secondary); margin-top: 4px;"></div>
+                </div>
+
+                <!-- Migration Controls -->
+                <div id="migration-controls">
+                  <div class="form-group">
+                    <label>Migration Options</label>
+                    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="migration-copy-attachments" checked>
+                        <span>Copy attachments and images</span>
+                      </label>
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="migration-preserve-structure" checked>
+                        <span>Preserve folder structure</span>
+                      </label>
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="migration-skip-canvas" checked>
+                        <span>Skip Canvas files</span>
+                      </label>
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="migration-switch-source" checked>
+                        <span>Switch to native notes after migration</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <button class="btn btn-primary" id="btn-start-migration" style="width: 100%;">
+                      <i data-lucide="package" style="width: 16px; height: 16px; margin-right: 6px;"></i>
+                      <span>Start Migration</span>
+                    </button>
+                    <p class="form-hint">This will copy all notes from your Obsidian vault to Polly's native notes directory.</p>
+                  </div>
+                </div>
+
+                <!-- Migration Complete (hidden by default) -->
+                <div id="migration-complete" class="hidden" style="padding: 16px; background: var(--bg-secondary); border-radius: 8px; border-left: 3px solid #4ade80;">
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <i data-lucide="check-circle" style="width: 20px; height: 20px; color: #4ade80;"></i>
+                    <span style="font-weight: 600; color: #4ade80;">Migration Complete!</span>
+                  </div>
+                  <div id="migration-summary" style="font-size: 0.9em; color: var(--text-secondary); margin-bottom: 12px;"></div>
+                  <button class="btn btn-primary" id="btn-switch-to-native">
+                    <i data-lucide="check" style="width: 16px; height: 16px; margin-right: 6px;"></i>
+                    <span>Switch to Native Notes</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab: Compression -->
+            <div class="settings-tab-content hidden" id="tab-compression">
+              <div class="compression-intro">
+                <h3>🗜️ Conversation Compression</h3>
+                <p>Automatically compress older conversation messages to extend context windows and reduce token usage.</p>
+              </div>
+
+              <div class="settings-section">
+                <h3>Compression Settings</h3>
+                
+                <div class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="compression-enabled">
+                    <span>Enable Automatic Compression</span>
+                  </label>
+                  <p class="form-hint">Compress older messages to extend conversation context</p>
+                </div>
+
+                <div id="compression-options" class="compression-options">
+                  <div class="form-group">
+                    <label>
+                      Message Threshold
+                      <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">
+                        (compress after this many messages)
+                      </span>
+                    </label>
+                    <input 
+                      type="number" 
+                      id="compression-message-threshold" 
+                      min="10" 
+                      max="100" 
+                      step="5" 
+                      value="20"
+                      placeholder="20"
+                    >
+                    <p class="form-hint">Default: 20 messages</p>
+                  </div>
+
+                  <div class="form-group">
+                    <label>
+                      Age Threshold (hours)
+                      <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">
+                        (or compress after this many hours)
+                      </span>
+                    </label>
+                    <input 
+                      type="number" 
+                      id="compression-age-hours" 
+                      min="1" 
+                      max="168" 
+                      step="1" 
+                      value="24"
+                      placeholder="24"
+                    >
+                    <p class="form-hint">Default: 24 hours</p>
+                  </div>
+
+                  <div class="form-group">
+                    <label>
+                      Keep Recent Messages
+                      <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">
+                        (always keep this many uncompressed)
+                      </span>
+                    </label>
+                    <input 
+                      type="number" 
+                      id="compression-keep-recent" 
+                      min="5" 
+                      max="50" 
+                      step="5" 
+                      value="10"
+                      placeholder="10"
+                    >
+                    <p class="form-hint">Default: 10 recent messages</p>
+                  </div>
+
+                  <div class="form-group">
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="compression-show-stats">
+                      <span>Show Compression Statistics</span>
+                    </label>
+                    <p class="form-hint">Display compression stats in the UI</p>
+                  </div>
+                </div>
+
+                <div class="settings-actions" style="margin-top: 24px;">
+                  <button class="btn btn-primary" id="btn-save-compression-settings">Save Compression Settings</button>
+                  <button class="btn btn-secondary" id="btn-reset-compression-settings">Reset to Defaults</button>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3><i data-lucide="bar-chart-3" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 8px;"></i>Compression Statistics</h3>
+                
+                <div id="compression-stats-content" class="compression-stats">
+                  <div class="loading-spinner">Loading statistics...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab: Mental Models (Phase 14) -->
+            <div class="settings-tab-content hidden" id="tab-mental-models">
+              <div class="settings-section">
+                <h3>Mental Models System</h3>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.6;">
+                  Mental models guide Polly's thinking and responses based on your current context.
+                  They activate based on domain (Sigils/Signals/Scrolls/Glyphs/Grids), page (Learning/Code/Projects), 
+                  and persona mode (Architect/Teacher/Programmer/Scribe).
+                </p>
+
+                <div class="stats-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px;">
+                  <div class="stat-card" style="padding: 16px; background: var(--bg-hover); border-radius: 6px; text-align: center;">
+                    <div style="font-size: 28px; font-weight: 600; color: #4a9eff;" id="mental-models-count-display">33</div>
+                    <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Total Models</div>
+                  </div>
+                  <div class="stat-card" style="padding: 16px; background: var(--bg-hover); border-radius: 6px; text-align: center;">
+                    <div style="font-size: 28px; font-weight: 600; color: #4ade80;" id="mental-models-enabled-display">33</div>
+                    <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Enabled</div>
+                  </div>
+                  <div class="stat-card" style="padding: 16px; background: var(--bg-hover); border-radius: 6px; text-align: center;">
+                    <div style="font-size: 28px; font-weight: 600; color: #fbbf24;" id="mental-models-active-display">0</div>
+                    <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">Currently Active</div>
+                  </div>
+                </div>
+
+                <div class="mental-models-actions" style="display: flex; gap: 12px; margin-bottom: 24px;">
+                  <button class="btn btn-primary" id="btn-open-mental-models-editor" onclick="MentalModelsEditor.show()">
+                    <i data-lucide="brain" style="width: 16px; height: 16px;"></i>
+                    Open Mental Models Manager
+                  </button>
+                  <button class="btn btn-secondary" id="btn-refresh-mental-models-stats" onclick="refreshMentalModelsStats()">
+                    <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                    Refresh Stats
+                  </button>
+                </div>
+
+                <div class="info-box" style="padding: 16px; background: var(--bg-hover); border-left: 3px solid #4a9eff; border-radius: 4px; margin-bottom: 16px;">
+                  <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: var(--text-primary);">
+                    <i data-lucide="info" style="width: 16px; height: 16px; display: inline-block; vertical-align: middle;"></i>
+                    What are Mental Models?
+                  </h4>
+                  <p style="margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-secondary);">
+                    Mental models are meta-instructions that shape how Polly behaves. They encode aesthetic standards 
+                    (like Hyper-Minimalism and Readability Ratchet), decision-making frameworks (Constraint-Based Filter, 
+                    Compound Question), workflow patterns (Continuation Probe, Context Capture), and cross-domain wisdom.
+                  </p>
+                  <p style="margin: 8px 0 0 0; font-size: 13px; line-height: 1.6; color: var(--text-secondary);">
+                    <strong>Activation:</strong> Models activate automatically based on your current domain, page, and active persona. 
+                    For example, the Programmer persona activates "Readability Ratchet" to write clear, maintainable code with 
+                    2-space indentation and snake_case naming.
+                  </p>
+                </div>
+
+                <div class="quick-links" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                  <div class="quick-link-card" style="padding: 16px; background: var(--bg-hover); border-radius: 6px; border: 1px solid var(--border);">
+                    <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600;">
+                      <i data-lucide="lightbulb" style="width: 16px; height: 16px; display: inline-block; vertical-align: middle;"></i>
+                      Featured Models
+                    </h4>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-secondary);">
+                      <li>Hyper-Minimalism Test (Lines/monome philosophy)</li>
+                      <li>Continuation Probe (finish before starting)</li>
+                      <li>Readability Ratchet (comprehension over cleverness)</li>
+                      <li>Constraint-Based Filter (let constraints guide)</li>
+                    </ul>
+                  </div>
+                  <div class="quick-link-card" style="padding: 16px; background: var(--bg-hover); border-radius: 6px; border: 1px solid var(--border);">
+                    <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600;">
+                      <i data-lucide="layers" style="width: 16px; height: 16px; display: inline-block; vertical-align: middle;"></i>
+                      Model Tiers
+                    </h4>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-secondary);">
+                      <li>Core Philosophy (Infinite Games, Instruments Over Tracks)</li>
+                      <li>Aesthetic & Craft (Hyper-Minimalism, Signal-to-Noise)</li>
+                      <li>Decision-Making (Compound Question, Delegation Test)</li>
+                      <li>Workflow & Process (Context Capture, Good Enough Threshold)</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab: Advanced -->
+            <div class="settings-tab-content hidden" id="tab-advanced">
+              <div class="settings-section">
+                <h3>Server</h3>
+
+                <div class="form-group">
+                  <label>Port</label>
+                  <input type="number" id="settings-port" value="11436">
+                </div>
+
+                <div class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="settings-auto-start" checked>
+                    <span>Start server automatically</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3>OpenCode Integration</h3>
+
+                <div class="form-group">
+                  <label>API Key</label>
+                  <div class="path-input">
+                    <input type="text" id="opencode-api-key" value="polly-local-key" readonly>
+                    <button class="btn btn-secondary" id="btn-regenerate-key">Regenerate</button>
+                  </div>
+                  <p class="form-hint">Use this key to connect OpenCode to Polly</p>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3>Knowledge Base Deduplication</h3>
+                <p class="form-hint" style="margin-bottom: 16px;">
+                  <i data-lucide="info" style="width: 14px; height: 14px;"></i>
+                  Prevent duplicate notes by detecting similar content when creating new notes.
+                </p>
+
+                <div class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="settings-dedup-enabled" checked>
+                    <span>Enable duplicate detection</span>
+                  </label>
+                  <p class="form-hint">Check for similar notes when creating new ones</p>
+                </div>
+
+                <div class="form-group">
+                  <label>Similarity Threshold</label>
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <input 
+                      type="range" 
+                      id="settings-dedup-threshold" 
+                      min="50" 
+                      max="95" 
+                      value="70" 
+                      step="5"
+                      style="flex: 1;"
+                    >
+                    <span id="settings-dedup-threshold-value" style="min-width: 45px; font-weight: 600;">70%</span>
+                  </div>
+                  <p class="form-hint">Higher = more strict (only very similar notes flagged)</p>
+                </div>
+
+                <div class="form-group">
+                  <label>Maximum Results</label>
+                  <select id="settings-dedup-max-results">
+                    <option value="3">3 notes</option>
+                    <option value="5" selected>5 notes</option>
+                    <option value="10">10 notes</option>
+                  </select>
+                  <p class="form-hint">Maximum number of similar notes to display</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="settings-actions">
+              <button class="btn btn-primary" id="btn-save-settings">save settings</button>
+              <button class="btn btn-danger" id="btn-reset-setup">reset setup</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mental Model Add/Edit Modal -->
+        <div id="mental-model-modal" class="modal hidden">
+          <div class="modal-content large">
+            <div class="modal-header">
+              <h3 id="mental-model-modal-title">Add Mental Model</h3>
+              <button class="modal-close" id="mental-model-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+              <!-- Template Selection -->
+              <div class="form-group">
+                <label>Start from Template</label>
+                <select id="mental-model-template">
+                  <option value="">Blank - Start from scratch</option>
+                  <option value="learning">Learning Framework</option>
+                  <option value="creative">Creative Process</option>
+                  <option value="productivity">Productivity System</option>
+                  <option value="systems">Systems Approach</option>
+                  <option value="communication">Communication Style</option>
+                </select>
+              </div>
+
+              <!-- Basic Info -->
+              <div class="form-group">
+                <label>ID* <span class="form-hint">lowercase_with_underscores</span></label>
+                <input type="text" id="mental-model-id" placeholder="my_custom_model" required>
+              </div>
+
+              <div class="form-group">
+                <label>Name*</label>
+                <input type="text" id="mental-model-name" placeholder="My Custom Model" required>
+              </div>
+
+              <div class="form-group">
+                <label>Description*</label>
+                <textarea id="mental-model-description" rows="3" placeholder="What this mental model represents..." required></textarea>
+              </div>
+
+              <!-- Principles -->
+              <div class="form-group">
+                <label>Principles* <span class="form-hint">one per line</span></label>
+                <textarea id="mental-model-principles" rows="5" placeholder="First principle&#10;Second principle&#10;Third principle" required></textarea>
+              </div>
+
+              <!-- Prompt Injection -->
+              <div class="form-group">
+                <label>Prompt Injection* <span class="form-hint">how should Polly apply this?</span></label>
+                <textarea id="mental-model-prompt" rows="4" placeholder="When discussing X, consider Y. Focus on Z." required></textarea>
+              </div>
+
+              <!-- Three-Tier Activation -->
+              <h4 style="margin-top: 24px; margin-bottom: 12px;">Activation Context</h4>
+              
+              <div class="form-group">
+                <label>Domains <span class="form-hint">when to activate based on content</span></label>
+                <div class="checkbox-group">
+                  <label class="checkbox-label"><input type="checkbox" class="domain-checkbox" value="sigils"> Sigils (Code)</label>
+                  <label class="checkbox-label"><input type="checkbox" class="domain-checkbox" value="signals"> Signals (Audio)</label>
+                  <label class="checkbox-label"><input type="checkbox" class="domain-checkbox" value="scrolls"> Scrolls (Writing)</label>
+                  <label class="checkbox-label"><input type="checkbox" class="domain-checkbox" value="glyphs"> Glyphs (Design)</label>
+                  <label class="checkbox-label"><input type="checkbox" class="domain-checkbox" value="grids"> Grids (Systems)</label>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Pages <span class="form-hint">when to activate based on current workspace</span></label>
+                <div class="checkbox-group">
+                  <label class="checkbox-label"><input type="checkbox" class="page-checkbox" value="dashboard"> Dashboard</label>
+                  <label class="checkbox-label"><input type="checkbox" class="page-checkbox" value="learning"> Learning</label>
+                  <label class="checkbox-label"><input type="checkbox" class="page-checkbox" value="code"> Code</label>
+                  <label class="checkbox-label"><input type="checkbox" class="page-checkbox" value="projects"> Projects</label>
+                  <label class="checkbox-label"><input type="checkbox" class="page-checkbox" value="notes"> Notes</label>
+                  <label class="checkbox-label"><input type="checkbox" class="page-checkbox" value="patterns"> Patterns</label>
+                  <label class="checkbox-label"><input type="checkbox" class="page-checkbox" value="mail"> Mail</label>
+                  <label class="checkbox-label"><input type="checkbox" class="page-checkbox" value="calendar"> Calendar</label>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Personas <span class="form-hint">when to activate based on AI mode</span></label>
+                <div class="checkbox-group">
+                  <label class="checkbox-label"><input type="checkbox" class="persona-checkbox" value="architect"> Architect</label>
+                  <label class="checkbox-label"><input type="checkbox" class="persona-checkbox" value="teacher"> Teacher</label>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Modes <span class="form-hint">specific modes within personas</span></label>
+                <div class="checkbox-group">
+                  <label class="checkbox-label"><input type="checkbox" class="mode-checkbox" value="plan"> Plan</label>
+                  <label class="checkbox-label"><input type="checkbox" class="mode-checkbox" value="build"> Build</label>
+                  <label class="checkbox-label"><input type="checkbox" class="mode-checkbox" value="socratic"> Socratic</label>
+                  <label class="checkbox-label"><input type="checkbox" class="mode-checkbox" value="guide"> Guide</label>
+                </div>
+              </div>
+
+              <!-- Keywords -->
+              <div class="form-group">
+                <label>Keywords <span class="form-hint">comma-separated trigger words</span></label>
+                <input type="text" id="mental-model-keywords" placeholder="keyword1, keyword2, keyword3">
+              </div>
+
+              <!-- Enabled -->
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="mental-model-enabled" checked>
+                  <span>Enabled</span>
+                </label>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" id="mental-model-modal-cancel">Cancel</button>
+              <button class="btn btn-primary" id="mental-model-modal-save">Save Model</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Calendar View (Placeholder) -->
+        <div class="view hidden" id="view-calendar">
+          <div class="empty-state">
+            <i data-lucide="calendar" class="empty-state-icon"></i>
+            <h2>Calendar</h2>
+            <p>Timeline and scheduling features coming in Phase 7</p>
+          </div>
+        </div>
+
+        <!-- Mail View (Placeholder) -->
+        <div class="view hidden" id="view-mail">
+          <div class="empty-state">
+            <i data-lucide="mail" class="empty-state-icon"></i>
+            <h2>Mail</h2>
+            <p>Email integration coming in Phase 8</p>
+          </div>
+        </div>
+
+        <!-- Code View (Placeholder) -->
+        <div class="view hidden" id="view-code">
+          <div class="empty-state">
+            <i data-lucide="code-2" class="empty-state-icon"></i>
+            <h2>Code</h2>
+            <p>Code browser and analysis coming soon</p>
+          </div>
+        </div>
+
+        <!-- Projects View (Placeholder) -->
+        <div class="view hidden" id="view-projects">
+          <div class="empty-state">
+            <i data-lucide="folder-kanban" class="empty-state-icon"></i>
+            <h2>Projects</h2>
+            <p>Project management features coming soon</p>
+          </div>
+        </div>
+
+        <!-- Notes View -->
+        <div class="view hidden" id="view-notes">
+          <div class="notes-container">
+            <!-- Toolbar -->
+            <div class="notes-toolbar">
+              <div class="notes-search">
+                <input type="text" id="notes-search-input" placeholder="Search notes...">
+              </div>
+              
+              <div class="notes-domain-filter">
+                <select id="notes-domain-filter">
+                  <option value="">All Domains</option>
+                  <option value="sigils">Sigils</option>
+                  <option value="signals">Signals</option>
+                  <option value="scrolls">Scrolls</option>
+                  <option value="glyphs">Glyphs</option>
+                  <option value="grids">Grids</option>
+                </select>
+              </div>
+              
+              <div class="notes-indicators">
+                <span id="notes-save-status" style="display: none;"></span>
+                <span id="notes-source-indicator">📚 Obsidian</span>
+                <span id="notes-sync-indicator">⚪ Idle</span>
+              </div>
+              
+              <div id="notes-filter-indicator"></div>
+            </div>
+            
+            <!-- Search Results Dropdown -->
+            <div id="notes-search-results"></div>
+            
+            <!-- Main Content -->
+            <div class="notes-content">
+              <!-- Editor -->
+              <div class="notes-editor-container">
+                <div class="notes-editor-header" id="notes-current-note-header">
+                  <h2>Select a note</h2>
+                  <div class="note-meta"></div>
+                </div>
+                <div id="notes-editor"></div>
+              </div>
+              
+              <!-- Right Sidebar - Backlinks & Tags -->
+              <div class="notes-right-sidebar">
+                <div class="notes-sidebar-toggle" id="notes-sidebar-toggle" title="Toggle sidebar">
+                  <i data-lucide="chevron-right" class="sidebar-toggle-icon"></i>
+                </div>
+                
+                <div class="notes-sidebar-content">
+                  <!-- View Toggle Buttons -->
+                  <div class="notes-sidebar-view-toggle">
+                    <button class="sidebar-view-btn active" data-view="backlinks" 
+                            aria-label="Backlinks" title="Backlinks">
+                      <i data-lucide="link-2"></i>
+                    </button>
+                    <button class="sidebar-view-btn" data-view="tags" 
+                            aria-label="Tags" title="Tags">
+                      <i data-lucide="tag"></i>
+                    </button>
+                    <button class="sidebar-view-btn" data-view="toc" 
+                            aria-label="Table of Contents" title="Table of Contents">
+                      <i data-lucide="list"></i>
+                    </button>
+                  </div>
+
+                  <!-- View Containers -->
+                  <div class="notes-sidebar-views">
+                    <!-- Backlinks View -->
+                    <div class="notes-sidebar-view active" data-view-content="backlinks">
+                      <div class="notes-panel">
+                        <div class="notes-panel-header collapsible">
+                          <i data-lucide="chevron-down" class="panel-toggle-icon"></i>
+                          <span>Backlinks</span>
+                        </div>
+                        <div class="notes-panel-content" id="notes-backlinks-panel">
+                          <div class="empty-state-small">
+                            <i data-lucide="link" class="empty-icon"></i>
+                            <p>No backlinks</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- Tags View -->
+                    <div class="notes-sidebar-view" data-view-content="tags">
+                      <div class="notes-panel">
+                        <div class="notes-panel-header collapsible">
+                          <i data-lucide="chevron-down" class="panel-toggle-icon"></i>
+                          <span>Tags</span>
+                        </div>
+                        <div class="notes-panel-content" id="notes-tags-panel">
+                          <div class="empty-state-small">
+                            <i data-lucide="tag" class="empty-icon"></i>
+                            <p>No tags</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- TOC View -->
+                    <div class="notes-sidebar-view" data-view-content="toc">
+                      <div class="notes-panel">
+                        <div class="notes-panel-header">
+                          <span class="panel-title">Table of Contents</span>
+                        </div>
+                        <div class="notes-panel-content">
+                          <div id="notes-toc-list" class="toc-list"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Loading Indicator -->
+            <div id="notes-loader">
+              <div class="loader"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Learning View -->
+        <div class="view hidden" id="view-learning">
+          <div class="learning-container">
+            <!-- Left Sidebar: Stats & Topics -->
+            <div class="learning-sidebar" id="learning-sidebar">
+              <div class="stats-header">
+                <i data-lucide="graduation-cap" style="width: 20px; height: 20px;"></i>
+                <h3>Learning Progress</h3>
+              </div>
+              
+              <div class="stats-content" id="learning-stats-content">
+                <div class="stat-item">
+                  <span class="stat-label">Topics Learned:</span>
+                  <span class="stat-value" id="stat-total-topics">0</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">Needs Review:</span>
+                  <span class="stat-value" id="stat-review-count">0</span>
+                </div>
+                <div class="mastery-breakdown" id="mastery-breakdown">
+                  <div class="mastery-label">Mastery Levels:</div>
+                  <div class="mastery-bars" id="mastery-bars">
+                    <!-- Dynamically populated -->
+                  </div>
+                </div>
+              </div>
+              
+              <button class="btn btn-secondary btn-sm" id="btn-refresh-stats" style="margin-top: 12px; width: 100%;">
+                <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+                Refresh Stats
+              </button>
+              
+              <div class="topics-list" id="topics-list">
+                <h4 class="topics-header">Recent Topics</h4>
+                <div class="topics-content" id="topics-content">
+                  <!-- Dynamically populated with topic cards -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Main Content Area: Dashboard or Active Session -->
+            <div class="learning-main-content" id="learning-main-content">
+              <!-- Dashboard View (shown by default) -->
+              <div class="learning-dashboard" id="learning-dashboard">
+                <div class="welcome-banner">
+                  <div class="banner-icon">🎓</div>
+                  <h2>Welcome to Learning with Professor</h2>
+                  <p>Use the chat float to ask questions and explore topics. I'll guide your learning through Socratic dialogue.</p>
+                </div>
+                
+                <div class="learning-sections">
+                  <div class="learning-section">
+                    <h3>
+                      <i data-lucide="target" style="width: 18px; height: 18px;"></i>
+                      Start Learning
+                    </h3>
+                    <p>Ask me about any topic in the chat. I'll help you understand through guided questions rather than direct answers.</p>
+                    <button class="btn btn-primary" id="btn-open-chat">
+                      <i data-lucide="message-circle" style="width: 16px; height: 16px;"></i>
+                      Open Chat
+                    </button>
+                  </div>
+                  
+                  <div class="learning-section" id="review-section" style="display: none;">
+                    <h3>
+                      <i data-lucide="clock" style="width: 18px; height: 18px;"></i>
+                      Review Needed
+                    </h3>
+                    <div id="review-topics-list">
+                      <!-- Populated dynamically -->
+                    </div>
+                  </div>
+                  
+                  <div class="learning-section">
+                    <h3>
+                      <i data-lucide="book-open" style="width: 18px; height: 18px;"></i>
+                      Learning Notes
+                    </h3>
+                    <p>Create structured notes from your learning sessions to build your knowledge base.</p>
+                    <div id="recent-learning-notes">
+                      <!-- Populated dynamically -->
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Active Session View (shown when Professor presents materials) -->
+              <div class="learning-session hidden" id="learning-session">
+                <div class="session-header" id="session-header">
+                  <div class="session-topic" id="session-topic"></div>
+                  <button class="btn btn-sm btn-secondary" id="btn-end-session">End Session</button>
+                </div>
+                <div class="session-content" id="session-content">
+                  <!-- Professor presents materials here -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search View (Placeholder) -->
+        <div class="view hidden" id="view-search">
+          <div class="empty-state">
+            <i data-lucide="search" class="empty-state-icon"></i>
+            <h2>Global Search</h2>
+            <p>Search across all knowledge sources coming soon</p>
+          </div>
+        </div>
+
+        <!-- Domains View (Placeholder) -->
+        <div class="view hidden" id="view-domains">
+          <div class="empty-state">
+            <i data-lucide="folder-tree" class="empty-state-icon"></i>
+            <h2>Domains</h2>
+            <p>Domain management interface coming soon</p>
+          </div>
+        </div>
+
+      </main>
+
+      <!-- Right Sidebar -->
+      <aside class="right-sidebar" id="right-sidebar">
+        <div class="sidebar-header">
+          <span class="sidebar-title">Conversations</span>
+        </div>
+        <div class="sidebar-content" style="display: flex; flex-direction: column; padding: 0; height: 100%; overflow: hidden;">
+          
+          <!-- Conversations List (Compact, Scrollable) -->
+          <div class="chat-conversations-section" id="chat-conversations-section" style="flex-shrink: 0; max-height: 280px; display: flex; flex-direction: column; position: relative;">
+            <div class="chat-conversations-content" style="display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
+              <button class="btn btn-primary" style="width: 100%; margin: 8px 0; font-size: 13px;" id="btn-new-chat-sidebar">
+                <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
+                <span>New Chat</span>
+              </button>
+              <div class="conversations-filter" style="padding: 0 8px 8px 8px;">
+                <select id="page-filter" style="width: 100%; padding: 6px 8px; font-size: 12px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px; color: #e0e0e0;">
+                  <option value="all">All Pages</option>
+                  <option value="current">Current Page Only</option>
+                  <option value="">──────────</option>
+                  <option value="dashboard">Dashboard</option>
+                  <option value="calendar">Calendar</option>
+                  <option value="mail">Mail</option>
+                  <option value="code">Code</option>
+                  <option value="projects">Projects</option>
+                  <option value="knowledge">Knowledge</option>
+                  <option value="notes">Notes</option>
+                  <option value="learning">Learning</option>
+                  <option value="search">Search</option>
+                  <option value="patterns">Patterns</option>
+                  <option value="domains">Domains</option>
+                  <option value="settings">Settings</option>
+                </select>
+              </div>
+              <div class="conversations-search" style="padding: 0 8px 8px 8px;">
+                <input type="text" id="conversations-search-input" placeholder="Search conversations..." style="width: 100%; padding: 6px 8px; font-size: 12px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px; color: #e0e0e0;" />
+              </div>
+              <div class="conversations-list" id="conversations-list" style="flex: 1; overflow-y: auto; min-height: 0;">
+                <!-- Conversations will be rendered here -->
+              </div>
+            </div>
+            
+            <!-- Resizable Divider Handle (at bottom of conversations section) -->
+            <div class="sidebar-resize-handle" id="sidebar-resize-handle" title="Drag to resize" style="position: absolute; bottom: 0; left: 0; right: 0;">
+              <div class="resize-handle-line"></div>
+            </div>
+          </div>
+          
+          <!-- Active Chat Area (Takes up remaining space, NO INPUT - input is in floating bar) -->
+          <div class="chat-active-section" id="chat-active-section" style="flex: 1; display: flex; flex-direction: column; min-height: 0; margin-top: -12px;">
+            <div class="chat-header" style="padding: 12px; border-bottom: 1px solid #2a2a2a; background: #252525;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="flex: 1;">
+                  <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #808080; margin-bottom: 4px;">
+                    Active Chat
+                    <span id="active-chat-page" style="font-size: 10px; font-weight: normal; margin-left: 4px; color: #606060;"></span>
+                  </div>
+                  <div id="active-chat-title" style="font-size: 13px; color: #e0e0e0;">No conversation selected</div>
+                </div>
+                <!-- Optional: Add expand button to open overlay -->
+                <button class="icon-btn" id="chat-expand-btn" title="Expand to full screen" style="padding: 6px; border-radius: 4px; background: transparent; border: none; color: #808080; cursor: pointer; transition: all 0.2s;">
+                  <i data-lucide="maximize-2" style="width: 16px; height: 16px;"></i>
+                </button>
+              </div>
+            </div>
+            
+            <div class="chat-messages" id="chat-messages" style="flex: 1; overflow-y: auto; padding: 12px;">
+              <div class="message system">
+                <div class="message-content">
+                  Hi! I'm Polly, your personal AI assistant. I have access to your Obsidian vault,
+                  codebases, and learned patterns. Ask me anything!
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Hidden controls for backward compatibility (synced with floating chat) -->
+          <div style="display: none;">
+            <select id="model-select" class="model-selector">
+              <option value="auto:balanced">Auto (Balanced)</option>
+              <optgroup label="Fast">
+                <option value="github:fast">GitHub</option>
+                <option value="anthropic:fast">Anthropic</option>
+                <option value="openai:fast">OpenAI</option>
+              </optgroup>
+              <optgroup label="Balanced">
+                <option value="github:balanced">GitHub</option>
+                <option value="anthropic:balanced">Anthropic</option>
+                <option value="openai:balanced">OpenAI</option>
+              </optgroup>
+              <optgroup label="Thorough">
+                <option value="github:thorough">GitHub</option>
+                <option value="anthropic:thorough">Anthropic</option>
+                <option value="openai:thorough">OpenAI</option>
+              </optgroup>
+            </select>
+            <select id="persona-select" class="persona-selector">
+              <option value="">Default</option>
+              <option value="architect">Architect</option>
+              <option value="scribe">Scribe</option>
+              <option value="professor">Professor</option>
+            </select>
+            <select id="mode-select" class="mode-selector" disabled>
+              <option value="">Select persona first</option>
+            </select>
+            <div class="orchestrator-toggle" id="orchestrator-toggle" role="switch" aria-checked="false"></div>
+            <textarea id="query-input" style="display: none;"></textarea>
+            <button id="btn-send" style="display: none;"></button>
+          </div>
+
+        </div>
+      </aside>
+
+      </div> <!-- end three-column-layout -->
+    </div>
+  </div>
+
+  <!-- Context Menu for Conversations -->
+  <div class="context-menu hidden" id="conversation-context-menu">
+    <button class="context-menu-item" data-action="rename">
+      <i data-lucide="edit" style="width: 14px; height: 14px;"></i>
+      <span>Rename</span>
+    </button>
+    <button class="context-menu-item" data-action="star">
+      <i data-lucide="star" style="width: 14px; height: 14px;"></i>
+      <span>Star</span>
+    </button>
+    <button class="context-menu-item" data-action="category">
+      <i data-lucide="folder" style="width: 14px; height: 14px;"></i>
+      <span>Change Category</span>
+    </button>
+    <button class="context-menu-item" data-action="mental-models">
+      <i data-lucide="brain" style="width: 14px; height: 14px;"></i>
+      <span>Mental Models Override</span>
+    </button>
+    <div class="context-menu-divider"></div>
+    <button class="context-menu-item danger" data-action="delete">
+      <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+      <span>Delete</span>
+    </button>
+  </div>
+
+  <!-- Save Conversation Modal -->
+  <div id="save-conversation-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Save Conversation to Obsidian</h3>
+        <button class="modal-close" id="close-save-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="note-title">Note Title</label>
+          <input 
+            type="text" 
+            id="note-title" 
+            placeholder="Generated from first message..." 
+            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="note-folder">Folder</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input 
+              type="text" 
+              id="note-folder" 
+              placeholder="30-Ideas" 
+              style="flex: 1; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+            >
+            <button class="btn btn-secondary btn-sm" id="btn-suggest-folder">
+              <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+          <div id="folder-suggestion" class="suggestion-box hidden" style="margin-top: 8px; padding: 8px; background: var(--bg-hover); border-radius: 4px; border-left: 3px solid var(--signal);">
+            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Suggested folder:</div>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div>
+                <span id="suggested-folder-name" style="font-weight: 600; color: var(--text-primary);"></span>
+                <span id="suggested-folder-domain" style="margin-left: 8px; font-size: 11px; color: var(--text-secondary);"></span>
+              </div>
+              <button class="btn btn-sm" id="btn-use-folder" style="padding: 4px 8px; font-size: 11px;">Use</button>
+            </div>
+            <div id="folder-reasoning" style="margin-top: 4px; font-size: 11px; color: var(--text-secondary);"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Tags (optional)</label>
+          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+            <input 
+              type="text" 
+              id="note-tags-input" 
+              placeholder="Add tags..." 
+              style="flex: 1; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+            >
+            <button class="btn btn-secondary btn-sm" id="btn-suggest-tags">
+              <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+          <div id="suggested-tags" class="tags-container" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px;"></div>
+          <div id="selected-tags" class="tags-container" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 28px;"></div>
+        </div>
+
+        <div id="save-modal-status" class="status-message hidden" style="margin-top: 12px; padding: 8px; border-radius: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-cancel-save">Cancel</button>
+        <button class="btn btn-primary" id="btn-confirm-save">Save Note</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Context7 API Key Modal -->
+  <div id="context7-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Connect to Context7</h3>
+        <button class="modal-close" onclick="document.getElementById('context7-modal').classList.add('hidden')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 16px; color: var(--text-secondary);">
+          Enter your Context7 API key to access up-to-date library documentation.
+          Get your API key at <a href="https://context7.com/dashboard" target="_blank">context7.com/dashboard</a>
+        </p>
+        <div class="form-group">
+          <label for="context7-api-key-input">API Key</label>
+          <input 
+            type="password" 
+            id="context7-api-key-input" 
+            placeholder="ctx7sk-..." 
+            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+          >
+          <p class="form-hint">Your API key starts with "ctx7sk-"</p>
+        </div>
+        <div id="context7-modal-error" class="error-message hidden" style="margin-top: 12px; padding: 8px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; color: #ef4444; border-radius: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('context7-modal').classList.add('hidden')">Cancel</button>
+        <button class="btn btn-primary" id="context7-connect-submit">Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category Selection Modal -->
+  <div id="category-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Change Category</h3>
+        <button class="modal-close" id="close-category-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="category-list" class="category-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-category-modal">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mental Models Override Modal -->
+  <div id="mental-models-override-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Override Mental Models</h3>
+        <button class="modal-close" id="close-mental-models-override-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="form-hint" style="margin-bottom: 16px;">
+          Select which mental models should be active for this conversation. This overrides the default activation rules.
+        </p>
+        
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="override-use-defaults" checked>
+            <span>Use Default Activation (automatic based on context)</span>
+          </label>
+        </div>
+        
+        <div id="override-models-list" style="margin-top: 16px;">
+          <!-- Will be populated dynamically -->
+        </div>
+        
+        <div id="override-loading" class="mental-models-loading" style="display: none; padding: 32px;">
+          Loading mental models...
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-mental-models-override-modal">Cancel</button>
+        <button class="btn btn-primary" id="save-mental-models-override-modal">Save Override</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rename Conversation Modal -->
+  <div id="rename-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Rename Conversation</h3>
+        <button class="modal-close" id="close-rename-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label for="rename-input" style="display: block; margin-bottom: 8px; font-size: 13px; color: var(--text-secondary);">Enter new title:</label>
+        <input type="text" id="rename-input" class="form-control" style="width: 100%; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 13px; border: 2px solid var(--border-color); background: var(--bg-secondary);" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-rename-modal">Cancel</button>
+        <button class="btn btn-primary" id="submit-rename-modal">Rename</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Domain Editor Modal -->
+  <div id="domain-editor-modal" class="modal hidden">
+    <div class="modal-content modal-wide">
+      <div class="modal-header">
+        <h3 id="domain-editor-title">Edit Domain</h3>
+        <button class="modal-close" id="close-domain-editor">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="domain-editor-grid">
+          <!-- Left Column -->
+          <div class="domain-editor-col">
+            <div class="form-group">
+              <label for="domain-name-input">Name *</label>
+              <input 
+                type="text" 
+                id="domain-name-input" 
+                placeholder="Domain Name" 
+                maxlength="30"
+                style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+              >
+              <p class="form-hint">1-30 characters, must be unique</p>
+            </div>
+
+            <div class="form-group">
+              <label for="domain-description-input">Description</label>
+              <textarea 
+                id="domain-description-input" 
+                placeholder="Describe what this domain contains..." 
+                rows="3"
+                maxlength="200"
+                style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); resize: vertical;"
+              ></textarea>
+              <p class="form-hint">0-200 characters</p>
+            </div>
+
+            <div class="form-group">
+              <label>Icon</label>
+              <div class="icon-picker">
+                <button type="button" class="icon-preview" id="domain-icon-preview"><i data-lucide="folder" style="width: 20px; height: 20px;"></i></button>
+                <div class="icon-grid hidden" id="domain-icon-grid">
+                  <button type="button" class="icon-option" data-icon="zap"><i data-lucide="zap"></i></button>
+                  <button type="button" class="icon-option" data-icon="radio"><i data-lucide="radio"></i></button>
+                  <button type="button" class="icon-option" data-icon="scroll"><i data-lucide="scroll"></i></button>
+                  <button type="button" class="icon-option" data-icon="sparkles"><i data-lucide="sparkles"></i></button>
+                  <button type="button" class="icon-option" data-icon="folder-open"><i data-lucide="folder-open"></i></button>
+                  <button type="button" class="icon-option" data-icon="folder"><i data-lucide="folder"></i></button>
+                  <button type="button" class="icon-option" data-icon="wrench"><i data-lucide="wrench"></i></button>
+                  <button type="button" class="icon-option" data-icon="lightbulb"><i data-lucide="lightbulb"></i></button>
+                  <button type="button" class="icon-option" data-icon="palette"><i data-lucide="palette"></i></button>
+                  <button type="button" class="icon-option" data-icon="bar-chart"><i data-lucide="bar-chart"></i></button>
+                  <button type="button" class="icon-option" data-icon="flask"><i data-lucide="flask-conical"></i></button>
+                  <button type="button" class="icon-option" data-icon="target"><i data-lucide="target"></i></button>
+                  <button type="button" class="icon-option" data-icon="star"><i data-lucide="star"></i></button>
+                  <button type="button" class="icon-option" data-icon="rocket"><i data-lucide="rocket"></i></button>
+                  <button type="button" class="icon-option" data-icon="book-open"><i data-lucide="book-open"></i></button>
+                  <button type="button" class="icon-option" data-icon="graduation-cap"><i data-lucide="graduation-cap"></i></button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Color</label>
+              <div class="color-picker">
+                <div class="color-preview" id="domain-color-preview" style="background: #808080;"></div>
+                <div class="color-grid" id="domain-color-grid">
+                  <button type="button" class="color-option" data-color="#61afef" style="background: #61afef;" title="Blue"></button>
+                  <button type="button" class="color-option" data-color="#98c379" style="background: #98c379;" title="Green"></button>
+                  <button type="button" class="color-option" data-color="#e5c07b" style="background: #e5c07b;" title="Yellow"></button>
+                  <button type="button" class="color-option" data-color="#e06c75" style="background: #e06c75;" title="Red"></button>
+                  <button type="button" class="color-option" data-color="#c678dd" style="background: #c678dd;" title="Purple"></button>
+                  <button type="button" class="color-option" data-color="#56b6c2" style="background: #56b6c2;" title="Cyan"></button>
+                  <button type="button" class="color-option" data-color="#d19a66" style="background: #d19a66;" title="Orange"></button>
+                  <button type="button" class="color-option" data-color="#be5046" style="background: #be5046;" title="Dark Red"></button>
+                  <button type="button" class="color-option" data-color="#89ca78" style="background: #89ca78;" title="Light Green"></button>
+                  <button type="button" class="color-option" data-color="#61afef" style="background: #61afef;" title="Light Blue"></button>
+                  <button type="button" class="color-option" data-color="#ff6b6b" style="background: #ff6b6b;" title="Coral"></button>
+                  <button type="button" class="color-option" data-color="#4ecdc4" style="background: #4ecdc4;" title="Turquoise"></button>
+                  <button type="button" class="color-option" data-color="#ffe66d" style="background: #ffe66d;" title="Light Yellow"></button>
+                  <button type="button" class="color-option" data-color="#a8e6cf" style="background: #a8e6cf;" title="Mint"></button>
+                  <button type="button" class="color-option" data-color="#ffd3b6" style="background: #ffd3b6;" title="Peach"></button>
+                  <button type="button" class="color-option" data-color="#ffaaa5" style="background: #ffaaa5;" title="Pink"></button>
+                  <button type="button" class="color-option" data-color="#ff8b94" style="background: #ff8b94;" title="Salmon"></button>
+                  <button type="button" class="color-option" data-color="#a0c4ff" style="background: #a0c4ff;" title="Sky Blue"></button>
+                  <button type="button" class="color-option" data-color="#bdb2ff" style="background: #bdb2ff;" title="Lavender"></button>
+                  <button type="button" class="color-option" data-color="#ffc6ff" style="background: #ffc6ff;" title="Rose"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column -->
+          <div class="domain-editor-col">
+            <div class="form-group">
+              <label for="domain-folder-input">Folder Path</label>
+              <input 
+                type="text" 
+                id="domain-folder-input" 
+                placeholder="01-DomainName"
+                style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+              >
+              <p class="form-hint">Auto-generated based on name and numbering setting</p>
+            </div>
+
+            <div class="form-group">
+              <label for="domain-weight-slider">RAG Weight: <span id="domain-weight-value">20%</span></label>
+              <input 
+                type="range" 
+                id="domain-weight-slider" 
+                min="0" 
+                max="100" 
+                value="20"
+                style="width: 100%;"
+              >
+              <p class="form-hint">Importance for search results (automatically normalized)</p>
+            </div>
+
+            <div class="form-group">
+              <label for="domain-keywords-input">Auto-tag Keywords</label>
+              <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+                <input 
+                  type="text" 
+                  id="domain-keywords-input" 
+                  placeholder="Type keyword and press Enter..."
+                  style="flex: 1; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+                >
+                <button class="btn btn-secondary btn-sm" id="btn-suggest-keywords">
+                  <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
+                </button>
+              </div>
+              <div class="keywords-tags" id="domain-keywords-tags">
+                <!-- Keywords will appear here as chips -->
+              </div>
+              <div id="suggested-keywords" class="keywords-tags" style="margin-top: 8px; display: none;">
+                <!-- Suggested keywords will appear here -->
+              </div>
+              <p class="form-hint">Keywords used to auto-detect domain for queries</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="domain-editor-error" class="error-message hidden" style="margin-top: 12px; padding: 8px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; color: #ef4444; border-radius: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-domain-editor">Cancel</button>
+        <button class="btn btn-primary" id="save-domain-editor">Save Domain</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Note Creation Modal -->
+  <div id="note-creation-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Create New Note</h3>
+        <button class="modal-close" id="close-note-creation">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="note-name-input">Note Name *</label>
+          <input 
+            type="text" 
+            id="note-name-input" 
+            placeholder="Enter note name..." 
+            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="note-folder-select">Folder *</label>
+          <select 
+            id="note-folder-select"
+            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+          >
+            <option value="">Select a folder...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="note-template-select">Template (optional)</label>
+          <select 
+            id="note-template-select"
+            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+          >
+            <option value="">No template (blank note)</option>
+            <!-- Templates will be populated by JavaScript -->
+          </select>
+          <p class="form-hint" style="margin-top: 4px; font-size: 12px; color: var(--text-secondary);">Select a template to pre-fill the note structure</p>
+        </div>
+
+        <div class="form-group">
+          <label for="note-content-input">Initial Content (optional)</label>
+          <textarea 
+            id="note-content-input" 
+            placeholder="# Note Name&#10;&#10;Start writing..." 
+            rows="8"
+            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); resize: vertical; font-family: monospace;"
+          ></textarea>
+          <p class="form-hint">Content will be pre-filled if you select a template above</p>
+        </div>
+
+        <!-- Similar Notes Warning (Phase 21) -->
+        <div id="similar-notes-warning" class="similar-notes-warning hidden">
+          <div class="warning-header">
+            <span class="warning-icon"><i data-lucide="alert-triangle" style="width: 24px; height: 24px; color: var(--warning);"></i></span>
+            <h4>Similar Notes Found</h4>
+          </div>
+          <p class="warning-description">
+            Found <strong id="similar-notes-count">0</strong> notes with similar content. Consider one of the following options:
+          </p>
+          <div id="similar-notes-list" class="similar-notes-list">
+            <!-- Populated dynamically by JavaScript -->
+          </div>
+          <div class="warning-actions">
+            <button class="btn btn-secondary btn-sm" id="append-to-note-btn">
+              <span>📎</span> Append to Selected
+            </button>
+            <button class="btn btn-secondary btn-sm" id="create-with-links-btn">
+              <i data-lucide="link" style="width: 14px; height: 14px;"></i> Create with Links
+            </button>
+            <button class="btn btn-warning btn-sm" id="create-anyway-btn">
+              <i data-lucide="zap" style="width: 14px; height: 14px;"></i> Create Anyway
+            </button>
+          </div>
+        </div>
+
+        <div id="note-creation-error" class="error-message hidden" style="margin-top: 12px; padding: 8px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; color: #ef4444; border-radius: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-note-creation">Cancel</button>
+        <button class="btn btn-primary" id="create-note-button">Create Note</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Folder Creation Modal -->
+  <div id="folder-creation-modal" class="modal hidden">
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3>Create New Folder</h3>
+        <button class="modal-close" id="close-folder-creation">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="folder-name-input">Folder Name *</label>
+          <input 
+            type="text" 
+            id="folder-name-input" 
+            placeholder="e.g., 40-Projects" 
+            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+          >
+          <p class="form-hint" style="margin-top: 4px; font-size: 12px; color: var(--text-secondary);">Spaces will be converted to hyphens</p>
+        </div>
+
+        <div id="folder-creation-error" class="error-message hidden" style="margin-top: 12px; padding: 8px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; color: #ef4444; border-radius: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-folder-creation">Cancel</button>
+        <button class="btn btn-primary" id="create-folder-button">Create Folder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Switcher Modal -->
+  <div id="quick-switcher-modal" class="modal hidden">
+    <div class="modal-content quick-switcher-content">
+      <div class="quick-switcher-search">
+        <input 
+          type="text" 
+          id="quick-switcher-input" 
+          placeholder="Search notes..."
+          autocomplete="off"
+        >
+      </div>
+      <div class="quick-switcher-results" id="quick-switcher-results">
+        <!-- Results will be populated here -->
+      </div>
+      <div class="quick-switcher-footer">
+        <span>↑↓ Navigate</span>
+        <span>↵ Open</span>
+        <span>Esc Close</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Chat Bar -->
+  <div class="floating-chat-container" id="floating-chat-container">
+    <!-- Chat Controls Row -->
+    <div class="floating-chat-controls">
+      <div class="control-group">
+        <label class="control-label">Model:</label>
+        <select id="floating-model-select" class="model-selector">
+          <option value="auto:balanced">Auto (Balanced)</option>
+          <optgroup label="Fast">
+            <option value="github:fast">GitHub</option>
+            <option value="anthropic:fast">Anthropic</option>
+            <option value="openai:fast">OpenAI</option>
+          </optgroup>
+          <optgroup label="Balanced">
+            <option value="github:balanced">GitHub</option>
+            <option value="anthropic:balanced">Anthropic</option>
+            <option value="openai:balanced">OpenAI</option>
+          </optgroup>
+          <optgroup label="Thorough">
+            <option value="github:thorough">GitHub</option>
+            <option value="anthropic:thorough">Anthropic</option>
+            <option value="openai:thorough">OpenAI</option>
+          </optgroup>
+        </select>
+      </div>
+      
+      <div class="control-group">
+        <label class="control-label">Persona:</label>
+        <select id="floating-persona-select" class="persona-selector">
+          <option value="">Default</option>
+          <option value="architect">Architect</option>
+          <option value="scribe">Scribe</option>
+          <option value="professor">Professor</option>
+        </select>
+      </div>
+      
+      <div class="control-group">
+        <label class="control-label">Mode:</label>
+        <select id="floating-mode-select" class="mode-selector" disabled>
+          <option value="">Select persona first</option>
+        </select>
+      </div>
+      
+      <!-- Teaching Mode Indicator -->
+      <div id="teaching-mode-indicator" class="teaching-mode-indicator hidden">
+        <i data-lucide="graduation-cap" class="mode-icon"></i>
+        <span id="teaching-mode-text">Socratic</span>
+      </div>
+      
+      <div class="orchestrator-toggle-container">
+        <label class="orchestrator-toggle-label">Orchestrate</label>
+        <div class="orchestrator-toggle" id="floating-orchestrator-toggle" role="switch" aria-checked="false" title="Enable auto-collaboration between personas"></div>
+      </div>
+    </div>
+    
+    <!-- Chat Input Row -->
+    <div class="floating-chat-input-wrapper">
+      <!-- Normal text input mode -->
+      <div class="floating-chat-input" id="floating-chat-normal-input">
+        <textarea 
+          id="floating-query-input" 
+          class="floating-textarea"
+          placeholder="Ask Polly anything..."
+          rows="2"
+        ></textarea>
+      </div>
+      
+      <!-- Structured input mode (hidden by default) -->
+      <div id="floating-structured-input" class="floating-structured-input hidden">
+        <div class="structured-command-container">
+          <!-- Command tag -->
+          <div class="command-tag-wrapper" id="floating-command-tag"></div>
+          
+          <!-- Argument chips -->
+          <div class="argument-chips" id="floating-argument-chips"></div>
+          
+          <!-- Argument selectors -->
+          <div class="argument-selectors" id="floating-argument-selectors"></div>
+          
+          <!-- Preview -->
+          <div class="command-preview hidden" id="floating-command-preview">
+            <div class="preview-label">Will send:</div>
+            <div class="preview-content" id="floating-preview-content"></div>
+          </div>
+        </div>
+      </div>
+      
+      <button class="floating-btn-send" id="floating-btn-send">
+        <i data-lucide="send"></i>
+      </button>
+    </div>
+    
+    <!-- Cost Estimate Display -->
+    <div id="floating-cost-estimate" class="floating-cost-estimate hidden">
+      <span>Estimated cost: <span id="floating-cost-value">-</span></span>
+    </div>
+  </div>
+
+  <!-- Chat Overlay Modal -->
+  <div class="chat-overlay hidden" id="chat-overlay">
+    <div class="chat-overlay-backdrop" id="chat-overlay-backdrop"></div>
+    <div class="chat-overlay-content" id="chat-overlay-content">
+      <div class="chat-overlay-header">
+        <div class="chat-overlay-title">
+          <h3 id="chat-overlay-conversation-title">Conversation</h3>
+          <span class="chat-overlay-page-context" id="chat-overlay-page-context"></span>
+        </div>
+        <div class="chat-overlay-actions">
+          <button class="chat-overlay-action-btn" id="chat-overlay-split-view" title="Split View">
+            <i data-lucide="columns"></i>
+          </button>
+          <button class="chat-overlay-action-btn" id="chat-overlay-close" title="Close (Esc)">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+      </div>
+      
+      <div class="chat-overlay-messages" id="chat-overlay-messages">
+        <!-- Messages will be rendered here -->
+      </div>
+      
+      <div class="chat-overlay-loading hidden" id="chat-overlay-loading">
+        <div class="loading-spinner"></div>
+        <span>Polly is thinking...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Curriculum Review Dialog (Phase 23) -->
+  <div id="curriculum-review-dialog" class="modal hidden">
+    <div class="modal-content large" style="max-width: 900px; max-height: 90vh;">
+      <div class="modal-header">
+        <h3>Review Curriculum</h3>
+        <button class="modal-close" onclick="document.getElementById('curriculum-review-dialog').classList.add('hidden')">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      
+      <div class="modal-body" style="max-height: calc(90vh - 200px); overflow-y: auto;">
+        <!-- Curriculum Header -->
+        <div style="margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color);">
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; margin-bottom: 4px; font-weight: 600; font-size: 0.9em; color: var(--text-secondary);">Title</label>
+            <input 
+              type="text" 
+              id="curriculum-title-input" 
+              class="curriculum-input" 
+              placeholder="Learning Path Title"
+              style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 1em; background: var(--bg-primary); color: var(--text-primary);"
+            />
+          </div>
+          
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; margin-bottom: 4px; font-weight: 600; font-size: 0.9em; color: var(--text-secondary);">Learning Goal</label>
+            <textarea 
+              id="curriculum-goal-input" 
+              class="curriculum-input" 
+              placeholder="What do you want to learn and achieve?"
+              rows="2"
+              style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.95em; background: var(--bg-primary); color: var(--text-primary); resize: vertical;"
+            ></textarea>
+          </div>
+          
+          <div style="margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-color);">
+            <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.95em; color: var(--text-primary);">
+              <i data-lucide="layout-template" style="width: 14px; height: 14px; margin-right: 4px; vertical-align: text-bottom;"></i>
+              Curriculum Template
+            </label>
+            <select 
+              id="curriculum-template-select" 
+              class="curriculum-input" 
+              style="width: 100%; padding: 10px 12px; border: 1.5px solid var(--border-color); border-radius: 6px; font-size: 0.95em; background: var(--bg-primary); color: var(--text-primary); font-weight: 500;"
+            >
+              <!-- Options populated by JavaScript -->
+            </select>
+            <p style="font-size: 0.8em; color: var(--text-muted); margin-top: 6px;">
+              <i id="template-indicator-icon" data-lucide="sparkles" style="width: 12px; height: 12px; vertical-align: text-bottom;"></i>
+              <span id="template-indicator-text">Auto-detected</span>
+            </p>
+          </div>
+        </div>
+        
+        <!-- Section List -->
+        <div id="curriculum-sections-container" style="margin-bottom: 16px;">
+          <!-- Sections will be populated by JavaScript -->
+        </div>
+      </div>
+      
+      <div class="modal-footer" style="display: flex; gap: 8px; justify-content: flex-end; padding: 16px; border-top: 1px solid var(--border-color);">
+        <button class="btn btn-secondary" onclick="document.getElementById('curriculum-review-dialog').classList.add('hidden')">
+          Cancel
+        </button>
+        <button class="btn btn-secondary" id="btn-regenerate-curriculum">
+          <i data-lucide="refresh-cw" style="width: 16px; height: 16px; margin-right: 6px;"></i>
+          <span>Regenerate</span>
+        </button>
+        <button class="btn btn-primary" id="btn-save-curriculum">
+          <i data-lucide="save" style="width: 16px; height: 16px; margin-right: 6px;"></i>
+          <span>Save Curriculum</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Complete Section Dialog (Phase 23) -->
+  <div id="complete-section-dialog" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Complete Section</h3>
+        <button class="modal-close" onclick="document.getElementById('complete-section-dialog').classList.add('hidden')">
+          <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 20px; color: var(--text-secondary);">
+          Reflect on your learning to help track progress and build better study habits.
+        </p>
+
+        <!-- Mastery Level -->
+        <div class="reflection-section">
+          <label>How well do you feel you understand this material?</label>
+          <div class="mastery-selector" id="mastery-selector">
+            <div class="mastery-level" data-level="1" title="Just starting">1</div>
+            <div class="mastery-level" data-level="2" title="Making progress">2</div>
+            <div class="mastery-level" data-level="3" title="Comfortable">3</div>
+            <div class="mastery-level" data-level="4" title="Confident">4</div>
+            <div class="mastery-level" data-level="5" title="Mastered">5</div>
+          </div>
+          <small>1 = Just starting, 5 = Fully mastered</small>
+        </div>
+
+        <!-- Struggles -->
+        <div class="reflection-section">
+          <label>What was challenging?</label>
+          <textarea 
+            id="complete-section-struggles" 
+            class="reflection-textarea" 
+            placeholder="What did you struggle with? What questions do you still have?"
+          ></textarea>
+        </div>
+
+        <!-- Breakthroughs -->
+        <div class="reflection-section">
+          <label>What were your key takeaways?</label>
+          <textarea 
+            id="complete-section-breakthroughs" 
+            class="reflection-textarea" 
+            placeholder="What clicked for you? What 'aha!' moments did you have?"
+          ></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('complete-section-dialog').classList.add('hidden')">
+          Cancel
+        </button>
+        <button class="btn btn-primary" id="btn-confirm-complete-section">
+          <i data-lucide="check" style="width: 16px; height: 16px; margin-right: 6px;"></i>
+          <span>Complete Section</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="marked.js"></script>
+  <script src="markdown-editor-cm6.bundle.js"></script>
+  <script src="notes-manager.js"></script>
+  <script src="app.js"></script>
+  <script>
+    // Debug and initialize Lucide icons
+    console.log('[Init] Lucide loaded:', typeof lucide !== 'undefined');
+    console.log('[Init] Lucide object:', window.lucide);
+    
+    // Initialize immediately
+    if (window.lucide) {
+      console.log('[Init] Attempting immediate icon initialization...');
+      try {
+        lucide.createIcons();
+        console.log('[Init] Icons initialized (immediate)');
+      } catch (error) {
+        console.error('[Init] Error initializing icons (immediate):', error);
+      }
+    }
+    
+    // Initialize on load
+    window.addEventListener('load', () => {
+      console.log('[Init] Window loaded, initializing icons...');
+      if (window.lucide) {
+        try {
+          lucide.createIcons();
+          
+          // Count results
+          const svgCount = document.querySelectorAll('svg').length;
+          const dataLucideCount = document.querySelectorAll('[data-lucide]').length;
+          console.log(`[Init] Icons initialized. SVG count: ${svgCount}, Remaining data-lucide: ${dataLucideCount}`);
+          
+          // If there are still unconverted icons, try again
+          if (dataLucideCount > 0) {
+            console.log('[Init] Some icons not converted, retrying...');
+            setTimeout(() => {
+              lucide.createIcons();
+              const newSvgCount = document.querySelectorAll('svg').length;
+              console.log(`[Init] After retry, SVG count: ${newSvgCount}`);
+            }, 100);
+          }
+        } catch (error) {
+          console.error('[Init] Error initializing icons:', error);
+        }
+      } else {
+        console.error('[Init] Lucide not found');
+      }
+    });
+  </script>
+  <script src="api-keys-manager.js"></script>
+</body>
+</html>

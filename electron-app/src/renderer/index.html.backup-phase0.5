@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:*; img-src 'self' data:; font-src 'self' data:;">
+  <title>Polly</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <script src="lucide.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Titlebar -->
+    <div class="titlebar">
+      <div class="titlebar-drag"></div>
+      <div class="titlebar-title">Polly</div>
+      <div class="titlebar-status">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Connecting...</span>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-container">
+      <!-- Sidebar -->
+      <nav class="sidebar">
+        <div class="sidebar-header">
+          <i data-lucide="bird" class="logo-icon"></i>
+          <span class="logo-text">polly</span>
+        </div>
+
+        <div class="nav-section">
+          <button class="nav-item active" data-view="chat">
+            <i data-lucide="message-square" class="nav-icon"></i>
+            <span class="nav-label">chat</span>
+          </button>
+          <button class="nav-item" data-view="dashboard">
+            <i data-lucide="layout-dashboard" class="nav-icon"></i>
+            <span class="nav-label">dashboard</span>
+          </button>
+          <button class="nav-item" data-view="knowledge">
+            <i data-lucide="brain" class="nav-icon"></i>
+            <span class="nav-label">knowledge</span>
+          </button>
+          <button class="nav-item" data-view="patterns">
+            <i data-lucide="sparkles" class="nav-icon"></i>
+            <span class="nav-label">patterns</span>
+          </button>
+        </div>
+
+        <div class="nav-section nav-bottom">
+          <button class="nav-item" data-view="settings">
+            <i data-lucide="settings" class="nav-icon"></i>
+            <span class="nav-label">settings</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Content Area -->
+      <main class="content">
+        <!-- Setup View (shown first if not configured) -->
+        <div class="view" id="view-setup">
+          <div class="setup-container">
+            <div class="setup-header">
+              <i data-lucide="bird" class="setup-logo"></i>
+              <h1>welcome to polly</h1>
+              <p>your edge-native personal AI assistant</p>
+              <div class="ascii-art" style="margin-top: 1rem;">
+:>  polly  -&
+    setup wizard
+              </div>
+            </div>
+
+            <div class="setup-steps">
+              <!-- Step 1: Dependencies -->
+              <div class="setup-step active" id="step-1">
+                <h2>step 1: check dependencies</h2>
+                <p>let's make sure you have everything needed.</p>
+
+                <div class="dependency-list" id="dependency-list">
+                  <div class="dependency-item" id="dep-python">
+                    <span class="dep-icon">⏳</span>
+                    <span class="dep-name">Python 3.10+</span>
+                    <span class="dep-status">Checking...</span>
+                  </div>
+                  <div class="dependency-item" id="dep-ollama">
+                    <span class="dep-icon">⏳</span>
+                    <span class="dep-name">Ollama</span>
+                    <span class="dep-status">Checking...</span>
+                  </div>
+                </div>
+
+                <div class="setup-actions">
+                  <button class="btn btn-primary" id="btn-check-deps">Check Dependencies</button>
+                </div>
+              </div>
+
+              <!-- Step 2: Paths -->
+              <div class="setup-step" id="step-2">
+                <h2>step 2: configure paths</h2>
+                <p>tell polly where to find your knowledge.</p>
+
+                <div class="form-group">
+                  <label>obsidian vault</label>
+                  <div class="path-input">
+                    <input type="text" id="vault-path" placeholder="select your obsidian vault..." readonly>
+                    <button class="btn btn-secondary" id="btn-select-vault">browse</button>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label>code directories</label>
+                  <div class="path-list" id="code-paths">
+                    <div class="path-empty">no directories selected</div>
+                  </div>
+                  <button class="btn btn-secondary" id="btn-add-code">+ add directory</button>
+                </div>
+
+                <div class="setup-actions">
+                  <button class="btn btn-secondary" id="btn-back-1">back</button>
+                  <button class="btn btn-primary" id="btn-next-2">continue</button>
+                </div>
+              </div>
+
+              <!-- Step 3: Install -->
+              <div class="setup-step" id="step-3">
+                <h2>step 3: install & configure</h2>
+                <p>setting up polly's environment...</p>
+
+                <div class="install-options">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="opt-pull-models" checked>
+                    <span>download AI models (recommended, ~4GB)</span>
+                  </label>
+                </div>
+
+                <div class="progress-container" id="install-progress" style="display: none;">
+                  <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                  </div>
+                  <div class="progress-text" id="progress-text">preparing...</div>
+                </div>
+
+                <div class="setup-actions">
+                  <button class="btn btn-secondary" id="btn-back-2">back</button>
+                  <button class="btn btn-primary" id="btn-install">install polly</button>
+                </div>
+              </div>
+
+              <!-- Step 4: Complete -->
+              <div class="setup-step" id="step-4">
+                <h2><i data-lucide="check-circle" style="width: 24px; height: 24px; display: inline-block; vertical-align: middle; margin-right: 8px;"></i> setup complete!</h2>
+                <p>polly is ready to help you.</p>
+
+                <div class="setup-summary">
+                  <div class="summary-item">
+                    <i data-lucide="check" class="summary-icon"></i>
+                    <span>Python environment configured</span>
+                  </div>
+                  <div class="summary-item">
+                    <i data-lucide="check" class="summary-icon"></i>
+                    <span>AI models downloaded</span>
+                  </div>
+                  <div class="summary-item">
+                    <i data-lucide="check" class="summary-icon"></i>
+                    <span>Knowledge paths configured</span>
+                  </div>
+                </div>
+
+                <div class="setup-actions">
+                  <button class="btn btn-primary" id="btn-start-indexing">Index Knowledge Base</button>
+                  <button class="btn btn-secondary" id="btn-skip-index">Skip for Now</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat View -->
+        <div class="view hidden" id="view-chat">
+          <div class="chat-layout">
+            <!-- Conversations Sidebar -->
+            <aside class="conversations-sidebar" id="conversations-sidebar">
+              <div class="conversations-header">
+                <button class="btn btn-primary btn-block" id="btn-new-chat">
+                  <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
+                  <span>New Chat</span>
+                </button>
+                <button class="btn-icon" id="btn-toggle-sidebar" title="Toggle sidebar">
+                  <i data-lucide="panel-left-close" style="width: 18px; height: 18px;"></i>
+                </button>
+              </div>
+              
+              <div class="conversations-search">
+                <input type="text" id="conversations-search-input" placeholder="Search conversations..." />
+                <i data-lucide="search" class="search-icon"></i>
+              </div>
+              
+              <div class="conversations-list" id="conversations-list">
+                <!-- Conversations will be rendered here -->
+              </div>
+            </aside>
+
+            <!-- Main Chat Area -->
+            <div class="chat-main">
+              <div class="chat-container">
+                <div class="chat-header">
+                  <h2>> chat with polly</h2>
+                  <div class="header-actions">
+                <button class="btn btn-secondary btn-sm" id="btn-toggle-related" title="Toggle related notes">
+                  <i data-lucide="network" style="width: 14px; height: 14px;"></i>
+                  <span>Related Notes</span>
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-save-conversation" title="Save conversation to Obsidian">
+                  <i data-lucide="book-plus" style="width: 14px; height: 14px;"></i>
+                  <span>Save to Obsidian</span>
+                </button>
+                <div class="mode-selector">
+                  <button class="mode-btn active" data-mode="auto">auto</button>
+                  <button class="mode-btn" data-mode="local">local</button>
+                  <button class="mode-btn" data-mode="cloud">cloud</button>
+                </div>
+                  </div>
+                </div>
+
+                <div class="chat-content-wrapper">
+                  <div class="chat-messages" id="chat-messages">
+                    <div class="message system">
+                      <div class="message-content">
+                        Hi! I'm Polly, your personal AI assistant. I have access to your Obsidian vault,
+                        codebases, and learned patterns. Ask me anything!
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Related Notes Sidebar -->
+                  <div class="related-notes-panel hidden" id="related-notes-panel">
+                    <div class="related-notes-header">
+                      <h3>Related Notes</h3>
+                      <button class="btn-icon" id="btn-close-related" title="Close">
+                        <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                      </button>
+                    </div>
+                    
+                    <div class="related-notes-status" id="related-notes-status">
+                      <div style="text-align: center; padding: 20px; color: var(--text-secondary); font-size: 13px;">
+                        <i data-lucide="info" style="width: 20px; height: 20px; margin-bottom: 8px;"></i>
+                        <p>Start chatting to see related notes from your vault</p>
+                      </div>
+                    </div>
+                    
+                    <div class="related-notes-list" id="related-notes-list"></div>
+                  </div>
+                </div>
+
+                <div class="chat-input-container">
+                  <div class="quick-actions">
+                    <button class="quick-btn" data-query="What patterns do I use in my code?">Patterns</button>
+                    <button class="quick-btn" data-query="Summarize my recent notes">Recent Notes</button>
+                    <button class="quick-btn" data-query="Show cross-domain connections">Connections</button>
+                  </div>
+                  <div class="chat-input">
+                    <textarea id="query-input" placeholder="Ask Polly anything..." rows="1"></textarea>
+                    <button class="btn btn-primary" id="btn-send">
+                      <span>Send</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Context Menu for Conversations -->
+        <div class="context-menu hidden" id="conversation-context-menu">
+          <button class="context-menu-item" data-action="rename">
+            <i data-lucide="edit" style="width: 14px; height: 14px;"></i>
+            <span>Rename</span>
+          </button>
+          <button class="context-menu-item" data-action="star">
+            <i data-lucide="star" style="width: 14px; height: 14px;"></i>
+            <span>Star</span>
+          </button>
+          <button class="context-menu-item" data-action="category">
+            <i data-lucide="folder" style="width: 14px; height: 14px;"></i>
+            <span>Change Category</span>
+          </button>
+          <div class="context-menu-divider"></div>
+          <button class="context-menu-item danger" data-action="delete">
+            <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+            <span>Delete</span>
+          </button>
+        </div>
+
+        <!-- Dashboard View -->
+        <div class="view hidden" id="view-dashboard">
+          <div class="dashboard-container">
+            <h2>> dashboard</h2>
+
+            <div class="stats-grid">
+              <div class="stat-card">
+                <i data-lucide="book-open" class="stat-icon"></i>
+                <div class="stat-value" id="stat-obsidian">-</div>
+                <div class="stat-label">Obsidian Chunks</div>
+              </div>
+              <div class="stat-card">
+                <i data-lucide="code-2" class="stat-icon"></i>
+                <div class="stat-value" id="stat-codebase">-</div>
+                <div class="stat-label">Code Chunks</div>
+              </div>
+              <div class="stat-card">
+                <i data-lucide="sparkles" class="stat-icon"></i>
+                <div class="stat-value" id="stat-patterns">-</div>
+                <div class="stat-label">Patterns</div>
+              </div>
+              <div class="stat-card">
+                <i data-lucide="network" class="stat-icon"></i>
+                <div class="stat-value" id="stat-entities">-</div>
+                <div class="stat-label">Graph Entities</div>
+              </div>
+            </div>
+
+            <div class="domains-section">
+              <h3>your domains</h3>
+              <div class="domains-grid">
+                <div class="domain-card sigils">
+                  <div class="domain-name">sigils</div>
+                  <div class="domain-desc">code & infrastructure</div>
+                </div>
+                <div class="domain-card signals">
+                  <div class="domain-name">signals</div>
+                  <div class="domain-desc">audio & synthesis</div>
+                </div>
+                <div class="domain-card scrolls">
+                  <div class="domain-name">scrolls</div>
+                  <div class="domain-desc">writing & pedagogy</div>
+                </div>
+                <div class="domain-card glyphs">
+                  <div class="domain-name">glyphs</div>
+                  <div class="domain-desc">visual & design</div>
+                </div>
+                <div class="domain-card grids">
+                  <div class="domain-name">grids</div>
+                  <div class="domain-desc">systems & frameworks</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="server-section">
+              <h3>Services Status</h3>
+              
+              <div class="server-status">
+                <div class="service-item">
+                  <div class="server-indicator" id="ollama-indicator"></div>
+                  <div class="service-info">
+                    <div class="service-name">Ollama</div>
+                    <span id="ollama-status-text">Checking...</span>
+                  </div>
+                </div>
+                
+                <div class="service-item">
+                  <div class="server-indicator" id="server-indicator"></div>
+                  <div class="service-info">
+                    <div class="service-name">Polly Server</div>
+                    <span id="server-status-text">Checking...</span>
+                  </div>
+                  <button class="btn btn-secondary btn-sm" id="btn-toggle-server">Start</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Knowledge View -->
+        <div class="view hidden" id="view-knowledge">
+          <div class="knowledge-container">
+            <h2>> knowledge base</h2>
+
+            <div class="knowledge-actions">
+              <button class="btn btn-primary" id="btn-reindex">
+                <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i> Re-index All
+              </button>
+              <button class="btn btn-secondary" id="btn-index-obsidian">
+                Index Obsidian
+              </button>
+              <button class="btn btn-secondary" id="btn-index-code">
+                Index Code
+              </button>
+            </div>
+
+            <div class="knowledge-sources">
+              <div class="source-card">
+                <h3><i data-lucide="book-open" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 8px;"></i> Obsidian Vault</h3>
+                <div class="source-path" id="obsidian-path">Not configured</div>
+                <div class="source-stats">
+                  <span id="obsidian-files">0 files</span>
+                  <span id="obsidian-chunks">0 chunks</span>
+                </div>
+              </div>
+
+              <div class="source-card">
+                <h3><i data-lucide="code-2" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 8px;"></i> Codebases</h3>
+                <div class="source-paths" id="code-source-paths">
+                  <div class="path-empty">No directories configured</div>
+                </div>
+                <div class="source-stats">
+                  <span id="code-files">0 files</span>
+                  <span id="code-chunks">0 chunks</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="index-log" id="index-log" style="display: none;">
+              <h3>Indexing Log</h3>
+              <pre id="index-log-content"></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Patterns View -->
+        <div class="view hidden" id="view-patterns">
+          <div class="patterns-container">
+            <h2>> learned patterns</h2>
+            <p class="patterns-intro">
+              polly learns patterns from your work over time. these patterns help provide
+              more relevant and personalized responses.
+            </p>
+
+            <!-- Pattern Controls -->
+            <div class="patterns-controls">
+              <div class="patterns-filters">
+                <label class="filter-label">Show patterns from:</label>
+                <select id="pattern-time-filter" class="pattern-filter-select">
+                  <option value="all">All time</option>
+                  <option value="7">Last 7 days</option>
+                  <option value="30">Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                </select>
+              </div>
+              <div class="patterns-actions">
+                <button class="btn btn-secondary btn-sm" id="btn-refresh-patterns">
+                  <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+                  Refresh
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-export-patterns">
+                  <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+                  Export
+                </button>
+                <button class="btn btn-danger btn-sm" id="btn-reset-patterns">
+                  <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            <div class="patterns-list" id="patterns-list">
+              <div class="pattern-empty">
+                <i data-lucide="sparkles" class="pattern-empty-icon"></i>
+                <p>No patterns learned yet.</p>
+                <p class="pattern-empty-hint">Keep using Polly and patterns will emerge from your queries and knowledge base.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings View -->
+        <div class="view hidden" id="view-settings">
+          <div class="settings-container">
+            <h2>> settings</h2>
+
+            <!-- Tab Navigation -->
+            <div class="settings-tabs">
+              <button class="settings-tab-btn active" data-tab="general">
+                <i data-lucide="sliders" class="tab-icon"></i>
+                <span class="tab-label">general</span>
+              </button>
+              <button class="settings-tab-btn" data-tab="domains">
+                <i data-lucide="folder-tree" class="tab-icon"></i>
+                <span class="tab-label">domains</span>
+              </button>
+              <button class="settings-tab-btn" data-tab="integrations">
+                <i data-lucide="plug" class="tab-icon"></i>
+                <span class="tab-label">integrations</span>
+              </button>
+              <button class="settings-tab-btn" data-tab="advanced">
+                <i data-lucide="terminal" class="tab-icon"></i>
+                <span class="tab-label">advanced</span>
+              </button>
+            </div>
+
+            <!-- Tab: General -->
+            <div class="settings-tab-content" id="tab-general">
+              <div class="settings-section">
+                <h3>Paths</h3>
+
+                <div class="form-group">
+                  <label>Code Directories</label>
+                  <div class="path-list" id="settings-code-paths"></div>
+                  <button class="btn btn-secondary" id="btn-settings-add-code">+ Add</button>
+                </div>
+                
+                <p class="form-hint">
+                  <i data-lucide="info" style="width: 14px; height: 14px;"></i>
+                  To configure your Obsidian vault, go to Settings → Integrations → Obsidian
+                </p>
+              </div>
+
+              <div class="settings-section">
+                <h3>Model Routing</h3>
+
+                <div class="form-group">
+                  <label>Default Mode</label>
+                  <select id="settings-routing-mode">
+                    <option value="auto">Auto (Recommended)</option>
+                    <option value="local">Always Local</option>
+                    <option value="cloud">Always Cloud</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label>Cloud API Key</label>
+                  <input type="password" id="settings-api-key" placeholder="sk-...">
+                  <p class="form-hint">Anthropic API key for cloud model access</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab: Domains -->
+            <div class="settings-tab-content hidden" id="tab-domains">
+              <div class="domains-intro">
+                <p>Configure your knowledge domains. Domains help organize your Obsidian vault and improve RAG relevance.</p>
+              </div>
+
+              <div class="settings-section">
+                <h3>Folder Structure</h3>
+                <div class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="folder-numbering-toggle">
+                    <span>Use numbered folders (e.g., 01-Sigils, 02-Signals)</span>
+                  </label>
+                  <p class="form-hint">Numbered folders maintain order in your file system</p>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3>Your Domains</h3>
+                <div class="domains-list-header">
+                  <span class="domain-count">Loading domains...</span>
+                  <button class="btn btn-primary btn-sm" id="btn-add-domain">
+                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
+                    Add Domain
+                  </button>
+                </div>
+                
+                <div id="domains-list" class="domains-list">
+                  <!-- Domain cards will be rendered here -->
+                  <div class="loading-spinner">Loading...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab: Integrations -->
+            <div class="settings-tab-content hidden" id="tab-integrations">
+              <div class="integrations-intro">
+                <p>Connect external services to enhance Polly's capabilities. Integration data is automatically indexed for RAG queries.</p>
+              </div>
+
+              <!-- Integration Cards -->
+              <div class="integrations-grid">
+                <!-- GitHub Integration Card -->
+                <div class="integration-card" data-integration="github">
+                  <div class="integration-header">
+                    <div class="integration-title">
+                      <i data-lucide="github" class="integration-icon"></i>
+                      <h4>github</h4>
+                    </div>
+                    <span class="status-dot" id="github-status-dot"></span>
+                  </div>
+
+                  <p class="integration-desc">Access repositories, issues, and pull requests</p>
+
+                  <div class="integration-status" id="github-status">
+                    <span class="status-text">not connected</span>
+                  </div>
+
+                  <div class="integration-actions">
+                    <button class="btn btn-secondary btn-sm" id="github-connect-btn">connect</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="github-sync-btn">sync now</button>
+                    <button class="btn btn-secondary btn-sm" id="github-config-btn">configure</button>
+                  </div>
+
+                  <!-- Expandable Config Panel -->
+                  <div class="integration-config hidden" id="github-config">
+                    <h5>OAuth Configuration</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;">
+                      Create a GitHub OAuth app at <a href="#" id="github-oauth-link" style="color: var(--signal); text-decoration: underline;">github.com/settings/developers</a>
+                    </p>
+                    
+                    <div class="form-group">
+                      <label>Client ID</label>
+                      <input type="text" id="github-client-id" placeholder="Iv1.abc123..." />
+                    </div>
+                    
+                    <div class="form-group">
+                      <label>Client Secret</label>
+                      <input type="password" id="github-client-secret" placeholder="gho_xyz789..." />
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 8px;">
+                      <label>Callback URL (use this in OAuth app)</label>
+                      <input type="text" value="http://localhost:3000/oauth/callback" readonly style="background: var(--bg-hover); cursor: text;" />
+                    </div>
+                    
+                    <button class="btn btn-primary btn-sm" id="github-save-config-btn">save configuration</button>
+                  </div>
+                </div>
+
+                <!-- Context7 Integration Card -->
+                <div class="integration-card" data-integration="context7">
+                  <div class="integration-header">
+                    <div class="integration-title">
+                      <i data-lucide="book-open" class="integration-icon"></i>
+                      <h4>context7</h4>
+                    </div>
+                    <span class="status-dot" id="context7-status-dot"></span>
+                  </div>
+
+                  <p class="integration-desc">Up-to-date library docs for code generation</p>
+
+                  <div class="integration-status" id="context7-status">
+                    <span class="status-text">not connected</span>
+                  </div>
+
+                  <div class="integration-actions">
+                    <button class="btn btn-secondary btn-sm" id="context7-connect-btn">connect</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="context7-sync-btn">sync now</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="context7-config-btn">configure</button>
+                  </div>
+
+                  <div class="integration-config hidden" id="context7-config">
+                    <h5>Library Management</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;">
+                      Select popular libraries or add custom ones:
+                    </p>
+                    
+                    <!-- Popular Libraries Checkboxes -->
+                    <div style="margin-bottom: 20px;">
+                      <h6 style="font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 10px;">Popular Libraries</h6>
+                      <div id="context7-popular-libraries" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; max-height: 200px; overflow-y: auto; padding: 8px; background: var(--bg-hover); border-radius: 4px;">
+                        <!-- Will be populated by JavaScript -->
+                      </div>
+                    </div>
+                    
+                    <!-- Custom Libraries Input -->
+                    <div class="form-group" style="margin-bottom: 16px;">
+                      <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 8px;">Custom Libraries</label>
+                      <input 
+                        type="text" 
+                        id="context7-custom-libraries-input" 
+                        placeholder="e.g., svelte, deno, bun" 
+                        style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary);"
+                      >
+                      <p class="form-hint" style="margin-top: 4px; font-size: 11px; color: var(--text-secondary);">Comma-separated. For libraries not in the popular list.</p>
+                    </div>
+                    
+                    <!-- Selected Libraries Preview -->
+                    <div style="margin-bottom: 12px; padding: 8px; background: var(--bg-hover); border-radius: 4px; min-height: 32px;">
+                      <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">Selected libraries:</p>
+                      <div id="context7-selected-preview" style="font-size: 12px; color: var(--text-primary); font-family: monospace;">
+                        None selected
+                      </div>
+                    </div>
+                    
+                    <button class="btn btn-primary btn-sm" id="context7-save-libraries-btn">Save & Sync</button>
+                  </div>
+                </div>
+
+                <!-- Obsidian Integration Card -->
+                <div class="integration-card" data-integration="obsidian">
+                  <div class="integration-header">
+                    <div class="integration-title">
+                      <i data-lucide="book-open" class="integration-icon"></i>
+                      <h4>obsidian</h4>
+                    </div>
+                    <span class="status-dot" id="obsidian-status-dot"></span>
+                  </div>
+
+                  <p class="integration-desc">Read/write access to your Obsidian vault</p>
+
+                  <div class="integration-status" id="obsidian-status">
+                    <span class="status-text">not connected</span>
+                  </div>
+
+                  <div class="integration-actions">
+                    <button class="btn btn-secondary btn-sm" id="obsidian-connect-btn">connect</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="obsidian-sync-btn">sync now</button>
+                    <button class="btn btn-secondary btn-sm" id="obsidian-config-btn">configure</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="obsidian-write-test-btn">test write</button>
+                  </div>
+
+                  <!-- Configuration Panel -->
+                  <div class="integration-config hidden" id="obsidian-config">
+                    <h5>Vault Configuration</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;">
+                      Select your Obsidian vault folder. This is typically in iCloud or local Documents.
+                    </p>
+                    
+                    <div class="form-group">
+                      <label>Vault Path</label>
+                      <div style="display: flex; gap: 8px; align-items: center;">
+                        <input 
+                          type="text" 
+                          id="obsidian-vault-path-input" 
+                          placeholder="Click 'Choose Folder' to select vault..." 
+                          readonly
+                          style="flex: 1; background: var(--bg-hover); cursor: pointer;"
+                        />
+                        <button class="btn btn-secondary btn-sm" id="obsidian-choose-folder-btn">Choose Folder</button>
+                      </div>
+                      <p class="form-hint">
+                        Example: ~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MyVault
+                      </p>
+                    </div>
+                    
+                    <button class="btn btn-primary btn-sm" id="obsidian-save-config-btn">Save & Connect</button>
+                  </div>
+
+                  <div class="integration-stats hidden" id="obsidian-stats">
+                    <div class="stat-item">
+                      <span class="stat-label">Vault</span>
+                      <span class="stat-value" id="obsidian-vault-path-display">-</span>
+                    </div>
+                    <div class="stat-item">
+                      <span class="stat-label">Files Indexed</span>
+                      <span class="stat-value" id="obsidian-indexed-files">0</span>
+                    </div>
+                  </div>
+                  
+                  <!-- Write Test Panel (for Phase 2 testing) -->
+                  <div class="integration-config hidden" id="obsidian-write-test" style="margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+                    <h5>Test Write Operations</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+                      Test note creation (for development/testing)
+                    </p>
+                    
+                    <div class="form-group">
+                      <label>Note Title</label>
+                      <input type="text" id="obsidian-test-title" placeholder="Test Note">
+                    </div>
+                    
+                    <div class="form-group">
+                      <label>Content</label>
+                      <textarea id="obsidian-test-content" rows="3" placeholder="Note content..."></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                      <label>Folder</label>
+                      <input type="text" id="obsidian-test-folder" placeholder="30-Ideas">
+                    </div>
+                    
+                    <button class="btn btn-primary btn-sm" id="obsidian-test-create-btn">Create Test Note</button>
+                  </div>
+                </div>
+
+                <!-- Calendar Integration Card -->
+                <div class="integration-card" data-integration="calendar">
+                  <div class="integration-header">
+                    <div class="integration-title">
+                      <i data-lucide="calendar" class="integration-icon"></i>
+                      <h4>calendar</h4>
+                    </div>
+                    <span class="status-dot" id="calendar-status-dot"></span>
+                  </div>
+
+                  <p class="integration-desc">Access all your calendar events (iCloud, Google, Exchange)</p>
+
+                  <div class="integration-status" id="calendar-status">
+                    <span class="status-text">not connected</span>
+                  </div>
+
+                  <div class="integration-actions">
+                    <button class="btn btn-secondary btn-sm" id="calendar-connect-btn">enable</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="calendar-sync-btn">sync now</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="calendar-config-btn">configure</button>
+                  </div>
+
+                  <div class="integration-config hidden" id="calendar-config">
+                    <h5>Calendar Settings</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+                      Configure how many days ahead to sync:
+                    </p>
+                    <div class="form-group">
+                      <label>Days ahead</label>
+                      <input 
+                        type="number" 
+                        id="calendar-days-input" 
+                        value="7" 
+                        min="1" 
+                        max="90"
+                        style="width: 100px; padding: 6px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary);"
+                      >
+                      <p class="form-hint">Fetch events for the next N days (default: 7)</p>
+                    </div>
+                    <button class="btn btn-primary btn-sm" id="calendar-save-config-btn">Save & Sync</button>
+                  </div>
+                </div>
+
+                <!-- Reminders Integration Card -->
+                <div class="integration-card" data-integration="reminders">
+                  <div class="integration-header">
+                    <div class="integration-title">
+                      <i data-lucide="check-square" class="integration-icon"></i>
+                      <h4>reminders</h4>
+                    </div>
+                    <span class="status-dot" id="reminders-status-dot"></span>
+                  </div>
+
+                  <p class="integration-desc">Access your tasks and to-do lists</p>
+
+                  <div class="integration-status" id="reminders-status">
+                    <span class="status-text">not connected</span>
+                  </div>
+
+                  <div class="integration-actions">
+                    <button class="btn btn-secondary btn-sm" id="reminders-connect-btn">enable</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="reminders-sync-btn">sync now</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="reminders-config-btn">configure</button>
+                  </div>
+
+                  <div class="integration-config hidden" id="reminders-config">
+                    <h5>Reminders Settings</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+                      Configure which reminders to sync:
+                    </p>
+                    <div class="form-group">
+                      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="reminders-completed-checkbox" style="width: 16px; height: 16px;">
+                        <span>Include completed reminders</span>
+                      </label>
+                      <p class="form-hint">By default, only incomplete reminders are synced</p>
+                    </div>
+                    <button class="btn btn-primary btn-sm" id="reminders-save-config-btn">Save & Sync</button>
+                  </div>
+                </div>
+
+                <!-- macOS Control Integration Card -->
+                <div class="integration-card" data-integration="macos">
+                  <div class="integration-header">
+                    <div class="integration-title">
+                      <i data-lucide="monitor" class="integration-icon"></i>
+                      <h4>macos control</h4>
+                    </div>
+                    <span class="status-dot" id="macos-status-dot"></span>
+                  </div>
+
+                  <p class="integration-desc">File system access and terminal control</p>
+
+                  <div class="integration-status" id="macos-status">
+                    <span class="status-text">disabled</span>
+                  </div>
+
+                  <div class="integration-actions">
+                    <button class="btn btn-secondary btn-sm" id="macos-enable-btn">enable</button>
+                    <button class="btn btn-secondary btn-sm hidden" id="macos-config-btn">configure</button>
+                  </div>
+
+                  <div class="integration-config hidden" id="macos-config">
+                    <h5>Permissions & Paths</h5>
+                    <p style="color: var(--text-secondary); font-size: 13px; font-style: italic;">
+                      Permission settings will be available after enabling.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab: Advanced -->
+            <div class="settings-tab-content hidden" id="tab-advanced">
+              <div class="settings-section">
+                <h3>Server</h3>
+
+                <div class="form-group">
+                  <label>Port</label>
+                  <input type="number" id="settings-port" value="11436">
+                </div>
+
+                <div class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="settings-auto-start" checked>
+                    <span>Start server automatically</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3>OpenCode Integration</h3>
+
+                <div class="form-group">
+                  <label>API Key</label>
+                  <div class="path-input">
+                    <input type="text" id="opencode-api-key" value="polly-local-key" readonly>
+                    <button class="btn btn-secondary" id="btn-regenerate-key">Regenerate</button>
+                  </div>
+                  <p class="form-hint">Use this key to connect OpenCode to Polly</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="settings-actions">
+              <button class="btn btn-primary" id="btn-save-settings">save settings</button>
+              <button class="btn btn-danger" id="btn-reset-setup">reset setup</button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Save Conversation Modal -->
+  <div id="save-conversation-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Save Conversation to Obsidian</h3>
+        <button class="modal-close" id="close-save-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="note-title">Note Title</label>
+          <input 
+            type="text" 
+            id="note-title" 
+            placeholder="Generated from first message..." 
+            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="note-folder">Folder</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input 
+              type="text" 
+              id="note-folder" 
+              placeholder="30-Ideas" 
+              style="flex: 1; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+            >
+            <button class="btn btn-secondary btn-sm" id="btn-suggest-folder">
+              <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+          <div id="folder-suggestion" class="suggestion-box hidden" style="margin-top: 8px; padding: 8px; background: var(--bg-hover); border-radius: 4px; border-left: 3px solid var(--signal);">
+            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Suggested folder:</div>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div>
+                <span id="suggested-folder-name" style="font-weight: 600; color: var(--text-primary);"></span>
+                <span id="suggested-folder-domain" style="margin-left: 8px; font-size: 11px; color: var(--text-secondary);"></span>
+              </div>
+              <button class="btn btn-sm" id="btn-use-folder" style="padding: 4px 8px; font-size: 11px;">Use</button>
+            </div>
+            <div id="folder-reasoning" style="margin-top: 4px; font-size: 11px; color: var(--text-secondary);"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Tags (optional)</label>
+          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+            <input 
+              type="text" 
+              id="note-tags-input" 
+              placeholder="Add tags..." 
+              style="flex: 1; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+            >
+            <button class="btn btn-secondary btn-sm" id="btn-suggest-tags">
+              <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+          <div id="suggested-tags" class="tags-container" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px;"></div>
+          <div id="selected-tags" class="tags-container" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 28px;"></div>
+        </div>
+
+        <div id="save-modal-status" class="status-message hidden" style="margin-top: 12px; padding: 8px; border-radius: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-cancel-save">Cancel</button>
+        <button class="btn btn-primary" id="btn-confirm-save">Save Note</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Context7 API Key Modal -->
+  <div id="context7-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Connect to Context7</h3>
+        <button class="modal-close" onclick="document.getElementById('context7-modal').classList.add('hidden')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 16px; color: var(--text-secondary);">
+          Enter your Context7 API key to access up-to-date library documentation.
+          Get your API key at <a href="https://context7.com/dashboard" target="_blank">context7.com/dashboard</a>
+        </p>
+        <div class="form-group">
+          <label for="context7-api-key-input">API Key</label>
+          <input 
+            type="password" 
+            id="context7-api-key-input" 
+            placeholder="ctx7sk-..." 
+            style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+          >
+          <p class="form-hint">Your API key starts with "ctx7sk-"</p>
+        </div>
+        <div id="context7-modal-error" class="error-message hidden" style="margin-top: 12px; padding: 8px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; color: #ef4444; border-radius: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('context7-modal').classList.add('hidden')">Cancel</button>
+        <button class="btn btn-primary" id="context7-connect-submit">Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category Selection Modal -->
+  <div id="category-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Change Category</h3>
+        <button class="modal-close" id="close-category-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="category-list" class="category-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-category-modal">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rename Conversation Modal -->
+  <div id="rename-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Rename Conversation</h3>
+        <button class="modal-close" id="close-rename-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label for="rename-input" style="display: block; margin-bottom: 8px; font-size: 13px; color: var(--text-secondary);">Enter new title:</label>
+        <input type="text" id="rename-input" class="form-control" style="width: 100%; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 13px; border: 2px solid var(--border-color); background: var(--bg-secondary);" />
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-rename-modal">Cancel</button>
+        <button class="btn btn-primary" id="submit-rename-modal">Rename</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Domain Editor Modal -->
+  <div id="domain-editor-modal" class="modal hidden">
+    <div class="modal-content modal-wide">
+      <div class="modal-header">
+        <h3 id="domain-editor-title">Edit Domain</h3>
+        <button class="modal-close" id="close-domain-editor">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="domain-editor-grid">
+          <!-- Left Column -->
+          <div class="domain-editor-col">
+            <div class="form-group">
+              <label for="domain-name-input">Name *</label>
+              <input 
+                type="text" 
+                id="domain-name-input" 
+                placeholder="Domain Name" 
+                maxlength="30"
+                style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+              >
+              <p class="form-hint">1-30 characters, must be unique</p>
+            </div>
+
+            <div class="form-group">
+              <label for="domain-description-input">Description</label>
+              <textarea 
+                id="domain-description-input" 
+                placeholder="Describe what this domain contains..." 
+                rows="3"
+                maxlength="200"
+                style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); resize: vertical;"
+              ></textarea>
+              <p class="form-hint">0-200 characters</p>
+            </div>
+
+            <div class="form-group">
+              <label>Icon</label>
+              <div class="icon-picker">
+                <button type="button" class="icon-preview" id="domain-icon-preview">📁</button>
+                <div class="icon-grid hidden" id="domain-icon-grid">
+                  <button type="button" class="icon-option" data-icon="⚡">⚡</button>
+                  <button type="button" class="icon-option" data-icon="📡">📡</button>
+                  <button type="button" class="icon-option" data-icon="📜">📜</button>
+                  <button type="button" class="icon-option" data-icon="✨">✨</button>
+                  <button type="button" class="icon-option" data-icon="🗂️">🗂️</button>
+                  <button type="button" class="icon-option" data-icon="📁">📁</button>
+                  <button type="button" class="icon-option" data-icon="🔧">🔧</button>
+                  <button type="button" class="icon-option" data-icon="💡">💡</button>
+                  <button type="button" class="icon-option" data-icon="🎨">🎨</button>
+                  <button type="button" class="icon-option" data-icon="📊">📊</button>
+                  <button type="button" class="icon-option" data-icon="🔬">🔬</button>
+                  <button type="button" class="icon-option" data-icon="🎯">🎯</button>
+                  <button type="button" class="icon-option" data-icon="🌟">🌟</button>
+                  <button type="button" class="icon-option" data-icon="🚀">🚀</button>
+                  <button type="button" class="icon-option" data-icon="📚">📚</button>
+                  <button type="button" class="icon-option" data-icon="🎓">🎓</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Color</label>
+              <div class="color-picker">
+                <div class="color-preview" id="domain-color-preview" style="background: #808080;"></div>
+                <div class="color-grid" id="domain-color-grid">
+                  <button type="button" class="color-option" data-color="#61afef" style="background: #61afef;" title="Blue"></button>
+                  <button type="button" class="color-option" data-color="#98c379" style="background: #98c379;" title="Green"></button>
+                  <button type="button" class="color-option" data-color="#e5c07b" style="background: #e5c07b;" title="Yellow"></button>
+                  <button type="button" class="color-option" data-color="#e06c75" style="background: #e06c75;" title="Red"></button>
+                  <button type="button" class="color-option" data-color="#c678dd" style="background: #c678dd;" title="Purple"></button>
+                  <button type="button" class="color-option" data-color="#56b6c2" style="background: #56b6c2;" title="Cyan"></button>
+                  <button type="button" class="color-option" data-color="#d19a66" style="background: #d19a66;" title="Orange"></button>
+                  <button type="button" class="color-option" data-color="#be5046" style="background: #be5046;" title="Dark Red"></button>
+                  <button type="button" class="color-option" data-color="#89ca78" style="background: #89ca78;" title="Light Green"></button>
+                  <button type="button" class="color-option" data-color="#61afef" style="background: #61afef;" title="Light Blue"></button>
+                  <button type="button" class="color-option" data-color="#ff6b6b" style="background: #ff6b6b;" title="Coral"></button>
+                  <button type="button" class="color-option" data-color="#4ecdc4" style="background: #4ecdc4;" title="Turquoise"></button>
+                  <button type="button" class="color-option" data-color="#ffe66d" style="background: #ffe66d;" title="Light Yellow"></button>
+                  <button type="button" class="color-option" data-color="#a8e6cf" style="background: #a8e6cf;" title="Mint"></button>
+                  <button type="button" class="color-option" data-color="#ffd3b6" style="background: #ffd3b6;" title="Peach"></button>
+                  <button type="button" class="color-option" data-color="#ffaaa5" style="background: #ffaaa5;" title="Pink"></button>
+                  <button type="button" class="color-option" data-color="#ff8b94" style="background: #ff8b94;" title="Salmon"></button>
+                  <button type="button" class="color-option" data-color="#a0c4ff" style="background: #a0c4ff;" title="Sky Blue"></button>
+                  <button type="button" class="color-option" data-color="#bdb2ff" style="background: #bdb2ff;" title="Lavender"></button>
+                  <button type="button" class="color-option" data-color="#ffc6ff" style="background: #ffc6ff;" title="Rose"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column -->
+          <div class="domain-editor-col">
+            <div class="form-group">
+              <label for="domain-folder-input">Folder Path</label>
+              <input 
+                type="text" 
+                id="domain-folder-input" 
+                placeholder="01-DomainName"
+                style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+              >
+              <p class="form-hint">Auto-generated based on name and numbering setting</p>
+            </div>
+
+            <div class="form-group">
+              <label for="domain-weight-slider">RAG Weight: <span id="domain-weight-value">20%</span></label>
+              <input 
+                type="range" 
+                id="domain-weight-slider" 
+                min="0" 
+                max="100" 
+                value="20"
+                style="width: 100%;"
+              >
+              <p class="form-hint">Importance for search results (automatically normalized)</p>
+            </div>
+
+            <div class="form-group">
+              <label for="domain-keywords-input">Auto-tag Keywords</label>
+              <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+                <input 
+                  type="text" 
+                  id="domain-keywords-input" 
+                  placeholder="Type keyword and press Enter..."
+                  style="flex: 1; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);"
+                >
+                <button class="btn btn-secondary btn-sm" id="btn-suggest-keywords">
+                  <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
+                </button>
+              </div>
+              <div class="keywords-tags" id="domain-keywords-tags">
+                <!-- Keywords will appear here as chips -->
+              </div>
+              <div id="suggested-keywords" class="keywords-tags" style="margin-top: 8px; display: none;">
+                <!-- Suggested keywords will appear here -->
+              </div>
+              <p class="form-hint">Keywords used to auto-detect domain for queries</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="domain-editor-error" class="error-message hidden" style="margin-top: 12px; padding: 8px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; color: #ef4444; border-radius: 4px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-domain-editor">Cancel</button>
+        <button class="btn btn-primary" id="save-domain-editor">Save Domain</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    // Debug and initialize Lucide icons
+    console.log('Lucide loaded:', typeof lucide !== 'undefined');
+    window.addEventListener('load', () => {
+      console.log('Window loaded, initializing icons...');
+      if (window.lucide) {
+        try {
+          lucide.createIcons();
+          console.log('Icons initialized successfully');
+        } catch (error) {
+          console.error('Error initializing icons:', error);
+        }
+      } else {
+        console.error('Lucide not found');
+      }
+    });
+  </script>
+</body>
+</html>

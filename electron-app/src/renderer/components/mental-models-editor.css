@@ -1,0 +1,564 @@
+/**
+ * Mental Models Editor Styles
+ * Phase 16f - Full-featured mental models management UI
+ */
+
+/* Container & Overlay */
+.mental-models-editor-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mental-models-editor-container.hidden {
+  display: none;
+}
+
+.mental-models-editor-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+/* Modal */
+.mental-models-editor-modal {
+  position: relative;
+  width: 90%;
+  max-width: 1200px;
+  max-height: 90vh;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* Header */
+.mental-models-editor-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #3c3c3c;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mental-models-editor-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.mental-models-editor-close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.mental-models-editor-close:hover {
+  background: #3c3c3c;
+  color: #ffffff;
+}
+
+/* Body */
+.mental-models-editor-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* List View */
+.mental-models-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.mental-models-list-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.mental-models-active-indicator {
+  margin-bottom: 24px;
+  padding: 12px 16px;
+  background: #2a2a2a;
+  border-radius: 6px;
+  border-left: 3px solid #4a9eff;
+}
+
+.mental-models-active-indicator strong {
+  color: #ffffff;
+  margin-right: 8px;
+}
+
+/* Tier Sections */
+.mental-models-tier {
+  margin-bottom: 32px;
+}
+
+.mental-models-tier-title {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+}
+
+/* Grid */
+.mental-models-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+/* Model Card */
+.mental-models-card {
+  background: #2a2a2a;
+  border: 1px solid #3c3c3c;
+  border-radius: 8px;
+  padding: 16px;
+  transition: all 0.2s;
+}
+
+.mental-models-card:hover {
+  border-color: #4a9eff;
+  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.2);
+}
+
+.mental-models-card.mm-card-disabled {
+  opacity: 0.6;
+}
+
+.mental-models-card.mm-card-active {
+  border-color: #4ade80;
+  background: #2a3a2a;
+}
+
+.mm-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.mm-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: #ffffff;
+  flex: 1;
+}
+
+.mm-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: 8px;
+}
+
+.mm-card-description {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #aaaaaa;
+}
+
+.mm-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.mm-card-footer {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #3c3c3c;
+}
+
+/* Buttons */
+.mm-btn {
+  padding: 8px 16px;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  background: #2a2a2a;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mm-btn:hover {
+  background: #3c3c3c;
+  border-color: #4a9eff;
+}
+
+.mm-btn-primary {
+  background: #4a9eff;
+  border-color: #4a9eff;
+  color: #ffffff;
+}
+
+.mm-btn-primary:hover {
+  background: #3a8eef;
+  border-color: #3a8eef;
+}
+
+.mm-btn-secondary {
+  background: transparent;
+  color: #aaaaaa;
+}
+
+.mm-btn-secondary:hover {
+  background: #3c3c3c;
+  color: #ffffff;
+}
+
+.mm-btn-success {
+  background: #4ade80;
+  border-color: #4ade80;
+  color: #1e1e1e;
+}
+
+.mm-btn-success:hover {
+  background: #3ace70;
+  border-color: #3ace70;
+}
+
+.mm-btn-warning {
+  background: #fbbf24;
+  border-color: #fbbf24;
+  color: #1e1e1e;
+}
+
+.mm-btn-warning:hover {
+  background: #ebaf14;
+  border-color: #ebaf14;
+}
+
+.mm-btn-danger {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #ffffff;
+}
+
+.mm-btn-danger:hover {
+  background: #df3434;
+  border-color: #df3434;
+}
+
+.mm-btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.mm-btn-icon {
+  padding: 4px 8px;
+  font-size: 16px;
+  min-width: auto;
+}
+
+.mm-btn-toggle {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.mm-btn-right {
+  margin-left: auto;
+}
+
+/* Badges */
+.mm-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  background: #3c3c3c;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #aaaaaa;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.mm-badge-active {
+  background: #4ade80;
+  color: #1e1e1e;
+}
+
+.mm-badge-keyword {
+  background: #4a9eff;
+  color: #ffffff;
+}
+
+/* Edit View */
+.mental-models-edit-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.mental-models-edit-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  color: #ffffff;
+  flex: 1;
+}
+
+.mental-models-edit-form {
+  max-width: 800px;
+}
+
+.mm-form-group {
+  margin-bottom: 20px;
+}
+
+.mm-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.mm-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.mm-input,
+.mm-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: #2a2a2a;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  transition: all 0.2s;
+}
+
+.mm-input:focus,
+.mm-textarea:focus {
+  outline: none;
+  border-color: #4a9eff;
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.1);
+}
+
+.mm-textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.mm-help-text {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #888;
+}
+
+.mm-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.mm-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #aaaaaa;
+  cursor: pointer;
+}
+
+.mm-checkbox-label input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.mm-checkbox-large {
+  padding: 12px;
+  background: #2a2a2a;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+}
+
+.mm-form-actions {
+  display: flex;
+  gap: 12px;
+  padding-top: 24px;
+  border-top: 1px solid #3c3c3c;
+}
+
+/* Detail View */
+.mental-models-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.mental-models-detail-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  color: #ffffff;
+  flex: 1;
+}
+
+.mm-detail-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.mental-models-detail-body {
+  max-width: 800px;
+}
+
+.mm-detail-section {
+  margin-bottom: 32px;
+}
+
+.mm-detail-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+}
+
+.mm-detail-section p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #aaaaaa;
+}
+
+.mm-detail-section ul {
+  margin: 0;
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
+.mm-detail-section li {
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #aaaaaa;
+}
+
+.mm-code-block {
+  margin: 0;
+  padding: 16px;
+  background: #1a1a1a;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #ffffff;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.mm-detail-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.mm-detail-grid > div {
+  font-size: 13px;
+  color: #aaaaaa;
+}
+
+.mm-detail-grid strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #ffffff;
+}
+
+.mm-text-muted {
+  color: #666;
+  font-style: italic;
+}
+
+/* Toast Notifications */
+.mm-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 20px;
+  background: #2a2a2a;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 13px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.3s;
+  z-index: 10001;
+}
+
+.mm-toast-show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.mm-toast-success {
+  border-color: #4ade80;
+  background: #2a3a2a;
+}
+
+.mm-toast-error {
+  border-color: #ef4444;
+  background: #3a2a2a;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .mental-models-editor-modal {
+    width: 95%;
+    max-height: 95vh;
+  }
+  
+  .mental-models-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .mm-form-row {
+    grid-template-columns: 1fr;
+  }
+}
