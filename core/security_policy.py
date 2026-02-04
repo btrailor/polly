@@ -245,6 +245,18 @@ class SecurityPolicy:
             "allow_headers": ["*"]   # Can be restricted later if needed
         }
     
+    def get_package_install_config(self) -> Dict[str, Any]:
+        """Get package installation capability configuration."""
+        return self.get("capabilities.package_install", self.DEFAULT_POLICY["capabilities"]["package_install"])
+    
+    def get_shell_exec_config(self) -> Dict[str, Any]:
+        """Get shell execution capability configuration."""
+        return self.get("capabilities.shell_exec", self.DEFAULT_POLICY["capabilities"]["shell_exec"])
+    
+    def get_api_call_config(self) -> Dict[str, Any]:
+        """Get API call capability configuration."""
+        return self.get("capabilities.api_call", self.DEFAULT_POLICY["capabilities"]["api_call"])
+    
     @property
     def policy(self) -> Dict[str, Any]:
         """Get full policy dictionary."""
