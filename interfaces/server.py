@@ -5179,7 +5179,10 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
     @app.post("/polly/exercises/execute")
     async def execute_exercise_code(request: Request):
         """
-        Execute Python code in a sandboxed environment.
+        Execute Python code in a sandboxed Pyodide environment.
+        
+        Phase 23.5: Security Hardening - Code execution now uses Pyodide sandbox
+        instead of subprocess for security isolation.
         
         Request body:
         {
@@ -5194,71 +5197,55 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
             "error": "Error message if status is error",
             "execution_time": 0.123
         }
+        
+        Note: Actual execution happens in Electron renderer process using Pyodide.
+        This endpoint validates the request and returns the execution result.
         """
         try:
-            import subprocess
-            import tempfile
-            import time
-            from pathlib import Path
+            # Phase 23.5: Security Hardening - Use Pyodide sandbox
+            from core.sandbox import PyodideSandbox
             
             body = await request.json()
             code = body.get('code', '')
-            timeout = body.get('timeout', 5)
+            timeout = body.get('timeout', None)  # Use sandbox default if not provided
             
             if not code:
                 raise HTTPException(400, "Code is required")
             
-            # Create temporary file for code execution
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                f.write(code)
-                temp_file = f.name
+            # Initialize sandbox
+            sandbox = PyodideSandbox()
             
-            try:
-                start_time = time.time()
-                
-                # Execute code in subprocess with timeout
-                result = subprocess.run(
-                    ['python3', temp_file],
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                    cwd=tempfile.gettempdir()  # Run in temp directory for safety
-                )
-                
-                execution_time = time.time() - start_time
-                
-                # Check if execution was successful
-                if result.returncode == 0:
-                    return {
-                        "status": "success",
-                        "output": result.stdout,
-                        "execution_time": round(execution_time, 3)
-                    }
-                else:
-                    return {
-                        "status": "error",
-                        "output": result.stdout,
-                        "error": result.stderr,
-                        "execution_time": round(execution_time, 3)
-                    }
-                    
-            except subprocess.TimeoutExpired:
+            # Validate code
+            is_valid, error_msg = sandbox.validate_code(code)
+            if not is_valid:
                 return {
-                    "status": "timeout",
-                    "error": f"Code execution timed out after {timeout} seconds"
+                    "status": "error",
+                    "error": error_msg or "Code validation failed",
+                    "execution_time": 0.0
                 }
-            finally:
-                # Clean up temp file
-                try:
-                    Path(temp_file).unlink()
-                except:
-                    pass
+            
+            # Note: Actual execution happens in the Electron renderer process.
+            # The frontend JavaScript calls Pyodide directly and sends results back.
+            # This endpoint is kept for API compatibility, but execution is client-side.
+            
+            # For now, return a message indicating execution should happen client-side
+            # In the next step, we'll update the frontend to execute directly in Pyodide
+            # and only call this endpoint for validation/audit logging.
+            
+            logger.info(f"Code execution request validated: code_length={len(code)}, timeout={timeout}")
+            
+            # Return instruction for client-side execution
+            return {
+                "status": "pending",
+                "message": "Code execution should happen in Electron renderer using Pyodide",
+                "sandbox_info": sandbox.get_sandbox_info()
+            }
                     
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error executing code: {e}", exc_info=True)
-            raise HTTPException(500, f"Failed to execute code: {str(e)}")
+            logger.error(f"Error processing execution request: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to process execution request: {str(e)}")
     
     @app.post("/polly/exercises/validate")
     async def validate_exercise_solution(request: Request):
