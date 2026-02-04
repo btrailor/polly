@@ -1,0 +1,2012 @@
+"""
+Polly Core Engine
+The main orchestrator that brings everything together
+
+This is the heart of Polly - it coordinates:
+- RAG retrieval across all sources
+- Domain detection and context enrichment
+- Pattern learning and application
+- Intelligent model routing
+- Response generation
+"""
+
+from pathlib import Path
+from typing import List, Dict, Optional, Any, AsyncIterator
+from datetime import datetime
+import asyncio
+import logging
+
+from .config import PollyConfig, get_config
+from .domains import DomainEngine, DomainType, DOMAIN_PROMPTS
+from .rag import UnifiedRAG
+from .router import IntelligentRouter, UnifiedLLM, RoutingMode, ModelTier
+from .router_v2 import IntelligentRouterV2, ConfidenceLevel
+from .compression import CompressionManager
+from .skills.manager import SkillManager
+
+logger = logging.getLogger(__name__)
+
+
+class Polly:
+    """
+    The Polly AI Assistant.
+
+    Polly is your personal AI that:
+    - Understands your domains (Sigils, Signals, Scrolls, Glyphs, Grids)
+    - Searches your knowledge base (Obsidian, codebases, docs)
+    - Learns your patterns over time
+    - Routes intelligently between local and cloud models
+    - Maintains context across conversations
+    """
+
+    def __init__(self, config: Optional[PollyConfig] = None):
+        import time
+        _total_start = time.time()
+        
+        logger.info("=== POLLY INITIALIZATION STARTING ===")
+        print(f"\n[INIT {time.time() - _total_start:.2f}s] Starting Polly initialization", flush=True)
+        
+        self.config = config or get_config()
+        self.user_name = self.config.user_name
+        logger.info(f"Config loaded for user: {self.user_name}")
+        print(f"[INIT {time.time() - _total_start:.2f}s] Config loaded", flush=True)
+
+        # Initialize components (learners first so RAG can use pattern learner)
+        logger.info("Initializing domains...")
+        _step_start = time.time()
+        self._init_domains()
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_domains took {time.time() - _step_start:.2f}s", flush=True)
+        
+        logger.info("Initializing learners...")
+        _step_start = time.time()
+        self._init_learners()  # Initialize learners before RAG
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_learners took {time.time() - _step_start:.2f}s", flush=True)
+        
+        logger.info("Initializing RAG...")
+        _step_start = time.time()
+        self._init_rag()       # RAG can now use pattern_learner
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_rag took {time.time() - _step_start:.2f}s", flush=True)
+        
+        logger.info("Initializing router...")
+        _step_start = time.time()
+        self._init_router()
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_router took {time.time() - _step_start:.2f}s", flush=True)
+        
+        logger.info("Initializing notes sync...")
+        _step_start = time.time()
+        self._init_notes_sync()  # Initialize notes sync manager
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_notes_sync took {time.time() - _step_start:.2f}s", flush=True)
+        
+        logger.info("Initializing dedup...")
+        _step_start = time.time()
+        self._init_dedup()       # Initialize deduplication engine (Phase 21)
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_dedup took {time.time() - _step_start:.2f}s", flush=True)
+        
+        logger.info("Initializing compression...")
+        _step_start = time.time()
+        self._init_compression()  # Initialize compression manager (Phase 11c)
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_compression took {time.time() - _step_start:.2f}s", flush=True)
+        
+        logger.info("Initializing mental models...")
+        _step_start = time.time()
+        self._init_mental_models()  # Initialize mental models system (Phase 14)
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_mental_models took {time.time() - _step_start:.2f}s", flush=True)
+        
+        logger.info("Initializing skills...")
+        _step_start = time.time()
+        self._init_skills()  # Initialize skill system (Phase 16c)
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_skills took {time.time() - _step_start:.2f}s", flush=True)
+        
+        logger.info("Initializing personas...")
+        _step_start = time.time()
+        self._init_personas()  # Initialize persona system (Phase 11c)
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_personas took {time.time() - _step_start:.2f}s", flush=True)
+
+        # Conversation state
+        self.conversation_history: List[Dict] = []
+        self.session_start = datetime.now()
+        
+        # RAG metadata tracking for pattern learning (Phase 2 Enhancement)
+        self._rag_metadata = {
+            'queries': [],  # List of {query, chunks, collections, domains}
+            'domains': set(),  # Accumulated domains seen
+            'successful_files': set()  # Files that were retrieved
+        }
+
+        _total_time = time.time() - _total_start
+        print(f"[INIT {_total_time:.2f}s] ✅ POLLY INITIALIZATION COMPLETE (total: {_total_time:.2f}s)", flush=True)
+        logger.info(f"=== POLLY INITIALIZED FOR {self.user_name} (took {_total_time:.2f}s) ===")
+
+    def _init_domains(self):
+        """Initialize domain engine."""
+        self.domains = DomainEngine(self.config.domains)
+        logger.info("Domain engine initialized")
+
+    def _init_rag(self):
+        """Initialize RAG system."""
+        self.rag = UnifiedRAG(
+            db_path=self.config.vector_db_path,
+            ollama_host=self.config.ollama_host,
+            embedding_model=self.config.embedding_model,
+            chunk_size=self.config.get("rag.chunk_size", 800),
+            pattern_learner=self.pattern_learner  # Pass pattern learner for code pattern extraction
+        )
+        
+        # Skip BM25 index rebuild at startup to avoid blocking
+        # Index will be built lazily on first search if needed
+        if self.rag.use_hybrid_search:
+            logger.info("Hybrid search enabled - BM25 index will be built on first search")
+        
+        logger.info("RAG system initialized")
+
+    def _init_router(self):
+        """Initialize model router (v1 or v2 based on config)."""
+        # Check if router_v2 is enabled in config
+        use_router_v2 = self.config.get("routing_v2.enabled", False)
+        
+        if use_router_v2:
+            logger.info("Initializing router_v2 (multi-provider intelligent routing)")
+            self._init_router_v2()
+        else:
+            logger.info("Initializing router_v1 (legacy routing)")
+            self._init_router_v1()
+    
+    def _init_router_v1(self):
+        """Initialize legacy router (v1)."""
+        self.router = IntelligentRouter(
+            ollama_host=self.config.ollama_host,
+            anthropic_api_key=self.config.cloud_api_key,
+            default_mode=RoutingMode.AUTO
+        )
+        
+        # Skip availability check at init to avoid blocking/hanging
+        # Availability will be checked on first use
+
+        self.llm = UnifiedLLM(
+            router=self.router,
+            default_system_prompt=self._build_system_prompt()
+        )
+        logger.info("Router v1 initialized (availability will be checked on first use)")
+        
+        # Set flag to indicate which router is active
+        self.using_router_v2 = False
+    
+    def _init_router_v1_hybrid(self):
+        """Initialize legacy router (v1) for hybrid mode with router_v2.
+        
+        This method initializes router_v1 WITHOUT overwriting using_router_v2 flag.
+        Used when router_v2 is active but we want v1 available for local fallback.
+        """
+        self.router = IntelligentRouter(
+            ollama_host=self.config.ollama_host,
+            anthropic_api_key=self.config.cloud_api_key,
+            default_mode=RoutingMode.AUTO
+        )
+        
+        # Skip availability check at init to avoid blocking/hanging
+        # Availability will be checked on first use
+
+        self.llm = UnifiedLLM(
+            router=self.router,
+            default_system_prompt=self._build_system_prompt()
+        )
+        logger.info("Router v1 (hybrid) initialized for local fallback (availability will be checked on first use)")
+        # NOTE: Do NOT set using_router_v2 flag here - it should remain True
+    
+    def _init_router_v2(self):
+        """Initialize new multi-provider router (v2)."""
+        from .secrets_manager import get_secrets_manager
+        from .budget_manager import BudgetManager
+        
+        # Get API keys from secrets manager
+        secrets = get_secrets_manager()
+        anthropic_key = secrets.get_secret('anthropic', fallback_to_env=True)
+        openai_key = secrets.get_secret('openai', fallback_to_env=True)
+        github_token = secrets.get_secret('github', fallback_to_env=True)
+        
+        # Initialize budget manager
+        budget_db_path = Path(self.config.get("routing_v2.budget.database_path", "~/.polly/usage.db")).expanduser()
+        self.budget_manager = BudgetManager(
+            db_path=budget_db_path,
+            daily_limit=self.config.get("routing_v2.budget.daily_limit", 10.0),
+            monthly_limit=self.config.get("routing_v2.budget.monthly_limit", 200.0)
+        )
+        
+        # Initialize router_v2
+        self.router_v2 = IntelligentRouterV2(
+            anthropic_api_key=anthropic_key,
+            openai_api_key=openai_key,
+            github_token=github_token,
+            budget_manager=self.budget_manager
+        )
+        
+        # Skip provider validation at init to avoid blocking/hanging
+        # Providers will be validated on first use
+        logger.info("Router v2 initialized (providers will be validated on first use)")
+        
+        # Set default confidence level from config
+        confidence_str = self.config.get("routing_v2.default_confidence", "balanced")
+        self.default_confidence = ConfidenceLevel(confidence_str)
+        
+        logger.info(f"Router v2 initialized (Providers: {list(self.router_v2.providers.keys())})")
+        logger.info(f"Default confidence: {self.default_confidence.value}")
+        
+        # Set flag to indicate which router is active
+        # IMPORTANT: Set this BEFORE calling _init_router_v1 so it doesn't get overwritten
+        self.using_router_v2 = True
+        
+        # HYBRID MODE: Initialize router_v1 for local model fallback
+        # This allows us to use local Ollama when RAG context is strong
+        logger.info("Initializing router_v1 for hybrid local/cloud routing")
+        self._init_router_v1_hybrid()
+
+    def _init_learners(self):
+        """Initialize pattern learner, knowledge graph, learning tracker, and curriculum manager."""
+        try:
+            from learners.patterns import PatternLearner
+            from learners.graph import KnowledgeGraph
+            from learners.learning_tracker import LearningTracker
+            from learners.curriculum_manager import CurriculumManager
+            from learners.curriculum_template_manager import CurriculumTemplateManager
+
+            patterns_path = Path(self.config.get("patterns.storage_path", "~/.polly/patterns.json")).expanduser()
+            graph_path = Path(self.config.get("graph.storage_path", "~/.polly/knowledge_graph.json")).expanduser()
+            learning_path = Path(self.config.get("learning.storage_path", "~/.polly/learning.json")).expanduser()
+            vault_path = Path(self.config.get("vault_path", "~/polly/vault")).expanduser()
+
+            self.pattern_learner = PatternLearner(patterns_path)
+            self.knowledge_graph = KnowledgeGraph(graph_path)
+            self.learning_tracker = LearningTracker(learning_path)
+            self.curriculum_manager = CurriculumManager(vault_path)
+            self.template_manager = CurriculumTemplateManager(vault_path)
+            
+            # Use Case 2: Attach pattern learner to DomainEngine for enhanced detection
+            if self.domains and self.pattern_learner:
+                self.domains.set_pattern_learner(self.pattern_learner)
+            
+            logger.info(f"Learners initialized (tracking {len(self.learning_tracker.topics)} learning topics, {len(self.curriculum_manager.curricula)} curricula, {len(self.template_manager.list_templates())} templates)")
+        except Exception as e:
+            logger.warning(f"Could not initialize learners: {e}")
+            self.pattern_learner = None
+            self.knowledge_graph = None
+            self.learning_tracker = None
+            self.curriculum_manager = None
+            self.template_manager = None
+    
+    def _init_notes_sync(self):
+        """Initialize notes sync manager if enabled (supports both native and Obsidian)."""
+        import threading
+        
+        print("=== _init_notes_sync CALLED ===", flush=True)
+        logger.info("=== STARTING _init_notes_sync ===")
+        
+        # Check if notes sync is enabled in config
+        if not self.config.get("notes.sync.enabled", True):
+            logger.info("Notes sync disabled in config")
+            self.notes_sync = None
+            return
+        
+        # Initialize in background thread to avoid blocking
+        self.notes_sync = None  # Will be set by background thread
+        
+        def init_watcher_background():
+            """Initialize file watcher in background."""
+            try:
+                logger.info("[Background] Initializing notes file watcher...")
+                print("[Background] Starting file watcher initialization...", flush=True)
+                
+                from core.notes_file_watcher import NotesFileWatcher
+                from core.notes_source_manager import NotesSourceManager
+                
+                # Get the notes path from NotesSourceManager
+                manager = NotesSourceManager()
+                notes_path = manager.get_notes_path()
+                
+                watcher = NotesFileWatcher(notes_path)
+                watcher.start()
+                
+                # Atomically set the watcher
+                self.notes_sync = watcher
+                
+                logger.info("[Background] File watcher initialized successfully")
+                print("[Background] ✅ File watcher ready", flush=True)
+                
+            except Exception as e:
+                logger.error(f"[Background] File watcher initialization failed: {e}", exc_info=True)
+                print(f"[Background] ❌ File watcher failed: {e}", flush=True)
+                self.notes_sync = None
+        
+        # Start in background thread
+        watcher_thread = threading.Thread(target=init_watcher_background, daemon=True, name="FileWatcherInit")
+        watcher_thread.start()
+        
+        logger.info("File watcher initialization started in background")
+        print("File watcher initializing in background...", flush=True)
+    
+    def _init_dedup(self):
+        """Initialize deduplication engine (Phase 21)."""
+        logger.info("=== STARTING _init_dedup ===")
+        try:
+            from core.notes_dedup import init_dedup_engine
+            from core.notes_index import get_notes_index
+            
+            # Initialize dedup engine with RAG, NotesIndex, and config
+            logger.info("Getting notes index for dedup...")
+            notes_idx = get_notes_index()
+            logger.info("Initializing dedup engine...")
+            self.dedup_engine = init_dedup_engine(self.rag, notes_idx, self.config)
+            logger.info("Deduplication engine initialized")
+            logger.info("=== COMPLETED _init_dedup ===")
+            
+        except Exception as e:
+            logger.warning(f"Could not initialize deduplication engine: {e}")
+            self.dedup_engine = None
+
+    def _init_compression(self):
+        """Initialize compression manager (Phase 11c)."""
+        try:
+            self.compression_manager = CompressionManager()
+            
+            # Load compression settings from config
+            self._compression_enabled = self.config.get("compression.enabled", True)
+            self._compression_threshold = self.config.get("compression.message_threshold", 20)
+            self._compression_age_hours = self.config.get("compression.age_hours", 24)
+            self._keep_recent_count = self.config.get("compression.keep_recent", 10)
+            
+            logger.info(
+                f"Compression manager initialized "
+                f"(threshold: {self._compression_threshold} messages, "
+                f"keep recent: {self._keep_recent_count})"
+            )
+        except Exception as e:
+            logger.warning(f"Could not initialize compression manager: {e}")
+            self.compression_manager = None
+            self._compression_enabled = False
+    
+    def _init_mental_models(self):
+        """Initialize mental models system (Phase 14)."""
+        try:
+            from core.mental_models import MentalModelManager
+            
+            # Get storage path from config
+            storage_path = self.config.get("mental_models.storage_path", "~/.polly/mental_models.yaml")
+            
+            # Initialize manager with compressor for PIL compression
+            self.mental_model_manager = MentalModelManager(
+                storage_path=storage_path,
+                compressor=self.compression_manager.compressor if self.compression_manager else None
+            )
+            
+            logger.info(f"Mental model manager initialized with {len(self.mental_model_manager.models)} models")
+        except Exception as e:
+            logger.warning(f"Could not initialize mental models: {e}")
+            self.mental_model_manager = None
+    
+    def _init_skills(self):
+        """Initialize skill system (Phase 16c)."""
+        try:
+            # Initialize skill manager
+            self.skill_manager = SkillManager()
+            
+            # Get count of discovered skills
+            skill_count = len(self.skill_manager.metadata_cache)
+            
+            logger.info(f"Skill system initialized with {skill_count} skills discovered")
+        except Exception as e:
+            logger.warning(f"Could not initialize skill system: {e}")
+            self.skill_manager = None
+    
+    def _init_personas(self):
+        """Initialize persona system (Phase 11c)."""
+        try:
+            # Only initialize if router_v2 is enabled
+            if not self.using_router_v2:
+                logger.info("Persona system requires Router v2 - skipping initialization")
+                self.persona_manager = None
+                return
+            
+            from core.personas import PersonaManager
+            
+            # Initialize persona manager with router_v2, skill_manager, rag, and learning_tracker
+            self.persona_manager = PersonaManager(
+                router=self.router_v2,
+                skill_manager=self.skill_manager,
+                rag=self.rag,
+                learning_tracker=self.learning_tracker,
+                curriculum_manager=self.curriculum_manager,
+                template_manager=self.template_manager
+            )
+            
+            # Get list of available personas
+            available = PersonaManager.list_available_personas()
+            persona_names = [p['name'] for p in available]
+            
+            logger.info(f"Persona system initialized with {len(persona_names)} personas: {', '.join(persona_names)}")
+            
+        except Exception as e:
+            logger.warning(f"Could not initialize persona system: {e}")
+            self.persona_manager = None
+
+    def _build_system_prompt(self) -> str:
+        """Build the base system prompt."""
+        return f"""You are Polly, {self.user_name}'s personal AI assistant.
+
+You have deep knowledge of {self.user_name}'s work across five domains:
+
+**Sigils** (Code & Infrastructure): Docker, NAS, automation, Python, Rust, JavaScript, Lua
+**Signals** (Audio Programming): norns, SuperCollider, MIDI, synthesis, real-time audio
+**Scrolls** (Writing & Pedagogy): Obsidian notes, essays, popular education, Freire
+**Glyphs** (Visual Work): Design, UI/UX, visual systems
+**Grids** (Systems Thinking): Mental models, infinite games, constraint as meaning-creation
+
+Your knowledge base includes:
+- {self.user_name}'s Obsidian notes and writings
+- Project codebases and technical implementations  
+- GitHub repositories (synced and indexed)
+- Calendar events and reminders
+- Context7 reading library and annotations
+
+Your approach:
+- **Continuation over completion**: Design for infinite games, ongoing evolution
+- **Instruments over tracks**: Favor generative tools over fixed outputs
+- **Constraint as meaning-creation**: Boundaries that enable rather than limit
+- **Cross-domain synthesis**: Connect patterns across domains when useful
+
+When you have context from {self.user_name}'s knowledge base, cite your sources.
+When suggesting code, reference patterns from existing projects when relevant.
+When discussing concepts, connect them to {self.user_name}'s documented frameworks.
+
+IMPORTANT: When asked about GitHub repositories, the repositories listed in the context below ARE the repositories you have access to. List them directly from the context. Do not give generic instructions about using the GitHub API or web interface - you already have the repository information.
+
+Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
+"""
+
+    def _get_patterns_for_prompt(self, query: str, detected_domains: List, limit: int = 5) -> List:
+        """
+        Get most relevant patterns for current query.
+        
+        Scores patterns based on:
+        - Confidence (how established the pattern is)
+        - Occurrences (frequency)
+        - Recency (when last seen)
+        - Domain match (relevance to current query)
+        - Query keyword match (for query patterns)
+        
+        Args:
+            query: The user's query
+            detected_domains: List of detected domains
+            limit: Maximum number of patterns to return
+            
+        Returns:
+            List of Pattern objects, sorted by relevance score
+        """
+        if not self.pattern_learner:
+            return []
+        
+        # Get all patterns
+        all_patterns = list(self.pattern_learner.patterns.values())
+        
+        if not all_patterns:
+            return []
+        
+        # Extract domain values for comparison
+        domain_values = [d.value if hasattr(d, 'value') else str(d) for d in detected_domains]
+        
+        # Extract keywords from query for matching
+        query_keywords = set(query.lower().split())
+        
+        # Score patterns
+        scored = []
+        for pattern in all_patterns:
+            score = 0.0
+            
+            # 1. Confidence weight (0-3 points)
+            score += pattern.confidence * 3
+            
+            # 2. Occurrence weight (0-2 points, capped)
+            score += min(pattern.occurrences / 10.0, 2.0)
+            
+            # 3. Recency weight (0-2 points)
+            try:
+                days_ago = (datetime.now() - pattern.last_seen).days
+                if days_ago <= 7:
+                    score += 2.0  # Very recent
+                elif days_ago <= 30:
+                    score += 1.0  # Recent
+                elif days_ago <= 90:
+                    score += 0.5  # Somewhat recent
+            except:
+                pass
+            
+            # 4. Domain match (0-3 points)
+            if pattern.domains:
+                matching_domains = set(pattern.domains) & set(domain_values)
+                if matching_domains:
+                    # Give more weight if multiple domains match
+                    score += min(len(matching_domains) * 1.5, 3.0)
+            
+            # 5. Query keyword match for query patterns (0-2 points)
+            if pattern.pattern_type == "query":
+                # Check if any words from the pattern name appear in current query
+                pattern_words = set(pattern.name.lower().split())
+                matches = pattern_words & query_keywords
+                if matches:
+                    score += min(len(matches) * 0.5, 2.0)
+            
+            # 6. Code pattern boost for code-related queries (0-1 point)
+            if pattern.pattern_type == "code":
+                code_keywords = {'code', 'function', 'class', 'implement', 'write', 'create', 'pattern', 'error', 'handling'}
+                if query_keywords & code_keywords:
+                    score += 1.0
+            
+            # 7. Conceptual pattern boost for exploratory queries (0-1 point)
+            if pattern.pattern_type == "conceptual":
+                explore_keywords = {'how', 'what', 'why', 'explain', 'understand', 'learn', 'explore'}
+                if query_keywords & explore_keywords:
+                    score += 1.0
+            
+            scored.append((score, pattern))
+        
+        # Sort by score (descending)
+        scored.sort(key=lambda x: x[0], reverse=True)
+        
+        # Return top patterns
+        return [pattern for score, pattern in scored[:limit]]
+    
+    def _extract_keywords(self, query: str) -> List[str]:
+        """
+        Extract keywords from query for mental model matching.
+        
+        Args:
+            query: User's query string
+            
+        Returns:
+            List of meaningful keywords
+        """
+        import re
+        
+        # Tokenize and clean
+        words = re.findall(r'\b[a-z]+\b', query.lower())
+        
+        # Stop words to filter out
+        stop_words = {
+            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+            'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'during',
+            'before', 'after', 'above', 'below', 'between', 'under', 'again',
+            'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why',
+            'how', 'all', 'both', 'each', 'few', 'more', 'most', 'other', 'some',
+            'such', 'only', 'own', 'same', 'than', 'too', 'very', 'can', 'will',
+            'just', 'should', 'now', 'this', 'that', 'these', 'those', 'what',
+            'who', 'which', 'their', 'them', 'they', 'have', 'has', 'had', 'do',
+            'does', 'did', 'been', 'being', 'are', 'was', 'were', 'am', 'is'
+        }
+        
+        # Filter stop words and short words
+        meaningful_words = [
+            w for w in words 
+            if len(w) > 3 and w not in stop_words
+        ]
+        
+        return meaningful_words
+    
+    def _build_mental_models_context(
+        self,
+        query: str,
+        domain: Optional[str] = None,
+        page: Optional[str] = None,
+        persona: Optional[str] = None,
+        persona_mode: Optional[str] = None,
+        override_model_ids: Optional[List[str]] = None
+    ) -> str:
+        """
+        Build mental models context for system prompt.
+        
+        Gets relevant mental models based on three-tier activation,
+        compresses them to PIL format, and formats for injection.
+        
+        Args:
+            query: User's query
+            domain: Detected domain
+            page: Current page/view
+            persona: Active persona
+            persona_mode: Active mode within persona
+            override_model_ids: List of model IDs to force active (bypasses automatic activation)
+            
+        Returns:
+            Formatted mental models context string
+        """
+        if not self.mental_model_manager:
+            return ""
+        
+        try:
+            # If override is provided, get those specific models
+            if override_model_ids is not None:
+                models = []
+                for model_id in override_model_ids:
+                    model = self.mental_model_manager.get_model(model_id)
+                    if model:
+                        models.append(model)
+                logger.info(f"Using {len(models)} overridden mental models: {override_model_ids}")
+            else:
+                # Extract keywords from query
+                keywords = self._extract_keywords(query)
+                
+                # Get relevant models using three-tier scoring
+                models = self.mental_model_manager.get_models_for_context(
+                    domain=domain,
+                    page=page,
+                    persona=persona,
+                    persona_mode=persona_mode,
+                    keywords=keywords,
+                    enabled_only=True
+                )
+            
+            if not models:
+                logger.debug("No mental models activated for this query")
+                return ""
+            
+            # Compress each model to PIL format
+            compressed_models = []
+            for model in models:
+                try:
+                    model_dict = model.to_dict()
+                    
+                    # Use compressor if available
+                    if self.compression_manager and self.compression_manager.compressor:
+                        compressed = self.compression_manager.compressor.compress(
+                            model_dict,
+                            type='mental_model'
+                        )
+                        compressed_models.append(compressed)
+                    else:
+                        # Fallback: use model name and prompt injection
+                        compressed_models.append(f"{model.name}: {model.prompt_injection[:100]}")
+                except Exception as e:
+                    logger.warning(f"Failed to compress mental model {model.id}: {e}")
+            
+            if not compressed_models:
+                return ""
+            
+            # Format context
+            context = "\n\n## Active Mental Models (Compressed)\n\n"
+            context += "The following mental models guide your responses:\n\n"
+            
+            for compressed in compressed_models:
+                context += f"{compressed}\n\n"
+            
+            context += "Apply these frameworks to guide your thinking and responses.\n"
+            
+            logger.info(f"Added {len(compressed_models)} mental models to prompt")
+            
+            return context
+            
+        except Exception as e:
+            logger.error(f"Failed to build mental models context: {e}")
+            return ""
+    
+    def _should_use_local_model(
+        self, 
+        query: str, 
+        rag_results: List, 
+        provider_override: Optional[str] = None
+    ) -> bool:
+        """
+        Decide whether to use local Ollama model or cloud providers.
+        
+        Local model is preferred when:
+        1. Good RAG context exists (high-scoring results)
+        2. Query is straightforward retrieval/summarization
+        3. No explicit cloud provider override
+        
+        Cloud providers preferred when:
+        1. Weak or no RAG context
+        2. Complex reasoning required
+        3. User explicitly selects cloud provider
+        
+        Args:
+            query: User's query
+            rag_results: List of RAG search results
+            provider_override: Explicit provider selection
+            
+        Returns:
+            True to use local, False to use cloud
+        """
+        # Rule 1: If user explicitly selected a cloud provider, use cloud
+        if provider_override and provider_override != 'local':
+            logger.info(f"Using cloud: provider override = {provider_override}")
+            return False
+        
+        # Rule 2: Check RAG context quality
+        if not rag_results or len(rag_results) == 0:
+            logger.info("Using cloud: No RAG results found")
+            return False
+        
+        # Get thresholds from config
+        min_top_score = self.config.get("hybrid_routing.thresholds.min_top_score", 0.75)
+        min_high_quality_results = self.config.get("hybrid_routing.thresholds.min_high_quality_results", 2)
+        min_context_chars = self.config.get("hybrid_routing.thresholds.min_context_chars", 500)
+        exceptional_score = self.config.get("hybrid_routing.thresholds.exceptional_score", 0.85)
+        exceptional_min_results = self.config.get("hybrid_routing.thresholds.exceptional_min_results", 3)
+        
+        # Calculate RAG quality score
+        # - Top result score (0-1)
+        # - Number of high-quality results (score > 0.7)
+        # - Total context length
+        top_score = rag_results[0].score if rag_results else 0
+        high_quality_count = sum(1 for r in rag_results if r.score > 0.7)
+        total_context_chars = sum(len(r.chunk.content) for r in rag_results[:10])
+        
+        logger.info(f"RAG quality: top_score={top_score:.3f}, high_quality_count={high_quality_count}, context_chars={total_context_chars}")
+        logger.info(f"Thresholds: min_top={min_top_score}, min_quality={min_high_quality_results}, min_chars={min_context_chars}")
+        
+        # Strong RAG context thresholds (from config)
+        has_strong_rag = (
+            top_score > min_top_score and
+            high_quality_count >= min_high_quality_results and
+            total_context_chars > min_context_chars
+        )
+        
+        # Rule 3: Check query complexity indicators
+        complexity_keywords = self.config.get("hybrid_routing.patterns.complexity_keywords", [
+            'design', 'architect', 'implement', 'build', 'create',
+            'complex', 'advanced', 'optimize', 'refactor',
+            'how do i', 'how can i', 'how should i',
+            'best way', 'best practice', 'recommend'
+        ])
+        
+        query_lower = query.lower()
+        is_complex_query = any(keyword in query_lower for keyword in complexity_keywords)
+        
+        # Rule 4: Check if it's a simple retrieval query
+        retrieval_keywords = self.config.get("hybrid_routing.patterns.retrieval_keywords", [
+            'what is', 'what are', 'tell me about', 'show me',
+            'list', 'find', 'search', 'look up',
+            'do you have', 'what do you know', 'in my notes'
+        ])
+        is_retrieval_query = any(keyword in query_lower for keyword in retrieval_keywords)
+        
+        # Decision logic
+        if has_strong_rag and is_retrieval_query:
+            logger.info("Using local: Strong RAG + retrieval query")
+            return True
+        elif has_strong_rag and not is_complex_query:
+            logger.info("Using local: Strong RAG + simple query")
+            return True
+        elif top_score > exceptional_score and high_quality_count >= exceptional_min_results:
+            logger.info(f"Using local: Exceptional RAG quality (score={top_score:.3f}, count={high_quality_count})")
+            return True
+        else:
+            reason = "weak RAG" if not has_strong_rag else "complex query"
+            logger.info(f"Using cloud: {reason}")
+            return False
+
+    def _manage_conversation_context(self) -> None:
+        """
+        Manage conversation context with automatic compression.
+        
+        Strategy:
+        - Keep last N messages uncompressed for context continuity
+        - Compress older messages when threshold reached
+        - Store compressed data in compression.db
+        
+        This method is called before each query to check if compression
+        is needed based on message count or age thresholds.
+        """
+        # Skip if compression is disabled or not initialized
+        if not self._compression_enabled or not self.compression_manager:
+            return
+        
+        # Only compress if we have enough messages
+        if len(self.conversation_history) <= self._keep_recent_count:
+            return
+        
+        # Check if we should compress based on message count
+        message_threshold_reached = len(self.conversation_history) > self._compression_threshold
+        
+        # Check if we should compress based on age
+        age_threshold_reached = False
+        if self.conversation_history:
+            elapsed_hours = (datetime.now() - self.session_start).total_seconds() / 3600
+            age_threshold_reached = elapsed_hours >= self._compression_age_hours
+        
+        # Compress if either threshold is reached
+        if message_threshold_reached or age_threshold_reached:
+            logger.info(
+                f"Compression triggered: {len(self.conversation_history)} messages "
+                f"({elapsed_hours:.1f}h elapsed)"
+            )
+            
+            # Split conversation: old (to compress) vs recent (keep)
+            split_point = len(self.conversation_history) - self._keep_recent_count
+            old_messages = self.conversation_history[:split_point]
+            recent_messages = self.conversation_history[split_point:]
+            
+            # Compress old messages
+            conversation_id = f"session_{self.session_start.isoformat()}"
+            try:
+                result = self.compression_manager.compress_conversation(
+                    conversation_history=old_messages,
+                    conversation_id=conversation_id
+                )
+                
+                logger.info(
+                    f"Compressed {len(old_messages)} messages: "
+                    f"{result['compressed']['token_stats']['original']} -> "
+                    f"{result['compressed']['token_stats']['compressed']} tokens "
+                    f"({result['compressed']['token_stats']['ratio']:.1f}x ratio)"
+                )
+                
+                # **NEW: Feed compressed data to pattern learner (Phase 11c → 13a integration)**
+                if hasattr(self, 'pattern_learner') and self.pattern_learner:
+                    try:
+                        # Phase 2 Enhancement: Prepare RAG metadata for pattern learning
+                        rag_metadata = None
+                        if self._rag_metadata['queries']:
+                            rag_metadata = {
+                                'queries': self._rag_metadata['queries'],
+                                'domains': list(self._rag_metadata['domains']),
+                                'successful_files': list(self._rag_metadata['successful_files'])
+                            }
+                            logger.info(f"📊 Passing RAG metadata to pattern learner: {len(rag_metadata['queries'])} queries, {len(rag_metadata['domains'])} domains")
+                        
+                        learned = self.pattern_learner.learn_from_compressed(
+                            compressed_data=result['compressed'],
+                            conversation_id=conversation_id,
+                            rag_metadata=rag_metadata  # NEW: Pass actual RAG metadata
+                        )
+                        if learned['total'] > 0:
+                            logger.info(
+                                f"Pattern learner extracted {learned['total']} patterns "
+                                f"(query→chunk: {learned.get('query_chunk_patterns', 0)}, "
+                                f"domain→collection: {learned.get('domain_priority_patterns', 0)}, "
+                                f"file→topic: {learned.get('file_topic_patterns', 0)}, "
+                                f"conceptual: {learned.get('conceptual_patterns', 0)})"
+                            )
+                        
+                        # Reset RAG tracking for next compression cycle
+                        self._rag_metadata = {
+                            'queries': [],
+                            'domains': set(),
+                            'successful_files': set()
+                        }
+                        logger.debug("📊 Reset RAG metadata tracking for next cycle")
+                        
+                    except Exception as e:
+                        logger.warning(f"Failed to feed compressed data to pattern learner: {e}")
+                
+                # Update conversation_history to only keep recent messages
+                self.conversation_history = recent_messages
+                
+            except Exception as e:
+                logger.error(f"Compression failed: {e}")
+                # Don't modify conversation_history if compression fails
+    
+    def _build_context_for_llm(self) -> List[Dict]:
+        """
+        Build message context for LLM including compressed history.
+        
+        Returns:
+            List of messages with compressed summary + recent uncompressed messages
+        """
+        # Skip if compression is disabled or not initialized
+        if not self._compression_enabled or not self.compression_manager:
+            return self.conversation_history.copy()
+        
+        # Try to load compressed history if it exists
+        conversation_id = f"session_{self.session_start.isoformat()}"
+        try:
+            # Use load_context which handles decompression and formatting
+            messages = self.compression_manager.load_context(
+                conversation_id=conversation_id,
+                recent_messages=self.conversation_history
+            )
+            
+            # Check if compressed context was added
+            if messages and messages[0].get('compressed'):
+                logger.info(f"Added compressed context for conversation")
+            
+            return messages
+        
+        except Exception as e:
+            # Compression data doesn't exist or failed to load - that's OK
+            logger.debug(f"No compressed context available: {e}")
+            return self.conversation_history.copy()
+    
+    # ========== Persona Methods ==========
+    
+    async def activate_persona(self, persona_name: str) -> Dict:
+        """
+        Activate a persona for specialized workflows.
+        
+        Args:
+            persona_name: Name of persona to activate (e.g., "architect")
+        
+        Returns:
+            Dict with persona state
+        
+        Raises:
+            RuntimeError: If persona system not initialized
+            ValueError: If persona_name is unknown
+        """
+        if not self.persona_manager:
+            raise RuntimeError("Persona system not initialized. Enable routing_v2 in config.")
+        
+        state = self.persona_manager.activate_persona(persona_name)
+        logger.info(f"Activated {persona_name} persona (mode: {state.current_mode})")
+        
+        return state.to_dict()
+    
+    async def process_with_persona(self, user_message: str, metadata: Optional[Dict] = None) -> Dict:
+        """
+        Process user input with active persona.
+        
+        Args:
+            user_message: User's message
+            metadata: Optional metadata (related_notes, etc.)
+        
+        Returns:
+            Dict with PersonaResponse data
+        
+        Raises:
+            RuntimeError: If no persona is active
+        """
+        if not self.persona_manager:
+            raise RuntimeError("Persona system not initialized. Enable routing_v2 in config.")
+        
+        if not self.persona_manager.is_persona_active():
+            raise RuntimeError("No persona is active. Call activate_persona() first.")
+        
+        from core.personas import PersonaContext
+        
+        context = PersonaContext(
+            user_message=user_message,
+            conversation_history=self.conversation_history.copy(),
+            metadata=metadata or {}
+        )
+        
+        response = await self.persona_manager.process(context)
+        
+        # Add to conversation history
+        self.conversation_history.append({"role": "user", "content": user_message})
+        self.conversation_history.append({"role": "assistant", "content": response.content})
+        
+        logger.info(f"Processed with {self.persona_manager.get_active_persona_name()} "
+                   f"(mode: {response.mode}, actions: {len(response.actions)})")
+        
+        return response.to_dict()
+    
+    def switch_persona_mode(self, mode: str) -> Dict:
+        """
+        Switch active persona to a different mode.
+        
+        Args:
+            mode: Target mode name
+        
+        Returns:
+            Dict with updated persona state
+        
+        Raises:
+            RuntimeError: If no persona is active
+            ValueError: If mode is invalid
+        """
+        if not self.persona_manager:
+            raise RuntimeError("Persona system not initialized. Enable routing_v2 in config.")
+        
+        state = self.persona_manager.switch_mode(mode)
+        logger.info(f"Switched persona to {mode} mode")
+        
+        return state.to_dict()
+    
+    def deactivate_persona(self):
+        """Deactivate current persona"""
+        if self.persona_manager:
+            self.persona_manager.deactivate_persona()
+            logger.info("Deactivated persona")
+    
+    def get_persona_state(self) -> Optional[Dict]:
+        """Get current persona state"""
+        if not self.persona_manager:
+            return None
+        return self.persona_manager.get_state_dict()
+    
+    def list_available_personas(self) -> List[Dict]:
+        """Get list of available personas"""
+        if not self.persona_manager:
+            return []
+        from core.personas import PersonaManager
+        return PersonaManager.list_available_personas()
+
+    async def query(
+        self,
+        query: str,
+        context: Optional[Dict] = None,
+        mode: Optional[RoutingMode] = None,
+        tier: Optional[ModelTier] = None,
+        stream: bool = True,
+        confidence: Optional[str] = None,  # NEW: "fast", "balanced", "thorough"
+        provider_override: Optional[str] = None,  # NEW: "openai", "anthropic", "github", None
+        page: Optional[str] = None,  # NEW (Phase 14): Current page/view
+        persona: Optional[str] = None,  # NEW (Phase 14): Active persona
+        persona_mode: Optional[str] = None,  # NEW (Phase 14): Active mode within persona
+        mental_models_override: Optional[List[str]] = None  # NEW (Phase 14): Override active models
+    ) -> AsyncIterator[str]:
+        """
+        Process a query and generate a response.
+
+        This is the main entry point for Polly. It:
+        1. Detects relevant domains
+        2. Retrieves context from RAG
+        3. Gets relevant patterns and graph context
+        4. Activates relevant mental models (Phase 14)
+        5. Routes to appropriate model
+        6. Generates response
+
+        Args:
+            query: The user's query
+            context: Optional additional context (e.g., current file)
+            mode: Override routing mode (local/cloud/auto) [v1 only]
+            tier: Override model tier (fast/balanced/quality) [v1 only]
+            stream: Whether to stream the response
+            confidence: Router v2 tier ("fast"/"balanced"/"thorough")
+            provider_override: Force specific provider in router v2
+            page: Current page/view for mental model activation
+            persona: Active persona for mental model activation
+            persona_mode: Active mode within persona
+            mental_models_override: List of model IDs to force active (overrides automatic activation)
+
+        Yields:
+            Response text (chunks if streaming)
+        """
+        logger.info(f"[POLLY QUERY] Starting query: {query[:100]}")
+        
+        # 1. Detect domains
+        detected_domains = self.domains.detect_domains(query, context)
+        domain_names = [d.value for d in detected_domains if d != DomainType.UNKNOWN]
+        
+        # Get domain scores for better logging and potential future use
+        domain_scores = self.domains.detect_domains_with_scores(query, context)
+        logger.info(f"Detected domains: {[(d.value, f'{s:.2f}') for d, s in domain_scores[:3]]}")
+        
+        # Use Case 2: Record successful domain detection for pattern learning
+        # (User acceptance tracked implicitly - if they don't correct, it's accepted)
+        if detected_domains and detected_domains != [DomainType.UNKNOWN]:
+            self.domains.record_successful_detection(query, detected_domains, user_accepted=True)
+
+
+        # 2. Get RAG context
+        # Increase n_results for integration-heavy queries
+        n_results = self.config.get("rag.n_results", 5)
+        query_lower = query.lower()
+        
+        integration_keywords = ['github', 'repository', 'repositories', 'repos', 'repo', 'integration', 'integrations', 'pull request', 'issue', 'sync', 'synced']
+        # Use word boundaries to avoid matching 'pr' in 'practices'
+        import re
+        is_integration_query = any(
+            re.search(r'\b' + re.escape(keyword) + r'\b', query_lower) 
+            for keyword in integration_keywords
+        )
+        
+        # Also check recent conversation history (last 2 messages) for integration context
+        if not is_integration_query and self.conversation_history:
+            recent_messages = self.conversation_history[-4:]  # Last 2 exchanges (user + assistant)
+            recent_text = ' '.join(msg.get('content', '').lower() for msg in recent_messages)
+            is_integration_query = any(
+                re.search(r'\b' + re.escape(keyword) + r'\b', recent_text) 
+                for keyword in integration_keywords
+            )
+        
+        if is_integration_query:
+            n_results = 30  # Get more results per collection for integration queries
+        
+        # For ambiguous follow-up queries, use previous user query for RAG search
+        search_query = query
+        if query_lower in ['what about now?', 'and now?', 'how about now?', 'now?', 'still?']:
+            # Look for previous user message
+            for msg in reversed(self.conversation_history):
+                if msg.get('role') == 'user':
+                    search_query = msg.get('content', query)
+                    logger.info(f"Using previous query for RAG search: {search_query}")
+                    break
+        
+        # Special case: if user wants ALL GitHub repos, we need to fetch them differently
+        # Semantic search won't find all repos because the query "list all repos" doesn't match repo content
+        # This applies to:
+        # - Explicit "list all" queries
+        # - Questions about patterns/themes across repos
+        # - Any analysis of "my repositories" (plural)
+        fetch_all_github_repos = (
+            is_integration_query and 
+            'github' in query_lower and 
+            (
+                ('all' in query_lower and ('repo' in query_lower or 'repositor' in query_lower)) or
+                ('my' in query_lower and ('repos' in query_lower or 'repositories' in query_lower)) or
+                ('pattern' in query_lower or 'theme' in query_lower or 'across' in query_lower)
+            )
+        )
+        
+        if fetch_all_github_repos:
+            logger.info("Fetching ALL GitHub repos directly (bypassing semantic search)")
+            # Use direct metadata query instead of semantic search
+            # CRITICAL: Run in thread pool to avoid blocking event loop
+            import asyncio
+            rag_results = await asyncio.to_thread(self.rag.get_all_github_repos)
+            logger.info(f"Retrieved {len(rag_results)} GitHub repos")
+        else:
+            # Phase 13A Days 12-13: Expand query using conceptual patterns
+            expanded_query = search_query
+            expansion_concepts = []
+            used_pattern_id = None  # Track which pattern was used for expansion
+            
+            if self.pattern_learner:
+                try:
+                    # Extract key concepts from query
+                    query_concepts = set(search_query.lower().split())
+                    
+                    # Find conceptual patterns that match query concepts
+                    # Look for high-confidence patterns (≥ 0.6) to avoid noise
+                    for pattern in self.pattern_learner.patterns.values():
+                        if pattern.pattern_type != 'conceptual' or pattern.confidence < 0.6:
+                            continue
+                        
+                        concept1 = pattern.metadata.get('concept1', '').lower()
+                        concept2 = pattern.metadata.get('concept2', '').lower()
+                        
+                        # If either concept is in query, add the other for expansion
+                        if concept1 in query_concepts and concept2 not in query_concepts:
+                            expansion_concepts.append(concept2)
+                            used_pattern_id = pattern.id
+                            logger.info(f"📚 Query expansion: '{concept1}' → '{concept2}' (from pattern, confidence={pattern.confidence:.2f})")
+                            break  # Only expand with one concept to avoid noise
+                        elif concept2 in query_concepts and concept1 not in query_concepts:
+                            expansion_concepts.append(concept1)
+                            used_pattern_id = pattern.id
+                            logger.info(f"📚 Query expansion: '{concept2}' → '{concept1}' (from pattern, confidence={pattern.confidence:.2f})")
+                            break
+                    
+                    if expansion_concepts:
+                        expanded_query = f"{search_query} {expansion_concepts[0]}"
+                        logger.info(f"📚 Expanded query: '{search_query}' → '{expanded_query}'")
+                        
+                        # Phase 13A Days 12-13: Record pattern usage
+                        if used_pattern_id:
+                            self.pattern_learner.record_pattern_usage(used_pattern_id, was_helpful=True)
+                
+                except Exception as e:
+                    logger.warning(f"Query expansion failed: {e}")
+            
+            # Phase 13A Days 9-11: Pass detected domains to enable priority-based collection filtering
+            # Phase 13A Days 12-13: Use expanded query for better results
+            # CRITICAL: Run RAG search in thread pool to avoid blocking event loop
+            import asyncio
+            rag_results = await asyncio.to_thread(
+                self.rag.search,
+                query=expanded_query,  # Use expanded query instead of original
+                n_results=n_results,
+                domains=domain_names if domain_names else None
+            )
+        
+        # Phase 13A Days 9-11: Learn domain→collection priorities from search results
+        if self.pattern_learner and rag_results and domain_names and not fetch_all_github_repos:
+            try:
+                # Group results by collection to calculate performance
+                collection_results = {}
+                
+                for result in rag_results[:20]:  # Consider top 20 results
+                    coll = result.chunk.source_type
+                    if coll not in collection_results:
+                        collection_results[coll] = []
+                    collection_results[coll].append(result.score)
+                
+                # Calculate max score per collection (best result from that collection)
+                collection_scores = {
+                    coll: max(scores) 
+                    for coll, scores in collection_results.items()
+                }
+                
+                # Also record 0.0 score for collections that were searched but returned nothing
+                # This helps pattern learner understand which collections are NOT useful for this domain
+                all_searched_collections = self.rag.collections.keys()
+                for coll in all_searched_collections:
+                    if coll not in collection_scores:
+                        collection_scores[coll] = 0.0
+                
+                # Learn priorities for each detected domain
+                for domain in domain_names:
+                    self.pattern_learner.learn_domain_priorities(
+                        query=query,
+                        domain=domain,
+                        collection_results=collection_scores
+                    )
+                    logger.debug(f"⚡ Learned domain priorities for '{domain}' from {len(collection_scores)} collections")
+            except Exception as e:
+                logger.error(f"Failed to learn domain priorities: {e}")
+        
+        # Phase 2 Enhancement: Track RAG metadata for pattern learning
+        if rag_results and not fetch_all_github_repos:
+            try:
+                # Track top chunks (limit to top 5 to avoid noise)
+                top_chunks = [result.chunk.id for result in rag_results[:5]]
+                
+                # Track collections that were searched
+                collections_used = list(set(result.chunk.source_type for result in rag_results[:10]))
+                
+                # Track successful files
+                for result in rag_results[:5]:
+                    if result.chunk.filepath:
+                        self._rag_metadata['successful_files'].add(result.chunk.filepath)
+                
+                # Record this query
+                self._rag_metadata['queries'].append({
+                    'query': query,
+                    'chunks': top_chunks,
+                    'collections': collections_used
+                })
+                
+                # Accumulate domains
+                if domain_names:
+                    self._rag_metadata['domains'].update(domain_names)
+                
+                logger.debug(f"📊 Tracked RAG metadata: {len(top_chunks)} chunks, {len(collections_used)} collections, domains={domain_names}")
+            except Exception as e:
+                logger.warning(f"Failed to track RAG metadata: {e}")
+        
+        # Pattern-based retrieval boosting
+        # Boost RAG results that match learned patterns
+        if self.pattern_learner and rag_results:
+            try:
+                # Get relevant patterns for this query
+                relevant_patterns = self._get_patterns_for_prompt(query, detected_domains, limit=10)
+                
+                if relevant_patterns:
+                    # Extract pattern keywords for matching
+                    pattern_keywords = set()
+                    for pattern in relevant_patterns:
+                        # Add words from pattern name and description
+                        pattern_keywords.update(pattern.name.lower().split())
+                        pattern_keywords.update(pattern.description.lower().split())
+                        
+                        # For code patterns, add example code keywords
+                        if pattern.pattern_type == "code" and pattern.examples:
+                            for example in pattern.examples[:2]:
+                                # Extract meaningful words from code (simple approach)
+                                code_words = [w for w in example.lower().split() if len(w) > 3]
+                                pattern_keywords.update(code_words[:10])
+                    
+                    # Remove common words
+                    stopwords = {'the', 'this', 'that', 'with', 'from', 'have', 'your', 'you', 'how', 'what', 'when', 'where'}
+                    pattern_keywords -= stopwords
+                    
+                    # Boost results that match pattern keywords
+                    boosted_count = 0
+                    for result in rag_results:
+                        result_text = (result.chunk.content + " " + result.chunk.filepath).lower()
+                        
+                        # Count keyword matches
+                        matches = sum(1 for kw in pattern_keywords if kw in result_text)
+                        
+                        if matches > 0:
+                            # Boost score based on number of matches
+                            boost_factor = 1.0 + (matches * 0.05)  # 5% boost per match, max 50%
+                            boost_factor = min(boost_factor, 1.5)
+                            result.score = min(result.score * boost_factor, 0.98)  # Cap at 0.98 to not override critical boosts
+                            boosted_count += 1
+                    
+                    if boosted_count > 0:
+                        logger.info(f"Pattern-based boost applied to {boosted_count} results")
+                        # Re-sort after boosting
+                        rag_results.sort(key=lambda r: r.score, reverse=True)
+            except Exception as e:
+                logger.error(f"Failed to apply pattern-based boosting: {e}")
+        
+        # Boost integration results ONLY if this is an integration-specific query
+        if is_integration_query:
+            github_specific = any(word in query_lower for word in ['github', 'repository', 'repositories', 'repos', 'repo'])
+            
+            for result in rag_results:
+                # Boost results from integration collections or with github source metadata
+                if (result.chunk.source_type.startswith('integration_') or 
+                    result.chunk.metadata.get('source') == 'github'):
+                    # For GitHub-specific queries, give MASSIVE boost to ensure they appear
+                    if github_specific:
+                        result.score = 0.99  # Force to top
+                    else:
+                        result.score = min(result.score * 1.5, 1.0)  # Normal boost
+            
+            # Re-sort after boosting
+            rag_results.sort(key=lambda r: r.score, reverse=True)
+        
+        # Save original search results before filtering
+        rag_results_original = rag_results
+
+        # Skip domain filtering for integration queries to ensure GitHub/integration data is visible
+        if is_integration_query:
+            logger.info("Skipping domain filtering for integration query")
+            filtered_search_results = rag_results_original
+            
+            # Special case: if asking specifically about listing GitHub repos, ONLY include GitHub repos
+            if 'github' in query_lower and ('list' in query_lower or 'all' in query_lower) and ('repo' in query_lower or 'repositor' in query_lower):
+                logger.info("GitHub repo listing query - filtering to ONLY GitHub repos")
+                filtered_search_results = [
+                    r for r in rag_results_original 
+                    if (r.chunk.source_type.startswith('integration_') or 
+                        r.chunk.metadata.get('source') == 'github')
+                ]
+                logger.info(f"Filtered to {len(filtered_search_results)} GitHub-only results")
+        else:
+            # Filter by domain relevance
+            rag_results = self.domains.filter_sources_by_domain(
+                [{'filepath': r.chunk.filepath, 'content': r.chunk.content} for r in rag_results_original],
+                detected_domains
+            )
+            
+            # Convert filtered results back to SearchResult objects for formatting
+            # Keep original rag_results and match by filepath
+            filtered_search_results = [
+                r for r in rag_results_original 
+                if any(r.chunk.filepath == s['filepath'] for s in rag_results)
+            ]
+        
+        # Increase max_tokens for integration queries to fit more repos
+        max_context_tokens = 8000 if is_integration_query else 3000
+        
+        # Use compact format ONLY if explicitly listing repos (not for analysis queries)
+        use_compact_format = (
+            fetch_all_github_repos if 'fetch_all_github_repos' in locals() else False
+        ) and ('list' in query_lower or 'show' in query_lower)
+        
+        # Debug: log what we're formatting
+        if is_integration_query:
+            github_count = sum(1 for r in filtered_search_results if (
+                r.chunk.source_type.startswith('integration_') or 
+                r.chunk.metadata.get('source') == 'github'
+            ))
+            logger.info(f"Formatting {len(filtered_search_results)} results ({github_count} GitHub) for context")
+        
+        rag_context = self.rag.format_context(
+            filtered_search_results,
+            max_tokens=max_context_tokens,
+            compact_github=use_compact_format
+        )
+        
+        # Debug: Log for Practices queries
+        if 'practices' in query_lower and 'exercises' in query_lower:
+            practices_count = sum(1 for r in filtered_search_results if 'Practices' in r.chunk.filepath and 'Exercises' in r.chunk.filepath)
+            logger.info(f"PRACTICES QUERY DEBUG:")
+            logger.info(f"  - Filtered results: {len(filtered_search_results)}")
+            logger.info(f"  - Practices chunks: {practices_count}")
+            logger.info(f"  - RAG context length: {len(rag_context)} chars")
+            logger.info(f"  - 'PRACTICE' mentions in context: {rag_context.count('PRACTICE')}")
+            logger.info(f"  - Context preview: {rag_context[:300]}...")
+        
+        # Debug: Check if GitHub repos are in the formatted context
+        # Only debug user queries, not title generation
+        is_title_query = 'generate a short' in query_lower or 'descriptive title' in query_lower
+        if is_integration_query and 'github' in query_lower and not is_title_query:
+            has_github = 'github' in rag_context.lower() or 'repository' in rag_context.lower()
+            logger.info(f"RAG context has GitHub content: {has_github}, length: {len(rag_context)} chars")
+            if has_github:
+                # Log first 500 chars to see what's there
+                logger.info(f"Context preview: {rag_context[:500]}...")
+            
+            # Write detailed debug info to file
+            import os
+            debug_file = os.path.expanduser("~/.polly/debug_github_context.txt")
+            with open(debug_file, "w") as f:
+                f.write(f"=== GitHub Query Debug - {datetime.now()} ===\n\n")
+                f.write(f"Query: {query}\n\n")
+                f.write(f"Total filtered results: {len(filtered_search_results)}\n")
+                f.write(f"GitHub results: {github_count}\n\n")
+                f.write("=== Filtered Search Results ===\n")
+                for i, r in enumerate(filtered_search_results[:10]):
+                    f.write(f"\n[{i}] Score: {r.score:.3f}\n")
+                    f.write(f"Source: {r.chunk.source_type}\n")
+                    f.write(f"Metadata: {r.chunk.metadata}\n")
+                    f.write(f"Content: {r.chunk.content[:200]}...\n")
+                f.write(f"\n\n=== Formatted RAG Context ({len(rag_context)} chars) ===\n")
+                f.write(rag_context)
+                # Save this for later when we build the full prompt
+                self._debug_file = debug_file
+                self._debug_query = query_lower
+            logger.info(f"Debug info written to {debug_file}")
+
+        # 3. Get pattern context
+        pattern_context = ""
+        if self.pattern_learner:
+            try:
+                relevant_patterns = self._get_patterns_for_prompt(query, detected_domains, limit=5)
+                if relevant_patterns:
+                    pattern_context = "\n\n## Learned Patterns from Your Work\n"
+                    pattern_context += f"You've observed these patterns in how {self.user_name} works:\n\n"
+                    
+                    for p in relevant_patterns:
+                        # Format based on pattern type
+                        if p.pattern_type == "query":
+                            pattern_context += f"- **{p.name}**: You ask this type of question often (seen {p.occurrences} times)\n"
+                        elif p.pattern_type == "code":
+                            pattern_context += f"- **{p.name}**: {p.description} (found in {p.occurrences} files)\n"
+                            if p.examples:
+                                # Include a code snippet example
+                                example = p.examples[0][:150]
+                                pattern_context += f"  Example: `{example}...`\n"
+                        elif p.pattern_type == "conceptual":
+                            pattern_context += f"- **{p.name}**: {p.description}\n"
+                        elif p.pattern_type == "workflow":
+                            pattern_context += f"- **{p.name}**: {p.description} (observed {p.occurrences} times)\n"
+                        else:
+                            pattern_context += f"- **{p.name}**: {p.description}\n"
+                    
+                    pattern_context += "\nUse these patterns to anticipate needs, reference familiar tools/concepts, and provide more relevant responses.\n"
+                    logger.info(f"Added {len(relevant_patterns)} patterns to prompt")
+                else:
+                    logger.debug("No relevant patterns found")
+            except Exception as e:
+                logger.error(f"Failed to retrieve patterns: {e}")
+        
+        # 3a. Get mental models context (Phase 14)
+        mental_models_context = ""
+        if self.mental_model_manager:
+            try:
+                mental_models_context = self._build_mental_models_context(
+                    query=query,
+                    domain=domain_names[0] if domain_names else None,
+                    page=page,
+                    persona=persona,
+                    persona_mode=persona_mode,
+                    override_model_ids=mental_models_override
+                )
+            except Exception as e:
+                logger.error(f"Failed to retrieve mental models: {e}")
+
+        # 4. Get knowledge graph context
+        graph_context = ""
+        if self.knowledge_graph:
+            graph_context = self.knowledge_graph.get_context_for_query(query, detected_domains)
+
+        # 5. Build augmented prompt
+        # Include cross-domain connections in the domain prompt for multi-domain queries
+        domain_prompt = self.domains.get_domain_prompt(detected_domains, include_cross_domain=True)
+        
+        # Check if we have integration data in the context
+        integration_note = ""
+        if "Your Connected GitHub Account" in rag_context:
+            # Count how many repos are in the context
+            github_repo_count = rag_context.count("Your Connected GitHub Account - Repository:")
+            if 'github' in query_lower and ('repo' in query_lower or 'repositor' in query_lower):
+                integration_note = f"\n\n**CRITICAL**: The user is asking about GitHub repositories. The context below lists {github_repo_count} repositories from their connected GitHub account. These ARE the repositories they're asking about. List them directly from the context below - do NOT give generic instructions about using the GitHub API or web interface.\n"
+            else:
+                integration_note = "\n\n**IMPORTANT**: The context below includes data from the user's connected GitHub account. This is live data from their actual repositories.\n"
+        
+        # Log what RAG found for debugging
+        if rag_context:
+            logger.info(f"RAG context retrieved ({len(rag_context)} chars)")
+            # Log first 200 chars to see what was found
+            logger.info(f"RAG preview: {rag_context[:200]}...")
+        else:
+            logger.warning("No RAG context found for query")
+
+        # Special instructions for Practices queries
+        practices_instruction = ""
+        if 'practices' in query_lower and 'exercises' in query_lower:
+            practices_instruction = """
+
+**CRITICAL INSTRUCTION FOR THIS QUERY**: The user is asking about their "Practices and Exercises" framework. The context above contains the ACTUAL practices (PRACTICE 1-10) and exercises (Exercise X.Y) from their document. You MUST:
+
+1. Reference the EXACT practice and exercise names from the context (e.g., "PRACTICE 2: Compose and Compost", "Exercise 3.1: Single-Parameter Instrument")
+2. Quote or paraphrase the ACTUAL exercise descriptions provided in the context
+3. DO NOT invent new exercises or practices
+4. DO NOT give generic advice like "take a walk" or "practice mindfulness" unless that's literally what the exercise says
+
+If you suggest an exercise, copy the description directly from the context above."""
+
+        augmented_system = f"""{self._build_system_prompt()}
+
+{domain_prompt}
+
+## Context from {self.user_name}'s Knowledge Base{integration_note}
+
+**IMPORTANT**: The context below contains information from {self.user_name}'s actual notes and knowledge base. You MUST reference and use this specific information when answering questions. If the user asks about a topic covered in the context, draw directly from those notes.
+
+{rag_context if rag_context else "No directly relevant notes found."}
+
+{pattern_context}
+
+{mental_models_context}
+
+{graph_context}
+
+When answering questions, prioritize information from the knowledge base context above. Cite specific notes and details when available.{practices_instruction}
+"""
+
+        # Debug: Save the full augmented system prompt for GitHub queries
+        if hasattr(self, '_debug_file') and hasattr(self, '_debug_query'):
+            if 'github' in self._debug_query and ('repo' in self._debug_query or 'repositor' in self._debug_query):
+                with open(self._debug_file, "a") as f:
+                    f.write(f"\n\n=== FULL AUGMENTED SYSTEM PROMPT ({len(augmented_system)} chars) ===\n")
+                    f.write(augmented_system)
+                    f.write(f"\n\n=== USER QUERY ===\n{query}\n")
+            # Clean up
+            delattr(self, '_debug_file')
+            delattr(self, '_debug_query')
+
+        # 6. Manage conversation context (compress if needed)
+        self._manage_conversation_context()
+
+        # 7. Build messages with compressed context
+        messages = self._build_context_for_llm()
+        messages.append({'role': 'user', 'content': query})
+
+        # 8. Generate response - use hybrid routing (local vs cloud based on RAG context)
+        full_response = ""
+        response_metadata = {}  # Store provider, model, cost info
+        
+        if self.using_router_v2:
+            # Router V2 Hybrid Mode: Check RAG context quality to decide local vs cloud
+            try:
+                # Decide routing mode: local (Ollama) vs cloud (router_v2)
+                use_local = self._should_use_local_model(
+                    query=query,
+                    rag_results=filtered_search_results,
+                    provider_override=provider_override
+                )
+                
+                if use_local:
+                    # Use local Ollama model (good RAG context, cost-effective)
+                    logger.info("Router v2 Hybrid: Using LOCAL model (strong RAG context)")
+                    
+                    # Use self.llm (from router_v1 hybrid init) for local Ollama
+                    async for chunk in self.llm.chat(
+                        messages=messages,
+                        system_prompt=augmented_system,
+                        stream=stream
+                    ):
+                        full_response += chunk
+                        yield chunk
+                    
+                    # Set metadata indicating local model use
+                    response_metadata = {
+                        'provider': 'ollama',
+                        'model': self.router.local_model or 'qwen2.5-coder:7b',
+                        'cost': 0.0,  # Local is free
+                        'tokens_in': len(augmented_system.split()) + sum(len(m.get('content', '').split()) for m in messages),
+                        'tokens_out': len(full_response.split()),
+                        'estimated': True,
+                        'routing_reason': 'Strong RAG context - using local model'
+                    }
+                    self._last_response_metadata = response_metadata
+                    
+                else:
+                    # Use cloud providers via router_v2 (weak RAG or complex query)
+                    logger.info("Router v2 Hybrid: Using CLOUD model (weak RAG or complex query)")
+                    
+                    # Map confidence string to ConfidenceLevel enum
+                    if confidence:
+                        confidence_level = ConfidenceLevel(confidence)
+                    else:
+                        confidence_level = self.default_confidence
+                    
+                    logger.info(f"Router v2: Using confidence level '{confidence_level.value}'")
+                    
+                    # Get routing decision
+                    routing_decision = await self.router_v2.route(
+                        messages=messages,
+                        confidence=confidence_level,
+                        max_tokens=4096
+                    )
+                    
+                    logger.info(f"Router v2 decision: {routing_decision.reason}")
+                    
+                    # Use provider_override if specified
+                    selected_provider = routing_decision.provider
+                    selected_model = routing_decision.model
+                    
+                    if provider_override and provider_override in self.router_v2.providers:
+                        selected_provider = self.router_v2.providers[provider_override]
+                        # Use same model from routing decision
+                        logger.info(f"Router v2: Overriding to provider '{provider_override}'")
+                    
+                    # Complete with selected provider
+                    if stream:
+                        # Streaming response
+                        collected_chunks = []
+                        async for chunk in selected_provider.stream(
+                            messages=messages,
+                            model=selected_model,
+                            max_tokens=4096,
+                            system=augmented_system
+                        ):
+                            full_response += chunk
+                            collected_chunks.append(chunk)
+                            yield chunk
+                        
+                        # Estimate tokens and cost for streaming (approximate)
+                        # TODO: Get actual token counts from provider if available
+                        tokens_in = len(augmented_system.split()) + sum(len(m.get('content', '').split()) for m in messages)
+                        tokens_out = len(full_response.split())
+                        cost = selected_provider.estimate_cost(tokens_in + tokens_out, selected_model)
+                        
+                        response_metadata = {
+                            'provider': selected_provider.name,
+                            'model': selected_model,
+                            'cost': cost,
+                            'tokens_in': tokens_in,
+                            'tokens_out': tokens_out,
+                            'estimated': True
+                        }
+                        
+                    else:
+                        # Non-streaming response
+                        response = await selected_provider.complete(
+                            messages=messages,
+                            model=selected_model,
+                            max_tokens=4096,
+                            system=augmented_system
+                        )
+                        
+                        full_response = response.content
+                        yield full_response
+                        
+                        response_metadata = {
+                            'provider': response.provider,
+                            'model': response.model,
+                            'cost': response.cost,
+                            'tokens_in': response.tokens_in,
+                            'tokens_out': response.tokens_out,
+                            'estimated': False
+                        }
+                    
+                    # Track budget usage
+                    if self.budget_manager:
+                        await self.budget_manager.record_usage(
+                            provider=response_metadata['provider'],
+                            model=response_metadata['model'],
+                            cost=response_metadata['cost'],
+                            tokens_in=response_metadata['tokens_in'],
+                            tokens_out=response_metadata['tokens_out']
+                        )
+                        logger.info(f"Budget tracking: ${response_metadata['cost']:.4f} for {response_metadata['tokens_in'] + response_metadata['tokens_out']} tokens")
+                    
+                    # Store metadata for access by caller
+                    self._last_response_metadata = response_metadata
+                
+            except Exception as e:
+                logger.error(f"Router v2 failed: {e}", exc_info=True)
+                # Fall back to router v1
+                logger.warning("Falling back to router v1")
+                async for chunk in self.llm.chat(
+                    messages=messages,
+                    system_prompt=augmented_system,
+                    stream=stream
+                ):
+                    full_response += chunk
+                    yield chunk
+        else:
+            # Router V1 path - legacy routing
+            async for chunk in self.llm.chat(
+                messages=messages,
+                system_prompt=augmented_system,
+                stream=stream
+            ):
+                full_response += chunk
+                yield chunk
+
+        # 9. Update conversation history
+        self.conversation_history.append({'role': 'user', 'content': query})
+        self.conversation_history.append({'role': 'assistant', 'content': full_response})
+
+        # 10. Learn from interaction
+        if self.pattern_learner:
+            try:
+                self.pattern_learner.record_query(query, detected_domains, full_response)
+                self.pattern_learner.save_patterns()  # EXPLICITLY SAVE
+                logger.info(f"Recorded query pattern: {query[:50]}...")
+            except Exception as e:
+                logger.error(f"Failed to record pattern: {e}")
+
+        if self.knowledge_graph:
+            self.knowledge_graph.extract_entities_from_text(query, detected_domains)
+            self.knowledge_graph.extract_entities_from_text(full_response, detected_domains)
+
+    async def index(
+        self,
+        obsidian: bool = True,
+        codebases: bool = True,
+        force: bool = False
+    ) -> Dict[str, int]:
+        """
+        Index knowledge sources (runs in background to avoid blocking).
+
+        Args:
+            obsidian: Whether to index Obsidian vault
+            codebases: Whether to index codebases
+            force: Force re-indexing of all files
+
+        Returns:
+            Dict with counts of indexed files per source
+        """
+        # Run blocking indexing operations in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        
+        def _sync_index():
+            results = {}
+            
+            if obsidian and self.config.obsidian_vault_path:
+                logger.info(f"Indexing Obsidian vault: {self.config.obsidian_vault_path}")
+                results['obsidian'] = self.rag.index_obsidian_vault(
+                    self.config.obsidian_vault_path,
+                    force=force
+                )
+
+            if codebases:
+                codebase_paths = self.config.get("codebases.paths", [])
+                excludes = self.config.get("codebases.exclude", [])
+                total = 0
+                for path in codebase_paths:
+                    logger.info(f"Indexing codebase: {path}")
+                    total += self.rag.index_codebase(
+                        Path(path),
+                        excludes=excludes,
+                        force=force
+                    )
+                results['codebases'] = total
+
+            return results
+        
+        # Run in thread pool executor to avoid blocking
+        results = await loop.run_in_executor(None, _sync_index)
+        return results
+
+    def clear_conversation(self):
+        """Clear conversation history."""
+        self.conversation_history = []
+        self.session_start = datetime.now()
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get Polly statistics."""
+        stats = {
+            'user': self.user_name,
+            'session_start': self.session_start.isoformat(),
+            'conversation_length': len(self.conversation_history),
+            'rag': self.rag.get_stats()
+        }
+
+        if self.pattern_learner:
+            stats['patterns'] = len(self.pattern_learner.patterns) + len(self.pattern_learner.query_patterns)
+
+        if self.knowledge_graph:
+            stats['graph'] = self.knowledge_graph.get_stats()
+
+        return stats
+    
+    def get_last_response_metadata(self) -> Optional[Dict[str, Any]]:
+        """
+        Get metadata from the last response (router v2 only).
+        
+        Returns:
+            Dict with provider, model, cost, tokens if router_v2 was used,
+            None otherwise.
+        
+        Example response:
+            {
+                'provider': 'github',
+                'model': 'openai/gpt-4o',
+                'cost': 0.0023,
+                'tokens_in': 150,
+                'tokens_out': 200,
+                'estimated': False
+            }
+        """
+        return getattr(self, '_last_response_metadata', None)
+
+    # ==================== Phase 13A Day 16: Pattern Enhancement APIs ====================
+    
+    def get_pattern_stats(self) -> Dict:
+        """
+        Get pattern learning statistics.
+        
+        Phase 13A Day 16: Pattern Enhancement APIs
+        
+        Returns:
+            Dict with pattern counts and statistics
+        
+        Example:
+            >>> stats = polly.get_pattern_stats()
+            >>> print(f"Total patterns: {stats['total_patterns']}")
+        """
+        if not self.pattern_learner:
+            return {}
+        
+        return self.pattern_learner.get_pattern_stats()
+    
+    def get_patterns_for_concept(self, concept: str) -> List[Dict]:
+        """
+        Get patterns related to a concept.
+        
+        Phase 13A Day 16: Pattern Enhancement APIs
+        
+        Args:
+            concept: The concept to search for (e.g., "docker", "python")
+        
+        Returns:
+            List of pattern dicts with concept pairs and confidence
+        
+        Example:
+            >>> patterns = polly.get_patterns_for_concept("docker")
+            >>> for p in patterns:
+            >>>     print(f"{p['concept1']} ↔ {p['concept2']}: {p['confidence']:.2f}")
+        """
+        if not self.pattern_learner:
+            return []
+        
+        patterns = self.pattern_learner.get_conceptual_patterns_for_concept(concept)
+        return [
+            {
+                'concept1': p.metadata.get('concept1'),
+                'concept2': p.metadata.get('concept2'),
+                'confidence': p.confidence,
+                'occurrences': p.occurrences,
+                'usefulness_ratio': p.times_helpful / p.times_used if p.times_used > 0 else 0.0
+            }
+            for p in patterns
+        ]
+    
+    def get_domain_collection_priorities(self, domain: str) -> Dict[str, float]:
+        """
+        Get collection priorities for a domain.
+        
+        Phase 13A Day 16: Pattern Enhancement APIs
+        
+        Args:
+            domain: The domain to get priorities for (e.g., "python", "docker")
+        
+        Returns:
+            Dict mapping collection names to weight scores
+        
+        Example:
+            >>> weights = polly.get_domain_collection_priorities("python")
+            >>> print(weights)  # {'codebase': 2.5, 'obsidian': 1.8}
+        """
+        if not self.pattern_learner:
+            return {}
+        
+        return self.pattern_learner.get_domain_priorities(domain)
+    
+    def export_patterns(self, filepath: Optional[str] = None) -> Dict:
+        """
+        Export all patterns for analysis.
+        
+        Phase 13A Day 16: Pattern Enhancement APIs
+        
+        Args:
+            filepath: Optional path to save JSON export
+        
+        Returns:
+            Dict with all pattern data
+        
+        Example:
+            >>> data = polly.export_patterns("/tmp/patterns.json")
+            >>> print(f"Exported {data['stats']['total_patterns']} patterns")
+        """
+        if not self.pattern_learner:
+            return {}
+        
+        data = self.pattern_learner.export_patterns_for_analysis()
+        
+        if filepath:
+            import json
+            with open(filepath, 'w') as f:
+                json.dump(data, f, indent=2)
+            logger.info(f"📊 Exported patterns to {filepath}")
+        
+        return data
+
+    async def create_learning_note(
+        self,
+        topic: str,
+        content: str,
+        concepts: List[str],
+        domain: str,
+        conversation_id: Optional[str] = None
+    ) -> Dict:
+        """
+        Create a structured learning note (Phase 22 - Teaching Mode).
+        
+        Args:
+            topic: Topic title
+            content: Note content (generated by LLM)
+            concepts: List of concepts covered
+            domain: Domain ID
+            conversation_id: Current conversation ID
+        
+        Returns:
+            Note creation result
+        """
+        note_title = f"Learning - {topic}"
+        
+        # Generate structured content
+        structured_content = f"""# {topic}
+
+## Key Concepts
+
+{chr(10).join(f"- {c}" for c in concepts)}
+
+## Understanding
+
+{content}
+
+## Related Topics
+
+<!-- Links to related concepts will be added here -->
+
+## Practice Exercises
+
+<!-- Add exercises to reinforce learning -->
+
+---
+
+*Learned: {datetime.now().strftime('%Y-%m-%d')}*  
+*Domain: {domain}*  
+*Mastery Level: 1/5 (Introduced)*
+"""
+        
+        # Create note via Obsidian integration
+        result = await self.obsidian.create_note(
+            title=note_title,
+            content=structured_content,
+            folder=None,  # Auto-suggest based on domain
+            tags=['learning', domain],
+            preview=False
+        )
+        
+        # Record in learning tracker
+        if result.get('status') == 'success' and self.learning_tracker:
+            self.learning_tracker.record_learning(
+                title=topic,
+                domain=domain,
+                concepts=concepts,
+                mastery_level=1,
+                note_path=result.get('note_path')
+            )
+            logger.info(f"Learning note created: {note_title}")
+        
+        return result
+
+    def save_state(self):
+        """Save learned state (patterns, graph)."""
+        if self.pattern_learner:
+            self.pattern_learner.save_patterns()
+
+        if self.knowledge_graph:
+            self.knowledge_graph.save_graph()
+
+        logger.info("State saved")
+    
+    def cleanup(self):
+        """Cleanup resources on shutdown."""
+        try:
+            # Stop notes sync if running
+            if hasattr(self, 'notes_sync') and self.notes_sync:
+                logger.info("Stopping notes sync manager...")
+                self.notes_sync.stop()
+                logger.info("Notes sync manager stopped")
+            
+            # Save state
+            self.save_state()
+            
+            logger.info("Polly cleanup complete")
+            
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+
+
+# Convenience function for quick queries
+async def ask(query: str, stream: bool = True) -> str:
+    """Quick query function."""
+    polly = Polly()
+    response = ""
+    async for chunk in polly.query(query, stream=stream):
+        response += chunk
+        if stream:
+            print(chunk, end='', flush=True)
+    if stream:
+        print()
+    return response

@@ -1,0 +1,9 @@
+# Polly Configuration
+# Enable router_v2 for intelligent multi-provider routing
+
+routing_v2:
+  enabled: true
+  budget:
+    database_path: "~/.polly/usage.db"
+    daily_limit: 10.0
+    monthly_limit: 200.0
