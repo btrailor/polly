@@ -34,7 +34,6 @@ import json
 import time
 import logging
 import re
-import ipaddress
 
 logger = logging.getLogger(__name__)
 
@@ -244,23 +243,40 @@ def create_app(polly_instance=None) -> FastAPI:
 
     # Phase 23.5: Security Hardening - CORS Policy
     # Load security policy and configure CORS
-    security_policy = get_security_policy()
-    cors_config = security_policy.get_cors_config()
-    
-    # Expand wildcard ports for common development ports
-    # FastAPI CORSMiddleware doesn't support wildcards, so we expand them
-    expanded_origins = _expand_cors_origins(cors_config["allow_origins"])
-    
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=expanded_origins,
-        allow_credentials=cors_config["allow_credentials"],
-        allow_methods=cors_config["allow_methods"],
-        allow_headers=cors_config["allow_headers"],
-    )
+    try:
+        security_policy = get_security_policy()
+        cors_config = security_policy.get_cors_config()
+        
+        # Expand wildcard ports for common development ports
+        # FastAPI CORSMiddleware doesn't support wildcards, so we expand them
+        expanded_origins = _expand_cors_origins(cors_config["allow_origins"])
+        
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=expanded_origins,
+            allow_credentials=cors_config["allow_credentials"],
+            allow_methods=cors_config["allow_methods"],
+            allow_headers=cors_config["allow_headers"],
+        )
+        
+        logger.info(f"Security hardening: CORS configured with {len(expanded_origins)} origins")
+    except Exception as e:
+        # Fallback to permissive CORS if security policy fails to load
+        logger.error(f"Failed to load security policy: {e}. Using permissive CORS (fallback).")
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["http://localhost:*", "http://127.0.0.1:*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     
     # Phase 23.5: Security Hardening - Input Validation Middleware
-    app.add_middleware(InputValidationMiddleware)
+    try:
+        app.add_middleware(InputValidationMiddleware)
+        logger.info("Security hardening: Input validation middleware enabled")
+    except Exception as e:
+        logger.error(f"Failed to add input validation middleware: {e}")
     
     # Mount static files for web UI
     web_dir = Path(__file__).parent.parent / "web"

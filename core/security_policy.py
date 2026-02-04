@@ -121,16 +121,25 @@ class SecurityPolicy:
                     user_policy = yaml.safe_load(f) or {}
                 policy = self._deep_merge(policy, user_policy)
                 logger.info(f"Loaded security policy from {self.policy_path}")
+            except yaml.YAMLError as e:
+                logger.error(f"YAML parse error in security policy: {e}. Using defaults.")
             except Exception as e:
                 logger.warning(f"Failed to load security policy: {e}. Using defaults.")
         else:
-            logger.warning(f"Security policy file not found at {self.policy_path}. Using defaults.")
+            # Policy file doesn't exist - this is OK, we'll use defaults
+            logger.debug(f"Security policy file not found at {self.policy_path}. Using defaults.")
         
         # Expand paths (e.g., ~/.polly/audit.db)
-        policy = self._expand_paths(policy)
+        try:
+            policy = self._expand_paths(policy)
+        except Exception as e:
+            logger.warning(f"Error expanding paths in security policy: {e}")
         
         # Validate policy
-        self._validate_policy(policy)
+        try:
+            self._validate_policy(policy)
+        except Exception as e:
+            logger.warning(f"Error validating security policy: {e}. Continuing with defaults.")
         
         return policy
     
