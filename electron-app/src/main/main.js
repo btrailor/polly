@@ -498,6 +498,11 @@ async function runSetup(options) {
   }
 
   // Execute steps
+  // SECURITY (Phase 23.5): All commands here are hardcoded and use controlled paths.
+  // No user input is used in command construction. Commands are:
+  // - python3 -m venv (with controlled path.join)
+  // - pip install (with controlled paths)
+  // - ollama pull (hardcoded model names)
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
     mainWindow.webContents.send('setup-progress', {
@@ -656,6 +661,13 @@ async function queryPolly(query, options = {}) {
 
 /**
  * Promise wrapper for exec
+ * 
+ * SECURITY WARNING (Phase 23.5): Only use with hardcoded commands or controlled inputs.
+ * Never pass user input directly to this function without validation.
+ * All current uses are safe (version checks, setup commands with controlled paths).
+ * 
+ * @param {string} command - Command to execute (must be trusted)
+ * @returns {Promise<string>} Command output
  */
 function execPromise(command) {
   return new Promise((resolve, reject) => {
