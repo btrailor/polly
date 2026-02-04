@@ -1,0 +1,36 @@
+# Apollo Dependencies
+
+# Core
+pyyaml>=6.0
+pydantic>=2.0
+
+# Vector Database
+chromadb>=0.4.0
+
+# API Server
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+
+# HTTP Client
+httpx>=0.24.0
+aiohttp>=3.9.0  # For async HTTP in integrations
+
+# AI Providers (Phase 11)
+anthropic>=0.20.0  # Claude models
+openai>=1.10.0  # GPT models
+
+# Security & Secrets (Phase 11)
+keyring>=24.0.0  # Secure storage for API keys
+cryptography>=41.0.0  # Encryption for fallback storage
+
+# Utilities
+watchdog>=3.0.0  # File watching
+rank-bm25>=0.2.2  # BM25 keyword search for hybrid RAG
+spacy>=3.7.0  # NLP for pattern learning
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl  # spaCy English model
+
+# Optional: For enhanced code parsing
+# tree-sitter>=0.20.0
+# tree-sitter-python
+# tree-sitter-javascript
+# tree-sitter-lua

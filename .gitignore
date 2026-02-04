@@ -1,0 +1,99 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+venv/
+env/
+ENV/
+.venv
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+server.log
+polly-server.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# User data (should be in ~/.polly, not in repo)
+.polly/
+vault/.polly/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+chroma.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+:memory:
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+*.pyc
+*.pyo
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Backup files
+*.backup
+*.bak
+*.pre-merge-backup
+MASTER_ROADMAP.md.backup
+MASTER_ROADMAP.md.pre-merge-backup
+PROJECT_ROADMAP.md.backup
+
+# Electron
+electron-app/dist/
+electron-app/out/
+electron-app/.vscode/
+
+# Archives (keep structure but ignore large files)
+archive/*.zip
+archive/*.tar.gz
