@@ -29,6 +29,7 @@ from core.capabilities.types import (
     CapabilityResponse
 )
 from core.security_policy import get_security_policy, SecurityPolicy
+from core.audit_logger import get_audit_logger
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class CapabilityBroker:
             security_policy: SecurityPolicy instance (defaults to global instance)
         """
         self.security_policy = security_policy or get_security_policy()
+        self.audit_logger = get_audit_logger()
         
         # Grant storage (in-memory for now, will add file persistence)
         self.grants: Dict[str, CapabilityGrant] = {}
@@ -103,22 +105,28 @@ class CapabilityBroker:
         # Check if capability is enabled in policy
         if not self._is_capability_enabled(capability_type):
             logger.warning(f"Capability {capability_type.value} is disabled in policy")
-            return CapabilityResponse(
+            response = CapabilityResponse(
                 request=request,
                 granted=False,
                 reason=f"Capability {capability_type.value} is disabled in security policy"
             )
+            # Log to audit
+            self.audit_logger.log_capability_request(request, response)
+            return response
         
         # Check for existing grant
         existing_grant = self._find_grant(request)
         if existing_grant and not existing_grant.is_expired():
             logger.info(f"Using existing grant for {resource}")
-            return CapabilityResponse(
+            response = CapabilityResponse(
                 request=request,
                 granted=True,
                 grant=existing_grant,
                 reason="Existing grant found"
             )
+            # Log to audit
+            self.audit_logger.log_capability_request(request, response)
+            return response
         
         # Check if approval is required
         requires_approval = self._requires_approval(capability_type, resource)
@@ -130,13 +138,16 @@ class CapabilityBroker:
             
             logger.info(f"Approval required for {resource}, approval_id: {approval_id}")
             
-            return CapabilityResponse(
+            response = CapabilityResponse(
                 request=request,
                 granted=False,
                 requires_approval=True,
                 approval_id=approval_id,
                 reason="User approval required"
             )
+            # Log to audit
+            self.audit_logger.log_capability_request(request, response)
+            return response
         else:
             # Auto-grant based on policy
             grant = self._create_grant(request, granted_by="policy", permanent=False)
@@ -144,12 +155,16 @@ class CapabilityBroker:
             
             logger.info(f"Auto-granted {resource} based on policy")
             
-            return CapabilityResponse(
+            response = CapabilityResponse(
                 request=request,
                 granted=True,
                 grant=grant,
                 reason="Auto-granted by policy"
             )
+            # Log to audit
+            self.audit_logger.log_capability_request(request, response)
+            self.audit_logger.log_capability_grant(grant)
+            return response
     
     def grant_capability(
         self,
@@ -195,6 +210,9 @@ class CapabilityBroker:
         
         logger.info(f"Granted capability: {request.resource} (permanent: {permanent})")
         
+        # Log to audit
+        self.audit_logger.log_capability_grant(grant, approval_id=approval_id)
+        
         return grant
     
     def deny_capability(self, approval_id: str, reason: Optional[str] = None) -> None:
@@ -213,6 +231,9 @@ class CapabilityBroker:
         request = self.pending_approvals.pop(approval_id)
         
         logger.info(f"Denied capability: {request.resource} (reason: {reason})")
+        
+        # Log to audit
+        self.audit_logger.log_capability_denial(request, reason or "User denied", approval_id=approval_id)
     
     def revoke_grant(self, grant_id: str) -> None:
         """
