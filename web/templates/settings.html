@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polly Settings</title>
+    <link rel="stylesheet" href="/static/css/settings.css">
+</head>
+<body>
+    <div class="layout">
+        <!-- Left Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>⚙️ Settings</h1>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <button class="sidebar-item active" data-tab="keys">
+                    <span class="sidebar-icon">🔑</span>
+                    <span class="sidebar-label">API Keys</span>
+                </button>
+                
+                <button class="sidebar-item" data-tab="budget">
+                    <span class="sidebar-icon">💰</span>
+                    <span class="sidebar-label">Budget & Usage</span>
+                </button>
+                
+                <button class="sidebar-item" data-tab="compression">
+                    <span class="sidebar-icon">🗜️</span>
+                    <span class="sidebar-label">Compression</span>
+                </button>
+                
+                <button class="sidebar-item" data-tab="providers">
+                    <span class="sidebar-icon">🌐</span>
+                    <span class="sidebar-label">Providers</span>
+                </button>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <div class="content-header">
+                <h2 id="page-title">API Keys</h2>
+                <p id="page-subtitle" class="subtitle">Store API keys securely in your system keyring</p>
+            </div>
+
+        <!-- API Keys Tab -->
+        <div id="keys-tab" class="tab-content active">
+            <section class="card">
+                <h2>🔑 API Keys</h2>
+                <p>Store API keys securely in your system keyring</p>
+
+                <div id="keys-list" class="keys-list">
+                    <div class="loading">Loading keys...</div>
+                </div>
+
+                <button class="btn btn-primary" onclick="showAddKeyModal()">+ Add API Key</button>
+            </section>
+        </div>
+
+        <!-- Budget Tab -->
+        <div id="budget-tab" class="tab-content">
+            <section class="card">
+                <h2>💰 Budget Status</h2>
+                
+                <div id="budget-status" class="budget-status">
+                    <div class="loading">Loading budget...</div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>📊 Spending Summary</h2>
+                
+                <div id="spending-summary" class="spending-summary">
+                    <div class="loading">Loading spending data...</div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>⚙️ Budget Settings</h2>
+                
+                <div class="form-group">
+                    <label for="daily-limit">Daily Limit ($)</label>
+                    <input type="number" id="daily-limit" step="0.01" min="0" placeholder="10.00">
+                </div>
+
+                <div class="form-group">
+                    <label for="monthly-limit">Monthly Limit ($)</label>
+                    <input type="number" id="monthly-limit" step="0.01" min="0" placeholder="200.00">
+                </div>
+
+                <div class="form-group">
+                    <label for="warn-threshold">Warning Threshold (%)</label>
+                    <input type="number" id="warn-threshold" step="1" min="0" max="100" placeholder="80">
+                </div>
+
+                <button class="btn btn-primary" onclick="updateBudgetSettings()">Save Budget Settings</button>
+            </section>
+        </div>
+
+        <!-- Compression Tab -->
+        <div id="compression-tab" class="tab-content">
+            <section class="card">
+                <h2>🗜️ Conversation Compression</h2>
+                <p>Automatically compress old conversation messages to extend context</p>
+                
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="compression-enabled" onchange="updateCompressionEnabled()">
+                        <span>Enable Automatic Compression</span>
+                    </label>
+                    <p class="hint">Compress older messages to extend conversation context and reduce token usage</p>
+                </div>
+
+                <div id="compression-settings" class="compression-settings">
+                    <div class="form-group">
+                        <label for="message-threshold">Message Threshold</label>
+                        <input type="number" id="message-threshold" min="10" max="100" step="5" placeholder="20">
+                        <p class="hint">Compress conversation after this many messages (default: 20)</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="age-hours">Age Threshold (hours)</label>
+                        <input type="number" id="age-hours" min="1" max="168" step="1" placeholder="24">
+                        <p class="hint">Or compress after this many hours elapsed (default: 24)</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="keep-recent">Keep Recent Messages</label>
+                        <input type="number" id="keep-recent" min="5" max="50" step="5" placeholder="10">
+                        <p class="hint">Keep this many recent messages uncompressed (default: 10)</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="show-stats">
+                            <span>Show Compression Stats</span>
+                        </label>
+                        <p class="hint">Display compression statistics in the UI</p>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" onclick="saveCompressionSettings()">Save Compression Settings</button>
+                <div id="compression-save-status" class="status-message"></div>
+            </section>
+
+            <section class="card">
+                <h2>📊 Compression Statistics</h2>
+                
+                <div id="compression-stats" class="compression-stats">
+                    <div class="loading">Loading statistics...</div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Providers Tab -->
+        <div id="providers-tab" class="tab-content">
+            <section class="card">
+                <h2>🌐 Provider Information</h2>
+                
+                <div id="providers-info" class="providers-info">
+                    <div class="loading">Loading provider info...</div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Add Key Modal -->
+    <div id="add-key-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddKeyModal()">&times;</span>
+            <h2>Add API Key</h2>
+            
+            <div class="form-group">
+                <label for="provider-select">Provider</label>
+                <select id="provider-select" onchange="updateKeyFormatHint()">
+                    <option value="">Select a provider...</option>
+                    <option value="anthropic">Anthropic (Claude)</option>
+                    <option value="openai">OpenAI (GPT)</option>
+                    <option value="github">GitHub Copilot</option>
+                    <option value="grok">xAI (Grok)</option>
+                    <option value="perplexity">Perplexity AI</option>
+                    <option value="gemini">Google (Gemini)</option>
+                    <option value="mistral">Mistral AI</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="api-key-input">API Key</label>
+                <input type="password" id="api-key-input" placeholder="Enter your API key">
+                <p id="key-format-hint" class="hint"></p>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeAddKeyModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveApiKey()">Save & Test</button>
+            </div>
+
+            <div id="save-status" class="status-message"></div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/js/settings.js"></script>
+</body>
+</html>
