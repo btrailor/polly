@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response
 from pydantic import BaseModel, ValidationError
