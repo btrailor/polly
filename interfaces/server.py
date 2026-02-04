@@ -5463,6 +5463,42 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
             
             enrichment = enrichment_result.get("enrichment", {})
             
+            # Phase 23.5: Check for unapproved packages and route through capability broker
+            if "package_detection" in enrichment:
+                package_detection = enrichment["package_detection"]
+                unapproved = package_detection.get("unapproved_packages", [])
+                
+                if unapproved:
+                    from core.capability_broker import get_capability_broker
+                    from core.capabilities.types import CapabilityType
+                    
+                    broker = get_capability_broker()
+                    pending_approvals = []
+                    
+                    # Request capability for each unapproved package
+                    for package_name in unapproved:
+                        response = broker.request_capability(
+                            capability_type=CapabilityType.PACKAGE_INSTALL,
+                            requestor="professor-persona",
+                            resource=package_name,
+                            metadata={
+                                "curriculum_id": curriculum_id,
+                                "section_id": section_id,
+                                "source": "enrichment"
+                            }
+                        )
+                        
+                        if response.requires_approval and response.approval_id:
+                            pending_approvals.append({
+                                "approval_id": response.approval_id,
+                                "package_name": package_name
+                            })
+                    
+                    # Add pending approvals to enrichment response
+                    if pending_approvals:
+                        enrichment["pending_approvals"] = pending_approvals
+                        logger.info(f"Section enrichment requires {len(pending_approvals)} package approvals")
+            
             # Save enrichment to curriculum
             polly.curriculum_manager.enrich_section(
                 curriculum_id=curriculum_id,
