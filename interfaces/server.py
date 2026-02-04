@@ -5069,7 +5069,132 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
             logger.error(f"Error getting progress for {curriculum_id}: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to get progress: {str(e)}")
     
-    # Phase 23.5: Security Hardening - Package Approval Endpoints
+    # Phase 23.5: Security Hardening - Capability Broker + Package Approval Endpoints
+    
+    @app.get("/polly/capabilities/pending")
+    async def get_pending_approvals():
+        """
+        Get all pending capability approval requests.
+        
+        Response:
+        {
+            "approvals": [
+                {
+                    "approval_id": "approval_123",
+                    "capability_type": "package_install",
+                    "requestor": "professor-persona",
+                    "resource": "numpy",
+                    "metadata": {...}
+                }
+            ]
+        }
+        """
+        try:
+            from core.capability_broker import get_capability_broker
+            broker = get_capability_broker()
+            
+            # Get pending approvals with their IDs
+            approvals = []
+            for approval_id, req in broker.pending_approvals.items():
+                approvals.append({
+                    "approval_id": approval_id,
+                    "capability_type": req.capability_type.value,
+                    "requestor": req.requestor,
+                    "resource": req.resource,
+                    "metadata": req.metadata,
+                    "timestamp": req.timestamp.isoformat()
+                })
+            
+            return {"approvals": approvals}
+        except Exception as e:
+            logger.error(f"Error getting pending approvals: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to get pending approvals: {str(e)}")
+    
+    @app.post("/polly/capabilities/approve/{approval_id}")
+    async def approve_capability(approval_id: str, request: Request):
+        """
+        Approve a pending capability request.
+        
+        Request body:
+        {
+            "permanent": true,  // Add to allowlist if True
+            "expires_in_minutes": 60  // Optional expiration
+        }
+        
+        Response:
+        {
+            "status": "success",
+            "grant_id": "grant_123",
+            "message": "Capability granted"
+        }
+        """
+        try:
+            from core.capability_broker import get_capability_broker
+            broker = get_capability_broker()
+            
+            body = await request.json()
+            permanent = body.get("permanent", False)
+            expires_in_minutes = body.get("expires_in_minutes")
+            
+            grant = broker.grant_capability(
+                approval_id=approval_id,
+                permanent=permanent,
+                expires_in_minutes=expires_in_minutes
+            )
+            
+            # If permanent and package_install, add to allowlist
+            if permanent and grant.request.capability_type.value == "package_install":
+                # Add to approved packages
+                from core.package_detector import get_package_detector
+                detector = get_package_detector()
+                # This will be handled by the package approval endpoint
+                # For now, just log it
+            
+            return {
+                "status": "success",
+                "grant_id": grant.grant_id,
+                "message": "Capability granted"
+            }
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        except Exception as e:
+            logger.error(f"Error approving capability: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to approve capability: {str(e)}")
+    
+    @app.post("/polly/capabilities/deny/{approval_id}")
+    async def deny_capability(approval_id: str, request: Request):
+        """
+        Deny a pending capability request.
+        
+        Request body:
+        {
+            "reason": "Optional reason for denial"
+        }
+        
+        Response:
+        {
+            "status": "success",
+            "message": "Capability denied"
+        }
+        """
+        try:
+            from core.capability_broker import get_capability_broker
+            broker = get_capability_broker()
+            
+            body = await request.json()
+            reason = body.get("reason")
+            
+            broker.deny_capability(approval_id, reason=reason)
+            
+            return {
+                "status": "success",
+                "message": "Capability denied"
+            }
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        except Exception as e:
+            logger.error(f"Error denying capability: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to deny capability: {str(e)}")
     
     @app.get("/polly/packages/metadata/{package_name}")
     async def get_package_metadata(package_name: str):
