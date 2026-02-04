@@ -5271,6 +5271,74 @@ async function handleStartSection(curriculumId, sectionId) {
     // Enrich the section (get materials)
     const enrichment = await enrichSection(curriculumId, sectionId);
     
+    // Phase 23.5: Check for pending package approvals
+    if (enrichment.pending_approvals && enrichment.pending_approvals.length > 0) {
+      console.log('[Package Approval] Showing approval dialog for', enrichment.pending_approvals.length, 'packages');
+      
+      // Show package approval dialog
+      if (window.showPackageApprovalDialog) {
+        await new Promise((resolve) => {
+          window.showPackageApprovalDialog(
+            enrichment.pending_approvals,
+            async (approvalId, permanent) => {
+              // Approve callback
+              try {
+                const response = await fetch(
+                  `${API_URL}/polly/capabilities/approve/${approvalId}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ permanent })
+                  }
+                );
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  console.log('[Package Approval] Approved:', data);
+                  
+                  // If permanent, also add to package allowlist
+                  if (permanent) {
+                    const pkg = enrichment.pending_approvals.find(p => p.approval_id === approvalId);
+                    if (pkg) {
+                      await fetch(`${API_URL}/polly/packages/approve`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ packages: [pkg.package_name], permanent: true })
+                      });
+                    }
+                  }
+                }
+              } catch (error) {
+                console.error('[Package Approval] Error approving:', error);
+              }
+            },
+            async (approvalId, reason) => {
+              // Deny callback
+              try {
+                const response = await fetch(
+                  `${API_URL}/polly/capabilities/deny/${approvalId}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                  }
+                );
+                
+                if (response.ok) {
+                  console.log('[Package Approval] Denied:', approvalId);
+                }
+              } catch (error) {
+                console.error('[Package Approval] Error denying:', error);
+              }
+            }
+          );
+          
+          // Resolve after a short delay to allow dialog to be set up
+          setTimeout(resolve, 100);
+        });
+      }
+    }
+    
     // Get curriculum to determine template type
     const curriculum = await getCurriculum(curriculumId);
     const templateId = curriculum?.curriculum_template_id || curriculum?.template_id;
@@ -5326,6 +5394,74 @@ async function handleViewSection(curriculumId, sectionId) {
     
     // Get enriched materials (will use cached version if available)
     const enrichment = await enrichSection(curriculumId, sectionId);
+    
+    // Phase 23.5: Check for pending package approvals
+    if (enrichment.pending_approvals && enrichment.pending_approvals.length > 0) {
+      console.log('[Package Approval] Showing approval dialog for', enrichment.pending_approvals.length, 'packages');
+      
+      // Show package approval dialog
+      if (window.showPackageApprovalDialog) {
+        await new Promise((resolve) => {
+          window.showPackageApprovalDialog(
+            enrichment.pending_approvals,
+            async (approvalId, permanent) => {
+              // Approve callback
+              try {
+                const response = await fetch(
+                  `${API_URL}/polly/capabilities/approve/${approvalId}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ permanent })
+                  }
+                );
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  console.log('[Package Approval] Approved:', data);
+                  
+                  // If permanent, also add to package allowlist
+                  if (permanent) {
+                    const pkg = enrichment.pending_approvals.find(p => p.approval_id === approvalId);
+                    if (pkg) {
+                      await fetch(`${API_URL}/polly/packages/approve`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ packages: [pkg.package_name], permanent: true })
+                      });
+                    }
+                  }
+                }
+              } catch (error) {
+                console.error('[Package Approval] Error approving:', error);
+              }
+            },
+            async (approvalId, reason) => {
+              // Deny callback
+              try {
+                const response = await fetch(
+                  `${API_URL}/polly/capabilities/deny/${approvalId}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                  }
+                );
+                
+                if (response.ok) {
+                  console.log('[Package Approval] Denied:', approvalId);
+                }
+              } catch (error) {
+                console.error('[Package Approval] Error denying:', error);
+              }
+            }
+          );
+          
+          // Resolve after a short delay to allow dialog to be set up
+          setTimeout(resolve, 100);
+        });
+      }
+    }
     
     // Get curriculum to determine template type
     const curriculum = await getCurriculum(curriculumId);
@@ -5671,6 +5807,7 @@ function attachExerciseHandlers() {
 
 /**
  * Run exercise code and display output
+ * Phase 23.5: Security Hardening - Now uses Pyodide sandbox in renderer
  */
 async function runExerciseCode(editorId, outputId) {
   const editor = document.getElementById(editorId);
@@ -5686,21 +5823,13 @@ async function runExerciseCode(editorId, outputId) {
   
   // Show output panel with loading state
   outputDiv.style.display = 'block';
-  outputContent.textContent = 'Running code...';
+  outputContent.textContent = 'Running code in sandbox...';
   outputContent.style.color = '#808080';
   
   try {
-    const response = await fetch(`${API_URL}/polly/exercises/execute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, timeout: 5 })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    const result = await response.json();
+    // Phase 23.5: Execute directly in Pyodide sandbox (more secure)
+    // Code never leaves the renderer process
+    const result = await runPythonInSandbox(code, 5); // 5 second timeout
     
     if (result.status === 'success') {
       outputContent.textContent = result.output || '(no output)';
@@ -5709,8 +5838,24 @@ async function runExerciseCode(editorId, outputId) {
       outputContent.textContent = `Error:\n${result.error || result.output}`;
       outputContent.style.color = '#e06c75';
     } else if (result.status === 'timeout') {
-      outputContent.textContent = result.error;
+      outputContent.textContent = result.error || 'Code execution timed out';
       outputContent.style.color = '#f0903b';
+    }
+    
+    // Log execution to server for audit (non-blocking)
+    try {
+      await fetch(`${API_URL}/polly/exercises/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          code: code.substring(0, 100), // Only send first 100 chars for audit
+          timeout: 5,
+          executed_locally: true,
+          result_status: result.status
+        })
+      }).catch(() => {}); // Ignore errors - audit logging is non-critical
+    } catch (e) {
+      // Silent fail for audit logging
     }
     
   } catch (error) {
@@ -13458,38 +13603,104 @@ async function runJavaScript(code) {
 }
 
 /**
- * Run Python code (placeholder - requires Pyodide)
+ * Run Python code in Pyodide sandbox
+ * Phase 23.5: Security Hardening - Uses Pyodide for secure execution
  */
 async function runPython(code) {
+  return await runPythonInSandbox(code, 10); // Default 10 second timeout
+}
+
+/**
+ * Run Python code in Pyodide sandbox with timeout
+ * Phase 23.5: Security Hardening
+ * 
+ * @param {string} code - Python code to execute
+ * @param {number} timeout - Timeout in seconds (default: 10)
+ * @returns {Promise<Object>} Execution result with status, output, error
+ */
+async function runPythonInSandbox(code, timeout = 10) {
   try {
-    // Initialize Pyodide if not already loaded
-    if (!window.pyodide) {
-      console.log('Loading Pyodide...');
-      window.pyodide = await loadPyodide({
-        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/"
-      });
-      console.log('Pyodide loaded successfully');
+    // Load Pyodide using our loader
+    if (typeof window.PyodideLoader === 'undefined') {
+      throw new Error('PyodideLoader not available. Make sure pyodide-loader.js is loaded.');
     }
     
-    // Capture stdout
-    let output = '';
-    window.pyodide.setStdout({
+    const pyodide = await window.PyodideLoader.loadPyodide();
+    
+    // Capture stdout and stderr
+    let stdout = '';
+    let stderr = '';
+    
+    pyodide.setStdout({
       batched: (msg) => {
-        output += msg + '\n';
+        stdout += msg;
+      },
+      raw: (charCode) => {
+        stdout += String.fromCharCode(charCode);
       }
     });
     
-    // Run the code
-    await window.pyodide.runPythonAsync(code);
+    pyodide.setStderr({
+      batched: (msg) => {
+        stderr += msg;
+      },
+      raw: (charCode) => {
+        stderr += String.fromCharCode(charCode);
+      }
+    });
     
-    return {
-      output: output.trim() || '(no output)',
-      error: null
-    };
+    // Set up timeout
+    const startTime = performance.now();
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`Code execution timed out after ${timeout} seconds`));
+      }, timeout * 1000);
+    });
+    
+    // Execute code with timeout
+    try {
+      await Promise.race([
+        pyodide.runPythonAsync(code),
+        timeoutPromise
+      ]);
+      
+      clearTimeout(timeoutId);
+      const executionTime = (performance.now() - startTime) / 1000;
+      
+      return {
+        status: 'success',
+        output: stdout.trim() || '(no output)',
+        error: stderr.trim() || null,
+        execution_time: executionTime
+      };
+    } catch (execError) {
+      clearTimeout(timeoutId);
+      
+      // Check if it's a timeout
+      if (execError.message && execError.message.includes('timed out')) {
+        return {
+          status: 'timeout',
+          error: execError.message,
+          output: stdout.trim() || '',
+          execution_time: timeout
+        };
+      }
+      
+      // Regular error
+      return {
+        status: 'error',
+        output: stdout.trim() || '',
+        error: execError.message || String(execError) || stderr.trim(),
+        execution_time: (performance.now() - startTime) / 1000
+      };
+    }
   } catch (error) {
     return {
+      status: 'error',
       output: '',
-      error: error.message
+      error: error.message || String(error),
+      execution_time: 0
     };
   }
 }

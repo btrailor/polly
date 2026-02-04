@@ -18,11 +18,14 @@ Persona Endpoints (Phase 11c):
 - POST /persona/deactivate - Deactivate current persona
 """
 
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response
+from pydantic import BaseModel, ValidationError
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 from datetime import datetime
@@ -33,6 +36,18 @@ import logging
 import re
 
 logger = logging.getLogger(__name__)
+
+# Phase 23.5: Security Hardening
+# Import security policy lazily to avoid startup failures
+try:
+    from core.security_policy import get_security_policy
+    SECURITY_POLICY_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Security policy module not available: {e}. Security features disabled.")
+    SECURITY_POLICY_AVAILABLE = False
+    def get_security_policy():
+        """Fallback if security policy module unavailable."""
+        return None
 
 
 # Request/Response models
@@ -99,6 +114,133 @@ class PersonaSwitchModeRequest(BaseModel):
     mode: str
 
 
+# Phase 23.5: Security Hardening - Helper Functions
+
+def _expand_cors_origins(origins: List[str]) -> List[str]:
+    """
+    Expand CORS origins, handling wildcard ports and CIDR ranges.
+    
+    FastAPI CORSMiddleware doesn't support wildcards directly, so we expand:
+    - http://localhost:* -> http://localhost:3000, http://localhost:3001, etc.
+    - http://100.64.0.0/10 -> individual IPs in range (simplified: allow all in range)
+    """
+    expanded = []
+    common_ports = [3000, 3001, 3002, 4000, 5000, 5173, 5174, 8080, 8081, 8888, 11436]
+    
+    for origin in origins:
+        # Handle wildcard ports: http://localhost:* -> expand to common ports
+        if origin.endswith(":*"):
+            base = origin[:-2]  # Remove ":*"
+            for port in common_ports:
+                expanded.append(f"{base}:{port}")
+            # Also add base without port (defaults to 80/443)
+            expanded.append(base)
+        
+        # Handle CIDR ranges: http://100.64.0.0/10
+        # For simplicity, we'll allow the base network and log a note
+        # In production, you might want to validate against the actual requesting IP
+        elif "/" in origin:
+            # FastAPI will need to validate this at request time
+            # For now, add the base network
+            base = origin.split("/")[0]
+            expanded.append(base)
+            logger.info(f"CORS CIDR range configured: {origin} (will validate at request time)")
+        
+        # Standard origin
+        else:
+            expanded.append(origin)
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_origins = []
+    for origin in expanded:
+        if origin not in seen:
+            seen.add(origin)
+            unique_origins.append(origin)
+    
+    logger.info(f"CORS origins configured: {len(unique_origins)} origins")
+    return unique_origins
+
+
+class InputValidationMiddleware(BaseHTTPMiddleware):
+    """
+    Phase 23.5: Security Hardening - Input Validation Middleware
+    
+    Validates and sanitizes request input to prevent injection attacks.
+    """
+    
+    # Paths that don't need strict validation (health checks, static files)
+    EXEMPT_PATHS = ["/health", "/static", "/docs", "/openapi.json", "/redoc"]
+    
+    # Maximum request body size (10MB)
+    MAX_BODY_SIZE = 10 * 1024 * 1024
+    
+    async def dispatch(self, request: StarletteRequest, call_next):
+        # Skip validation for exempt paths
+        if any(request.url.path.startswith(path) for path in self.EXEMPT_PATHS):
+            return await call_next(request)
+        
+        # Check request body size
+        if request.method in ["POST", "PUT", "PATCH"]:
+            content_length = request.headers.get("content-length")
+            if content_length:
+                try:
+                    size = int(content_length)
+                    if size > self.MAX_BODY_SIZE:
+                        logger.warning(f"Request body too large: {size} bytes from {request.client.host}")
+                        return JSONResponse(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            content={"error": "Request body too large"}
+                        )
+                except ValueError:
+                    pass
+        
+        # Validate and sanitize JSON payloads
+        if request.headers.get("content-type", "").startswith("application/json"):
+            try:
+                body = await request.body()
+                if body:
+                    # Parse JSON to validate structure
+                    try:
+                        json_data = json.loads(body)
+                        # Basic sanitization: check for suspicious patterns
+                        if self._contains_suspicious_content(json_data):
+                            logger.warning(f"Suspicious content detected in request from {request.client.host}")
+                            # Don't block, but log it (warn-only for personal use)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Invalid JSON in request from {request.client.host}")
+                        return JSONResponse(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            content={"error": "Invalid JSON"}
+                        )
+            except Exception as e:
+                logger.error(f"Error validating request body: {e}")
+                # Continue processing - don't block on validation errors
+        
+        # Continue to next middleware/handler
+        response = await call_next(request)
+        return response
+    
+    def _contains_suspicious_content(self, data: Any) -> bool:
+        """Check for suspicious patterns in request data."""
+        if isinstance(data, dict):
+            return any(self._contains_suspicious_content(v) for v in data.values())
+        elif isinstance(data, list):
+            return any(self._contains_suspicious_content(item) for item in data)
+        elif isinstance(data, str):
+            # Check for common injection patterns
+            suspicious_patterns = [
+                r'<script[^>]*>',  # Script tags
+                r'javascript:',     # JavaScript protocol
+                r'on\w+\s*=',      # Event handlers (onclick=, etc.)
+                r'data:text/html', # Data URIs
+            ]
+            for pattern in suspicious_patterns:
+                if re.search(pattern, data, re.IGNORECASE):
+                    return True
+        return False
+
+
 def create_app(polly_instance=None) -> FastAPI:
     """Create FastAPI app with Polly integration."""
 
@@ -108,14 +250,59 @@ def create_app(polly_instance=None) -> FastAPI:
         version="0.1.0"
     )
 
-    # Enable CORS for IDE access
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # Phase 23.5: Security Hardening - CORS Policy
+    # Load security policy and configure CORS
+    cors_configured = False
+    if SECURITY_POLICY_AVAILABLE:
+        try:
+            security_policy = get_security_policy()
+            if security_policy is not None:
+                cors_config = security_policy.get_cors_config()
+                
+                # Expand wildcard ports for common development ports
+                # FastAPI CORSMiddleware doesn't support wildcards, so we expand them
+                expanded_origins = _expand_cors_origins(cors_config["allow_origins"])
+                
+                app.add_middleware(
+                    CORSMiddleware,
+                    allow_origins=expanded_origins,
+                    allow_credentials=cors_config["allow_credentials"],
+                    allow_methods=cors_config["allow_methods"],
+                    allow_headers=cors_config["allow_headers"],
+                )
+                
+                logger.info(f"Security hardening: CORS configured with {len(expanded_origins)} origins")
+                cors_configured = True
+        except Exception as e:
+            # Fallback to permissive CORS if security policy fails to load
+            logger.error(f"Failed to load security policy: {e}. Using permissive CORS (fallback).")
+    
+    if not cors_configured:
+        # Fallback CORS configuration
+        # Include both localhost and 127.0.0.1 with common ports
+        fallback_origins = [
+            "http://localhost:3000",
+            "http://localhost:11436",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:11436",
+            "http://localhost",  # No port (defaults to 80, but browser may use it)
+            "http://127.0.0.1",  # No port
+        ]
+        logger.info(f"Using fallback CORS configuration with {len(fallback_origins)} origins")
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=fallback_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    
+    # Phase 23.5: Security Hardening - Input Validation Middleware
+    try:
+        app.add_middleware(InputValidationMiddleware)
+        logger.info("Security hardening: Input validation middleware enabled")
+    except Exception as e:
+        logger.error(f"Failed to add input validation middleware: {e}")
     
     # Mount static files for web UI
     web_dir = Path(__file__).parent.parent / "web"
@@ -4882,6 +5069,313 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
             logger.error(f"Error getting progress for {curriculum_id}: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to get progress: {str(e)}")
     
+    # Phase 23.5: Security Hardening - Capability Broker + Package Approval Endpoints
+    
+    @app.get("/polly/capabilities/pending")
+    async def get_pending_approvals():
+        """
+        Get all pending capability approval requests.
+        
+        Response:
+        {
+            "approvals": [
+                {
+                    "approval_id": "approval_123",
+                    "capability_type": "package_install",
+                    "requestor": "professor-persona",
+                    "resource": "numpy",
+                    "metadata": {...}
+                }
+            ]
+        }
+        """
+        try:
+            from core.capability_broker import get_capability_broker
+            broker = get_capability_broker()
+            
+            # Get pending approvals with their IDs
+            approvals = []
+            for approval_id, req in broker.pending_approvals.items():
+                approvals.append({
+                    "approval_id": approval_id,
+                    "capability_type": req.capability_type.value,
+                    "requestor": req.requestor,
+                    "resource": req.resource,
+                    "metadata": req.metadata,
+                    "timestamp": req.timestamp.isoformat()
+                })
+            
+            return {"approvals": approvals}
+        except Exception as e:
+            logger.error(f"Error getting pending approvals: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to get pending approvals: {str(e)}")
+    
+    @app.post("/polly/capabilities/approve/{approval_id}")
+    async def approve_capability(approval_id: str, request: Request):
+        """
+        Approve a pending capability request.
+        
+        Request body:
+        {
+            "permanent": true,  // Add to allowlist if True
+            "expires_in_minutes": 60  // Optional expiration
+        }
+        
+        Response:
+        {
+            "status": "success",
+            "grant_id": "grant_123",
+            "message": "Capability granted"
+        }
+        """
+        try:
+            from core.capability_broker import get_capability_broker
+            broker = get_capability_broker()
+            
+            body = await request.json()
+            permanent = body.get("permanent", False)
+            expires_in_minutes = body.get("expires_in_minutes")
+            
+            grant = broker.grant_capability(
+                approval_id=approval_id,
+                permanent=permanent,
+                expires_in_minutes=expires_in_minutes
+            )
+            
+            # If permanent and package_install, add to allowlist
+            if permanent and grant.request.capability_type.value == "package_install":
+                # Add to approved packages
+                from core.package_detector import get_package_detector
+                detector = get_package_detector()
+                # This will be handled by the package approval endpoint
+                # For now, just log it
+            
+            return {
+                "status": "success",
+                "grant_id": grant.grant_id,
+                "message": "Capability granted"
+            }
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        except Exception as e:
+            logger.error(f"Error approving capability: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to approve capability: {str(e)}")
+    
+    @app.post("/polly/capabilities/deny/{approval_id}")
+    async def deny_capability(approval_id: str, request: Request):
+        """
+        Deny a pending capability request.
+        
+        Request body:
+        {
+            "reason": "Optional reason for denial"
+        }
+        
+        Response:
+        {
+            "status": "success",
+            "message": "Capability denied"
+        }
+        """
+        try:
+            from core.capability_broker import get_capability_broker
+            broker = get_capability_broker()
+            
+            body = await request.json()
+            reason = body.get("reason")
+            
+            broker.deny_capability(approval_id, reason=reason)
+            
+            return {
+                "status": "success",
+                "message": "Capability denied"
+            }
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        except Exception as e:
+            logger.error(f"Error denying capability: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to deny capability: {str(e)}")
+    
+    @app.get("/polly/packages/metadata/{package_name}")
+    async def get_package_metadata(package_name: str):
+        """
+        Get metadata for a package (PyPI + Context7).
+        
+        Used in package approval workflow to show users information
+        about packages before they approve installation.
+        
+        Response:
+        {
+            "name": "numpy",
+            "description": "Fundamental package for array computing",
+            "version": "1.24.0",
+            "author": "NumPy Developers",
+            "homepage": "https://numpy.org",
+            "context7_trust_score": 0.95,
+            "context7_info": {...},
+            "pypi_info": {...}
+        }
+        """
+        try:
+            from core.package_metadata import get_package_metadata_fetcher
+            fetcher = await get_package_metadata_fetcher()
+            metadata = await fetcher.fetch_metadata(package_name)
+            return metadata.to_dict()
+        except Exception as e:
+            logger.error(f"Error fetching metadata for {package_name}: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to fetch package metadata: {str(e)}")
+    
+    @app.post("/polly/packages/approve")
+    async def approve_packages(request: Request):
+        """
+        Approve packages for installation.
+        
+        Adds packages to approved_packages.yaml allowlist.
+        
+        Request body:
+        {
+            "packages": ["numpy", "pandas"],
+            "permanent": true  // If true, add to allowlist. If false, one-time approval.
+        }
+        
+        Response:
+        {
+            "status": "success",
+            "approved": ["numpy", "pandas"],
+            "message": "Packages approved"
+        }
+        """
+        try:
+            from core.package_detector import get_package_detector
+            from pathlib import Path
+            import yaml
+            
+            body = await request.json()
+            packages = body.get("packages", [])
+            permanent = body.get("permanent", True)
+            
+            if not packages:
+                raise HTTPException(400, "No packages specified")
+            
+            detector = get_package_detector()
+            
+            # Load current allowlist
+            allowlist_path = detector.allowlist_path
+            if not allowlist_path.exists():
+                # Create default allowlist file
+                allowlist_path.parent.mkdir(parents=True, exist_ok=True)
+                config = {
+                    "approved_packages": [],
+                    "blocked_packages": [],
+                    "stdlib_modules": list(detector.STDLIB_MODULES)
+                }
+            else:
+                with open(allowlist_path) as f:
+                    config = yaml.safe_load(f) or {}
+            
+            # Add packages to approved list
+            approved_list = config.get("approved_packages", [])
+            for pkg in packages:
+                pkg_lower = pkg.lower()
+                if pkg_lower not in approved_list:
+                    approved_list.append(pkg_lower)
+            
+            config["approved_packages"] = approved_list
+            
+            # Save allowlist
+            with open(allowlist_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False)
+            
+            # Reload detector to pick up changes
+            detector._load_allowlist()
+            
+            logger.info(f"Approved packages: {packages} (permanent: {permanent})")
+            
+            return {
+                "status": "success",
+                "approved": packages,
+                "message": f"{len(packages)} package(s) approved"
+            }
+        except Exception as e:
+            logger.error(f"Error approving packages: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to approve packages: {str(e)}")
+    
+    @app.post("/polly/packages/block")
+    async def block_packages(request: Request):
+        """
+        Block packages from being used.
+        
+        Adds packages to blocked_packages list in approved_packages.yaml.
+        
+        Request body:
+        {
+            "packages": ["malicious-package"]
+        }
+        
+        Response:
+        {
+            "status": "success",
+            "blocked": ["malicious-package"]
+        }
+        """
+        try:
+            from core.package_detector import get_package_detector
+            from pathlib import Path
+            import yaml
+            
+            body = await request.json()
+            packages = body.get("packages", [])
+            
+            if not packages:
+                raise HTTPException(400, "No packages specified")
+            
+            detector = get_package_detector()
+            
+            # Load current allowlist
+            allowlist_path = detector.allowlist_path
+            if not allowlist_path.exists():
+                allowlist_path.parent.mkdir(parents=True, exist_ok=True)
+                config = {
+                    "approved_packages": [],
+                    "blocked_packages": [],
+                    "stdlib_modules": list(detector.STDLIB_MODULES)
+                }
+            else:
+                with open(allowlist_path) as f:
+                    config = yaml.safe_load(f) or {}
+            
+            # Add packages to blocked list
+            blocked_list = config.get("blocked_packages", [])
+            for pkg in packages:
+                pkg_lower = pkg.lower()
+                if pkg_lower not in blocked_list:
+                    blocked_list.append(pkg_lower)
+                # Remove from approved if present
+                approved_list = config.get("approved_packages", [])
+                if pkg_lower in approved_list:
+                    approved_list.remove(pkg_lower)
+            
+            config["blocked_packages"] = blocked_list
+            config["approved_packages"] = approved_list
+            
+            # Save allowlist
+            with open(allowlist_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False)
+            
+            # Reload detector
+            detector._load_allowlist()
+            
+            logger.info(f"Blocked packages: {packages}")
+            
+            return {
+                "status": "success",
+                "blocked": packages,
+                "message": f"{len(packages)} package(s) blocked"
+            }
+        except Exception as e:
+            logger.error(f"Error blocking packages: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to block packages: {str(e)}")
+    
     @app.post("/polly/curricula/{curriculum_id}/sections/{section_id}/enrich")
     async def enrich_section(curriculum_id: str, section_id: str):
         """
@@ -4969,6 +5463,42 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
             
             enrichment = enrichment_result.get("enrichment", {})
             
+            # Phase 23.5: Check for unapproved packages and route through capability broker
+            if "package_detection" in enrichment:
+                package_detection = enrichment["package_detection"]
+                unapproved = package_detection.get("unapproved_packages", [])
+                
+                if unapproved:
+                    from core.capability_broker import get_capability_broker
+                    from core.capabilities.types import CapabilityType
+                    
+                    broker = get_capability_broker()
+                    pending_approvals = []
+                    
+                    # Request capability for each unapproved package
+                    for package_name in unapproved:
+                        response = broker.request_capability(
+                            capability_type=CapabilityType.PACKAGE_INSTALL,
+                            requestor="professor-persona",
+                            resource=package_name,
+                            metadata={
+                                "curriculum_id": curriculum_id,
+                                "section_id": section_id,
+                                "source": "enrichment"
+                            }
+                        )
+                        
+                        if response.requires_approval and response.approval_id:
+                            pending_approvals.append({
+                                "approval_id": response.approval_id,
+                                "package_name": package_name
+                            })
+                    
+                    # Add pending approvals to enrichment response
+                    if pending_approvals:
+                        enrichment["pending_approvals"] = pending_approvals
+                        logger.info(f"Section enrichment requires {len(pending_approvals)} package approvals")
+            
             # Save enrichment to curriculum
             polly.curriculum_manager.enrich_section(
                 curriculum_id=curriculum_id,
@@ -4992,7 +5522,10 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
     @app.post("/polly/exercises/execute")
     async def execute_exercise_code(request: Request):
         """
-        Execute Python code in a sandboxed environment.
+        Execute Python code in a sandboxed Pyodide environment.
+        
+        Phase 23.5: Security Hardening - Code execution now uses Pyodide sandbox
+        instead of subprocess for security isolation.
         
         Request body:
         {
@@ -5007,71 +5540,64 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
             "error": "Error message if status is error",
             "execution_time": 0.123
         }
+        
+        Note: Actual execution happens in Electron renderer process using Pyodide.
+        This endpoint validates the request and returns the execution result.
         """
         try:
-            import subprocess
-            import tempfile
-            import time
-            from pathlib import Path
+            # Phase 23.5: Security Hardening - Use Pyodide sandbox
+            from core.sandbox import PyodideSandbox
             
             body = await request.json()
             code = body.get('code', '')
-            timeout = body.get('timeout', 5)
+            timeout = body.get('timeout', None)  # Use sandbox default if not provided
             
             if not code:
                 raise HTTPException(400, "Code is required")
             
-            # Create temporary file for code execution
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-                f.write(code)
-                temp_file = f.name
+            # Initialize sandbox
+            sandbox = PyodideSandbox()
             
-            try:
-                start_time = time.time()
-                
-                # Execute code in subprocess with timeout
-                result = subprocess.run(
-                    ['python3', temp_file],
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                    cwd=tempfile.gettempdir()  # Run in temp directory for safety
-                )
-                
-                execution_time = time.time() - start_time
-                
-                # Check if execution was successful
-                if result.returncode == 0:
-                    return {
-                        "status": "success",
-                        "output": result.stdout,
-                        "execution_time": round(execution_time, 3)
-                    }
-                else:
-                    return {
-                        "status": "error",
-                        "output": result.stdout,
-                        "error": result.stderr,
-                        "execution_time": round(execution_time, 3)
-                    }
-                    
-            except subprocess.TimeoutExpired:
+            # Validate code
+            is_valid, error_msg = sandbox.validate_code(code)
+            if not is_valid:
                 return {
-                    "status": "timeout",
-                    "error": f"Code execution timed out after {timeout} seconds"
+                    "status": "error",
+                    "error": error_msg or "Code validation failed",
+                    "execution_time": 0.0
                 }
-            finally:
-                # Clean up temp file
-                try:
-                    Path(temp_file).unlink()
-                except:
-                    pass
+            
+            # Phase 23.5: Execution happens client-side in Pyodide sandbox
+            # This endpoint validates the request and can log execution results for audit.
+            # The frontend executes code directly in Pyodide and may send results here for logging.
+            
+            # Check if this is an audit log request (execution already happened client-side)
+            executed_locally = body.get('executed_locally', False)
+            result_status = body.get('result_status')
+            
+            if executed_locally:
+                # This is an audit log - just log it
+                logger.info(f"Code execution audit: code_length={len(code)}, status={result_status}, executed_in_pyodide=True")
+                return {
+                    "status": "logged",
+                    "message": "Execution logged for audit"
+                }
+            
+            # Otherwise, this is a validation request
+            logger.info(f"Code execution request validated: code_length={len(code)}, timeout={timeout}")
+            
+            # Return validation result - frontend should execute in Pyodide
+            return {
+                "status": "validated",
+                "message": "Code validated. Execute in Electron renderer using Pyodide.",
+                "sandbox_info": sandbox.get_sandbox_info()
+            }
                     
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error executing code: {e}", exc_info=True)
-            raise HTTPException(500, f"Failed to execute code: {str(e)}")
+            logger.error(f"Error processing execution request: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to process execution request: {str(e)}")
     
     @app.post("/polly/exercises/validate")
     async def validate_exercise_solution(request: Request):

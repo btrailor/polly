@@ -2,7 +2,35 @@
 
 **Status:** 📋 Ready for Implementation  
 **Duration:** 2-3 weeks (15-21 days)  
-**Last Updated:** February 3, 2026
+**Last Updated:** February 3, 2026  
+**Branch:** `phase-23.5-security-hardening`
+
+---
+
+## Git Branching Strategy
+
+**Branch:** `phase-23.5-security-hardening`  
+**Base:** `master` (planning docs committed to master)
+
+This is a major security refactor touching core files. All implementation work should be done on the feature branch:
+
+```bash
+# Already on branch (created Feb 3, 2026)
+git checkout phase-23.5-security-hardening
+
+# Work on implementation...
+# Commit frequently with descriptive messages
+
+# When complete, merge to master:
+git checkout master
+git merge phase-23.5-security-hardening
+```
+
+**Rationale:**
+- Major refactor affecting core security infrastructure
+- Allows safe experimentation and rollback
+- Keeps master stable during development
+- Easier to review before merging
 
 ---
 

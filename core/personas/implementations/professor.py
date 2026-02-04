@@ -25,6 +25,7 @@ from pathlib import Path
 
 from ..base import AgentPersona, PersonaContext, PersonaResponse, PersonaAction
 from core.router_v2 import TaskType, ConfidenceLevel
+from core.package_detector import get_package_detector, PackageReference
 
 logger = logging.getLogger(__name__)
 
@@ -1221,6 +1222,27 @@ Would you like me to create this note?"""
             # Parse LLM response into structured data
             enrichment = self._parse_enrichment_response(llm_content, skill_data)
             
+            # Phase 23.5: Security Hardening - Package Detection
+            # Scan all code blocks for package imports
+            detected_packages = self._detect_packages_in_enrichment(enrichment)
+            if detected_packages:
+                enrichment["package_detection"] = {
+                    "packages": [
+                        {
+                            "name": pkg.name,
+                            "source": pkg.source.value,
+                            "line_number": pkg.line_number,
+                            "context": pkg.context,
+                            "requires_approval": pkg.requires_approval
+                        }
+                        for pkg in detected_packages
+                    ],
+                    "requires_approval": any(pkg.requires_approval for pkg in detected_packages),
+                    "unapproved_packages": [pkg.name for pkg in detected_packages if pkg.requires_approval]
+                }
+                logger.info(f"[Enrich Section] Package detection: {len(detected_packages)} packages found, "
+                           f"{len([p for p in detected_packages if p.requires_approval])} require approval")
+            
             logger.info(f"[Enrich Section] Enrichment complete - "
                        f"{len(enrichment.get('diagrams', []))} diagrams, "
                        f"{len(enrichment.get('examples', []))} examples, "
@@ -1709,6 +1731,56 @@ Feel free to create new materials or adapt existing ones for this specific secti
             logger.error(f"[Parse Enrichment] Error parsing: {e}", exc_info=True)
         
         return enrichment
+    
+    def _detect_packages_in_enrichment(self, enrichment: Dict[str, Any]) -> List[PackageReference]:
+        """
+        Scan enrichment content for package imports.
+        
+        Checks:
+        - Example code blocks
+        - Exercise starter_code
+        - Exercise solution code
+        
+        Args:
+            enrichment: Enrichment dict with examples and exercises
+            
+        Returns:
+            List of PackageReference objects for packages requiring approval
+        """
+        detector = get_package_detector()
+        all_packages = []
+        
+        # Scan example code
+        for example in enrichment.get("examples", []):
+            code = example.get("code", "")
+            if code:
+                packages = detector.scan_code(code)
+                all_packages.extend(packages)
+        
+        # Scan exercise code
+        for exercise in enrichment.get("exercises", []):
+            # Check starter_code
+            starter_code = exercise.get("starter_code", "")
+            if starter_code:
+                packages = detector.scan_code(starter_code)
+                all_packages.extend(packages)
+            
+            # Check solution
+            solution = exercise.get("solution", "")
+            if solution:
+                packages = detector.scan_code(solution)
+                all_packages.extend(packages)
+        
+        # Remove duplicates (same package from multiple code blocks)
+        seen = set()
+        unique_packages = []
+        for pkg in all_packages:
+            key = (pkg.name.lower(), pkg.source)
+            if key not in seen:
+                seen.add(key)
+                unique_packages.append(pkg)
+        
+        return unique_packages
 
     # Skill Package Management
     
