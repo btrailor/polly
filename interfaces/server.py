@@ -5069,6 +5069,188 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
             logger.error(f"Error getting progress for {curriculum_id}: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to get progress: {str(e)}")
     
+    # Phase 23.5: Security Hardening - Package Approval Endpoints
+    
+    @app.get("/polly/packages/metadata/{package_name}")
+    async def get_package_metadata(package_name: str):
+        """
+        Get metadata for a package (PyPI + Context7).
+        
+        Used in package approval workflow to show users information
+        about packages before they approve installation.
+        
+        Response:
+        {
+            "name": "numpy",
+            "description": "Fundamental package for array computing",
+            "version": "1.24.0",
+            "author": "NumPy Developers",
+            "homepage": "https://numpy.org",
+            "context7_trust_score": 0.95,
+            "context7_info": {...},
+            "pypi_info": {...}
+        }
+        """
+        try:
+            from core.package_metadata import get_package_metadata_fetcher
+            fetcher = await get_package_metadata_fetcher()
+            metadata = await fetcher.fetch_metadata(package_name)
+            return metadata.to_dict()
+        except Exception as e:
+            logger.error(f"Error fetching metadata for {package_name}: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to fetch package metadata: {str(e)}")
+    
+    @app.post("/polly/packages/approve")
+    async def approve_packages(request: Request):
+        """
+        Approve packages for installation.
+        
+        Adds packages to approved_packages.yaml allowlist.
+        
+        Request body:
+        {
+            "packages": ["numpy", "pandas"],
+            "permanent": true  // If true, add to allowlist. If false, one-time approval.
+        }
+        
+        Response:
+        {
+            "status": "success",
+            "approved": ["numpy", "pandas"],
+            "message": "Packages approved"
+        }
+        """
+        try:
+            from core.package_detector import get_package_detector
+            from pathlib import Path
+            import yaml
+            
+            body = await request.json()
+            packages = body.get("packages", [])
+            permanent = body.get("permanent", True)
+            
+            if not packages:
+                raise HTTPException(400, "No packages specified")
+            
+            detector = get_package_detector()
+            
+            # Load current allowlist
+            allowlist_path = detector.allowlist_path
+            if not allowlist_path.exists():
+                # Create default allowlist file
+                allowlist_path.parent.mkdir(parents=True, exist_ok=True)
+                config = {
+                    "approved_packages": [],
+                    "blocked_packages": [],
+                    "stdlib_modules": list(detector.STDLIB_MODULES)
+                }
+            else:
+                with open(allowlist_path) as f:
+                    config = yaml.safe_load(f) or {}
+            
+            # Add packages to approved list
+            approved_list = config.get("approved_packages", [])
+            for pkg in packages:
+                pkg_lower = pkg.lower()
+                if pkg_lower not in approved_list:
+                    approved_list.append(pkg_lower)
+            
+            config["approved_packages"] = approved_list
+            
+            # Save allowlist
+            with open(allowlist_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False)
+            
+            # Reload detector to pick up changes
+            detector._load_allowlist()
+            
+            logger.info(f"Approved packages: {packages} (permanent: {permanent})")
+            
+            return {
+                "status": "success",
+                "approved": packages,
+                "message": f"{len(packages)} package(s) approved"
+            }
+        except Exception as e:
+            logger.error(f"Error approving packages: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to approve packages: {str(e)}")
+    
+    @app.post("/polly/packages/block")
+    async def block_packages(request: Request):
+        """
+        Block packages from being used.
+        
+        Adds packages to blocked_packages list in approved_packages.yaml.
+        
+        Request body:
+        {
+            "packages": ["malicious-package"]
+        }
+        
+        Response:
+        {
+            "status": "success",
+            "blocked": ["malicious-package"]
+        }
+        """
+        try:
+            from core.package_detector import get_package_detector
+            from pathlib import Path
+            import yaml
+            
+            body = await request.json()
+            packages = body.get("packages", [])
+            
+            if not packages:
+                raise HTTPException(400, "No packages specified")
+            
+            detector = get_package_detector()
+            
+            # Load current allowlist
+            allowlist_path = detector.allowlist_path
+            if not allowlist_path.exists():
+                allowlist_path.parent.mkdir(parents=True, exist_ok=True)
+                config = {
+                    "approved_packages": [],
+                    "blocked_packages": [],
+                    "stdlib_modules": list(detector.STDLIB_MODULES)
+                }
+            else:
+                with open(allowlist_path) as f:
+                    config = yaml.safe_load(f) or {}
+            
+            # Add packages to blocked list
+            blocked_list = config.get("blocked_packages", [])
+            for pkg in packages:
+                pkg_lower = pkg.lower()
+                if pkg_lower not in blocked_list:
+                    blocked_list.append(pkg_lower)
+                # Remove from approved if present
+                approved_list = config.get("approved_packages", [])
+                if pkg_lower in approved_list:
+                    approved_list.remove(pkg_lower)
+            
+            config["blocked_packages"] = blocked_list
+            config["approved_packages"] = approved_list
+            
+            # Save allowlist
+            with open(allowlist_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False)
+            
+            # Reload detector
+            detector._load_allowlist()
+            
+            logger.info(f"Blocked packages: {packages}")
+            
+            return {
+                "status": "success",
+                "blocked": packages,
+                "message": f"{len(packages)} package(s) blocked"
+            }
+        except Exception as e:
+            logger.error(f"Error blocking packages: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to block packages: {str(e)}")
+    
     @app.post("/polly/curricula/{curriculum_id}/sections/{section_id}/enrich")
     async def enrich_section(curriculum_id: str, section_id: str):
         """
