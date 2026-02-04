@@ -5224,20 +5224,29 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
                     "execution_time": 0.0
                 }
             
-            # Note: Actual execution happens in the Electron renderer process.
-            # The frontend JavaScript calls Pyodide directly and sends results back.
-            # This endpoint is kept for API compatibility, but execution is client-side.
+            # Phase 23.5: Execution happens client-side in Pyodide sandbox
+            # This endpoint validates the request and can log execution results for audit.
+            # The frontend executes code directly in Pyodide and may send results here for logging.
             
-            # For now, return a message indicating execution should happen client-side
-            # In the next step, we'll update the frontend to execute directly in Pyodide
-            # and only call this endpoint for validation/audit logging.
+            # Check if this is an audit log request (execution already happened client-side)
+            executed_locally = body.get('executed_locally', False)
+            result_status = body.get('result_status')
             
+            if executed_locally:
+                # This is an audit log - just log it
+                logger.info(f"Code execution audit: code_length={len(code)}, status={result_status}, executed_in_pyodide=True")
+                return {
+                    "status": "logged",
+                    "message": "Execution logged for audit"
+                }
+            
+            # Otherwise, this is a validation request
             logger.info(f"Code execution request validated: code_length={len(code)}, timeout={timeout}")
             
-            # Return instruction for client-side execution
+            # Return validation result - frontend should execute in Pyodide
             return {
-                "status": "pending",
-                "message": "Code execution should happen in Electron renderer using Pyodide",
+                "status": "validated",
+                "message": "Code validated. Execute in Electron renderer using Pyodide.",
                 "sandbox_info": sandbox.get_sandbox_info()
             }
                     
