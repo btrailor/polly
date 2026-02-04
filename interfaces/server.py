@@ -279,10 +279,19 @@ def create_app(polly_instance=None) -> FastAPI:
     
     if not cors_configured:
         # Fallback CORS configuration
-        logger.info("Using fallback CORS configuration")
+        # Include both localhost and 127.0.0.1 with common ports
+        fallback_origins = [
+            "http://localhost:3000",
+            "http://localhost:11436",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:11436",
+            "http://localhost",  # No port (defaults to 80, but browser may use it)
+            "http://127.0.0.1",  # No port
+        ]
+        logger.info(f"Using fallback CORS configuration with {len(fallback_origins)} origins")
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["http://localhost:3000", "http://localhost:11436", "http://127.0.0.1:3000", "http://127.0.0.1:11436"],
+            allow_origins=fallback_origins,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
