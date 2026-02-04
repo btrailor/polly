@@ -38,7 +38,16 @@ import re
 logger = logging.getLogger(__name__)
 
 # Phase 23.5: Security Hardening
-from core.security_policy import get_security_policy
+# Import security policy lazily to avoid startup failures
+try:
+    from core.security_policy import get_security_policy
+    SECURITY_POLICY_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Security policy module not available: {e}. Security features disabled.")
+    SECURITY_POLICY_AVAILABLE = False
+    def get_security_policy():
+        """Fallback if security policy module unavailable."""
+        return None
 
 
 # Request/Response models
@@ -243,29 +252,52 @@ def create_app(polly_instance=None) -> FastAPI:
 
     # Phase 23.5: Security Hardening - CORS Policy
     # Load security policy and configure CORS
-    try:
-        security_policy = get_security_policy()
-        cors_config = security_policy.get_cors_config()
-        
-        # Expand wildcard ports for common development ports
-        # FastAPI CORSMiddleware doesn't support wildcards, so we expand them
-        expanded_origins = _expand_cors_origins(cors_config["allow_origins"])
-        
+    if SECURITY_POLICY_AVAILABLE:
+        try:
+            security_policy = get_security_policy()
+            if security_policy is not None:
+                cors_config = security_policy.get_cors_config()
+                
+                # Expand wildcard ports for common development ports
+                # FastAPI CORSMiddleware doesn't support wildcards, so we expand them
+                expanded_origins = _expand_cors_origins(cors_config["allow_origins"])
+                
+                app.add_middleware(
+                    CORSMiddleware,
+                    allow_origins=expanded_origins,
+                    allow_credentials=cors_config["allow_credentials"],
+                    allow_methods=cors_config["allow_methods"],
+                    allow_headers=cors_config["allow_headers"],
+                )
+                
+                logger.info(f"Security hardening: CORS configured with {len(expanded_origins)} origins")
+            else:
+                raise ValueError("Security policy returned None")
+            
+            app.add_middleware(
+                CORSMiddleware,
+                allow_origins=expanded_origins,
+                allow_credentials=cors_config["allow_credentials"],
+                allow_methods=cors_config["allow_methods"],
+                allow_headers=cors_config["allow_headers"],
+            )
+            
+        except Exception as e:
+            # Fallback to permissive CORS if security policy fails to load
+            logger.error(f"Failed to load security policy: {e}. Using permissive CORS (fallback).")
+            app.add_middleware(
+                CORSMiddleware,
+                allow_origins=["http://localhost:3000", "http://localhost:11436", "http://127.0.0.1:3000", "http://127.0.0.1:11436"],
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
+            )
+    else:
+        # Security policy module not available - use basic CORS
+        logger.warning("Security policy module not available. Using basic CORS configuration.")
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=expanded_origins,
-            allow_credentials=cors_config["allow_credentials"],
-            allow_methods=cors_config["allow_methods"],
-            allow_headers=cors_config["allow_headers"],
-        )
-        
-        logger.info(f"Security hardening: CORS configured with {len(expanded_origins)} origins")
-    except Exception as e:
-        # Fallback to permissive CORS if security policy fails to load
-        logger.error(f"Failed to load security policy: {e}. Using permissive CORS (fallback).")
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["http://localhost:*", "http://127.0.0.1:*"],
+            allow_origins=["http://localhost:3000", "http://localhost:11436", "http://127.0.0.1:3000", "http://127.0.0.1:11436"],
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
