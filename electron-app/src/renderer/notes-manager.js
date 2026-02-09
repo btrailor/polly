@@ -43,9 +43,16 @@ class NotesManager {
     
     // Check notes source
     await this.checkNotesSource();
+    console.log('[Notes] Notes source checked:', this.source, this.sourcePath);
     
     // Load notes index
-    await this.loadNotesIndex();
+    console.log('[Notes] About to load notes index...');
+    try {
+      await this.loadNotesIndex();
+      console.log('[Notes] Notes index loaded successfully');
+    } catch (error) {
+      console.error('[Notes] Failed to load notes index in init:', error);
+    }
     
     // Setup editor
     this.setupEditor();
@@ -104,20 +111,42 @@ class NotesManager {
         url += `&domain=${domain}`;
       }
       
+      console.log(`[Notes] Fetching notes from: ${url}`);
       const response = await fetch(url);
+      
+      console.log(`[Notes] Response status: ${response.status} ${response.statusText}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[Notes] HTTP error response:`, errorText);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
+      console.log(`[Notes] API response:`, data);
       
       this.notes = data.notes || [];
       this.stats = data.stats || {};
       
-      console.log(`[Notes] Loaded ${this.notes.length} notes`);
+      console.log(`[Notes] Loaded ${this.notes.length} notes (total: ${this.stats.total || 0})`);
+      console.log(`[Notes] First few notes:`, this.notes.slice(0, 3));
+      
+      if (data.error) {
+        console.warn(`[Notes] API returned error: ${data.error}`);
+      }
+      
+      if (this.notes.length === 0 && this.stats.total === 0) {
+        console.warn('[Notes] No notes found. The notes index may be empty or the notes path may not be configured.');
+        console.warn('[Notes] Check server logs for index build messages.');
+      }
       
       // Update file tree
       this.updateFileTree();
       
     } catch (error) {
       console.error('[Notes] Error loading notes:', error);
-      this.showError('Failed to load notes');
+      console.error('[Notes] Error stack:', error.stack);
+      this.showError(`Failed to load notes: ${error.message}`);
     } finally {
       this.isLoading = false;
       this.updateLoadingState();
@@ -1187,25 +1216,6 @@ ${processedContent}
       });
     }
     
-    // Domain filter
-    const domainSelect = document.getElementById('notes-domain-filter');
-    if (domainSelect) {
-      domainSelect.addEventListener('change', (e) => {
-        const domain = e.target.value || null;
-        this.loadNotesIndex(domain);
-      });
-    }
-    
-    // Sort select
-    const sortSelect = document.getElementById('notes-sort-select');
-    if (sortSelect) {
-      sortSelect.value = this.sortMode; // Set current value
-      sortSelect.addEventListener('change', (e) => {
-        this.sortMode = e.target.value;
-        this.updateFileTree();
-      });
-    }
-    
     // Collapsible panel headers
     document.querySelectorAll('.notes-panel-header.collapsible').forEach(header => {
       header.addEventListener('click', () => {
@@ -1289,14 +1299,52 @@ ${processedContent}
    * Update file tree
    */
   updateFileTree() {
+    console.log('[Notes] updateFileTree called');
+    console.log('[Notes] Notes array:', this.notes);
+    console.log('[Notes] Notes count:', this.notes?.length || 0);
+    
     // Use left sidebar if available, otherwise fall back to internal container
     let treeContainer = document.getElementById('notes-file-tree-container');
     
     if (!treeContainer) {
+      console.log('[Notes] notes-file-tree-container not found, trying notes-file-tree');
       treeContainer = document.getElementById('notes-file-tree');
     }
     
-    if (!treeContainer) return;
+    if (!treeContainer) {
+      console.error('[Notes] File tree container not found!');
+      console.error('[Notes] Available elements:', {
+        'notes-file-tree-container': !!document.getElementById('notes-file-tree-container'),
+        'notes-file-tree': !!document.getElementById('notes-file-tree'),
+        'left-sidebar-content': !!document.getElementById('left-sidebar-content')
+      });
+      return;
+    }
+    
+    console.log('[Notes] Tree container found:', treeContainer);
+    
+    // Preserve the ribbon if it exists
+    const ribbon = treeContainer.querySelector('.browser-ribbon');
+    const ribbonHTML = ribbon ? ribbon.outerHTML : '';
+    
+    // Show empty state if no notes
+    if (!this.notes || this.notes.length === 0) {
+      console.log('[Notes] No notes to display, showing empty state');
+      treeContainer.innerHTML = ribbonHTML + `
+        <div class="file-tree-content" style="padding: 24px; text-align: center; color: var(--text-secondary);">
+          <i data-lucide="file-text" style="width: 48px; height: 48px; margin: 0 auto 16px; opacity: 0.3; display: block;"></i>
+          <p style="font-size: 13px; margin: 0;">No notes found</p>
+          <p style="font-size: 11px; margin: 8px 0 0; opacity: 0.7;">The notes index may be empty or still building.</p>
+          <p style="font-size: 11px; margin: 8px 0 0; opacity: 0.7;">Check the browser console (F12) for details.</p>
+        </div>
+      `;
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons({ attrs: { 'stroke-width': 2 } });
+      }
+      return;
+    }
+    
+    console.log('[Notes] Building file tree with', this.notes.length, 'notes');
     
     let html = '';
     
@@ -1315,10 +1363,14 @@ ${processedContent}
       const sortedDomains = Object.keys(byDomain).sort();
       
       // Build tree HTML with folders
+      console.log('[Notes] Building folder view with', sortedDomains.length, 'domains');
+      html = '<div class="file-tree-content">';
       for (const domain of sortedDomains) {
         const notes = byDomain[domain];
         // Sort notes within folder by name
         notes.sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
+        
+        console.log(`[Notes] Domain "${domain}": ${notes.length} notes`);
         
         html += `
           <div class="file-tree-folder">
@@ -1339,6 +1391,9 @@ ${processedContent}
           </div>
         `;
       }
+      html += '</div>';
+      
+      console.log('[Notes] Generated HTML length:', html.length, 'characters');
     } else {
       // Flat list with sorting
       let sortedNotes = [...this.notes];
@@ -1359,7 +1414,7 @@ ${processedContent}
       }
       
       // Build flat list HTML
-      html = '<div class="file-tree-flat">';
+      html = '<div class="file-tree-content"><div class="file-tree-flat">';
       sortedNotes.forEach(note => {
         html += `
           <div class="file-tree-item" data-note-name="${note.name}">
@@ -1368,10 +1423,11 @@ ${processedContent}
           </div>
         `;
       });
-      html += '</div>';
+      html += '</div></div>';
     }
     
-    treeContainer.innerHTML = html;
+    // Render the tree, preserving the ribbon
+    treeContainer.innerHTML = ribbonHTML + html;
     
     // Re-initialize lucide icons
     if (typeof lucide !== 'undefined') {
@@ -2456,7 +2512,7 @@ ${processedContent}
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          name: this.currentNote.name,
+          path: this.currentNote.path,
           content: content
         })
       });

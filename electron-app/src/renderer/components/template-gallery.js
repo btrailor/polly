@@ -43,10 +43,9 @@ const TemplateGallery = {
   async init() {
     console.log('[TemplateGallery] Initializing...');
     
-    // Load templates from API
+    // Load templates from API with retry logic
     try {
-      const response = await fetch('http://127.0.0.1:11436/polly/templates');
-      const data = await response.json();
+      const data = await window.APIClient.fetchJSON('/polly/templates', {}, 3, 1000);
       this.templates = data.templates || [];
       console.log(`[TemplateGallery] Loaded ${this.templates.length} templates`);
     } catch (error) {

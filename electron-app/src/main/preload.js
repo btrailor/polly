@@ -84,6 +84,10 @@ contextBridge.exposeInMainWorld('polly', {
   categoryList: () => ipcRenderer.invoke('category-list'),
   categoryCreate: (data) => ipcRenderer.invoke('category-create', data),
 
+  // VSCode BrowserView
+  showVSCode: () => ipcRenderer.invoke('show-vscode'),
+  hideVSCode: () => ipcRenderer.invoke('hide-vscode'),
+
   // Events
   onServerStatus: (callback) => {
     ipcRenderer.on('server-status', (event, data) => callback(data));

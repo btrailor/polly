@@ -2168,11 +2168,227 @@ function showView(view) {
 /**
  * Update left sidebar content based on active view
  */
+// Sidebar ribbon configurations: contextual horizontal ribbon buttons per page
+const sidebarRibbonConfigs = {
+  dashboard: {
+    containerClass: 'dashboard-ribbon-buttons',
+    btnClass: 'dashboard-ribbon-btn',
+    buttons: [
+      { id: 'overview', icon: 'layout-dashboard', label: 'Overview', default: true },
+      { id: 'activity', icon: 'activity', label: 'Activity' },
+      { id: 'stats', icon: 'bar-chart-2', label: 'Stats' }
+    ]
+  },
+  notes: {
+    containerClass: 'notes-ribbon-buttons',
+    btnClass: 'notes-ribbon-btn',
+    buttons: [
+      { id: 'files', icon: 'files', label: 'Files', default: true },
+      { id: 'backlinks', icon: 'link', label: 'Backlinks' },
+      { id: 'tags', icon: 'tag', label: 'Tags' },
+      { id: 'toc', icon: 'list', label: 'TOC' }
+    ]
+  },
+  code: {
+    containerClass: 'code-ribbon-buttons',
+    btnClass: 'code-ribbon-btn',
+    buttons: [
+      { id: 'files', icon: 'files', label: 'Files', default: true },
+      { id: 'search', icon: 'search', label: 'Search' }
+    ]
+  },
+  knowledge: {
+    containerClass: 'knowledge-ribbon-buttons',
+    btnClass: 'knowledge-ribbon-btn',
+    buttons: [
+      { id: 'sources', icon: 'database', label: 'Sources', default: true },
+      { id: 'index', icon: 'search', label: 'Index' },
+      { id: 'domains', icon: 'folder-tree', label: 'Domains' }
+    ]
+  },
+  patterns: {
+    containerClass: 'patterns-ribbon-buttons',
+    btnClass: 'patterns-ribbon-btn',
+    buttons: [
+      { id: 'all', icon: 'sparkles', label: 'All', default: true },
+      { id: 'categories', icon: 'grid-3x3', label: 'Categories' },
+      { id: 'export', icon: 'download', label: 'Export' }
+    ]
+  },
+  learning: {
+    containerClass: 'learning-ribbon-buttons',
+    btnClass: 'learning-ribbon-btn',
+    buttons: [
+      { id: 'curricula', icon: 'graduation-cap', label: 'Curricula', default: true },
+      { id: 'progress', icon: 'trending-up', label: 'Progress' },
+      { id: 'topics', icon: 'book-open', label: 'Topics' }
+    ]
+  },
+  search: {
+    containerClass: 'search-ribbon-buttons',
+    btnClass: 'search-ribbon-btn',
+    buttons: [
+      { id: 'recent', icon: 'clock', label: 'Recent', default: true },
+      { id: 'saved', icon: 'bookmark', label: 'Saved' }
+    ]
+  },
+  domains: {
+    containerClass: 'domains-ribbon-buttons',
+    btnClass: 'domains-ribbon-btn',
+    buttons: [
+      { id: 'all', icon: 'folder-tree', label: 'All', default: true },
+      { id: 'active', icon: 'zap', label: 'Active' }
+    ]
+  },
+  settings: {
+    containerClass: 'settings-ribbon-buttons',
+    btnClass: 'settings-ribbon-btn',
+    buttons: [
+      { id: 'general', icon: 'settings', label: 'General', default: true },
+      { id: 'api-keys', icon: 'key', label: 'API Keys' },
+      { id: 'routing', icon: 'git-branch', label: 'Routing' }
+    ]
+  }
+};
+
+// Track active sidebar ribbon tab per view
+const activeSidebarRibbonTab = {};
+
+/**
+ * Create the horizontal sidebar ribbon HTML for a given view
+ */
+function createSidebarRibbon(view) {
+  const config = sidebarRibbonConfigs[view];
+  if (!config) return '';
+
+  const buttons = config.buttons.map(btn => {
+    const isActive = activeSidebarRibbonTab[view] === btn.id || 
+                     (!activeSidebarRibbonTab[view] && btn.default);
+    return `<button class="${config.btnClass}${isActive ? ' active' : ''}" data-ribbon-tab="${btn.id}" title="${btn.label}">
+      <i data-lucide="${btn.icon}"></i>
+      <span>${btn.label}</span>
+    </button>`;
+  }).join('');
+
+  return `<div class="${config.containerClass}">${buttons}</div>`;
+}
+
+/**
+ * Create the browser sub-ribbon HTML (floating hover ribbon for file trees)
+ */
+function createBrowserRibbon(view) {
+  const buttons = [];
+  
+  if (view === 'notes') {
+    buttons.push(
+      { icon: 'file-plus', title: 'New Note', action: 'new-note' },
+      { icon: 'folder-plus', title: 'New Folder', action: 'new-folder' },
+      { icon: 'fold-vertical', title: 'Collapse All', action: 'collapse-all' },
+      { icon: 'arrow-up-down', title: 'Sort', action: 'sort' },
+      { icon: 'refresh-cw', title: 'Refresh', action: 'refresh' }
+    );
+  } else if (view === 'code') {
+    buttons.push(
+      { icon: 'file-plus', title: 'New File', action: 'new-file' },
+      { icon: 'folder-plus', title: 'New Folder', action: 'new-folder' },
+      { icon: 'fold-vertical', title: 'Collapse All', action: 'collapse-all' },
+      { icon: 'refresh-cw', title: 'Refresh', action: 'refresh' }
+    );
+  }
+
+  if (buttons.length === 0) return '';
+
+  const buttonsHTML = buttons.map(btn => 
+    `<button class="browser-ribbon-btn" data-action="${btn.action}" title="${btn.title}">
+      <i data-lucide="${btn.icon}"></i>
+    </button>`
+  ).join('');
+
+  return `<div class="browser-ribbon">${buttonsHTML}</div>`;
+}
+
+/**
+ * Attach event handlers for sidebar ribbon buttons
+ */
+function setupSidebarRibbonHandlers(view) {
+  const config = sidebarRibbonConfigs[view];
+  if (!config) return;
+
+  document.querySelectorAll(`.${config.btnClass}`).forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.ribbonTab;
+      activeSidebarRibbonTab[view] = tab;
+
+      // Update active states
+      document.querySelectorAll(`.${config.btnClass}`).forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      // Emit custom event for view-specific handling
+      document.dispatchEvent(new CustomEvent('sidebar-ribbon-change', {
+        detail: { view, tab }
+      }));
+
+      console.log(`[Sidebar Ribbon] ${view} -> ${tab}`);
+    });
+  });
+}
+
+/**
+ * Attach event handlers for browser sub-ribbon buttons
+ */
+function setupBrowserRibbonHandlers(view) {
+  const container = view === 'notes' 
+    ? document.getElementById('notes-file-tree-container')
+    : document.querySelector('.code-view-content');
+  
+  if (!container) return;
+
+  container.querySelectorAll('.browser-ribbon-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      
+      if (view === 'notes') {
+        switch (action) {
+          case 'new-note':
+            if (window.notesManager) window.notesManager.showCreateNoteModal();
+            break;
+          case 'new-folder':
+            if (window.notesManager) window.notesManager.showCreateFolderModal();
+            break;
+          case 'collapse-all':
+            container.querySelectorAll('.file-tree-folder').forEach(folder => {
+              folder.classList.add('collapsed');
+            });
+            break;
+          case 'sort':
+            // Toggle sort select visibility or cycle through sort modes
+            const sortSelect = document.getElementById('notes-sort-select');
+            if (sortSelect) sortSelect.focus();
+            break;
+          case 'refresh':
+            if (window.notesManager) {
+              window.notesManager.loadNotes().then(() => {
+                window.notesManager.updateFileTree();
+              });
+            }
+            break;
+        }
+      }
+      
+      console.log(`[Browser Ribbon] ${view} action: ${action}`);
+    });
+  });
+}
+
 function updateLeftSidebar(view) {
   const sidebarTitle = document.querySelector('.left-sidebar .sidebar-title');
   const sidebarContent = document.querySelector('.left-sidebar .sidebar-content');
   
   if (!sidebarTitle || !sidebarContent) return;
+
+  // Build the horizontal sidebar ribbon for this view
+  const ribbonHTML = createSidebarRibbon(view);
 
   // Define sidebar content for each view
   const sidebarConfigs = {
@@ -2268,11 +2484,38 @@ function updateLeftSidebar(view) {
 
   const config = sidebarConfigs[view] || { title: 'Navigation', content: '' };
   sidebarTitle.textContent = config.title;
-  sidebarContent.innerHTML = config.content;
+  
+  // Wrap content in a sidebar container with ribbon at top
+  const containerClass = `${view}-sidebar-container`;
+  // Remove padding from sidebar-content so ribbon is edge-to-edge
+  sidebarContent.style.padding = '0';
+  sidebarContent.style.overflow = 'hidden';
+  sidebarContent.innerHTML = `<div class="${containerClass}">
+    ${ribbonHTML}
+    <div class="sidebar-view-content" style="flex: 1; overflow-y: auto; min-height: 0; padding: var(--spacing-sm);">
+      ${config.content}
+    </div>
+  </div>`;
 
   // Re-initialize icons
   if (typeof lucide !== 'undefined') {
     setTimeout(() => lucide.createIcons(), 50);
+  }
+
+  // Setup sidebar ribbon handlers
+  setupSidebarRibbonHandlers(view);
+
+  // Insert browser sub-ribbon into file tree containers
+  if (view === 'notes') {
+    const treeContainer = document.getElementById('notes-file-tree-container');
+    if (treeContainer) {
+      treeContainer.insertAdjacentHTML('afterbegin', createBrowserRibbon('notes'));
+      setupBrowserRibbonHandlers('notes');
+      // Re-initialize icons for browser ribbon
+      if (typeof lucide !== 'undefined') {
+        setTimeout(() => lucide.createIcons(), 60);
+      }
+    }
   }
 
   // Attach event handlers based on view
@@ -5271,74 +5514,6 @@ async function handleStartSection(curriculumId, sectionId) {
     // Enrich the section (get materials)
     const enrichment = await enrichSection(curriculumId, sectionId);
     
-    // Phase 23.5: Check for pending package approvals
-    if (enrichment.pending_approvals && enrichment.pending_approvals.length > 0) {
-      console.log('[Package Approval] Showing approval dialog for', enrichment.pending_approvals.length, 'packages');
-      
-      // Show package approval dialog
-      if (window.showPackageApprovalDialog) {
-        await new Promise((resolve) => {
-          window.showPackageApprovalDialog(
-            enrichment.pending_approvals,
-            async (approvalId, permanent) => {
-              // Approve callback
-              try {
-                const response = await fetch(
-                  `${API_URL}/polly/capabilities/approve/${approvalId}`,
-                  {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ permanent })
-                  }
-                );
-                
-                if (response.ok) {
-                  const data = await response.json();
-                  console.log('[Package Approval] Approved:', data);
-                  
-                  // If permanent, also add to package allowlist
-                  if (permanent) {
-                    const pkg = enrichment.pending_approvals.find(p => p.approval_id === approvalId);
-                    if (pkg) {
-                      await fetch(`${API_URL}/polly/packages/approve`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ packages: [pkg.package_name], permanent: true })
-                      });
-                    }
-                  }
-                }
-              } catch (error) {
-                console.error('[Package Approval] Error approving:', error);
-              }
-            },
-            async (approvalId, reason) => {
-              // Deny callback
-              try {
-                const response = await fetch(
-                  `${API_URL}/polly/capabilities/deny/${approvalId}`,
-                  {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ reason })
-                  }
-                );
-                
-                if (response.ok) {
-                  console.log('[Package Approval] Denied:', approvalId);
-                }
-              } catch (error) {
-                console.error('[Package Approval] Error denying:', error);
-              }
-            }
-          );
-          
-          // Resolve after a short delay to allow dialog to be set up
-          setTimeout(resolve, 100);
-        });
-      }
-    }
-    
     // Get curriculum to determine template type
     const curriculum = await getCurriculum(curriculumId);
     const templateId = curriculum?.curriculum_template_id || curriculum?.template_id;
@@ -5394,74 +5569,6 @@ async function handleViewSection(curriculumId, sectionId) {
     
     // Get enriched materials (will use cached version if available)
     const enrichment = await enrichSection(curriculumId, sectionId);
-    
-    // Phase 23.5: Check for pending package approvals
-    if (enrichment.pending_approvals && enrichment.pending_approvals.length > 0) {
-      console.log('[Package Approval] Showing approval dialog for', enrichment.pending_approvals.length, 'packages');
-      
-      // Show package approval dialog
-      if (window.showPackageApprovalDialog) {
-        await new Promise((resolve) => {
-          window.showPackageApprovalDialog(
-            enrichment.pending_approvals,
-            async (approvalId, permanent) => {
-              // Approve callback
-              try {
-                const response = await fetch(
-                  `${API_URL}/polly/capabilities/approve/${approvalId}`,
-                  {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ permanent })
-                  }
-                );
-                
-                if (response.ok) {
-                  const data = await response.json();
-                  console.log('[Package Approval] Approved:', data);
-                  
-                  // If permanent, also add to package allowlist
-                  if (permanent) {
-                    const pkg = enrichment.pending_approvals.find(p => p.approval_id === approvalId);
-                    if (pkg) {
-                      await fetch(`${API_URL}/polly/packages/approve`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ packages: [pkg.package_name], permanent: true })
-                      });
-                    }
-                  }
-                }
-              } catch (error) {
-                console.error('[Package Approval] Error approving:', error);
-              }
-            },
-            async (approvalId, reason) => {
-              // Deny callback
-              try {
-                const response = await fetch(
-                  `${API_URL}/polly/capabilities/deny/${approvalId}`,
-                  {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ reason })
-                  }
-                );
-                
-                if (response.ok) {
-                  console.log('[Package Approval] Denied:', approvalId);
-                }
-              } catch (error) {
-                console.error('[Package Approval] Error denying:', error);
-              }
-            }
-          );
-          
-          // Resolve after a short delay to allow dialog to be set up
-          setTimeout(resolve, 100);
-        });
-      }
-    }
     
     // Get curriculum to determine template type
     const curriculum = await getCurriculum(curriculumId);
@@ -13697,10 +13804,8 @@ async function runPythonInSandbox(code, timeout = 10) {
     }
   } catch (error) {
     return {
-      status: 'error',
       output: '',
-      error: error.message || String(error),
-      execution_time: 0
+      error: error.message
     };
   }
 }

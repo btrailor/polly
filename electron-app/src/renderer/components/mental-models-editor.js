@@ -83,30 +83,62 @@ const MentalModelsEditor = {
   /**
    * Load all mental models from API
    */
-  async loadModels() {
-    try {
-      const response = await fetch('http://127.0.0.1:11436/polly/mental-models/list');
-      const data = await response.json();
-      this.models = data.models || [];
-      console.log(`[MentalModelsEditor] Loaded ${this.models.length} models`);
-    } catch (error) {
-      console.error('[MentalModelsEditor] Failed to load models:', error);
-      this.models = [];
+  async loadModels(retries = 3, delay = 1000) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const response = await fetch('http://127.0.0.1:11436/polly/mental-models/list');
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        this.models = data.models || [];
+        console.log(`[MentalModelsEditor] Loaded ${this.models.length} models`);
+        return; // Success, exit retry loop
+      } catch (error) {
+        console.warn(`[MentalModelsEditor] Load attempt ${attempt}/${retries} failed:`, error.message);
+        
+        if (attempt < retries) {
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          // Final attempt failed
+          console.error('[MentalModelsEditor] Failed to load models after', retries, 'attempts');
+          this.models = [];
+        }
+      }
     }
   },
   
   /**
    * Load currently active models for context
    */
-  async loadActiveModels() {
-    try {
-      const response = await fetch('http://127.0.0.1:11436/polly/mental-models/active');
-      const data = await response.json();
-      this.activeModels = data.active_models || [];
-      console.log(`[MentalModelsEditor] ${this.activeModels.length} models active for current context`);
-    } catch (error) {
-      console.error('[MentalModelsEditor] Failed to load active models:', error);
-      this.activeModels = [];
+  async loadActiveModels(retries = 3, delay = 1000) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const response = await fetch('http://127.0.0.1:11436/polly/mental-models/active');
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        this.activeModels = data.active_models || [];
+        console.log(`[MentalModelsEditor] ${this.activeModels.length} models active for current context`);
+        return; // Success, exit retry loop
+      } catch (error) {
+        console.warn(`[MentalModelsEditor] Load active models attempt ${attempt}/${retries} failed:`, error.message);
+        
+        if (attempt < retries) {
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          // Final attempt failed
+          console.error('[MentalModelsEditor] Failed to load active models after', retries, 'attempts');
+          this.activeModels = [];
+        }
+      }
     }
   },
   

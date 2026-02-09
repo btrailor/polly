@@ -3,8 +3,9 @@
  * Handles window management, Python backend, and system integration
  */
 
-const { app, BrowserWindow, ipcMain, Menu, Tray, shell, dialog } = require('electron');
+const { app, BrowserWindow, BrowserView, ipcMain, Menu, Tray, shell, dialog } = require('electron');
 const path = require('path');
+const os = require('os');
 const { spawn, exec } = require('child_process');
 const fs = require('fs');
 const Store = require('electron-store');
@@ -56,6 +57,7 @@ let ollamaProcess = null;
 let isQuitting = false;
 let ollamaStartedByUs = false;
 let conversationManager = null;
+let vscodeView = null; // BrowserView for VSCode fork
 
 // Paths - detect if we're in development by checking if we're running from node_modules
 const isDev = !app.isPackaged;
@@ -97,6 +99,10 @@ function createWindow() {
   mainWindow.on('resize', () => {
     const { width, height } = mainWindow.getBounds();
     store.set('windowBounds', { width, height });
+    // Update VSCode BrowserView bounds if it's visible
+    if (vscodeView) {
+      updateVSCodeViewBounds();
+    }
   });
 
   // Handle close to tray
@@ -179,6 +185,175 @@ function createTray() {
   tray.on('click', () => {
     mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
   });
+}
+
+/**
+ * Create and configure VSCode BrowserView
+ * 
+ * NOTE: VSCode's workbench.html requires VSCode's main process to function.
+ * Loading it in a BrowserView won't work because it needs VSCode's IPC channels
+ * and services. We need to launch VSCode as a separate process.
+ * 
+ * For now, this creates a BrowserView that shows a placeholder message
+ * explaining that full VSCode integration requires launching it as a separate process.
+ */
+function createVSCodeView() {
+  if (vscodeView) {
+    console.log('[VSCode] Reusing existing BrowserView');
+    return vscodeView;
+  }
+
+  const vscodeCodePath = path.join(
+    process.env.HOME || os.homedir(),
+    'projects',
+    'polly-code'
+  );
+
+  console.log('[VSCode] Creating BrowserView (placeholder mode)');
+  console.log('[VSCode] VSCode path:', vscodeCodePath);
+  console.log('[VSCode] NOTE: Full VSCode integration requires launching as separate process');
+
+  vscodeView = new BrowserView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      enableRemoteModule: false,
+      sandbox: true
+    }
+  });
+  
+  // Set background color to match VSCode theme
+  vscodeView.setBackgroundColor('#1e1e1e');
+
+  // For now, load a placeholder HTML that explains the situation
+  // TODO: Launch VSCode fork as separate process and embed it
+  const placeholderHTML = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body {
+          margin: 0;
+          padding: 40px;
+          background: #1e1e1e;
+          color: #cccccc;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+        }
+        h1 { color: #f0903b; margin-bottom: 20px; }
+        p { max-width: 600px; line-height: 1.6; text-align: center; }
+        code { background: #2a2a2a; padding: 2px 6px; border-radius: 3px; }
+      </style>
+    </head>
+    <body>
+      <h1>VSCode Integration</h1>
+      <p>
+        The VSCode fork with Polly ribbon is ready at <code>~/projects/polly-code</code>.
+      </p>
+      <p>
+        Full integration requires launching VSCode as a separate process. 
+        BrowserView approach won't work because VSCode's workbench needs its own main process.
+      </p>
+      <p style="margin-top: 30px; font-size: 14px; color: #808080;">
+        Next step: Launch VSCode fork process and embed it, or use VSCode web build.
+      </p>
+    </body>
+    </html>
+  `;
+  
+  // Load the placeholder
+  vscodeView.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(placeholderHTML)}`).then(() => {
+    console.log('[VSCode] Placeholder HTML loaded');
+  }).catch(err => {
+    console.error('[VSCode] Failed to load placeholder:', err);
+  });
+
+  // Handle window resize to reposition BrowserView
+  if (mainWindow) {
+    mainWindow.on('resize', updateVSCodeViewBounds);
+    mainWindow.on('move', updateVSCodeViewBounds);
+  }
+
+  return vscodeView;
+}
+
+/**
+ * Update VSCode BrowserView bounds to fit in Code view area
+ */
+function updateVSCodeViewBounds() {
+  if (!mainWindow || !vscodeView) {
+    return;
+  }
+
+  const bounds = mainWindow.getBounds();
+  const ribbonWidth = 48; // Polly ribbon width
+  const titlebarHeight = 35; // macOS titlebar height
+  const leftSidebarWidth = 280; // Left sidebar width (when visible)
+  const rightSidebarWidth = 320; // Right sidebar width (when visible)
+  
+  // For now, assume sidebars are visible
+  // TODO: Check actual sidebar state from renderer
+  const leftSidebarVisible = true; // Will be dynamic later
+  const rightSidebarVisible = true; // Will be dynamic later
+  
+  const x = ribbonWidth + (leftSidebarVisible ? leftSidebarWidth : 0);
+  const width = bounds.width - ribbonWidth 
+    - (leftSidebarVisible ? leftSidebarWidth : 0)
+    - (rightSidebarVisible ? rightSidebarWidth : 0);
+
+  vscodeView.setBounds({
+    x: x,
+    y: titlebarHeight,
+    width: width,
+    height: bounds.height - titlebarHeight
+  });
+  
+  console.log('[VSCode] BrowserView bounds updated:', {
+    x, y: titlebarHeight, width, height: bounds.height - titlebarHeight,
+    windowWidth: bounds.width, windowHeight: bounds.height
+  });
+}
+
+/**
+ * Show VSCode BrowserView
+ */
+function showVSCodeView() {
+  if (!mainWindow) {
+    console.error('[VSCode] Main window not available');
+    return;
+  }
+
+  if (!vscodeView) {
+    vscodeView = createVSCodeView();
+    if (!vscodeView) {
+      return;
+    }
+  }
+
+  mainWindow.setBrowserView(vscodeView);
+  updateVSCodeViewBounds();
+  
+  // Ensure BrowserView is on top
+  vscodeView.webContents.focus();
+  
+  console.log('[VSCode] BrowserView shown and focused');
+}
+
+/**
+ * Hide VSCode BrowserView
+ */
+function hideVSCodeView() {
+  if (!mainWindow || !vscodeView) {
+    return;
+  }
+
+  mainWindow.removeBrowserView(vscodeView);
+  console.log('[VSCode] BrowserView hidden');
 }
 
 /**
@@ -858,6 +1033,31 @@ ipcMain.handle('set-store', (event, key, value) => {
   store.set(key, value);
 });
 
+// VSCode BrowserView handlers
+console.log('[VSCode] Registering IPC handlers...');
+ipcMain.handle('show-vscode', () => {
+  console.log('[VSCode] show-vscode handler called');
+  try {
+    showVSCodeView();
+    return { success: true };
+  } catch (error) {
+    console.error('[VSCode] Error showing BrowserView:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('hide-vscode', () => {
+  console.log('[VSCode] hide-vscode handler called');
+  try {
+    hideVSCodeView();
+    return { success: true };
+  } catch (error) {
+    console.error('[VSCode] Error hiding BrowserView:', error);
+    return { success: false, error: error.message };
+  }
+});
+console.log('[VSCode] IPC handlers registered');
+
 ipcMain.handle('check-dependencies', async () => {
   return await checkDependencies();
 });
@@ -1475,6 +1675,14 @@ ipcMain.handle('conversation-enforce-limit', async () => {
 // ============================================
 
 app.whenReady().then(async () => {
+  // Verify VSCode handlers are registered
+  console.log('[VSCode] Verifying IPC handlers on app ready...');
+  const handlers = ipcMain.listenerCount('show-vscode');
+  console.log('[VSCode] show-vscode handler count:', handlers);
+  if (handlers === 0) {
+    console.error('[VSCode] WARNING: show-vscode handler not registered!');
+  }
+  
   // Initialize ConversationManager
   try {
     const dbPath = path.join(app.getPath('userData'), 'conversations.db');

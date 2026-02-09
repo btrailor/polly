@@ -6,13 +6,9 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:* http://127.0.0.1:*; img-src 'self' data:; font-src 'self' data:;">
   <title>Polly</title>
   <link rel="stylesheet" href="styles/main.css">
-  <link rel="stylesheet" href="styles/ribbon.css">
-  <link rel="stylesheet" href="styles/three-column.css">
   <link rel="stylesheet" href="styles/glitch-effects.css">
-  <link rel="stylesheet" href="styles/chat-sidebar.css">
   <link rel="stylesheet" href="styles/notes.css">
   <link rel="stylesheet" href="styles/persona-ui.css">
-  <link rel="stylesheet" href="styles/floating-chat.css">
   <link rel="stylesheet" href="styles/persona-switch-dialog.css">
   <link rel="stylesheet" href="styles/template-gallery.css">
   <link rel="stylesheet" href="styles/curriculum.css">
@@ -23,9 +19,12 @@
   <script src="pyodide.js"></script>
   <!-- Phase 23.5: Security Hardening - Pyodide loader -->
   <script src="pyodide-loader.js"></script>
+  <!-- API Client Utility - Load before other components -->
+  <script src="utils/api-client.js"></script>
   <script src="components/question-form.js"></script>
   <script src="components/preview-modal.js"></script>
   <script src="components/template-gallery.js"></script>
+  <script src="components/save-message-form.js"></script>
   <script src="components/mental-models-editor.js"></script>
   <!-- Phase 23.5: Security Hardening - Package Approval Dialog -->
   <script src="components/package-approval-dialog.js"></script>
@@ -47,30 +46,28 @@
   </div>
 
   <div id="app">
-    <!-- Titlebar - Obsidian Style -->
+    <!-- Titlebar - Cursor Style -->
     <div class="titlebar">
       <div class="titlebar-drag"></div>
-      
-      <!-- Left sidebar controls -->
-      <div class="titlebar-left">
-        <button class="titlebar-btn" id="titlebar-toggle-left" title="Toggle left sidebar (Cmd+B)">
-          <i data-lucide="chevron-left"></i>
-        </button>
-      </div>
       
       <!-- Center (empty for now, draggable) -->
       <div class="titlebar-center"></div>
       
-      <!-- Right sidebar controls -->
+      <!-- Sidebar controls (all on right, like Cursor) -->
       <div class="titlebar-right">
+        <button class="titlebar-btn" id="titlebar-toggle-left" title="Toggle left sidebar (Cmd+B)">
+          <i data-lucide="panel-left"></i>
+        </button>
         <button class="titlebar-btn" id="titlebar-toggle-right" title="Toggle right sidebar (Cmd+/)">
-          <i data-lucide="chevron-right"></i>
+          <i data-lucide="panel-right"></i>
         </button>
       </div>
     </div>
 
-    <!-- Icon Ribbon (Phase 0.5) -->
-    <div class="ribbon" id="icon-ribbon">
+    <!-- Main Layout Container -->
+    <div class="app-layout-container">
+      <!-- Icon Ribbon (Far Left Vertical - Main Page Navigation) -->
+      <div class="ribbon" id="icon-ribbon">
       <button class="ribbon-logo glitch" data-view="dashboard" title="Polly Home">
         <i data-lucide="zap"></i>
       </button>
@@ -80,17 +77,8 @@
       <button class="ribbon-item active glitch" data-view="dashboard" title="Dashboard">
         <i data-lucide="layout-dashboard"></i>
       </button>
-      <button class="ribbon-item" data-view="calendar" title="Calendar">
-        <i data-lucide="calendar"></i>
-      </button>
-      <button class="ribbon-item" data-view="mail" title="Mail">
-        <i data-lucide="mail"></i>
-      </button>
       <button class="ribbon-item" data-view="code" title="Code">
         <i data-lucide="code-2"></i>
-      </button>
-      <button class="ribbon-item" data-view="projects" title="Projects">
-        <i data-lucide="folder-kanban"></i>
       </button>
       <button class="ribbon-item" data-view="knowledge" title="Knowledge Graph">
         <i data-lucide="network"></i>
@@ -121,17 +109,18 @@
       <button class="ribbon-item" data-view="settings" title="Settings">
         <i data-lucide="settings"></i>
       </button>
-    </div>
+      </div>
 
-    <!-- Main Content -->
-    <div class="main-container">
+      <!-- Main Content -->
+      <div class="main-container">
       <div class="three-column-layout">
         <!-- Left Sidebar -->
         <aside class="left-sidebar" id="left-sidebar">
           <div class="sidebar-header">
             <span class="sidebar-title">Navigation</span>
           </div>
-          <div class="sidebar-content">
+          <div class="sidebar-content" id="left-sidebar-content">
+            <!-- Content will be dynamically populated by updateLeftSidebar() -->
             <div class="nav-section">
               <button class="nav-item active" data-view="dashboard">
                 <i data-lucide="layout-dashboard" class="nav-icon"></i>
@@ -160,8 +149,8 @@
           </div>
         </aside>
 
-        <!-- Center Content Area -->
-        <main class="center-content">
+        <!-- Main Content Area -->
+        <main class="main-content-area" id="main-content-area">
         <!-- Setup View (shown first if not configured) -->
         <div class="view" id="view-setup">
           <div class="setup-container">
@@ -278,7 +267,6 @@
               </div>
             </div>
           </div>
-        </div>
 
         <!-- Chat View -->
         <!-- Dashboard View -->
@@ -469,11 +457,286 @@
         </div> <!-- end curricula view -->
 
         <div class="view hidden" id="view-settings">
-          <div class="settings-container">
-            <h2>> settings</h2>
+          <div class="settings-page">
+            <!-- Settings Sidebar -->
+            <aside class="settings-sidebar">
+              <!-- User Account Section -->
+              <div class="settings-account-section">
+                <div class="account-avatar" id="settings-account-avatar">P</div>
+                <div class="account-info">
+                  <div class="account-email" id="settings-account-email">polly@local</div>
+                  <div class="account-plan" id="settings-account-plan">Local Mode</div>
+                </div>
+              </div>
+              
+              <!-- Search Bar -->
+              <div class="settings-search">
+                <input 
+                  type="text" 
+                  id="settings-search-input" 
+                  placeholder="Search settings ⌘F"
+                  autocomplete="off"
+                >
+                <i data-lucide="search" class="search-icon"></i>
+              </div>
+              
+              <!-- Navigation Menu -->
+              <nav class="settings-nav">
+                <button class="settings-nav-item active" data-section="general">
+                  <i data-lucide="settings" class="nav-icon"></i>
+                  <span class="nav-label">General</span>
+                </button>
+                <button class="settings-nav-item" data-section="api-keys">
+                  <i data-lucide="key" class="nav-icon"></i>
+                  <span class="nav-label">API Keys</span>
+                </button>
+                <button class="settings-nav-item" data-section="routing">
+                  <i data-lucide="route" class="nav-icon"></i>
+                  <span class="nav-label">Routing</span>
+                </button>
+                <button class="settings-nav-item" data-section="domains">
+                  <i data-lucide="folder" class="nav-icon"></i>
+                  <span class="nav-label">Domains</span>
+                </button>
+                <button class="settings-nav-item" data-section="integrations">
+                  <i data-lucide="plug" class="nav-icon"></i>
+                  <span class="nav-label">Integrations</span>
+                </button>
+                <button class="settings-nav-item" data-section="notes">
+                  <i data-lucide="file-text" class="nav-icon"></i>
+                  <span class="nav-label">Notes</span>
+                </button>
+                <button class="settings-nav-item" data-section="compression">
+                  <i data-lucide="archive" class="nav-icon"></i>
+                  <span class="nav-label">Compression</span>
+                </button>
+                <button class="settings-nav-item" data-section="ai-features">
+                  <i data-lucide="sparkles" class="nav-icon"></i>
+                  <span class="nav-label">AI Features</span>
+                </button>
+              </nav>
+            </aside>
+            
+            <!-- Settings Content -->
+            <div class="settings-content">
+              <!-- Section: General -->
+              <div class="settings-section-content" id="settings-section-general">
+                <h2 class="settings-page-title">General</h2>
+                
+                <div class="settings-section">
+                  <h3>Paths</h3>
+                  <p class="section-description">Configure directories for code indexing and knowledge base access.</p>
+                  
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Code Directories</label>
+                      <button class="settings-action-btn" id="btn-settings-add-code">
+                        <span>Add</span>
+                        <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
+                      </button>
+                    </div>
+                    <div class="path-list" id="settings-code-paths" style="margin-top: 12px;"></div>
+                    <p class="settings-description">Add directories containing code you want Polly to index and understand.</p>
+                  </div>
+                  
+                  <p class="form-hint" style="margin-top: 16px;">
+                    <i data-lucide="info" style="width: 14px; height: 14px;"></i>
+                    To configure your Obsidian vault, go to Settings → Integrations → Obsidian
+                  </p>
+                </div>
 
-            <!-- Tab: General -->
-            <div class="settings-tab-content" id="tab-general">
+                <div class="settings-section">
+                  <h3>Model Routing</h3>
+                  <p class="section-description">Control default model routing behavior.</p>
+                  
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Default Mode</label>
+                      <select id="settings-routing-mode" class="settings-select">
+                        <option value="auto">Auto (Recommended)</option>
+                        <option value="local">Always Local</option>
+                        <option value="cloud">Always Cloud</option>
+                      </select>
+                    </div>
+                    <p class="settings-description">Choose how Polly routes queries between local and cloud models by default.</p>
+                  </div>
+                  
+                  <p class="form-hint" style="margin-top: 16px;">
+                    <i data-lucide="info" style="width: 14px; height: 14px;"></i>
+                    To configure API keys for cloud models, go to Settings → API Keys
+                  </p>
+                </div>
+              </div>
+              
+              <!-- Section: API Keys (will be populated from existing tab) -->
+              <div class="settings-section-content hidden" id="settings-section-api-keys">
+                <h2 class="settings-page-title">API Keys</h2>
+                
+                <div class="settings-section">
+                  <h3>Cloud Provider API Keys</h3>
+                  <p class="section-description">Configure API keys for cloud AI providers (GitHub, OpenAI, Anthropic).</p>
+                  
+                  <!-- Content will be moved from tab-api-keys -->
+                  <div id="settings-api-keys-content"></div>
+                </div>
+              </div>
+              
+              <!-- Section: Routing (will be populated from existing tab) -->
+              <div class="settings-section-content hidden" id="settings-section-routing">
+                <h2 class="settings-page-title">Routing</h2>
+                
+                <!-- Content will be moved from tab-routing -->
+                <div id="settings-routing-content"></div>
+              </div>
+              
+              <!-- Section: Domains (will be populated from existing tab) -->
+              <div class="settings-section-content hidden" id="settings-section-domains">
+                <h2 class="settings-page-title">Domains</h2>
+                
+                <div class="settings-section">
+                  <h3>Folder Structure</h3>
+                  <p class="section-description">Configure how domains are organized in your file system.</p>
+                  
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Use numbered folders</label>
+                      <div class="toggle-switch">
+                        <input type="checkbox" id="settings-folder-numbering-toggle">
+                        <label for="settings-folder-numbering-toggle" class="toggle-label"></label>
+                      </div>
+                    </div>
+                    <p class="settings-description">When enabled, folders will be numbered (e.g., 01-Sigils, 02-Signals) to maintain order in your file system.</p>
+                  </div>
+                </div>
+                
+                <div class="settings-section">
+                  <h3>Your Domains</h3>
+                  <p class="section-description">Manage your knowledge domains. Domains help organize your Obsidian vault and improve RAG relevance.</p>
+                  
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Domains</label>
+                      <button class="settings-action-btn" id="settings-btn-add-domain">
+                        <span>Add Domain</span>
+                        <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
+                      </button>
+                    </div>
+                    <div id="settings-domains-list" class="domains-list" style="margin-top: 12px;">
+                      <div class="loading-spinner">Loading domains...</div>
+                    </div>
+                    <p class="settings-description">Create and manage domains to organize your knowledge base.</p>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Section: Integrations (will be populated from existing tab) -->
+              <div class="settings-section-content hidden" id="settings-section-integrations">
+                <h2 class="settings-page-title">Integrations</h2>
+                
+                <!-- Content will be moved from tab-integrations -->
+                <div id="settings-integrations-content"></div>
+              </div>
+              
+              <!-- Section: Notes (will be populated from existing tab) -->
+              <div class="settings-section-content hidden" id="settings-section-notes">
+                <h2 class="settings-page-title">Notes</h2>
+                
+                <!-- Content will be moved from tab-notes -->
+                <div id="settings-notes-content"></div>
+              </div>
+              
+              <!-- Section: Compression (will be populated from existing tab) -->
+              <div class="settings-section-content hidden" id="settings-section-compression">
+                <h2 class="settings-page-title">Compression</h2>
+                
+                <!-- Content will be moved from tab-compression -->
+                <div id="settings-compression-content"></div>
+              </div>
+
+              <!-- Section: AI Features -->
+              <div class="settings-section-content hidden" id="settings-section-ai-features">
+                <h2 class="settings-page-title">AI Features</h2>
+
+                <div class="settings-section">
+                  <h3>Knowledge Suggestions</h3>
+                  <p class="section-description">
+                    When Polly uses cloud AI for answers, it can suggest saving that knowledge to your
+                    knowledge base. This helps Polly answer similar questions locally next time, saving
+                    cloud tokens over time.
+                  </p>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Enable Suggestions</label>
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="ai-feat-kb-suggestions-enabled" checked>
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                    <p class="settings-description">Show knowledge-save suggestions when cloud AI provides novel information.</p>
+                  </div>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Suggestion Style</label>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="ai-feat-kb-style" value="subtle">
+                        <span><strong>Subtle</strong> — small banner below response</span>
+                      </label>
+                      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="ai-feat-kb-style" value="inline" checked>
+                        <span><strong>Inline</strong> — note suggestion within response</span>
+                      </label>
+                      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="ai-feat-kb-style" value="ask_first">
+                        <span><strong>Ask First</strong> — modal confirmation before suggesting</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Minimum Confidence</label>
+                      <span id="ai-feat-kb-gap-score-value" style="font-family: monospace; font-size: 14px;">50%</span>
+                    </div>
+                    <input type="range" id="ai-feat-kb-gap-score" min="0" max="100" step="5" value="50"
+                      style="width: 100%; margin-top: 4px;">
+                    <p class="settings-description">Only suggest when gap confidence exceeds this threshold.</p>
+                  </div>
+                </div>
+
+                <div class="settings-section">
+                  <h3>Autonomy Dashboard</h3>
+                  <p class="section-description">
+                    Track progressive autonomy metrics — local routing %, cloud tokens saved, KB growth.
+                  </p>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Enable Dashboard</label>
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="ai-feat-autonomy-enabled" checked>
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                    <p class="settings-description">Show progressive autonomy metrics in the status bar.</p>
+                  </div>
+                </div>
+
+                <div style="margin-top: 16px; display: flex; justify-content: flex-end;">
+                  <button class="btn btn-primary" id="btn-save-ai-features" 
+                    style="background: #2d5a27; color: #c8e6c9; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                    Save AI Features
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Legacy tab content (will be migrated) -->
+          <div class="settings-tab-content hidden" id="tab-general">
               <div class="settings-section">
                 <h3>Paths</h3>
 
@@ -738,12 +1001,17 @@
 
               <div class="settings-section">
                 <h3>Folder Structure</h3>
-                <div class="form-group">
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="folder-numbering-toggle">
-                    <span>Use numbered folders (e.g., 01-Sigils, 02-Signals)</span>
-                  </label>
-                  <p class="form-hint">Numbered folders maintain order in your file system</p>
+                <p class="section-description">Configure how domains are organized in your file system.</p>
+                
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <label class="settings-label">Use numbered folders</label>
+                    <div class="toggle-switch">
+                      <input type="checkbox" id="folder-numbering-toggle">
+                      <label for="folder-numbering-toggle" class="toggle-label"></label>
+                    </div>
+                  </div>
+                  <p class="settings-description">When enabled, folders will be numbered (e.g., 01-Sigils, 02-Signals) to maintain order in your file system.</p>
                 </div>
               </div>
 
@@ -910,14 +1178,15 @@
                       Configure optional Obsidian sync. Notes are stored in Polly's native knowledge base, but can be synced to your Obsidian vault.
                     </p>
                     
-                    <div class="form-group">
-                      <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-                        <input type="checkbox" id="obsidian-sync-enabled" style="width: auto;">
-                        <span>Enable Obsidian Sync</span>
-                      </label>
-                      <p class="form-hint" style="margin-top: -8px;">
-                        When enabled, new notes will be copied to your Obsidian vault
-                      </p>
+                    <div class="settings-item">
+                      <div class="settings-item-header">
+                        <label class="settings-label">Enable Obsidian Sync</label>
+                        <div class="toggle-switch">
+                          <input type="checkbox" id="obsidian-sync-enabled">
+                          <label for="obsidian-sync-enabled" class="toggle-label"></label>
+                        </div>
+                      </div>
+                      <p class="settings-description">When enabled, new notes will be automatically copied to your Obsidian vault.</p>
                     </div>
                     
                     <div class="form-group" id="obsidian-vault-path-group">
@@ -1726,39 +1995,12 @@
           </div>
         </div>
 
-        <!-- Calendar View (Placeholder) -->
-        <div class="view hidden" id="view-calendar">
-          <div class="empty-state">
-            <i data-lucide="calendar" class="empty-state-icon"></i>
-            <h2>Calendar</h2>
-            <p>Timeline and scheduling features coming in Phase 7</p>
-          </div>
-        </div>
-
-        <!-- Mail View (Placeholder) -->
-        <div class="view hidden" id="view-mail">
-          <div class="empty-state">
-            <i data-lucide="mail" class="empty-state-icon"></i>
-            <h2>Mail</h2>
-            <p>Email integration coming in Phase 8</p>
-          </div>
-        </div>
-
-        <!-- Code View (Placeholder) -->
+        <!-- Code View (Placeholder - will be replaced by VSCode fork) -->
         <div class="view hidden" id="view-code">
-          <div class="empty-state">
+          <div class="empty-state" id="code-placeholder">
             <i data-lucide="code-2" class="empty-state-icon"></i>
             <h2>Code</h2>
-            <p>Code browser and analysis coming soon</p>
-          </div>
-        </div>
-
-        <!-- Projects View (Placeholder) -->
-        <div class="view hidden" id="view-projects">
-          <div class="empty-state">
-            <i data-lucide="folder-kanban" class="empty-state-icon"></i>
-            <h2>Projects</h2>
-            <p>Project management features coming soon</p>
+            <p>Code workspace will be provided by VSCode fork integration</p>
           </div>
         </div>
 
@@ -1769,17 +2011,6 @@
             <div class="notes-toolbar">
               <div class="notes-search">
                 <input type="text" id="notes-search-input" placeholder="Search notes...">
-              </div>
-              
-              <div class="notes-domain-filter">
-                <select id="notes-domain-filter">
-                  <option value="">All Domains</option>
-                  <option value="sigils">Sigils</option>
-                  <option value="signals">Signals</option>
-                  <option value="scrolls">Scrolls</option>
-                  <option value="glyphs">Glyphs</option>
-                  <option value="grids">Grids</option>
-                </select>
               </div>
               
               <div class="notes-indicators">
@@ -1805,77 +2036,8 @@
                 <div id="notes-editor"></div>
               </div>
               
-              <!-- Right Sidebar - Backlinks & Tags -->
-              <div class="notes-right-sidebar">
-                <div class="notes-sidebar-toggle" id="notes-sidebar-toggle" title="Toggle sidebar">
-                  <i data-lucide="chevron-right" class="sidebar-toggle-icon"></i>
-                </div>
-                
-                <div class="notes-sidebar-content">
-                  <!-- View Toggle Buttons -->
-                  <div class="notes-sidebar-view-toggle">
-                    <button class="sidebar-view-btn active" data-view="backlinks" 
-                            aria-label="Backlinks" title="Backlinks">
-                      <i data-lucide="link-2"></i>
-                    </button>
-                    <button class="sidebar-view-btn" data-view="tags" 
-                            aria-label="Tags" title="Tags">
-                      <i data-lucide="tag"></i>
-                    </button>
-                    <button class="sidebar-view-btn" data-view="toc" 
-                            aria-label="Table of Contents" title="Table of Contents">
-                      <i data-lucide="list"></i>
-                    </button>
-                  </div>
-
-                  <!-- View Containers -->
-                  <div class="notes-sidebar-views">
-                    <!-- Backlinks View -->
-                    <div class="notes-sidebar-view active" data-view-content="backlinks">
-                      <div class="notes-panel">
-                        <div class="notes-panel-header collapsible">
-                          <i data-lucide="chevron-down" class="panel-toggle-icon"></i>
-                          <span>Backlinks</span>
-                        </div>
-                        <div class="notes-panel-content" id="notes-backlinks-panel">
-                          <div class="empty-state-small">
-                            <i data-lucide="link" class="empty-icon"></i>
-                            <p>No backlinks</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <!-- Tags View -->
-                    <div class="notes-sidebar-view" data-view-content="tags">
-                      <div class="notes-panel">
-                        <div class="notes-panel-header collapsible">
-                          <i data-lucide="chevron-down" class="panel-toggle-icon"></i>
-                          <span>Tags</span>
-                        </div>
-                        <div class="notes-panel-content" id="notes-tags-panel">
-                          <div class="empty-state-small">
-                            <i data-lucide="tag" class="empty-icon"></i>
-                            <p>No tags</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <!-- TOC View -->
-                    <div class="notes-sidebar-view" data-view-content="toc">
-                      <div class="notes-panel">
-                        <div class="notes-panel-header">
-                          <span class="panel-title">Table of Contents</span>
-                        </div>
-                        <div class="notes-panel-content">
-                          <div id="notes-toc-list" class="toc-list"></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <!-- Right Sidebar - REMOVED: Backlinks/Tags/TOC moved to left sidebar -->
+              <!-- Content is now in renderNotesSidebar() in app.js -->
             </div>
             
             <!-- Loading Indicator -->
@@ -2003,10 +2165,95 @@
           </div>
         </div>
 
-      </main>
+          </main>
+          
+          <!-- Resize Handle -->
+          <div class="center-resize-handle" id="center-resize-handle" title="Drag to resize">
+            <div class="resize-handle-line"></div>
+          </div>
+          
+          <!-- Chat Panel (Right sub-column) -->
+          <div class="chat-panel" id="chat-panel">
+            <div class="chat-panel-header">
+              <span class="chat-panel-title">Chat</span>
+            </div>
+            <div class="chat-panel-content">
+              <!-- Chat tabs will go here -->
+              <div class="chat-tabs" id="chat-tabs"></div>
+              
+              <!-- Chat messages area -->
+              <div class="chat-messages-panel" id="chat-messages-panel">
+                <div class="chat-messages" id="chat-messages-main">
+                  <div class="message system">
+                    <div class="message-content">
+                      Hi! I'm Polly, your personal AI assistant. I have access to your Obsidian vault,
+                      codebases, and learned patterns. Ask me anything!
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Chat input area -->
+              <div class="chat-input-area" id="chat-input-area">
+                <div class="chat-controls">
+                  <select class="persona-selector" id="chat-persona-select">
+                    <option value="">Default</option>
+                    <option value="architect">Architect</option>
+                    <option value="scribe">Scribe</option>
+                    <option value="professor">Professor</option>
+                  </select>
+                  <select class="model-selector" id="chat-model-select">
+                    <option value="auto:balanced">Auto (Balanced)</option>
+                    <optgroup label="Fast">
+                      <option value="github:fast">GitHub</option>
+                      <option value="anthropic:fast">Anthropic</option>
+                      <option value="openai:fast">OpenAI</option>
+                    </optgroup>
+                    <optgroup label="Balanced">
+                      <option value="github:balanced">GitHub</option>
+                      <option value="anthropic:balanced">Anthropic</option>
+                      <option value="openai:balanced">OpenAI</option>
+                    </optgroup>
+                    <optgroup label="Thorough">
+                      <option value="github:thorough">GitHub</option>
+                      <option value="anthropic:thorough">Anthropic</option>
+                      <option value="openai:thorough">OpenAI</option>
+                    </optgroup>
+                  </select>
+                </div>
+                <div class="context-pills-container">
+                  <div class="context-pills" id="context-pills"></div>
+                  <button class="context-picker-btn" id="context-picker-btn" title="Add context">
+                    <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>
+                  </button>
+                </div>
+                <textarea class="chat-input" id="chat-input" placeholder="Ask Polly anything... (use @domain, @note, @folder to add context)" rows="2"></textarea>
+                <button class="send-button" id="chat-send">
+                  <i data-lucide="send"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        
+        <!-- Right Sidebar (Agents) -->
+        <aside class="agents-sidebar" id="agents-sidebar">
+          <div class="sidebar-header">
+            <span class="sidebar-title">Agents</span>
+            <!-- Toggle button removed - now in titlebar -->
+          </div>
+          <div class="sidebar-content" id="agents-sidebar-content">
+            <button class="btn btn-primary" id="new-agent-btn" style="width: 100%; margin: 8px;">
+              <i data-lucide="plus"></i>
+              <span>New Agent</span>
+            </button>
+            <div class="agents-list" id="agents-list">
+              <!-- Agents will be rendered here -->
+            </div>
+          </div>
+        </aside>
 
-      <!-- Right Sidebar -->
-      <aside class="right-sidebar" id="right-sidebar">
+      <!-- Legacy Right Sidebar (Conversations - HIDDEN, content migrated to chat panel) -->
+      <aside class="right-sidebar legacy-right-sidebar hidden" id="right-sidebar" style="display: none !important;">
         <div class="sidebar-header">
           <span class="sidebar-title">Conversations</span>
         </div>
@@ -2106,9 +2353,6 @@
               <option value="scribe">Scribe</option>
               <option value="professor">Professor</option>
             </select>
-            <select id="mode-select" class="mode-selector" disabled>
-              <option value="">Select persona first</option>
-            </select>
             <div class="orchestrator-toggle" id="orchestrator-toggle" role="switch" aria-checked="false"></div>
             <textarea id="query-input" style="display: none;"></textarea>
             <button id="btn-send" style="display: none;"></button>
@@ -2118,6 +2362,26 @@
       </aside>
 
       </div> <!-- end three-column-layout -->
+      </div> <!-- end main-container -->
+    </div> <!-- end app-layout-container -->
+    
+    <!-- Status Bar -->
+    <div class="status-bar" id="status-bar">
+      <div class="status-left">
+        <span class="status-item" id="server-status">
+          <i data-lucide="server"></i>
+          <span>Server: Checking...</span>
+        </span>
+        <span class="status-item" id="connection-status">
+          <i data-lucide="wifi"></i>
+          <span>Connected</span>
+        </span>
+      </div>
+      <div class="status-right">
+        <span class="status-item" id="cursor-info" style="display: none;">Ln 1, Col 1</span>
+        <span class="status-item" id="encoding" style="display: none;">UTF-8</span>
+        <span class="status-item" id="line-endings" style="display: none;">LF</span>
+      </div>
     </div>
   </div>
 
@@ -2635,14 +2899,7 @@
         </select>
       </div>
       
-      <div class="control-group">
-        <label class="control-label">Mode:</label>
-        <select id="floating-mode-select" class="mode-selector" disabled>
-          <option value="">Select persona first</option>
-        </select>
-      </div>
-      
-      <!-- Teaching Mode Indicator -->
+      <!-- Teaching Mode Indicator (kept for Professor persona feedback) -->
       <div id="teaching-mode-indicator" class="teaching-mode-indicator hidden">
         <i data-lucide="graduation-cap" class="mode-icon"></i>
         <span id="teaching-mode-text">Socratic</span>
@@ -2656,12 +2913,20 @@
     
     <!-- Chat Input Row -->
     <div class="floating-chat-input-wrapper">
+      <!-- Context Pills -->
+      <div class="context-pills-container">
+        <div class="context-pills" id="floating-context-pills"></div>
+        <button class="context-picker-btn" id="floating-context-picker-btn" title="Add context">
+          <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>
+        </button>
+      </div>
+      
       <!-- Normal text input mode -->
       <div class="floating-chat-input" id="floating-chat-normal-input">
         <textarea 
           id="floating-query-input" 
           class="floating-textarea"
-          placeholder="Ask Polly anything..."
+          placeholder="Ask Polly anything... (use @domain, @note, @folder to add context)"
           rows="2"
         ></textarea>
       </div>

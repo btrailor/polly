@@ -3,10 +3,10 @@
  * Handles API key management UI and interactions with the backend
  */
 
-const API_BASE_URL = 'http://127.0.0.1:11436/api/settings';
+const SETTINGS_SETTINGS_API_BASE_URL = 'http://127.0.0.1:11436/api/settings';
 
 console.log('[API Keys Manager] Module loaded - version 2.0');
-console.log('[API Keys Manager] API_BASE_URL:', API_BASE_URL);
+console.log('[API Keys Manager] SETTINGS_API_BASE_URL:', SETTINGS_SETTINGS_API_BASE_URL);
 
 /**
  * Initialize API Keys tab
@@ -66,14 +66,14 @@ async function loadAPIKeys() {
   listContainer.innerHTML = '<div class="settings-loading-spinner">Loading keys...</div>';
   
   try {
-    console.log('[API Keys] Fetching from:', `${API_BASE_URL}/keys`);
+    console.log('[API Keys] Fetching from:', `${SETTINGS_API_BASE_URL}/keys`);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       console.warn('[API Keys] Request timeout - aborting');
       controller.abort();
     }, 5000);
     
-    const response = await fetch(`${API_BASE_URL}/keys`, { signal: controller.signal });
+    const response = await fetch(`${SETTINGS_API_BASE_URL}/keys`, { signal: controller.signal });
     clearTimeout(timeoutId);
     console.log('[API Keys] Response status:', response.status);
     
@@ -139,7 +139,7 @@ async function loadAPIKeys() {
       <div style="color: var(--error); text-align: center; padding: 20px;">
         <p>Failed to load API keys</p>
         <p style="font-size: 12px; margin-top: 8px;">${errorMessage}</p>
-        <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">Endpoint: ${API_BASE_URL}/keys</p>
+        <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">Endpoint: ${SETTINGS_API_BASE_URL}/keys</p>
       </div>
     `;
   }
@@ -159,14 +159,14 @@ async function loadBudgetStatus() {
   statusContainer.innerHTML = '<div class="settings-loading-spinner">Loading budget...</div>';
   
   try {
-    console.log('[Budget] Fetching from:', `${API_BASE_URL}/budget`);
+    console.log('[Budget] Fetching from:', `${SETTINGS_API_BASE_URL}/budget`);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       console.warn('[Budget] Request timeout - aborting');
       controller.abort();
     }, 5000);
     
-    const response = await fetch(`${API_BASE_URL}/budget`, { signal: controller.signal });
+    const response = await fetch(`${SETTINGS_API_BASE_URL}/budget`, { signal: controller.signal });
     clearTimeout(timeoutId);
     console.log('[Budget] Response status:', response.status);
     
@@ -372,7 +372,7 @@ async function saveAPIKey() {
   statusElement.innerHTML = '<p style="color: var(--text-secondary);">Saving...</p>';
   
   try {
-    const response = await fetch(`${API_BASE_URL}/keys`, {
+    const response = await fetch(`${SETTINGS_API_BASE_URL}/keys`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ provider, key })
@@ -410,7 +410,7 @@ async function testAPIKey(provider) {
   statusElement.innerHTML = '<span style="color: var(--text-secondary);">Testing...</span>';
   
   try {
-    const response = await fetch(`${API_BASE_URL}/keys/test`, {
+    const response = await fetch(`${SETTINGS_API_BASE_URL}/keys/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ provider })
@@ -448,7 +448,7 @@ async function deleteAPIKey(provider) {
   }
   
   try {
-    const response = await fetch(`${API_BASE_URL}/keys/${provider}`, {
+    const response = await fetch(`${SETTINGS_API_BASE_URL}/keys/${provider}`, {
       method: 'DELETE'
     });
     
@@ -479,7 +479,7 @@ async function saveBudgetSettings() {
   }
   
   try {
-    const response = await fetch(`${API_BASE_URL}/budget`, {
+    const response = await fetch(`${SETTINGS_API_BASE_URL}/budget`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -520,7 +520,7 @@ async function saveBudgetSettings() {
       <div style="color: var(--error); text-align: center; padding: 20px;">
         <p>Failed to load budget status</p>
         <p style="font-size: 12px; margin-top: 8px;">${errorMessage}</p>
-        <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">Endpoint: ${API_BASE_URL}/budget</p>
+        <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">Endpoint: ${SETTINGS_API_BASE_URL}/budget</p>
       </div>
     `;
   }
