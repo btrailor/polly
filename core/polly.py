@@ -102,6 +102,11 @@ class Polly:
         self._init_personas()  # Initialize persona system (Phase 11c)
         print(f"[INIT {time.time() - _total_start:.2f}s] _init_personas took {time.time() - _step_start:.2f}s", flush=True)
 
+        logger.info("Initializing knowledge writer...")
+        _step_start = time.time()
+        self._init_knowledge_writer()  # Initialize knowledge writing system
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_knowledge_writer took {time.time() - _step_start:.2f}s", flush=True)
+
         # Conversation state
         self.conversation_history: List[Dict] = []
         self.session_start = datetime.now()
@@ -426,6 +431,45 @@ class Polly:
         except Exception as e:
             logger.warning(f"Could not initialize persona system: {e}")
             self.persona_manager = None
+
+    def _init_knowledge_writer(self):
+        """Initialize knowledge writing system and autonomy metrics."""
+        try:
+            from core.autonomy_metrics import init_autonomy_metrics
+            self.autonomy_metrics = init_autonomy_metrics()
+            logger.info("Autonomy metrics initialized")
+        except Exception as e:
+            logger.warning(f"Could not initialize autonomy metrics: {e}")
+            self.autonomy_metrics = None
+
+        try:
+            from core.knowledge_writer import init_knowledge_writer
+            from core.notes_source_manager import NotesSourceManager
+
+            notes_source = NotesSourceManager()
+
+            # Try to get Scribe persona for enrichment
+            scribe = None
+            if self.persona_manager:
+                try:
+                    scribe_instance = self.persona_manager.get_persona("scribe")
+                    if scribe_instance:
+                        scribe = scribe_instance
+                except Exception:
+                    pass
+
+            self.knowledge_writer = init_knowledge_writer(
+                config=self.config,
+                notes_source_manager=notes_source,
+                rag=self.rag,
+                domain_engine=self.domains,
+                scribe_persona=scribe,
+                metrics_tracker=self.autonomy_metrics,
+            )
+            logger.info("KnowledgeWriter initialized")
+        except Exception as e:
+            logger.warning(f"Could not initialize knowledge writer: {e}")
+            self.knowledge_writer = None
 
     def _build_system_prompt(self) -> str:
         """Build the base system prompt."""

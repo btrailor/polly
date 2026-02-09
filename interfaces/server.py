@@ -312,6 +312,14 @@ def create_app(polly_instance=None) -> FastAPI:
     # Include settings API router
     from interfaces.settings_api import create_settings_router
     app.include_router(create_settings_router())
+    
+    # Memory API (Phase 1.5: Mem0 Adaptive Memory)
+    try:
+        from interfaces.memory_api import router as memory_router
+        app.include_router(memory_router)
+        logger.info("Memory API endpoints registered")
+    except ImportError as e:
+        logger.warning(f"Memory API not available: {e}")
 
     # Store Polly instance
     app.state.polly = polly_instance
@@ -639,10 +647,12 @@ def create_app(polly_instance=None) -> FastAPI:
                 from datetime import datetime, timedelta
                 
                 # Get today's usage
-                today = datetime.now().date()
-                usage = polly.budget_manager.get_usage(
-                    start_date=today,
-                    end_date=today
+                today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                today_end = datetime.now()
+                usage = await polly.budget_manager.get_usage_history(
+                    limit=1000,
+                    start_date=today_start,
+                    end_date=today_end
                 )
                 
                 # Calculate local vs cloud
@@ -651,11 +661,11 @@ def create_app(polly_instance=None) -> FastAPI:
                 total_cost = 0.0
                 
                 for record in usage:
-                    if record.get('provider') == 'ollama':
+                    if record.provider == 'ollama':
                         local_count += 1
                     else:
                         cloud_count += 1
-                        total_cost += record.get('cost', 0.0)
+                        total_cost += record.cost
                 
                 # Estimate cost saved (assume avg cloud query = $0.01)
                 avg_cloud_cost = 0.01
@@ -2549,12 +2559,55 @@ def create_app(polly_instance=None) -> FastAPI:
         }
         """
         try:
-            print("=== VALIDATE ENDPOINT CALLED ===", flush=True)
+            polly = get_polly()
+            if not polly:
+                return {
+                    "active_source": "native",
+                    "notes_path": None,
+                    "path_exists": False
+                }
+            
+            # Get notes source manager
+            if not hasattr(polly, 'notes_source_manager') or not polly.notes_source_manager:
+                return {
+                    "active_source": "native",
+                    "notes_path": None,
+                    "path_exists": False
+                }
+            
+            source_manager = polly.notes_source_manager
+            active_source = source_manager.get_active_source()
+            notes_path = source_manager.get_notes_path()
+            
+            import os
+            path_exists = os.path.exists(notes_path) if notes_path else False
+            
+            return {
+                "active_source": active_source,
+                "notes_path": notes_path,
+                "path_exists": path_exists
+            }
+            
+        except Exception as e:
+            logger.error(f"Get notes source failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to get notes source: {str(e)}")
+    
+    @app.post("/polly/notes/sync/start")
+    async def start_notes_sync():
+        """
+        Start automatic notes synchronization.
+        
+        Response: {
+            "success": true,
+            "message": "Notes sync started"
+        }
+        """
+        try:
             polly = get_polly()
             if not polly:
                 return {
                     "success": False,
-                    "message": "Polly not initialized yet, file watcher will start automatically"
+                    "message": "Polly not initialized yet"
                 }
             
             # Check if file watcher is already running
@@ -2566,7 +2619,6 @@ def create_app(polly_instance=None) -> FastAPI:
                 }
             
             # File watcher should have started during Polly initialization
-            # If it's not running, it means initialization failed
             if not polly.notes_sync:
                 return {
                     "success": False,
@@ -2775,6 +2827,437 @@ def create_app(polly_instance=None) -> FastAPI:
                 "X-Accel-Buffering": "no"  # Disable nginx buffering
             }
         )
+    
+    @app.get("/polly/notes/index")
+    async def get_notes_index(domain: Optional[str] = None, limit: int = 1000):
+        """
+        Get all notes with metadata from the notes index.
+        
+        Query Params:
+            domain (optional) - Filter by folder/domain
+            limit (optional) - Limit results (default: 1000)
+        
+        Response: {
+            "notes": [
+                {
+                    "name": "note-name",
+                    "title": "Note Title",
+                    "path": "/path/to/note.md",
+                    "domain": "01-Sigils",
+                    "tags": ["tag1", "tag2"],
+                    "aliases": ["alias1"],
+                    "created": "2026-01-01T00:00:00",
+                    "modified": "2026-01-26T12:00:00",
+                    "size": 1234
+                }
+            ],
+            "stats": {
+                "total": 86,
+                "by_domain": {"01-Sigils": 12, "02-Signals": 8}
+            }
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            from core.notes_source_manager import NotesSourceManager
+            
+            # Get notes index
+            notes_idx = get_notes_index()
+            
+            # Auto-build index if empty
+            if len(notes_idx._notes_by_path) == 0:
+                logger.info("Notes index is empty, building it now...")
+                try:
+                    manager = NotesSourceManager()
+                    notes_path = Path(manager.get_notes_path()).expanduser()
+                    
+                    if not notes_path.exists():
+                        logger.warning(f"Notes path does not exist: {notes_path}")
+                        return {
+                            "notes": [],
+                            "stats": {
+                                "total": 0,
+                                "by_domain": {}
+                            },
+                            "error": f"Notes path does not exist: {notes_path}"
+                        }
+                    
+                    stats = notes_idx.build_index(notes_path, recursive=True)
+                    logger.info(f"Notes index built: {stats['notes_indexed']} notes indexed")
+                except Exception as build_error:
+                    logger.error(f"Failed to build notes index: {build_error}", exc_info=True)
+                    return {
+                        "notes": [],
+                        "stats": {
+                            "total": 0,
+                            "by_domain": {}
+                        },
+                        "error": f"Failed to build notes index: {str(build_error)}"
+                    }
+            
+            # Get all notes or filter by domain
+            if domain:
+                note_infos = notes_idx.get_notes_by_domain(domain)
+            else:
+                note_infos = notes_idx.get_all_notes()
+            
+            # Apply limit
+            if limit > 0:
+                note_infos = note_infos[:limit]
+            
+            # Convert NoteInfo objects to dicts
+            notes = []
+            by_domain = {}
+            
+            for note_info in note_infos:
+                note_dict = {
+                    "name": note_info.name,
+                    "title": note_info.title,
+                    "path": str(note_info.path),
+                    "domain": note_info.domain,
+                    "tags": note_info.tags,
+                    "aliases": note_info.aliases,
+                    "created": note_info.created.isoformat() if note_info.created else None,
+                    "modified": note_info.modified.isoformat() if note_info.modified else None,
+                    "size": note_info.size
+                }
+                notes.append(note_dict)
+                
+                # Count by domain
+                domain_name = note_info.domain or "Other"
+                by_domain[domain_name] = by_domain.get(domain_name, 0) + 1
+            
+            # Get total count (before limit)
+            total_notes = len(notes_idx.get_all_notes())
+            
+            logger.debug(f"Returning {len(notes)} notes (limit: {limit}, total: {total_notes})")
+            
+            return {
+                "notes": notes,
+                "stats": {
+                    "total": total_notes,
+                    "by_domain": by_domain
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get notes index: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to get notes index: {str(e)}")
+    
+    @app.post("/polly/notes/create")
+    async def create_note(request: Dict[str, Any]):
+        """
+        Create a new note in the vault with duplicate detection.
+        
+        Request: {
+            "name": "Note Name",
+            "domain": "02-Signals",  # Folder name
+            "content": "# Note Name\\n\\nInitial content...",  # Optional
+            "check_duplicates": true  # Optional, default: true
+        }
+        
+        Response (if similar notes found): {
+            "status": "similar_found",
+            "similar_notes": [...],
+            "proposed_note": {...}
+        }
+        
+        Response (if no duplicates or check_duplicates=false): {
+            "success": true,
+            "note": {
+                "path": "/full/path/to/note.md",
+                "name": "note-name",
+                "title": "Note Name",
+                "domain": "02-Signals"
+            }
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            from core.notes_source_manager import NotesSourceManager
+            from core.notes_dedup import get_dedup_engine
+            import os
+            
+            # Get parameters
+            name = request.get("name")
+            domain = request.get("domain")
+            content = request.get("content", "")
+            check_duplicates = request.get("check_duplicates", True)
+            
+            if not name:
+                raise HTTPException(400, "Note name is required")
+            if not domain:
+                raise HTTPException(400, "Domain (folder) is required")
+            
+            # Normalize name to filename
+            filename = name.lower().replace(" ", "_").replace("-", "_")
+            filename = re.sub(r'[^\w_]', '', filename)  # Remove special chars
+            
+            # Get notes path from config
+            manager = NotesSourceManager()
+            notes_path = Path(manager.get_notes_path()).expanduser()
+            
+            # Build full path
+            domain_path = notes_path / domain
+            note_path = domain_path / f"{filename}.md"
+            
+            # Check if note already exists
+            if note_path.exists():
+                raise HTTPException(409, f"Note '{filename}' already exists in {domain}")
+            
+            # If no content provided, create basic template
+            if not content:
+                content = f"# {name}\n\n"
+            
+            # Check for similar notes if enabled (Phase 21)
+            if check_duplicates:
+                dedup_engine = get_dedup_engine()
+                if dedup_engine:
+                    try:
+                        similar_notes = dedup_engine.check_similarity(
+                            content=content,
+                            title=name
+                        )
+                        
+                        if similar_notes:
+                            logger.info(f"Found {len(similar_notes)} similar notes for '{name}'")
+                            return {
+                                "status": "similar_found",
+                                "similar_notes": [n.to_dict() for n in similar_notes],
+                                "proposed_note": {
+                                    "name": filename,
+                                    "title": name,
+                                    "domain": domain,
+                                    "content": content
+                                }
+                            }
+                    except Exception as e:
+                        logger.error(f"Duplicate check failed: {e}")
+                        # Continue with creation - dedup is nice-to-have
+            
+            # No duplicates found or check disabled - proceed with creation
+            if not domain_path.exists():
+                domain_path.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created domain folder: {domain_path}")
+            
+            # Write note file
+            with open(note_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            logger.info(f"Created note: {note_path}")
+            
+            # Re-index to include new note
+            notes_idx = get_notes_index()
+            notes_idx.build_index(notes_path, recursive=True)
+            
+            # Get the newly created note's info
+            created_note = notes_idx.find_note_by_name(filename)
+            
+            if not created_note:
+                created_note_info = {
+                    "path": str(note_path),
+                    "name": filename,
+                    "title": name,
+                    "domain": domain
+                }
+            else:
+                created_note_info = {
+                    "path": str(created_note.path),
+                    "name": created_note.name,
+                    "title": created_note.title,
+                    "domain": created_note.domain,
+                    "tags": created_note.tags
+                }
+            
+            return {
+                "success": True,
+                "note": created_note_info
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Create note failed: {e}")
+            raise HTTPException(500, f"Failed to create note: {str(e)}")
+    
+    @app.post("/polly/notes/create-folder")
+    async def create_notes_folder(request: Dict[str, Any]):
+        """
+        Create a new folder (domain) in the vault.
+        
+        Request: {
+            "name": "New Folder Name"
+        }
+        
+        Response: {
+            "success": true,
+            "folder": {
+                "name": "New Folder Name",
+                "path": "/full/path/to/folder"
+            }
+        }
+        """
+        try:
+            from core.notes_source_manager import NotesSourceManager
+            import os
+            
+            name = request.get("name")
+            
+            if not name:
+                raise HTTPException(400, "Folder name is required")
+            
+            folder_name = name.strip()
+            folder_name = re.sub(r'[^\w\s-]', '', folder_name)
+            folder_name = re.sub(r'\s+', '-', folder_name)
+            
+            if not folder_name:
+                raise HTTPException(400, "Invalid folder name")
+            
+            manager = NotesSourceManager()
+            notes_path = Path(manager.get_notes_path()).expanduser()
+            
+            folder_path = notes_path / folder_name
+            
+            if folder_path.exists():
+                raise HTTPException(409, f"Folder '{folder_name}' already exists")
+            
+            folder_path.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Created folder: {folder_path}")
+            
+            return {
+                "success": True,
+                "folder": {
+                    "name": folder_name,
+                    "path": str(folder_path)
+                }
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Create folder failed: {e}")
+            raise HTTPException(500, f"Failed to create folder: {str(e)}")
+    
+    @app.put("/polly/notes/update")
+    async def update_note(request: Dict[str, Any]):
+        """
+        Update/save note content.
+        
+        Request: {
+            "path": "/full/path/to/note.md",
+            "content": "Updated content..."
+        }
+        
+        Response: {
+            "success": true,
+            "message": "Note saved successfully"
+        }
+        """
+        try:
+            note_path_str = request.get("path")
+            content = request.get("content")
+            
+            if not note_path_str:
+                raise HTTPException(400, "Note path is required")
+            if content is None:
+                raise HTTPException(400, "Content is required")
+            
+            note_path = Path(note_path_str)
+            
+            # Verify the note exists
+            if not note_path.exists():
+                raise HTTPException(404, f"Note not found: {note_path}")
+            
+            # Write updated content
+            with open(note_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            
+            logger.info(f"Updated note: {note_path}")
+            
+            # Re-index the note
+            from core.notes_index import get_notes_index
+            notes_idx = get_notes_index()
+            try:
+                notes_idx.index_single_file(note_path)
+            except Exception as idx_error:
+                logger.warning(f"Failed to re-index note after update: {idx_error}")
+                # Don't fail the save if re-indexing fails
+            
+            return {
+                "success": True,
+                "message": "Note saved successfully"
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Update note failed: {e}")
+            raise HTTPException(500, f"Failed to update note: {str(e)}")
+    
+    @app.get("/polly/notes/{note_name}/backlinks")
+    async def get_note_backlinks(note_name: str):
+        """
+        Get all backlinks to a specific note.
+        
+        Returns notes that link to this note.
+        
+        Response: {
+            "backlinks": [
+                {
+                    "name": "linking-note",
+                    "title": "Linking Note Title",
+                    "path": "/path/to/linking-note.md",
+                    "domain": "02-Signals"
+                }
+            ],
+            "count": 3
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            
+            notes_idx = get_notes_index()
+            
+            # Find the target note
+            target_note = notes_idx.find_note_by_name(note_name)
+            if not target_note:
+                # Return empty backlinks if note not found (not an error)
+                return {
+                    "backlinks": [],
+                    "count": 0
+                }
+            
+            # Find all notes that link to this note
+            backlinks = []
+            all_notes = notes_idx.get_all_notes()
+            
+            for note in all_notes:
+                # Skip the target note itself
+                if note.name == note_name:
+                    continue
+                
+                # Check if this note links to the target
+                if note.links and note_name in note.links:
+                    backlinks.append({
+                        "name": note.name,
+                        "title": note.title,
+                        "path": str(note.path),
+                        "domain": note.domain
+                    })
+            
+            return {
+                "backlinks": backlinks,
+                "count": len(backlinks)
+            }
+            
+        except Exception as e:
+            logger.error(f"Get backlinks failed for '{note_name}': {e}")
+            # Return empty backlinks on error (graceful degradation)
+            return {
+                "backlinks": [],
+                "count": 0,
+                "error": str(e)
+            }
     
     # ===== TEMPLATE ENDPOINTS (Phase 16e) =====
     

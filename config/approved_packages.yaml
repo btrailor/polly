@@ -46,6 +46,12 @@ approved_packages:
   - flask
   - fastapi
   
+  # AI & LLM
+  - anthropic
+  - openai
+  - litellm
+  - mem0ai  # Adaptive memory layer with graph storage
+  
   # Testing
   - pytest
   - unittest

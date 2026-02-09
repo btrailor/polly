@@ -3,7 +3,48 @@
 
 routing_v2:
   enabled: true
+  use_litellm: false  # Set to true to use unified LiteLLM adapter (replaces 7 individual providers)
   budget:
     database_path: "~/.polly/usage.db"
     daily_limit: 10.0
     monthly_limit: 200.0
+
+# Compression configuration
+compression:
+  # Strategy selection: "auto" | "llmlingua" | "llm_summary"
+  # - "auto": LLMLingua for RAG context, LLM summary for conversations
+  # - "llmlingua": Always use LLMLingua (fast, no LLM call)
+  # - "llm_summary": Always use LLM-based summarization
+  strategy: "auto"
+  
+  # RAG context compression
+  rag_context:
+    enabled: true
+    ratio: 0.5  # 2x compression (1.0 = no compression, 0.1 = 10x)
+  
+  # Conversation compression (existing feature)
+  conversation:
+    strategy: "llm_summary"  # Force LLM for conversation compression
+  
+  # LLMLingua configuration
+  llmlingua:
+    model: "microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank"
+    device: "cpu"  # or "cuda" if GPU available
+
+# Memory Layer Configuration (Phase 1.5)
+# Adaptive memory with entity extraction and graph-based relationships
+memory:
+  provider: "local"  # "local" (file-based) | "mem0" (adaptive memory)
+  
+  # Mem0 adaptive memory configuration
+  mem0:
+    enabled: false  # Opt-in for safety (set to true to enable)
+    vector_store: "chroma"  # Vector store backend (chroma, qdrant, pinecone)
+    graph_store: null  # Optional: Neo4j config for entity relationships (future)
+    llm: "litellm"  # LLM for entity extraction (uses unified adapter)
+    
+    # Separate collections for different memory types
+    collections:
+      knowledge: "polly_mem0_knowledge"  # Knowledge Writer memories
+      patterns: "polly_mem0_patterns"     # Pattern Learning memories
+      personas: "polly_mem0_personas"     # Per-persona memories

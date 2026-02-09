@@ -18,6 +18,7 @@ aiohttp>=3.9.0  # For async HTTP in integrations
 # AI Providers (Phase 11)
 anthropic>=0.20.0  # Claude models
 openai>=1.10.0  # GPT models
+litellm>=1.30.0  # Unified LLM API proxy for 100+ providers
 
 # Security & Secrets (Phase 11)
 keyring>=24.0.0  # Secure storage for API keys
@@ -28,6 +29,12 @@ watchdog>=3.0.0  # File watching
 rank-bm25>=0.2.2  # BM25 keyword search for hybrid RAG
 spacy>=3.7.0  # NLP for pattern learning
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl  # spaCy English model
+
+# Compression (Wave 1, Task 13)
+llmlingua>=0.2.0  # Fast algorithmic prompt compression (2x-10x token reduction)
+
+# Adaptive Memory Layer (Phase 1.5)
+mem0ai>=1.0.0  # Graph-based memory with entity relationships and multi-level context
 
 # Optional: For enhanced code parsing
 # tree-sitter>=0.20.0

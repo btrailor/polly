@@ -2,16 +2,17 @@
 Compression manager for conversation lifecycle management.
 
 Handles when and how conversations are compressed, stored, and loaded.
+Also provides strategy-based compression for RAG context and other use cases.
 """
 
 import json
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Literal
 import logging
 
-from .compressor import ConversationCompressor
+from .compressor import ConversationCompressor, CompressionStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +33,13 @@ class CompressionManager:
     COMPRESSION_AGE_HOURS = 24  # Or after 24 hours
     KEEP_RECENT_COUNT = 10  # Keep last 10 messages uncompressed
     
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: Optional[str] = None, config: Optional[Dict] = None):
         """
         Initialize compression manager
         
         Args:
             db_path: Path to SQLite database (default: ~/.polly/compression.db)
+            config: Configuration dict for compression settings
         """
         if db_path is None:
             polly_dir = Path.home() / ".polly"
@@ -45,7 +47,8 @@ class CompressionManager:
             db_path = str(polly_dir / "compression.db")
         
         self.db_path = db_path
-        self.compressor = ConversationCompressor()
+        self.config = config or {}
+        self.compressor = ConversationCompressor(config=self.config.get("compression", {}))
         self._init_database()
     
     def _init_database(self):
@@ -347,15 +350,98 @@ class CompressionManager:
                     'total_original_tokens': total_original,
                     'total_compressed_tokens': total_compressed,
                     'tokens_saved': tokens_saved,
-                    'average_ratio': row[3] or 0,
-                    'percent_saved': (tokens_saved / total_original * 100) if total_original > 0 else 0
-                }
-            
-            return {
-                'total_conversations': 0,
-                'total_original_tokens': 0,
-                'total_compressed_tokens': 0,
-                'tokens_saved': 0,
-                'average_ratio': 0,
-                'percent_saved': 0
+                'average_ratio': row[3] or 0,
+                'percent_saved': (tokens_saved / total_original * 100) if total_original > 0 else 0
             }
+        
+        return {
+            'total_conversations': 0,
+            'total_original_tokens': 0,
+            'total_compressed_tokens': 0,
+            'tokens_saved': 0,
+            'average_ratio': 0,
+            'percent_saved': 0
+        }
+    
+    # ========== Strategy-Based Compression (New) ==========
+    
+    def compress_text(
+        self,
+        text: str,
+        strategy: Optional[CompressionStrategy] = None,
+        target_ratio: float = 0.5,
+        context_type: str = "rag_context"
+    ) -> Dict:
+        """
+        Compress arbitrary text using specified strategy.
+        
+        This is the main entry point for RAG context compression.
+        
+        Args:
+            text: Text to compress
+            strategy: Compression strategy (None = use config default)
+            target_ratio: Target compression ratio for LLMLingua
+            context_type: Type of content
+        
+        Returns:
+            Dict with compressed text and metrics
+        """
+        # Get strategy from config if not specified
+        if strategy is None:
+            compression_config = self.config.get("compression", {})
+            strategy = compression_config.get("strategy", "auto")
+        
+        # Compress using strategy
+        result = self.compressor.compress_with_strategy(
+            text=text,
+            strategy=strategy,
+            target_ratio=target_ratio,
+            context_type=context_type
+        )
+        
+        logger.debug(
+            f"Compressed {result['original_tokens']} → {result['compressed_tokens']} tokens "
+            f"using {result.get('strategy', 'unknown')} strategy "
+            f"({result['compression_ratio']:.2f}x ratio)"
+        )
+        
+        return result
+    
+    def is_compression_enabled(self, context_type: str = "rag_context") -> bool:
+        """
+        Check if compression is enabled for given context type.
+        
+        Args:
+            context_type: Type of content
+        
+        Returns:
+            True if compression is enabled
+        """
+        compression_config = self.config.get("compression", {})
+        
+        if context_type == "rag_context":
+            rag_config = compression_config.get("rag_context", {})
+            return rag_config.get("enabled", False)
+        elif context_type == "conversation":
+            # Conversation compression is always available (existing feature)
+            return True
+        
+        return False
+    
+    def get_compression_ratio(self, context_type: str = "rag_context") -> float:
+        """
+        Get configured compression ratio for context type.
+        
+        Args:
+            context_type: Type of content
+        
+        Returns:
+            Compression ratio (0.1-1.0)
+        """
+        compression_config = self.config.get("compression", {})
+        
+        if context_type == "rag_context":
+            rag_config = compression_config.get("rag_context", {})
+            return rag_config.get("ratio", 0.5)
+        
+        return 0.5  # Default

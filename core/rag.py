@@ -300,7 +300,8 @@ class UnifiedRAG:
         embedding_model: str = "nomic-embed-text",
         chunk_size: int = 800,
         pattern_learner = None,  # Optional PatternLearner instance
-        use_hybrid_search: bool = True  # Enable hybrid search by default
+        use_hybrid_search: bool = True,  # Enable hybrid search by default
+        config: Optional[Dict] = None  # Configuration for compression
     ):
         self.db_path = Path(db_path)
         self.ollama_host = ollama_host
@@ -308,6 +309,7 @@ class UnifiedRAG:
         self.chunk_size = chunk_size
         self.pattern_learner = pattern_learner  # Store pattern learner
         self.use_hybrid_search = use_hybrid_search and HYBRID_SEARCH_AVAILABLE
+        self.config = config or {}
 
         self.md_chunker = MarkdownChunker(chunk_size)
         self.code_chunker = CodeChunker(chunk_size)
@@ -325,6 +327,9 @@ class UnifiedRAG:
         else:
             self.hybrid_searcher = None
             logger.info("Using semantic-only search")
+        
+        # Initialize compression manager (lazy-loaded)
+        self._compression_manager = None
 
     def _init_db(self):
         """Initialize ChromaDB."""
@@ -581,6 +586,95 @@ class UnifiedRAG:
         }
 
         return True
+
+    def index_single_document(self, filepath_str: str, source_type: str = 'notes') -> bool:
+        """
+        Incrementally index a single document into RAG.
+        
+        Designed for the KnowledgeWriter: after saving a new note,
+        index just that one file instead of rebuilding the entire collection.
+        
+        Args:
+            filepath_str: Absolute path to the document
+            source_type: 'notes', 'documents', or 'codebase'
+        
+        Returns:
+            True if indexing succeeded
+        """
+        filepath = Path(filepath_str)
+        if not filepath.exists():
+            logger.error(f"File does not exist for incremental index: {filepath}")
+            return False
+        
+        if source_type not in self.collections:
+            logger.error(f"Unknown source type: {source_type}")
+            return False
+        
+        try:
+            content = filepath.read_text(encoding='utf-8', errors='ignore')
+            if not content.strip():
+                logger.warning(f"Empty file, skipping: {filepath}")
+                return False
+            
+            # Use the filename as the relative path key
+            rel_path = filepath.name
+            
+            # Chunk the content
+            if source_type == 'notes':
+                chunks = self.md_chunker.chunk_file(content, rel_path)
+            else:
+                chunks = self.md_chunker.chunk_file(content, rel_path)
+            
+            if not chunks:
+                logger.warning(f"No chunks produced from: {filepath}")
+                return False
+            
+            # Remove any existing chunks for this file
+            collection = self.collections[source_type]
+            try:
+                collection.delete(where={"filepath": rel_path})
+            except Exception:
+                pass
+            
+            # Add new chunks with embeddings
+            indexed_count = 0
+            for chunk_text, metadata in chunks:
+                chunk_id = hashlib.md5(f"{rel_path}:{chunk_text[:50]}".encode()).hexdigest()
+                try:
+                    embedding = self.embed_text(chunk_text)
+                    collection.upsert(
+                        ids=[chunk_id],
+                        embeddings=[embedding],
+                        documents=[chunk_text],
+                        metadatas=[{
+                            **metadata,
+                            'filepath': rel_path,
+                            'source_path': str(filepath),
+                            'indexed_at': datetime.now().isoformat(),
+                            'incremental': True,
+                        }]
+                    )
+                    indexed_count += 1
+                except Exception as e:
+                    logger.error(f"Error embedding chunk from {rel_path}: {e}")
+            
+            # Update metadata cache
+            self.metadata_cache[rel_path] = {
+                'mtime': filepath.stat().st_mtime,
+                'indexed_at': datetime.now().isoformat(),
+                'chunk_count': indexed_count,
+            }
+            
+            # Update BM25 index if hybrid search is enabled
+            if self.use_hybrid_search and self.hybrid_searcher:
+                self._rebuild_bm25_index()
+            
+            logger.info(f"Incrementally indexed {indexed_count} chunks from: {filepath.name}")
+            return True
+        
+        except Exception as e:
+            logger.error(f"Failed to incrementally index {filepath}: {e}", exc_info=True)
+            return False
 
     def _index_code_file(self, filepath: Path, base_path: Path, force: bool = False) -> bool:
         """Index a single code file."""
@@ -1066,6 +1160,18 @@ class UnifiedRAG:
                         # Insert additional chunks right after the top result
                         unique_results = [unique_results[0]] + additional_chunks + unique_results[1:]
 
+        # Step 3: Apply optional compression to chunk content
+        compression_config = self.config.get('compression', {})
+        rag_compression_config = compression_config.get('rag_context', {})
+        
+        if rag_compression_config.get('enabled', False) and unique_results:
+            logger.info("Applying compression to RAG context chunks")
+            compressed_results = self._compress_search_results(
+                unique_results,
+                target_ratio=rag_compression_config.get('ratio', 0.5)
+            )
+            unique_results = compressed_results
+        
         return unique_results[:n_results * 2]  # Return top results across all sources
 
     def get_all_github_repos(self) -> List[SearchResult]:
@@ -1228,3 +1334,74 @@ class UnifiedRAG:
                 stats[name] = {'count': 0, 'files': 0}
 
         return stats
+    
+    def _compress_search_results(
+        self,
+        results: List[SearchResult],
+        target_ratio: float = 0.5
+    ) -> List[SearchResult]:
+        """
+        Compress search result chunks using LLMLingua.
+        
+        Args:
+            results: Search results to compress
+            target_ratio: Target compression ratio
+        
+        Returns:
+            Search results with compressed content
+        """
+        # Lazy-load compression manager
+        if self._compression_manager is None:
+            try:
+                from core.compression.manager import CompressionManager
+                self._compression_manager = CompressionManager(config=self.config)
+                logger.info("Compression manager initialized for RAG")
+            except ImportError as e:
+                logger.error(f"Failed to import CompressionManager: {e}")
+                return results
+        
+        compressed_results = []
+        total_original_tokens = 0
+        total_compressed_tokens = 0
+        
+        for result in results:
+            try:
+                # Compress chunk content
+                compression_result = self._compression_manager.compress_text(
+                    text=result.chunk.content,
+                    strategy="llmlingua",  # Use LLMLingua for RAG context
+                    target_ratio=target_ratio,
+                    context_type="rag_context"
+                )
+                
+                # Update chunk with compressed content
+                result.chunk.content = compression_result['compressed_text']
+                
+                # Add compression metrics to metadata
+                result.chunk.metadata['_compression'] = {
+                    'original_tokens': compression_result['original_tokens'],
+                    'compressed_tokens': compression_result['compressed_tokens'],
+                    'ratio': compression_result['compression_ratio'],
+                    'strategy': compression_result.get('strategy', 'llmlingua')
+                }
+                
+                total_original_tokens += compression_result['original_tokens']
+                total_compressed_tokens += compression_result['compressed_tokens']
+                
+                compressed_results.append(result)
+                
+            except Exception as e:
+                logger.error(f"Failed to compress chunk: {e}")
+                # Keep original chunk on error
+                compressed_results.append(result)
+        
+        # Log compression stats
+        if total_original_tokens > 0:
+            actual_ratio = total_compressed_tokens / total_original_tokens
+            tokens_saved = total_original_tokens - total_compressed_tokens
+            logger.info(
+                f"RAG context compressed: {total_original_tokens} → {total_compressed_tokens} tokens "
+                f"({actual_ratio:.2f}x ratio, saved {tokens_saved} tokens)"
+            )
+        
+        return compressed_results

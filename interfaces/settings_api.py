@@ -47,6 +47,44 @@ class UpdateCompressionRequest(BaseModel):
     show_stats: Optional[bool] = None
 
 
+class UpdateAIFeaturesRequest(BaseModel):
+    """Request model for updating AI features settings."""
+    knowledge_suggestions_enabled: Optional[bool] = None
+    knowledge_suggestions_style: Optional[str] = None  # "subtle" | "inline" | "ask_first"
+    knowledge_suggestions_min_gap_score: Optional[float] = None
+    autonomy_dashboard_enabled: Optional[bool] = None
+    autonomy_dashboard_show_in_status_bar: Optional[bool] = None
+
+
+class QuickSaveRequest(BaseModel):
+    """Request model for quick-saving knowledge from chat."""
+    content: str
+    title: str
+    domain: Optional[str] = None
+    tags: Optional[List[str]] = None
+    source_type: str = "cloud_response"
+    conversation_id: Optional[str] = None
+
+
+class ScribeSaveRequest(BaseModel):
+    """Request model for Scribe-assisted save."""
+    content: str
+    title: str
+    domain: Optional[str] = None
+    conversation_history: Optional[List[Dict[str, Any]]] = None
+
+
+class MessageSaveRequest(BaseModel):
+    """Request model for saving a single message to KB."""
+    message_content: str
+    message_role: str = "assistant"
+    conversation_id: str
+    save_mode: str = "quick"  # "quick" or "scribe"
+    title: Optional[str] = None
+    domain: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
 def create_settings_router() -> APIRouter:
     """Create settings API router."""
     router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -423,4 +461,234 @@ def create_settings_router() -> APIRouter:
                 }
             }
     
+    # ===== AI Features Settings =====
+
+    @router.get("/ai-features")
+    async def get_ai_features():
+        """Get AI features configuration (knowledge suggestions, autonomy dashboard)."""
+        try:
+            config = get_config()
+            ai_features = config.get('ai_features', {}) or {}
+            ks = ai_features.get('knowledge_suggestions', {}) or {}
+            ad = ai_features.get('autonomy_dashboard', {}) or {}
+
+            return {
+                "success": True,
+                "ai_features": {
+                    "knowledge_suggestions": {
+                        "enabled": ks.get('enabled', True),
+                        "style": ks.get('style', 'inline'),
+                        "min_gap_score": ks.get('min_gap_score', 0.5),
+                    },
+                    "autonomy_dashboard": {
+                        "enabled": ad.get('enabled', True),
+                        "show_in_status_bar": ad.get('show_in_status_bar', True),
+                    }
+                }
+            }
+        except Exception as e:
+            logger.error(f"Failed to get AI features: {e}")
+            raise HTTPException(500, f"Failed to get AI features: {str(e)}")
+
+    @router.put("/ai-features")
+    async def update_ai_features(request: UpdateAIFeaturesRequest):
+        """Update AI features configuration."""
+        try:
+            config = get_config()
+
+            # Ensure ai_features section exists
+            if 'ai_features' not in config._config:
+                config._config['ai_features'] = {}
+            af = config._config['ai_features']
+
+            if 'knowledge_suggestions' not in af:
+                af['knowledge_suggestions'] = {}
+            ks = af['knowledge_suggestions']
+
+            if 'autonomy_dashboard' not in af:
+                af['autonomy_dashboard'] = {}
+            ad = af['autonomy_dashboard']
+
+            # Apply updates
+            if request.knowledge_suggestions_enabled is not None:
+                ks['enabled'] = request.knowledge_suggestions_enabled
+            if request.knowledge_suggestions_style is not None:
+                valid_styles = ['subtle', 'inline', 'ask_first']
+                if request.knowledge_suggestions_style not in valid_styles:
+                    raise HTTPException(
+                        400,
+                        f"Invalid style: {request.knowledge_suggestions_style}. "
+                        f"Must be one of: {valid_styles}"
+                    )
+                ks['style'] = request.knowledge_suggestions_style
+            if request.knowledge_suggestions_min_gap_score is not None:
+                score = request.knowledge_suggestions_min_gap_score
+                if not (0.0 <= score <= 1.0):
+                    raise HTTPException(400, "min_gap_score must be between 0.0 and 1.0")
+                ks['min_gap_score'] = score
+            if request.autonomy_dashboard_enabled is not None:
+                ad['enabled'] = request.autonomy_dashboard_enabled
+            if request.autonomy_dashboard_show_in_status_bar is not None:
+                ad['show_in_status_bar'] = request.autonomy_dashboard_show_in_status_bar
+
+            # Save config to file
+            config.save()
+
+            # Update the running KnowledgeWriter if available
+            try:
+                from core.knowledge_writer import get_knowledge_writer
+                kw = get_knowledge_writer()
+                if kw:
+                    kw.update_settings({
+                        'enabled': ks.get('enabled', True),
+                        'style': ks.get('style', 'inline'),
+                        'min_gap_score': ks.get('min_gap_score', 0.5),
+                    })
+            except Exception:
+                pass  # KnowledgeWriter may not be initialized yet
+
+            return {
+                "success": True,
+                "ai_features": {
+                    "knowledge_suggestions": ks,
+                    "autonomy_dashboard": ad,
+                },
+                "message": "AI features settings updated successfully."
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update AI features: {e}")
+            raise HTTPException(500, f"Failed to update AI features: {str(e)}")
+
+    # ===== Knowledge Writing Endpoints =====
+
+    @router.post("/knowledge/save-quick")
+    async def knowledge_save_quick(request: QuickSaveRequest):
+        """Quick save knowledge from AI suggestion or context menu (no LLM call)."""
+        try:
+            from core.knowledge_writer import get_knowledge_writer
+            kw = get_knowledge_writer()
+            if not kw:
+                raise HTTPException(503, "KnowledgeWriter not initialized")
+
+            result = await kw.quick_save(
+                content=request.content,
+                title=request.title,
+                domain=request.domain,
+                tags=request.tags,
+                source_type=request.source_type,
+                conversation_id=request.conversation_id,
+            )
+            return result.to_dict()
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Quick save failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Quick save failed: {str(e)}")
+
+    @router.post("/knowledge/save-scribe")
+    async def knowledge_save_scribe(request: ScribeSaveRequest):
+        """Route through Scribe Enrich mode for wiki-linking and rich formatting."""
+        try:
+            from core.knowledge_writer import get_knowledge_writer
+            kw = get_knowledge_writer()
+            if not kw:
+                raise HTTPException(503, "KnowledgeWriter not initialized")
+
+            result = await kw.scribe_save(
+                content=request.content,
+                title=request.title,
+                domain=request.domain,
+                conversation_history=request.conversation_history,
+            )
+            return result
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Scribe save failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Scribe save failed: {str(e)}")
+
+    @router.get("/autonomy/snapshot")
+    async def get_autonomy_snapshot(days: int = 30):
+        """Get autonomy metrics snapshot for the dashboard."""
+        try:
+            from core.autonomy_metrics import get_autonomy_metrics
+            metrics = get_autonomy_metrics()
+            if not metrics:
+                return {"success": True, "snapshot": {
+                    "knowledge_writes_count": 0,
+                    "estimated_tokens_saved": 0,
+                    "local_routing_pct": 0,
+                    "cloud_routing_pct": 0,
+                    "total_queries": 0,
+                    "period_days": days,
+                }}
+            snapshot = metrics.get_snapshot(days=days)
+            return {"success": True, "snapshot": snapshot.to_dict()}
+        except Exception as e:
+            logger.error(f"Failed to get autonomy snapshot: {e}")
+            raise HTTPException(500, f"Failed to get autonomy snapshot: {str(e)}")
+
+    @router.get("/autonomy/recent-writes")
+    async def get_autonomy_recent_writes(limit: int = 10):
+        """Get recent knowledge writes for the dashboard."""
+        try:
+            from core.autonomy_metrics import get_autonomy_metrics
+            metrics = get_autonomy_metrics()
+            if not metrics:
+                return {"success": True, "writes": []}
+            writes = metrics.get_recent_writes(limit=limit)
+            return {"success": True, "writes": writes}
+        except Exception as e:
+            logger.error(f"Failed to get recent writes: {e}")
+            raise HTTPException(500, f"Failed to get recent writes: {str(e)}")
+
+    @router.get("/autonomy/routing-trend")
+    async def get_autonomy_routing_trend(days: int = 30):
+        """Get routing trend over time for the dashboard."""
+        try:
+            from core.autonomy_metrics import get_autonomy_metrics
+            metrics = get_autonomy_metrics()
+            if not metrics:
+                return {"success": True, "trend": []}
+            trend = metrics.get_routing_trend(days=days)
+            return {"success": True, "trend": trend}
+        except Exception as e:
+            logger.error(f"Failed to get routing trend: {e}")
+            raise HTTPException(500, f"Failed to get routing trend: {str(e)}")
+
+    @router.post("/knowledge/save-message")
+    async def knowledge_save_message(request: MessageSaveRequest):
+        """Save a single message from chat to the knowledge base."""
+        try:
+            from core.knowledge_writer import get_knowledge_writer
+            kw = get_knowledge_writer()
+            if not kw:
+                raise HTTPException(503, "KnowledgeWriter not initialized")
+
+            result = await kw.save_message(
+                message_content=request.message_content,
+                message_role=request.message_role,
+                conversation_id=request.conversation_id,
+                save_mode=request.save_mode,
+                title=request.title,
+                domain=request.domain,
+                tags=request.tags,
+            )
+
+            # Normalize result
+            if hasattr(result, 'to_dict'):
+                return result.to_dict()
+            return result
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Message save failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Message save failed: {str(e)}")
+
     return router

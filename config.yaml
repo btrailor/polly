@@ -311,7 +311,7 @@ routing_v2:
 # RAG settings
 rag:
   # Vector database
-  vector_db_path: "~/.apollo/chroma_db"
+  vector_db_path: "./data/chroma_db"
   # Chunking
   chunk_size: 800
   chunk_overlap: 100
@@ -352,6 +352,16 @@ learning:
   storage_path: "~/.polly/learning.json"
   spaced_repetition: true
   auto_suggest_review: true
+
+# AI Features (Knowledge Writing & Progressive Autonomy)
+ai_features:
+  knowledge_suggestions:
+    enabled: true
+    style: "inline"         # "subtle" | "inline" | "ask_first"
+    min_gap_score: 0.5      # 0.0-1.0 — only suggest when gap confidence exceeds this
+  autonomy_dashboard:
+    enabled: true
+    show_in_status_bar: true
 
 # Server settings
 server:

@@ -170,7 +170,9 @@ class IntelligentRouterV2:
         gemini_api_key: Optional[str] = None,
         mistral_api_key: Optional[str] = None,
         tier_configs: Optional[Dict[ConfidenceLevel, TierConfig]] = None,
-        budget_manager: Optional[Any] = None  # BudgetManager instance
+        budget_manager: Optional[Any] = None,  # BudgetManager instance
+        use_litellm: bool = False,  # Use unified LiteLLM adapter
+        litellm_config_path: str = "config/litellm_config.yaml"
     ):
         """
         Initialize the router.
@@ -185,40 +187,80 @@ class IntelligentRouterV2:
             mistral_api_key: Mistral AI API key
             tier_configs: Custom tier configurations
             budget_manager: BudgetManager instance for cost tracking
+            use_litellm: Use unified LiteLLM adapter instead of individual providers
+            litellm_config_path: Path to litellm_config.yaml
         """
         self.tier_configs = tier_configs or self.DEFAULT_TIERS
         self.budget_manager = budget_manager
+        self.use_litellm = use_litellm
 
         # Initialize providers
         self.providers: Dict[str, ProviderAdapter] = {}
         
-        if anthropic_api_key:
-            self.providers['anthropic'] = AnthropicAdapter(anthropic_api_key)
-            logger.info("Initialized Anthropic provider")
+        if use_litellm:
+            # Use unified LiteLLM adapter
+            try:
+                from core.providers.litellm_adapter import LiteLLMAdapter
+                
+                # Collect all API keys for LiteLLM
+                api_keys = {}
+                if anthropic_api_key:
+                    api_keys['anthropic'] = anthropic_api_key
+                if openai_api_key:
+                    api_keys['openai'] = openai_api_key
+                if github_token:
+                    api_keys['github'] = github_token
+                if grok_api_key:
+                    api_keys['grok'] = grok_api_key
+                if perplexity_api_key:
+                    api_keys['perplexity'] = perplexity_api_key
+                if gemini_api_key:
+                    api_keys['gemini'] = gemini_api_key
+                if mistral_api_key:
+                    api_keys['mistral'] = mistral_api_key
+                
+                # Initialize unified adapter
+                self.providers['litellm'] = LiteLLMAdapter(
+                    config_path=litellm_config_path,
+                    api_keys=api_keys if api_keys else None
+                )
+                logger.info("Initialized unified LiteLLM adapter")
+                
+            except Exception as e:
+                logger.error(f"Failed to initialize LiteLLM adapter: {e}")
+                logger.warning("Falling back to individual providers")
+                use_litellm = False
+                self.use_litellm = False
         
-        if openai_api_key:
-            self.providers['openai'] = OpenAIAdapter(openai_api_key)
-            logger.info("Initialized OpenAI provider")
-        
-        if github_token:
-            self.providers['github'] = GitHubModelsAdapter(github_token)
-            logger.info("Initialized GitHub Models provider")
-        
-        if grok_api_key:
-            self.providers['grok'] = GrokAdapter(grok_api_key)
-            logger.info("Initialized Grok (xAI) provider")
-        
-        if perplexity_api_key:
-            self.providers['perplexity'] = PerplexityAdapter(perplexity_api_key)
-            logger.info("Initialized Perplexity provider")
-        
-        if gemini_api_key:
-            self.providers['gemini'] = GeminiAdapter(gemini_api_key)
-            logger.info("Initialized Gemini provider")
-        
-        if mistral_api_key:
-            self.providers['mistral'] = MistralAdapter(mistral_api_key)
-            logger.info("Initialized Mistral provider")
+        if not use_litellm:
+            # Use individual provider adapters (original behavior)
+            if anthropic_api_key:
+                self.providers['anthropic'] = AnthropicAdapter(anthropic_api_key)
+                logger.info("Initialized Anthropic provider")
+            
+            if openai_api_key:
+                self.providers['openai'] = OpenAIAdapter(openai_api_key)
+                logger.info("Initialized OpenAI provider")
+            
+            if github_token:
+                self.providers['github'] = GitHubModelsAdapter(github_token)
+                logger.info("Initialized GitHub Models provider")
+            
+            if grok_api_key:
+                self.providers['grok'] = GrokAdapter(grok_api_key)
+                logger.info("Initialized Grok (xAI) provider")
+            
+            if perplexity_api_key:
+                self.providers['perplexity'] = PerplexityAdapter(perplexity_api_key)
+                logger.info("Initialized Perplexity provider")
+            
+            if gemini_api_key:
+                self.providers['gemini'] = GeminiAdapter(gemini_api_key)
+                logger.info("Initialized Gemini provider")
+            
+            if mistral_api_key:
+                self.providers['mistral'] = MistralAdapter(mistral_api_key)
+                logger.info("Initialized Mistral provider")
 
         # Provider health tracking
         self._provider_failures: Dict[str, int] = {name: 0 for name in self.providers}

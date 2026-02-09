@@ -3,14 +3,21 @@ Conversation compressor for extended context retention.
 
 Compresses conversations into structured format with 50x+ compression ratio
 while preserving semantic meaning.
+
+Also provides strategy selection for different compression types:
+- LLM-based compression (existing): Best for conversation summaries
+- LLMLingua compression (new): Fast algorithmic compression for RAG context
 """
 
 import json
 import re
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Literal
 from collections import Counter
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -32,6 +39,9 @@ class CompressedConversation:
     embedding_summary: Optional[list[float]] = None
 
 
+CompressionStrategy = Literal["auto", "llmlingua", "llm_summary"]
+
+
 class ConversationCompressor:
     """
     Compress conversations for extended context retention
@@ -39,14 +49,26 @@ class ConversationCompressor:
     Phase 11c: Basic compression (50x)
     Phase 23: Advanced compression (100x) with embeddings
     
+    Now supports multiple compression strategies:
+    - "llm_summary": LLM-based conversation summarization (existing)
+    - "llmlingua": Fast algorithmic compression for RAG context
+    - "auto": Automatically choose strategy based on content type
+    
     Usage:
         compressor = ConversationCompressor()
         compressed = compressor.compress(conversation)
         summary = compressor.decompress(compressed)
+        
+        # Or use strategy-based compression
+        result = compressor.compress_with_strategy(text, strategy="llmlingua", ratio=0.5)
     """
     
-    def __init__(self):
+    def __init__(self, config: Optional[dict] = None):
         self.version = 1
+        self.config = config or {}
+        
+        # Lazy-load LLMLingua compressor
+        self._llmlingua_compressor = None
         
         # Stop words for topic extraction (expand as needed)
         self.stop_words = {
@@ -933,3 +955,126 @@ Artifacts Created:
         }
         
         return [abbreviations.get(page, page) for page in pages]
+    
+    # ========== Strategy-Based Compression (New) ==========
+    
+    def compress_with_strategy(
+        self,
+        text: str,
+        strategy: CompressionStrategy = "auto",
+        target_ratio: float = 0.5,
+        context_type: str = "rag_context"
+    ) -> dict:
+        """
+        Compress text using specified strategy.
+        
+        Args:
+            text: Text to compress
+            strategy: Compression strategy ("auto", "llmlingua", "llm_summary")
+            target_ratio: Target compression ratio (0.1-1.0) for LLMLingua
+            context_type: Type of content ("rag_context", "conversation", "prompt")
+        
+        Returns:
+            Dict with compressed text and metrics
+        """
+        # Auto strategy: choose based on context type
+        if strategy == "auto":
+            if context_type == "conversation":
+                strategy = "llm_summary"
+            else:
+                strategy = "llmlingua"
+        
+        # Route to appropriate compressor
+        if strategy == "llmlingua":
+            return self._compress_with_llmlingua(text, target_ratio, context_type)
+        elif strategy == "llm_summary":
+            # For now, LLM summary only works on conversation format
+            # For raw text, we'd need to implement a text summarization method
+            logger.warning(
+                f"LLM summary compression not yet implemented for raw text. "
+                f"Falling back to LLMLingua."
+            )
+            return self._compress_with_llmlingua(text, target_ratio, context_type)
+        else:
+            raise ValueError(f"Unknown compression strategy: {strategy}")
+    
+    def _compress_with_llmlingua(
+        self,
+        text: str,
+        target_ratio: float,
+        context_type: str
+    ) -> dict:
+        """
+        Compress text using LLMLingua.
+        
+        Args:
+            text: Text to compress
+            target_ratio: Target compression ratio
+            context_type: Type of content
+        
+        Returns:
+            Dict with compressed text and metrics
+        """
+        # Lazy-load LLMLingua compressor
+        if self._llmlingua_compressor is None:
+            try:
+                from .llmlingua_strategy import LLMLinguaCompressor
+                
+                # Get config for LLMLingua
+                llmlingua_config = self.config.get("llmlingua", {})
+                
+                self._llmlingua_compressor = LLMLinguaCompressor(
+                    target_ratio=target_ratio,
+                    model_name=llmlingua_config.get(
+                        "model",
+                        "microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank"
+                    ),
+                    device=llmlingua_config.get("device", "cpu")
+                )
+                logger.info("LLMLingua compressor initialized")
+            except ImportError as e:
+                logger.error(f"Failed to import LLMLingua: {e}")
+                # Return uncompressed as fallback
+                return {
+                    "compressed_text": text,
+                    "original_tokens": len(text) // 4,
+                    "compressed_tokens": len(text) // 4,
+                    "compression_ratio": 1.0,
+                    "strategy": "none",
+                    "error": "llmlingua_not_available"
+                }
+        
+        # Compress
+        result = self._llmlingua_compressor.compress(
+            text,
+            target_ratio=target_ratio,
+            context_type=context_type
+        )
+        
+        return {
+            "compressed_text": result.compressed_text,
+            "original_tokens": result.original_tokens,
+            "compressed_tokens": result.compressed_tokens,
+            "compression_ratio": result.compression_ratio,
+            "strategy": "llmlingua",
+            "metadata": result.metadata
+        }
+    
+    def get_strategy_for_context(self, context_type: str) -> CompressionStrategy:
+        """
+        Get recommended compression strategy for context type.
+        
+        Args:
+            context_type: Type of content
+        
+        Returns:
+            Recommended compression strategy
+        """
+        strategy_map = {
+            "conversation": "llm_summary",
+            "rag_context": "llmlingua",
+            "prompt": "llmlingua",
+            "mental_model": "llm_summary"
+        }
+        
+        return strategy_map.get(context_type, "llmlingua")

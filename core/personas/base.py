@@ -181,6 +181,19 @@ class AgentPersona(ABC):
             current_mode=self.default_mode
         )
         
+        # Initialize Mem0 adapter if enabled
+        self.mem0 = None
+        self.config = getattr(router, 'config', {})
+        if self._is_mem0_enabled():
+            try:
+                from core.memory.mem0_adapter import Mem0Adapter
+                self.mem0 = Mem0Adapter(self.config)
+                logger.debug(f"{name} persona: Mem0 adaptive memory enabled")
+            except ImportError:
+                logger.debug(f"{name} persona: Mem0 not available")
+            except Exception as e:
+                logger.warning(f"{name} persona: Failed to initialize Mem0: {e}")
+        
         logger.info(f"Initialized {name} persona (default mode: {self.default_mode})")
     
     # ========== Abstract Properties ==========
@@ -347,6 +360,72 @@ class AgentPersona(ABC):
         messages.append({"role": "user", "content": context.user_message})
         
         return messages
+    
+    def _is_mem0_enabled(self) -> bool:
+        """Check if Mem0 is enabled in config."""
+        if self.config.get('memory', {}).get('provider') != 'mem0':
+            return False
+        return self.config.get('memory', {}).get('mem0', {}).get('enabled', False)
+    
+    def _get_memory_context(self, query: str, limit: int = 3) -> str:
+        """
+        Get persona-specific memory context for LLM calls.
+        
+        Retrieves relevant memories from this persona's namespace
+        (e.g., "persona:scribe") to provide context-aware responses.
+        
+        Args:
+            query: Query to search for relevant memories
+            limit: Maximum number of memories to retrieve
+        
+        Returns:
+            Formatted context string (empty if Mem0 disabled or no memories)
+        
+        Example:
+            >>> context = self._get_memory_context("enrichment style preferences")
+            >>> system_prompt = f"You are the Scribe...\\n\\n{context}\\n\\nTask: ..."
+        """
+        if not self.mem0:
+            return ""
+        
+        try:
+            user_id = f"persona:{self.name}"
+            return self.mem0.get_relevant_context(query, user_id, limit)
+        except Exception as e:
+            logger.warning(f"{self.name} persona: Failed to get memory context: {e}")
+            return ""
+    
+    def _add_memory(self, content: str, metadata: Dict[str, Any] = None):
+        """
+        Add a memory to this persona's namespace.
+        
+        Stores information that should inform future interactions,
+        such as user preferences, patterns, or decisions.
+        
+        Args:
+            content: Memory content
+            metadata: Optional metadata (type, confidence, etc.)
+        
+        Example:
+            >>> self._add_memory(
+            ...     content="User prefers concise enrichment style with minimal commentary",
+            ...     metadata={'type': 'preference', 'confidence': 0.9}
+            ... )
+        """
+        if not self.mem0:
+            return
+        
+        try:
+            user_id = f"persona:{self.name}"
+            if metadata is None:
+                metadata = {}
+            metadata['persona'] = self.name
+            metadata['mode'] = self.state.current_mode
+            
+            self.mem0.add_memory(content, user_id, metadata)
+            logger.debug(f"{self.name} persona: Added memory - {content[:50]}...")
+        except Exception as e:
+            logger.warning(f"{self.name} persona: Failed to add memory: {e}")
     
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} name={self.name} mode={self.state.current_mode}>"

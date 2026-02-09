@@ -404,8 +404,18 @@ class ScribePersona(AgentPersona):
             analysis, template, linking_skill, domain_skill, context
         )
         
+        # Get Scribe-specific memory context (preferences, patterns)
+        memory_context = self._get_memory_context(
+            f"enrichment style preferences for {template['name']} template"
+        )
+        
+        # Build system prompt with memory context
+        system_prompt = self.get_system_prompt("enrich")
+        if memory_context:
+            system_prompt = f"{system_prompt}\n\n{memory_context}"
+        
         messages = [
-            {"role": "system", "content": self.get_system_prompt("enrich")},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": enrich_prompt}
         ]
         
@@ -521,6 +531,122 @@ Preview ready! Review and save your note."""
                 "cost": response.cost
             }
         )
+    
+    # ========== Standalone Enrich (for KnowledgeWriter) ==========
+    
+    async def enrich_standalone(
+        self,
+        content: str,
+        title: str,
+        domain: str = "scrolls",
+        conversation_history: Optional[List[Dict]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Standalone enrich entry point for KnowledgeWriter.
+        
+        Skips Capture and Organize modes — takes raw content and produces
+        an enriched note with wiki-links and proper formatting.
+        
+        Args:
+            content: Raw text content to enrich
+            title: Suggested note title
+            domain: Target domain slug
+            conversation_history: Optional conversation for additional context
+        
+        Returns:
+            Dict with 'content', 'metadata' suitable for PreviewModal
+        """
+        logger.info(f"Scribe standalone enrich: title='{title}', domain='{domain}'")
+        
+        # Build a lightweight analysis from the raw content
+        analysis = {
+            "key_concepts": [],
+            "note_title_suggestions": [title],
+            "summary": content[:300],
+            "domain": domain,
+        }
+        
+        # Load linking skill for wiki-links
+        linking_skill = None
+        if self.skill_manager:
+            linking_skill = self.skill_manager.load_skill("wiki-linking")
+        
+        # Build a simplified enrich prompt (no template required)
+        enrich_prompt = f"""You are Polly's Scribe. Your task is to take the raw content below and transform it into a well-structured knowledge base note.
+
+**Title:** {title}
+**Domain:** {domain}
+
+**Raw Content:**
+{content}
+
+**Instructions:**
+1. Structure the content with clear headings (##, ###)
+2. Add [[wiki-links]] to any concepts, tools, or topics that might exist in the user's knowledge base
+3. Add a brief summary at the top
+4. Use bullet points and code blocks where appropriate
+5. Keep the original information intact — enrich, don't rewrite
+6. Output ONLY the markdown content (no JSON wrapper)
+
+Generate the enriched note:"""
+
+        messages = [
+            {"role": "system", "content": self.get_system_prompt("enrich")},
+            {"role": "user", "content": enrich_prompt}
+        ]
+        
+        try:
+            response = await self.router.complete_with_fallback(
+                messages=messages,
+                task_type=TaskType.CREATIVE,
+                confidence=ConfidenceLevel.BALANCED,
+                max_tokens=4000,
+                temperature=0.7
+            )
+        except Exception as e:
+            logger.error(f"Standalone enrich failed: {e}")
+            # Return the raw content as fallback
+            return {
+                "content": content,
+                "metadata": {
+                    "title": title,
+                    "domain": domain,
+                    "tags": [],
+                    "error": str(e),
+                }
+            }
+        
+        # Auto-link the enriched content
+        enriched_content = await self._auto_link_content(
+            response.content, linking_skill
+        )
+        
+        # Build frontmatter
+        now = datetime.now()
+        final_content = f"""---
+title: "{title}"
+date: {now.strftime('%Y-%m-%d')}
+domain: {domain}
+source: scribe_enrich
+created_by: scribe_standalone
+---
+
+{enriched_content}
+"""
+        
+        metadata = {
+            "title": title,
+            "domain": domain,
+            "folder": "",
+            "filename": f"{title.replace(' ', '-').lower()}.md",
+            "tags": [],
+            "template_used": "none (standalone enrich)",
+        }
+        
+        return {
+            "content": final_content,
+            "metadata": metadata,
+        }
     
     # ========== Edit Mode ==========
     
