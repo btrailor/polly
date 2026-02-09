@@ -81,6 +81,9 @@ build/
 htmlcov/
 .pytest_cache/
 
+# Recovery backup (local copies from recovery session)
+.recovery-backup/
+
 # Backup files
 *.backup
 *.bak
