@@ -165,6 +165,13 @@ When Apple Neural Engine becomes more accessible, or dedicated AI hardware arriv
 - Real-time pattern detection
 - Continuous learning without cloud
 
+## Directory layout
+
+- **openspec/** — Project tracking and specs (status, roadmap, domain specs). Start here for "where we are" and "what's next."
+- **docs/** — Detailed docs (planning, status, troubleshooting). **archive/root-docs/** — Root-level planning docs moved here (MASTER_ROADMAP, FEATURES_TO_BUILD, etc.).
+- **tests/** — Test suite. **tests/root/** — Tests moved from repo root during cleanup.
+- **scripts/** — Dev/ops scripts. **scripts/debug/**, **scripts/demo/**, **scripts/diagnostics/** — Debug, demo, and diagnostic scripts moved from root.
+
 ## License
 
 Personal use. Built on open-source foundations.

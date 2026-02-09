@@ -1,17 +1,23 @@
 # Planning Documentation Navigator
 
-**Purpose:** Central index for navigating phase documentation  
-**Last Updated:** February 1, 2026
+**Purpose:** Central index for phase documentation and detailed planning.  
+**Authoritative project tracking:** Status and roadmap live in **OpenSpec** — use those first for "where we are" and "what's next."  
+**Full doc migration:** All docs are migrated into OpenSpec; every doc is mapped to a spec or to backlog/ops in [openspec/DOCUMENTATION_MAP.md](../../openspec/DOCUMENTATION_MAP.md).
+
+**Last Updated:** February 2026
 
 ---
 
-## Quick Navigation
+## Quick Navigation (OpenSpec-first)
 
-- **Project Status:** [/docs/status/CURRENT.md](/docs/status/CURRENT.md) - Single source of truth
-- **Completion History:** [/docs/status/CHANGELOG.md](/docs/status/CHANGELOG.md) - Chronological log
-- **Master Roadmap:** [/MASTER_ROADMAP.md](/MASTER_ROADMAP.md) - Complete project plan
-- **Tier Organization:** [/docs/planning/tiers/](#tier-based-organization) - Phases grouped by tier
-- **Phase Documents:** [/docs/planning/phases/](#phase-documentation) - Individual phase specs
+- **Project Status (authoritative):** [openspec/specs/project/status.md](/openspec/specs/project/status.md)
+- **Roadmap (authoritative):** [openspec/specs/project/roadmap.md](/openspec/specs/project/roadmap.md)
+- **OpenSpec index:** [openspec/INDEX.md](/openspec/INDEX.md)
+- **Completion History:** [docs/status/CHANGELOG.md](/docs/status/CHANGELOG.md)
+- **Master Roadmap (full reference):** [MASTER_ROADMAP.md](/MASTER_ROADMAP.md)
+- **Tier Organization:** [docs/planning/tiers/](#tier-based-organization)
+- **Phase Documents:** [docs/planning/phases/](#phase-documentation)
+- **Backlog index:** [docs/planning/BACKLOG_INDEX.md](BACKLOG_INDEX.md)
 
 ---
 
@@ -20,13 +26,13 @@
 ### Finding What You Need
 
 **"What's the current status?"**  
-→ Read [/docs/status/CURRENT.md](/docs/status/CURRENT.md)
+→ Read [openspec/specs/project/status.md](/openspec/specs/project/status.md)
 
 **"What should I work on next?"**  
-→ Check "Recommended Next Steps" in [/docs/status/CURRENT.md](/docs/status/CURRENT.md)
+→ Check [openspec/specs/project/roadmap.md](/openspec/specs/project/roadmap.md) and "Recommended Next Steps" in [docs/status/CURRENT.md](/docs/status/CURRENT.md)
 
 **"Has Phase X been completed?"**  
-→ Search [/docs/status/CHANGELOG.md](/docs/status/CHANGELOG.md) or check [/docs/status/CURRENT.md](/docs/status/CURRENT.md)
+→ Check [openspec/specs/project/status.md](/openspec/specs/project/status.md) or [openspec/specs/project/roadmap.md](/openspec/specs/project/roadmap.md); history in [docs/status/CHANGELOG.md](/docs/status/CHANGELOG.md)
 
 **"What does Phase X involve?"**  
 → Navigate to `/docs/planning/phases/phase-XX/` or check the tier documents
@@ -304,8 +310,9 @@ For research and exploration documents that informed phase design:
 ### When Completing a Phase
 
 1. **Update Status Documents:**
-   - Add entry to `/docs/status/CHANGELOG.md` (top of file)
-   - Update `/docs/status/CURRENT.md` with completion
+   - Add entry to `docs/status/CHANGELOG.md` (top of file)
+   - Update `openspec/specs/project/status.md` and `openspec/specs/project/roadmap.md` with completion
+   - Update `docs/status/CURRENT.md` with completion (detailed reference)
    - Mark phase as ✅ in relevant tier document
 
 2. **Create Completion Report:**
@@ -326,19 +333,19 @@ For research and exploration documents that informed phase design:
 ### When Starting a Phase
 
 1. **Check Prerequisites:**
-   - Verify dependencies are complete (check `/docs/status/CURRENT.md`)
-   - Review phase specification document
+   - Verify dependencies (check [openspec/specs/project/status.md](/openspec/specs/project/status.md) and [openspec/specs/project/roadmap.md](/openspec/specs/project/roadmap.md))
+   - Review phase specification in `docs/planning/phases/phase-XX/`
    - Check for related completion reports
 
-2. **Create Phase Directory:**
-   - Create `/docs/planning/phases/phase-XX/`
-   - Move/copy relevant planning documents
-   - Create README.md for phase overview
+2. **Create an OpenSpec change:**
+   - Create `openspec/changes/<change-name>/` (e.g. `phase-23.5-security-hardening/`)
+   - Add `proposal.md`, `design.md`, `tasks.md`
+   - Phase directory under `docs/planning/phases/phase-XX/` holds detailed spec (reference)
 
 3. **Track Progress:**
-   - Use TodoWrite tool for task breakdown
-   - Update status documents regularly
-   - Document design decisions
+   - Implement per design and tasks
+   - Update `openspec/specs/project/status.md` and `openspec/specs/project/roadmap.md` when done
+   - Add completion entry to `docs/status/CHANGELOG.md`
 
 ---
 
@@ -360,9 +367,9 @@ For research and exploration documents that informed phase design:
 ## Related Resources
 
 **Planning Documents:**
-- [MASTER_ROADMAP.md](/MASTER_ROADMAP.md) - Complete project plan with timelines
-- [FEATURES_TO_BUILD.md](/FEATURES_TO_BUILD.md) - Feature backlog
-- [BRAIN_DUMP_2026-01-31.md](/BRAIN_DUMP_2026-01-31.md) - Brainstorming notes
+- [MASTER_ROADMAP.md](/MASTER_ROADMAP.md) (redirect); full text: [archive/root-docs/MASTER_ROADMAP.md](/archive/root-docs/MASTER_ROADMAP.md)
+- [archive/root-docs/FEATURES_TO_BUILD.md](/archive/root-docs/FEATURES_TO_BUILD.md) - Feature backlog
+- [archive/root-docs/BRAIN_DUMP_2026-01-31.md](/archive/root-docs/BRAIN_DUMP_2026-01-31.md) - Brainstorming notes
 
 **Troubleshooting:**
 - [/docs/troubleshooting/KNOWN_ISSUES.md](/docs/troubleshooting/KNOWN_ISSUES.md) (to be created)

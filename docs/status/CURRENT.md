@@ -1,7 +1,9 @@
-# Polly Project Status - AUTHORITATIVE
+# Polly Project Status (detailed reference)
 
-**Last Updated:** February 3, 2026  
-**Purpose:** Single source of truth for project status
+**Authoritative source of truth for status:** **[openspec/specs/project/status.md](../../openspec/specs/project/status.md)**  
+Use the OpenSpec project status for "where we are now"; this file is detailed reference and history.
+
+**Last Updated:** February 3, 2026
 
 ---
 

@@ -7,6 +7,96 @@
 
 ## February 2026
 
+### February 9, 2026 - Compression Strategy: LLMLingua RAG Context Compression ✅
+
+**Type:** Feature Implementation  
+**Impact:** 2x-10x token reduction for RAG context without LLM calls
+
+**Implemented:**
+- `core/compression/llmlingua_strategy.py` — LLMLingua-2 compression (fast algorithmic compression, no LLM call)
+- `core/compression/compressor.py` — Added `compress_with_strategy()` method with strategy selection (auto, llmlingua, llm_summary)
+- `core/compression/manager.py` — Added `compress_text()` for RAG context compression
+- `core/rag.py` — Integrated optional compression step after search (configurable via config)
+- `config/config.yaml` → `compression` section (strategy, rag_context, llmlingua settings)
+- `requirements.txt` — Added `llmlingua>=0.2.0`
+- `openspec/specs/compression/spec.md` — New compression specification
+- `openspec/specs/rag/spec.md` — Updated with compression integration
+
+**Features:**
+- Strategy-based compression: "auto" (LLMLingua for RAG, LLM for conversations), "llmlingua", "llm_summary"
+- Configurable compression ratio (0.1-1.0, default 0.5 = 2x compression)
+- Token tracking in search results metadata
+- Lazy model loading (avoid startup cost)
+- CPU/CUDA support
+- Fallback to uncompressed on error
+
+**Benefits:**
+- 2x-10x token reduction for RAG context
+- No LLM call needed (fast algorithmic compression)
+- Reduces API costs for cloud providers
+- Preserves semantic meaning
+- Transparent integration (optional, config-driven)
+
+**OpenSpec:** [openspec/changes/core-framework-refinement/](../../openspec/changes/core-framework-refinement/) (Task 13)
+
+**Configuration:**
+```yaml
+compression:
+  strategy: "auto"
+  rag_context:
+    enabled: true
+    ratio: 0.5  # 2x compression
+  llmlingua:
+    model: "microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank"
+    device: "cpu"
+```
+
+### February 9, 2026 - Provider Layer Modernization: LiteLLM Unified Adapter ✅
+
+**Type:** Architecture Refactor  
+**Impact:** Consolidates 7 provider adapters into unified implementation
+
+**Implemented:**
+- `core/providers/litellm_adapter.py` — Unified provider adapter using LiteLLM (wraps 100+ providers)
+- `config/litellm_config.yaml` — Provider configuration (models, API keys, fallback chains)
+- `core/router_v2.py` — Added `use_litellm` flag (backward compatible, default: false)
+- `config/config.yaml` → `routing_v2.use_litellm` setting
+- `requirements.txt` — Added `litellm>=1.30.0`
+- `config/approved_packages.yaml` — Added LiteLLM to approved packages
+- `test_litellm_adapter.py` — Comprehensive test suite for all 7 providers
+
+**Benefits:**
+- 90% code reduction (single 700-line adapter vs 7 × 400 lines)
+- Zero breaking changes to IntelligentRouterV2
+- Easy provider expansion (config change only)
+- Automatic cost tracking via LiteLLM's pricing database
+- Unified error handling and streaming support
+
+**OpenSpec:** [openspec/changes/litellm-provider-adapter/](../../openspec/changes/litellm-provider-adapter/)
+
+**Migration:** Set `routing_v2.use_litellm: true` in config.yaml to enable unified adapter
+
+### February 8, 2026 - Core Framework Refinement: Knowledge Writing + Autonomy Metrics ✅
+
+**Type:** Feature Implementation  
+**Impact:** New subsystems for progressive autonomy
+
+**Implemented:**
+- `core/knowledge_writer.py` — Chat-to-KB writing orchestrator (gap detection, quick save, Scribe save, per-message save, incremental RAG index)
+- `core/autonomy_metrics.py` — Progressive autonomy tracking (SQLite: knowledge writes + routing decisions)
+- `core/rag.py` → `index_single_document()` — Incremental RAG indexing without full rebuild
+- `core/personas/implementations/scribe.py` → `enrich_standalone()` — Direct enrichment for KnowledgeWriter
+- `interfaces/settings_api.py` — New endpoints: knowledge save (quick/scribe/message), AI features config, autonomy dashboard
+- `interfaces/server.py` — Restored `/polly/notes/create` and `/polly/notes/create-folder`
+- `config.yaml` → `ai_features` section (knowledge suggestions, autonomy dashboard)
+- `electron-app/src/renderer/components/save-message-form.js` — Save message form component
+- `electron-app/src/renderer/index.html` — AI Features settings section
+- `electron-app/src/renderer/app.js` — Right-click context menu, suggestion rendering, settings load/save
+
+**OpenSpec:** [openspec/changes/core-framework-refinement/](../../openspec/changes/core-framework-refinement/)
+
+**Next:** Provider Registry, "Polly" intelligent routing mode, OpenRouter adapter, Query Decomposition pipeline
+
 ### February 3, 2026 - Phase 22 Status Assessment 📋
 
 **Type:** Documentation Update  

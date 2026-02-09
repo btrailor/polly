@@ -1,69 +1,38 @@
 # Archive
 
-This directory contains outdated or superseded documentation that is preserved for historical reference.
+This directory contains outdated or superseded documentation and planning docs preserved for historical reference.
 
-**Purpose:** Keep root directory clean while preserving project history
-
----
-
-## What's Archived Here
-
-### Old Status Documents
-These have been superseded by the new documentation structure in `/docs/status/`:
-
-- `COMPLETED_PHASES_SUMMARY.md` → See `/docs/status/CHANGELOG.md`
-- `CURRENT_STATUS.md` → See `/docs/status/CURRENT.md`
-- `DOCUMENTATION_REVIEW_COMPLETE.md` → Historical
-- `DOCUMENTATION_UPDATE_STATUS.md` → Historical
-- `MASTER_ROADMAP_UPDATE_PHASE1.5.md` → Integrated into `/MASTER_ROADMAP.md`
-
-### Session Summaries
-Old session summaries from development:
-
-- `SESSION_SUMMARY_JAN26_2026.md`
-- `SESSION_SUMMARY.md`
-- `BRAIN_DUMP_SUMMARY.md`
-
-### Other Historical Documents
-- `HYBRID_SEARCH_SUMMARY.md` → Feature implemented and documented elsewhere
+**Purpose:** Keep root directory clean; use **OpenSpec** and **docs/** for current authority.
 
 ---
 
-## Current Documentation Structure
+## Structure
 
-**For current project information:**
+### `root-docs/` (Feb 2026 cleanup)
 
-### Status & Planning
-- `/docs/status/CURRENT.md` - Single source of truth for project status
-- `/docs/status/CHANGELOG.md` - Chronological completion history
-- `/docs/planning/README.md` - Navigate all planning documentation
+Root-level planning and completion docs moved here during directory cleanup:
 
-### Phase Documentation
-- `/docs/planning/tiers/` - Tier-based organization
-- `/docs/planning/phases/` - Individual phase specifications
+- **MASTER_ROADMAP.md** — Full roadmap and vision (authoritative status/roadmap: [openspec/specs/project/](../openspec/specs/project/))
+- **FEATURES_TO_BUILD.md**, **ROADMAP_ANALYSIS_AND_NEXT_STEPS.md** — Backlog and analysis
+- **BRAIN_DUMP_*.md**, **SESSION_*.md** — Brain dumps and session notes
+- Completion/design docs: **CONTEXT_AWARE_PERSONA_SYSTEM.md**, **FLOATING_CHAT_*.md**, **HYBRID_ROUTING_COMPLETE.md**, **USE_CASE_2_COMPLETE.md**, **MENTAL_MODELS_USER_GUIDE.md**, **NATIVE_NOTES_GUIDE.md**, **QUICKSTART_*.md**, etc.
 
-### Completion Reports
-- Root directory completion reports (PHASE11_COMPLETE.md, PHASE16E_COMPLETE.md, etc.)
+Root now has a **MASTER_ROADMAP.md** redirect only; full content is here.
 
-### Master Planning
-- `/MASTER_ROADMAP.md` - Complete project roadmap and vision
+### Other archived files (pre-cleanup)
 
----
-
-## When to Archive Documents
-
-Archive documents when:
-1. They are superseded by newer documentation
-2. They contain outdated information
-3. They are no longer referenced
-4. They clutter the root directory
-
-**Do NOT archive:**
-- Active planning documents
-- Current completion reports
-- Reference documentation
-- User guides
+- **CURRENT_STATUS.md**, **COMPLETED_PHASES_SUMMARY.md** → See [docs/status/](../docs/status/)
+- **SESSION_SUMMARY*.md**, **BRAIN_DUMP_SUMMARY.md** — Session summaries
+- **MASTER_ROADMAP_UPDATE_PHASE1.5.md**, **DOCUMENTATION_*.md**, **HYBRID_SEARCH_SUMMARY.md** — Historical
 
 ---
 
-**Last Updated:** February 1, 2026
+## Current documentation (not in archive)
+
+- **Status & roadmap:** [openspec/specs/project/status.md](../openspec/specs/project/status.md), [openspec/specs/project/roadmap.md](../openspec/specs/project/roadmap.md)
+- **Planning navigator:** [docs/planning/README.md](../docs/planning/README.md)
+- **Doc → spec map:** [openspec/DOCUMENTATION_MAP.md](../openspec/DOCUMENTATION_MAP.md)
+
+---
+
+**Last Updated:** February 2026
