@@ -50,6 +50,7 @@ approved_packages:
   - anthropic
   - openai
   - litellm
+  - llmlingua  # Fast algorithmic prompt compression (2x-10x token reduction)
   - mem0ai  # Adaptive memory layer with graph storage
   
   # Testing

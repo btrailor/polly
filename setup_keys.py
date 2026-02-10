@@ -81,11 +81,11 @@ async def setup_provider(secrets, provider: str) -> bool:
         print(f"  Testing connection...", end='', flush=True)
         
         if provider == 'anthropic':
-            from core.providers.anthropic_provider import AnthropicAdapter
+            from core.providers import AnthropicAdapter
             adapter = AnthropicAdapter(key_value)
             valid = await adapter.validate_credentials()
         elif provider == 'openai':
-            from core.providers.openai_provider import OpenAIAdapter
+            from core.providers import OpenAIAdapter
             adapter = OpenAIAdapter(key_value)
             valid = await adapter.validate_credentials()
         else:

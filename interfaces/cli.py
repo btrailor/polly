@@ -389,18 +389,19 @@ async def test_provider_key(provider: str, key: str) -> bool:
     """Test if a provider API key is valid."""
     try:
         if provider == 'anthropic':
-            from core.providers.anthropic_provider import AnthropicAdapter
+            from core.providers import AnthropicAdapter
             adapter = AnthropicAdapter(key)
             return await adapter.validate_credentials()
         
         elif provider == 'openai':
-            from core.providers.openai_provider import OpenAIAdapter
+            from core.providers import OpenAIAdapter
             adapter = OpenAIAdapter(key)
             return await adapter.validate_credentials()
         
         elif provider == 'github':
-            # TODO: Implement GitHub validation in Phase 11b
-            return False
+            from core.providers import GitHubModelsAdapter
+            adapter = GitHubModelsAdapter(key)
+            return await adapter.validate_credentials()
         
         return False
     except Exception as e:

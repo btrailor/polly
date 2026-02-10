@@ -102,6 +102,13 @@ class SecretsManager:
             'description': 'Mistral AI API Key',
             'format': '...',
             'validate_prefix': None  # Mistral keys don't have a consistent prefix
+        },
+        'openrouter': {
+            'key_name': 'OPENROUTER_API_KEY',
+            'env_var': 'OPENROUTER_API_KEY',
+            'description': 'OpenRouter API Key (100+ models via single API)',
+            'format': 'sk-or-...',
+            'validate_prefix': 'sk-or-'
         }
     }
     

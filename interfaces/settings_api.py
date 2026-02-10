@@ -3,7 +3,7 @@ Settings API Endpoints for Polly
 Handles API key management, provider configuration, and budget settings
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -45,6 +45,16 @@ class UpdateCompressionRequest(BaseModel):
     age_hours: Optional[int] = None
     keep_recent: Optional[int] = None
     show_stats: Optional[bool] = None
+    # RAG / context compression (LLMLingua strategy)
+    strategy: Optional[str] = None  # "auto" | "llmlingua" | "llm_summary"
+    rag_context_enabled: Optional[bool] = None
+    rag_context_ratio: Optional[float] = None  # 0.1-1.0 (e.g. 0.5 = 2x compression)
+
+
+class UpdateMemoryRequest(BaseModel):
+    """Request model for memory provider settings."""
+    provider: Optional[str] = None  # "local" | "mem0"
+    mem0_enabled: Optional[bool] = None
 
 
 class UpdateAIFeaturesRequest(BaseModel):
@@ -110,7 +120,7 @@ def create_settings_router() -> APIRouter:
         """Set or update an API key."""
         try:
             # Validate provider
-            valid_providers = ['anthropic', 'openai', 'github', 'grok', 'perplexity', 'gemini', 'mistral']
+            valid_providers = ['anthropic', 'openai', 'github', 'grok', 'perplexity', 'gemini', 'mistral', 'openrouter']
             if request.provider not in valid_providers:
                 raise HTTPException(400, f"Invalid provider: {request.provider}")
             
@@ -122,34 +132,33 @@ def create_settings_router() -> APIRouter:
             error_message = None
             
             try:
-                if request.provider == 'anthropic':
-                    from core.providers.anthropic_provider import AnthropicAdapter
-                    adapter = AnthropicAdapter(request.key)
-                    is_valid = await adapter.validate_credentials()
-                elif request.provider == 'openai':
-                    from core.providers.openai_provider import OpenAIAdapter
-                    adapter = OpenAIAdapter(request.key)
-                    is_valid = await adapter.validate_credentials()
-                elif request.provider == 'github':
-                    from core.providers.github_provider import GitHubModelsAdapter
-                    adapter = GitHubModelsAdapter(request.key)
-                    is_valid = await adapter.validate_credentials()
-                elif request.provider == 'grok':
-                    from core.providers.grok_provider import GrokAdapter
-                    adapter = GrokAdapter(request.key)
-                    is_valid = await adapter.validate_credentials()
-                elif request.provider == 'perplexity':
-                    from core.providers.perplexity_provider import PerplexityAdapter
-                    adapter = PerplexityAdapter(request.key)
-                    is_valid = await adapter.validate_credentials()
-                elif request.provider == 'gemini':
-                    from core.providers.gemini_provider import GeminiAdapter
-                    adapter = GeminiAdapter(request.key)
-                    is_valid = await adapter.validate_credentials()
-                elif request.provider == 'mistral':
-                    from core.providers.mistral_provider import MistralAdapter
-                    adapter = MistralAdapter(request.key)
-                    is_valid = await adapter.validate_credentials()
+                if request.provider == 'openrouter':
+                    is_valid = True  # Validated via LiteLLM when used
+                else:
+                    from core.providers import (
+                        AnthropicAdapter,
+                        OpenAIAdapter,
+                        GitHubModelsAdapter,
+                        GrokAdapter,
+                        PerplexityAdapter,
+                        GeminiAdapter,
+                        MistralAdapter,
+                    )
+                    _adapters = {
+                        'anthropic': AnthropicAdapter,
+                        'openai': OpenAIAdapter,
+                        'github': GitHubModelsAdapter,
+                        'grok': GrokAdapter,
+                        'perplexity': PerplexityAdapter,
+                        'gemini': GeminiAdapter,
+                        'mistral': MistralAdapter,
+                    }
+                    adapter_cls = _adapters.get(request.provider)
+                    if adapter_cls:
+                        adapter = adapter_cls(request.key)
+                        is_valid = await adapter.validate_credentials()
+                    else:
+                        is_valid = True
             except Exception as e:
                 error_message = str(e)
                 logger.warning(f"Key validation failed for {request.provider}: {e}")
@@ -171,7 +180,7 @@ def create_settings_router() -> APIRouter:
     async def delete_key(provider: str):
         """Delete an API key."""
         try:
-            valid_providers = ['anthropic', 'openai', 'github', 'grok', 'perplexity', 'gemini', 'mistral']
+            valid_providers = ['anthropic', 'openai', 'github', 'grok', 'perplexity', 'gemini', 'mistral', 'openrouter']
             if provider not in valid_providers:
                 raise HTTPException(400, f"Invalid provider: {provider}")
             
@@ -196,7 +205,7 @@ def create_settings_router() -> APIRouter:
     async def test_keys(request: TestKeyRequest):
         """Test API key connectivity."""
         try:
-            providers = [request.provider] if request.provider else ['anthropic', 'openai', 'github', 'grok', 'perplexity', 'gemini', 'mistral']
+            providers = [request.provider] if request.provider else ['anthropic', 'openai', 'github', 'grok', 'perplexity', 'gemini', 'mistral', 'openrouter']
             results = {}
             
             for provider in providers:
@@ -211,36 +220,33 @@ def create_settings_router() -> APIRouter:
                     continue
                 
                 try:
-                    if provider == 'anthropic':
-                        from core.providers.anthropic_provider import AnthropicAdapter
-                        adapter = AnthropicAdapter(key)
-                        is_valid = await adapter.validate_credentials()
-                    elif provider == 'openai':
-                        from core.providers.openai_provider import OpenAIAdapter
-                        adapter = OpenAIAdapter(key)
-                        is_valid = await adapter.validate_credentials()
-                    elif provider == 'github':
-                        from core.providers.github_provider import GitHubModelsAdapter
-                        adapter = GitHubModelsAdapter(key)
-                        is_valid = await adapter.validate_credentials()
-                    elif provider == 'grok':
-                        from core.providers.grok_provider import GrokAdapter
-                        adapter = GrokAdapter(key)
-                        is_valid = await adapter.validate_credentials()
-                    elif provider == 'perplexity':
-                        from core.providers.perplexity_provider import PerplexityAdapter
-                        adapter = PerplexityAdapter(key)
-                        is_valid = await adapter.validate_credentials()
-                    elif provider == 'gemini':
-                        from core.providers.gemini_provider import GeminiAdapter
-                        adapter = GeminiAdapter(key)
-                        is_valid = await adapter.validate_credentials()
-                    elif provider == 'mistral':
-                        from core.providers.mistral_provider import MistralAdapter
-                        adapter = MistralAdapter(key)
-                        is_valid = await adapter.validate_credentials()
+                    if provider == 'openrouter':
+                        is_valid = True  # No legacy adapter; validated via LiteLLM when used
                     else:
-                        is_valid = False
+                        from core.providers import (
+                            AnthropicAdapter,
+                            OpenAIAdapter,
+                            GitHubModelsAdapter,
+                            GrokAdapter,
+                            PerplexityAdapter,
+                            GeminiAdapter,
+                            MistralAdapter,
+                        )
+                        _adapters = {
+                            'anthropic': AnthropicAdapter,
+                            'openai': OpenAIAdapter,
+                            'github': GitHubModelsAdapter,
+                            'grok': GrokAdapter,
+                            'perplexity': PerplexityAdapter,
+                            'gemini': GeminiAdapter,
+                            'mistral': MistralAdapter,
+                        }
+                        adapter_cls = _adapters.get(provider)
+                        if adapter_cls:
+                            adapter = adapter_cls(key)
+                            is_valid = await adapter.validate_credentials()
+                        else:
+                            is_valid = False
                     
                     results[provider] = {
                         "available": True,
@@ -334,12 +340,36 @@ def create_settings_router() -> APIRouter:
             logger.error(f"Failed to get provider info: {e}")
             raise HTTPException(500, f"Failed to get provider info: {str(e)}")
     
+    @router.get("/providers/status")
+    async def get_provider_status(request: Request):
+        """Get runtime provider status from router (availability, failures, last_success, models). When use_litellm=True, returns litellm adapter stats."""
+        try:
+            polly = getattr(request.app.state, "polly", None)
+            if not polly or not getattr(polly, "router_v2", None):
+                return {
+                    "success": True,
+                    "use_litellm": False,
+                    "providers": {},
+                    "message": "Router not initialized"
+                }
+            stats = polly.router_v2.get_provider_stats()
+            use_litellm = getattr(polly.router_v2, "use_litellm", False)
+            return {
+                "success": True,
+                "use_litellm": use_litellm,
+                "providers": stats
+            }
+        except Exception as e:
+            logger.error(f"Failed to get provider status: {e}")
+            raise HTTPException(500, f"Failed to get provider status: {str(e)}")
+    
     @router.get("/compression")
     async def get_compression_settings():
-        """Get current compression settings."""
+        """Get current compression settings (conversation + RAG/context strategy)."""
         try:
             config = get_config()
-            
+            compression = config._config.get("compression", {})
+            rag_context = compression.get("rag_context", {})
             return {
                 "success": True,
                 "settings": {
@@ -347,7 +377,10 @@ def create_settings_router() -> APIRouter:
                     "message_threshold": config.compression_threshold,
                     "age_hours": config.compression_age_hours,
                     "keep_recent": config.compression_keep_recent,
-                    "show_stats": config.compression_show_stats
+                    "show_stats": config.compression_show_stats,
+                    "strategy": compression.get("strategy", "auto"),
+                    "rag_context_enabled": rag_context.get("enabled", True),
+                    "rag_context_ratio": rag_context.get("ratio", 0.5),
                 }
             }
         except Exception as e:
@@ -376,9 +409,18 @@ def create_settings_router() -> APIRouter:
             if request.show_stats is not None:
                 config._config['compression']['show_stats'] = request.show_stats
             
+            if request.strategy is not None:
+                config._config.setdefault('compression', {})['strategy'] = request.strategy
+            if request.rag_context_enabled is not None:
+                config._config.setdefault('compression', {}).setdefault('rag_context', {})['enabled'] = request.rag_context_enabled
+            if request.rag_context_ratio is not None:
+                config._config.setdefault('compression', {}).setdefault('rag_context', {})['ratio'] = max(0.1, min(1.0, request.rag_context_ratio))
+            
             # Save config to file
             config.save()
             
+            compression = config._config.get("compression", {})
+            rag_context = compression.get("rag_context", {})
             return {
                 "success": True,
                 "settings": {
@@ -386,7 +428,10 @@ def create_settings_router() -> APIRouter:
                     "message_threshold": config.compression_threshold,
                     "age_hours": config.compression_age_hours,
                     "keep_recent": config.compression_keep_recent,
-                    "show_stats": config.compression_show_stats
+                    "show_stats": config.compression_show_stats,
+                    "strategy": compression.get("strategy", "auto"),
+                    "rag_context_enabled": rag_context.get("enabled", True),
+                    "rag_context_ratio": rag_context.get("ratio", 0.5),
                 },
                 "message": "Compression settings updated successfully. Changes will take effect on next restart."
             }
@@ -461,6 +506,51 @@ def create_settings_router() -> APIRouter:
                 }
             }
     
+    # ===== Memory Settings =====
+
+    @router.get("/memory")
+    async def get_memory_settings():
+        """Get memory provider settings (local vs Mem0)."""
+        try:
+            config = get_config()
+            memory = config._config.get("memory", {})
+            mem0 = memory.get("mem0", {})
+            return {
+                "success": True,
+                "settings": {
+                    "provider": memory.get("provider", "local"),
+                    "mem0_enabled": mem0.get("enabled", False),
+                }
+            }
+        except Exception as e:
+            logger.error(f"Failed to get memory settings: {e}")
+            raise HTTPException(500, f"Failed to get memory settings: {str(e)}")
+
+    @router.post("/memory")
+    async def update_memory_settings(request: UpdateMemoryRequest):
+        """Update memory provider settings."""
+        try:
+            config = get_config()
+            config._config.setdefault("memory", {})
+            if request.provider is not None:
+                config._config["memory"]["provider"] = request.provider
+            if request.mem0_enabled is not None:
+                config._config["memory"].setdefault("mem0", {})["enabled"] = request.mem0_enabled
+            config.save()
+            memory = config._config.get("memory", {})
+            mem0 = memory.get("mem0", {})
+            return {
+                "success": True,
+                "settings": {
+                    "provider": memory.get("provider", "local"),
+                    "mem0_enabled": mem0.get("enabled", False),
+                },
+                "message": "Memory settings updated. Changes take effect on next restart."
+            }
+        except Exception as e:
+            logger.error(f"Failed to update memory settings: {e}")
+            raise HTTPException(500, f"Failed to update memory settings: {str(e)}")
+
     # ===== AI Features Settings =====
 
     @router.get("/ai-features")
