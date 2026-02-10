@@ -123,6 +123,25 @@ providers:
         context_length: 127072
         capabilities: ["chat", "search", "online", "analysis", "reasoning"]
 
+  # OpenRouter (aggregator for 100+ models via single API; LiteLLM prefix: openrouter/...)
+  openrouter:
+    enabled: true
+    api_key_env: "OPENROUTER_API_KEY"
+    base_url: "https://openrouter.ai/api/v1"
+    models:
+      - id: "openrouter/anthropic/claude-3.5-sonnet"
+        name: "Claude 3.5 Sonnet (via OpenRouter)"
+        context_length: 200000
+        capabilities: ["chat", "code", "analysis"]
+      - id: "openrouter/openai/gpt-4o"
+        name: "GPT-4o (via OpenRouter)"
+        context_length: 128000
+        capabilities: ["chat", "code", "analysis", "vision"]
+      - id: "openrouter/google/gemini-pro-1.5"
+        name: "Gemini 1.5 Pro (via OpenRouter)"
+        context_length: 2000000
+        capabilities: ["chat", "code", "analysis", "vision"]
+
 # Model name mappings (Polly format → LiteLLM format)
 model_mappings:
   # Anthropic
@@ -157,18 +176,17 @@ model_mappings:
   "llama-3.1-sonar-small-128k-online": "perplexity/llama-3.1-sonar-small-128k-online"
   "llama-3.1-sonar-large-128k-online": "perplexity/llama-3.1-sonar-large-128k-online"
   "llama-3.1-sonar-huge-128k-online": "perplexity/llama-3.1-sonar-huge-128k-online"
+  
+  # OpenRouter (LiteLLM prefix: openrouter/model-id)
+  "openrouter/anthropic/claude-3.5-sonnet": "openrouter/anthropic/claude-3.5-sonnet"
+  "openrouter/openai/gpt-4o": "openrouter/openai/gpt-4o"
+  "openrouter/google/gemini-pro-1.5": "openrouter/google/gemini-pro-1.5"
 
 # Optional: Custom endpoints for self-hosted models
 custom_endpoints:
   # Ollama (local)
   # ollama:
   #   base_url: "http://localhost:11434"
-  
-  # OpenRouter (fallback aggregator)
-  # openrouter:
-  #   enabled: false
-  #   api_key_env: "OPENROUTER_API_KEY"
-  #   base_url: "https://openrouter.ai/api/v1"
 
 # LiteLLM settings
 settings:

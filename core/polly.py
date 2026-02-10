@@ -208,6 +208,11 @@ class Polly:
         anthropic_key = secrets.get_secret('anthropic', fallback_to_env=True)
         openai_key = secrets.get_secret('openai', fallback_to_env=True)
         github_token = secrets.get_secret('github', fallback_to_env=True)
+        grok_key = secrets.get_secret('grok', fallback_to_env=True)
+        perplexity_key = secrets.get_secret('perplexity', fallback_to_env=True)
+        gemini_key = secrets.get_secret('gemini', fallback_to_env=True)
+        mistral_key = secrets.get_secret('mistral', fallback_to_env=True)
+        openrouter_key = secrets.get_secret('openrouter', fallback_to_env=True)
         
         # Initialize budget manager
         budget_db_path = Path(self.config.get("routing_v2.budget.database_path", "~/.polly/usage.db")).expanduser()
@@ -217,13 +222,26 @@ class Polly:
             monthly_limit=self.config.get("routing_v2.budget.monthly_limit", 200.0)
         )
         
+        # Use unified LiteLLM adapter when configured (replaces individual providers)
+        use_litellm = self.config.get("routing_v2.use_litellm", False)
+        litellm_config_path = self.config.get("routing_v2.litellm_config_path", "config/litellm_config.yaml")
+        
         # Initialize router_v2
         self.router_v2 = IntelligentRouterV2(
             anthropic_api_key=anthropic_key,
             openai_api_key=openai_key,
             github_token=github_token,
-            budget_manager=self.budget_manager
+            grok_api_key=grok_key,
+            perplexity_api_key=perplexity_key,
+            gemini_api_key=gemini_key,
+            mistral_api_key=mistral_key,
+            openrouter_api_key=openrouter_key,
+            budget_manager=self.budget_manager,
+            use_litellm=use_litellm,
+            litellm_config_path=litellm_config_path
         )
+        # Attach config dict so personas can read memory.* for Mem0 (per-persona memory)
+        self.router_v2.config = getattr(self.config, "_config", {})
         
         # Skip provider validation at init to avoid blocking/hanging
         # Providers will be validated on first use
@@ -265,6 +283,18 @@ class Polly:
             self.curriculum_manager = CurriculumManager(vault_path)
             self.template_manager = CurriculumTemplateManager(vault_path)
             
+            # Mem0-backed pattern learner for semantic pattern search when memory.provider=mem0
+            self.pattern_learner_mem0 = None
+            try:
+                config_dict = getattr(self.config, "_config", {})
+                memory = config_dict.get("memory", {})
+                if memory.get("provider") == "mem0" and memory.get("mem0", {}).get("enabled"):
+                    from core.pattern_learning import PatternLearner as Mem0PatternLearner
+                    self.pattern_learner_mem0 = Mem0PatternLearner(config_dict)
+                    logger.info("Mem0 pattern learner enabled for pattern-informed routing")
+            except Exception as mem0_e:
+                logger.debug(f"Mem0 pattern learner not available: {mem0_e}")
+            
             # Use Case 2: Attach pattern learner to DomainEngine for enhanced detection
             if self.domains and self.pattern_learner:
                 self.domains.set_pattern_learner(self.pattern_learner)
@@ -273,6 +303,7 @@ class Polly:
         except Exception as e:
             logger.warning(f"Could not initialize learners: {e}")
             self.pattern_learner = None
+            self.pattern_learner_mem0 = None
             self.knowledge_graph = None
             self.learning_tracker = None
             self.curriculum_manager = None
@@ -524,11 +555,38 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         Returns:
             List of Pattern objects, sorted by relevance score
         """
-        if not self.pattern_learner:
+        if not self.pattern_learner and not getattr(self, "pattern_learner_mem0", None):
             return []
         
-        # Get all patterns
-        all_patterns = list(self.pattern_learner.patterns.values())
+        # Get patterns from main learner (learners.patterns)
+        all_patterns = list(self.pattern_learner.patterns.values()) if self.pattern_learner else []
+        
+        # Merge in Mem0-backed patterns when enabled (semantic search)
+        if getattr(self, "pattern_learner_mem0", None):
+            try:
+                mem0_results = self.pattern_learner_mem0.search_patterns(query, limit=limit * 2)
+                for p in mem0_results:
+                    # Wrap core.pattern_learning.Pattern to match expected .name, .pattern_type, etc.
+                    last_seen = datetime.now()
+                    if p.timestamp:
+                        try:
+                            last_seen = datetime.fromisoformat(p.timestamp.replace("Z", "+00:00"))
+                        except Exception:
+                            pass
+                    wrap = type("_Mem0Pattern", (), {
+                        "name": p.description[:60] + "..." if len(p.description) > 60 else p.description,
+                        "pattern_type": p.type,
+                        "description": p.description,
+                        "occurrences": p.occurrences,
+                        "examples": [],
+                        "confidence": p.confidence,
+                        "last_seen": last_seen,
+                        "domains": p.metadata.get("domains", []) if isinstance(p.metadata.get("domains"), list) else [],
+                        "metadata": p.metadata,
+                    })()
+                    all_patterns.append(wrap)
+            except Exception as e:
+                logger.debug(f"Mem0 pattern search failed (non-critical): {e}")
         
         if not all_patterns:
             return []

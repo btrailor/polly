@@ -27,13 +27,15 @@ from core.providers.base import (
     ProviderRateLimitError,
     AllProvidersFailed
 )
-from core.providers.anthropic_provider import AnthropicAdapter
-from core.providers.openai_provider import OpenAIAdapter
-from core.providers.github_provider import GitHubModelsAdapter
-from core.providers.grok_provider import GrokAdapter
-from core.providers.perplexity_provider import PerplexityAdapter
-from core.providers.gemini_provider import GeminiAdapter
-from core.providers.mistral_provider import MistralAdapter
+from core.providers import (
+    AnthropicAdapter,
+    OpenAIAdapter,
+    GitHubModelsAdapter,
+    GrokAdapter,
+    PerplexityAdapter,
+    GeminiAdapter,
+    MistralAdapter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +171,7 @@ class IntelligentRouterV2:
         perplexity_api_key: Optional[str] = None,
         gemini_api_key: Optional[str] = None,
         mistral_api_key: Optional[str] = None,
+        openrouter_api_key: Optional[str] = None,
         tier_configs: Optional[Dict[ConfidenceLevel, TierConfig]] = None,
         budget_manager: Optional[Any] = None,  # BudgetManager instance
         use_litellm: bool = False,  # Use unified LiteLLM adapter
@@ -218,6 +221,8 @@ class IntelligentRouterV2:
                     api_keys['gemini'] = gemini_api_key
                 if mistral_api_key:
                     api_keys['mistral'] = mistral_api_key
+                if openrouter_api_key:
+                    api_keys['openrouter'] = openrouter_api_key
                 
                 # Initialize unified adapter
                 self.providers['litellm'] = LiteLLMAdapter(
@@ -573,35 +578,38 @@ class IntelligentRouterV2:
     ) -> List[tuple[ProviderAdapter, str, int]]:
         """
         Get available providers for a tier, sorted by priority.
+        When use_litellm is True, the single LiteLLM adapter is used for all tier
+        (provider_name, model) entries; model is passed as LiteLLM model string.
         
         Returns:
             List of (provider, model, priority) tuples
         """
         candidates = []
         
+        if self.use_litellm and "litellm" in self.providers:
+            # Single LiteLLM adapter: one candidate per tier (model, priority)
+            litellm_provider = self.providers["litellm"]
+            if self._provider_failures.get("litellm", 0) > 3:
+                return []
+            for _provider_name, model, priority in tier_config.providers:
+                candidates.append((litellm_provider, model, priority))
+            candidates.sort(key=lambda x: x[2])
+            return candidates
+        
         for provider_name, model, priority in tier_config.providers:
-            # Check if provider is available
             if provider_name not in self.providers:
                 continue
-            
             provider = self.providers[provider_name]
-            
-            # Check if provider has too many recent failures
             if self._provider_failures.get(provider_name, 0) > 3:
                 logger.warning(f"Skipping {provider_name} due to recent failures")
                 continue
-            
-            # Check if model is supported
             available_models = [m.id for m in provider.get_models()]
             if model not in available_models:
                 logger.warning(f"Model {model} not available in {provider_name}")
                 continue
-            
             candidates.append((provider, model, priority))
         
-        # Sort by priority (lower number = higher priority)
         candidates.sort(key=lambda x: x[2])
-        
         return candidates
 
     async def _filter_by_budget(

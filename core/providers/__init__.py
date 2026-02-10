@@ -12,13 +12,13 @@ from .base import (
     ProviderAuthError,
     ProviderConnectionError,
 )
-from .anthropic_provider import AnthropicAdapter
-from .openai_provider import OpenAIAdapter
-from .github_provider import GitHubModelsAdapter
-from .grok_provider import GrokAdapter
-from .perplexity_provider import PerplexityAdapter
-from .gemini_provider import GeminiAdapter
-from .mistral_provider import MistralAdapter
+from .archive.anthropic_provider import AnthropicAdapter
+from .archive.openai_provider import OpenAIAdapter
+from .archive.github_provider import GitHubModelsAdapter
+from .archive.grok_provider import GrokAdapter
+from .archive.perplexity_provider import PerplexityAdapter
+from .archive.gemini_provider import GeminiAdapter
+from .archive.mistral_provider import MistralAdapter
 
 __all__ = [
     'ProviderAdapter',
