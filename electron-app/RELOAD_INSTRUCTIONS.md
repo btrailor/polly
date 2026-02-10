@@ -1,3 +1,15 @@
+# Reload and Restart Notes
+
+## Backend (Python) code changes
+
+The Polly Python server is started by Electron. To pick up backend code changes:
+
+- **Quit and reopen Polly (Cmd+Q, then open again)** — Server is fully stopped on quit and restarted on next launch.
+- **In dev: close the window (hide to tray), then click the tray icon to open again** — The backend is restarted when you open from the tray so the latest code is loaded.
+- **Dashboard or tray: Stop Server, then Start Server** — Stop now waits for the process to exit; Start then runs a fresh server.
+
+---
+
 # How to See the Titlebar Button Changes
 
 The CSS and JavaScript have been updated, but you need to force-reload to see the changes.

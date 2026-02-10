@@ -182,8 +182,18 @@ function createTray() {
   tray.setToolTip('Polly');
   tray.setContextMenu(contextMenu);
 
-  tray.on('click', () => {
-    mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+  tray.on('click', async () => {
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
+    } else {
+      // In dev, restart backend when opening from tray so code changes are picked up
+      if (isDev && pollyServer) {
+        console.log('[Dev] Restarting backend so latest code is loaded...');
+        await stopPollyServer();
+        await startPollyServer();
+      }
+      mainWindow.show();
+    }
   });
 }
 
@@ -498,33 +508,47 @@ async function startPollyServer() {
 }
 
 /**
- * Stop the Polly server
+ * Stop the Polly server. Returns a Promise that resolves when the process has exited,
+ * so callers can wait for the port to be released (e.g. before quit or before restart).
  */
 function stopPollyServer() {
-  if (pollyServer) {
+  return new Promise((resolve) => {
+    if (!pollyServer) {
+      resolve();
+      return;
+    }
     const pid = pollyServer.pid;
     console.log('Stopping Polly server (PID:', pid, ')');
-    
-    // Try graceful shutdown first
+    let resolved = false;
+    const done = () => {
+      if (!resolved) {
+        resolved = true;
+        pollyServer = null;
+        mainWindow?.webContents.send('server-status', { running: false });
+        resolve();
+      }
+    };
+
+    pollyServer.once('close', (code) => {
+      console.log('Polly server stopped with code', code);
+      done();
+    });
+
     pollyServer.kill('SIGTERM');
-    
-    // Force kill after 2 seconds if still running
+
     setTimeout(() => {
       try {
-        // Check if process still exists
-        process.kill(pid, 0);
-        // If we get here, process is still running - force kill it
-        console.log('Force killing Polly server PID:', pid);
-        process.kill(pid, 'SIGKILL');
+        if (pollyServer && pollyServer.pid) {
+          process.kill(pid, 0);
+          console.log('Force killing Polly server PID:', pid);
+          process.kill(pid, 'SIGKILL');
+        }
       } catch (e) {
-        // Process already dead, which is what we want
-        console.log('Polly server stopped successfully');
+        // Process already dead
       }
-    }, 2000);
-    
-    pollyServer = null;
-    mainWindow?.webContents.send('server-status', { running: false });
-  }
+      done();
+    }, 2500);
+  });
 }
 
 /**
@@ -1106,35 +1130,8 @@ ipcMain.handle('start-server', async () => {
 });
 
 ipcMain.handle('stop-server', async () => {
-  if (!pollyServer) {
-    return { success: true, message: 'Server not running' };
-  }
-  
-  return new Promise((resolve) => {
-    const pid = pollyServer.pid;
-    console.log('Stopping Polly server (PID:', pid, ')');
-    
-    // Set up handler for when process exits
-    pollyServer.once('close', (code) => {
-      console.log(`Polly server stopped with code ${code}`);
-      pollyServer = null;
-      mainWindow?.webContents.send('server-status', { running: false });
-      resolve({ success: true });
-    });
-    
-    // Try graceful shutdown first
-    pollyServer.kill('SIGTERM');
-    
-    // Force kill after 3 seconds if still running
-    setTimeout(() => {
-      if (pollyServer && !pollyServer.killed) {
-        console.log('Force killing Polly server...');
-        pollyServer.kill('SIGKILL');
-        pollyServer = null;
-        resolve({ success: true });
-      }
-    }, 3000);
-  });
+  await stopPollyServer();
+  return { success: true, message: 'Server stopped' };
 });
 
 ipcMain.handle('get-server-status', async () => {
@@ -1749,17 +1746,29 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
+// Prevent second before-quit from waiting again when we call app.quit() after shutdown
+let quitHandled = false;
+
+app.on('before-quit', (event) => {
+  if (quitHandled) return;
+  event.preventDefault();
+  quitHandled = true;
   isQuitting = true;
   console.log('Shutting down services...');
-  stopPollyServer();
-  stopOllamaServer();
-  
-  // Close ConversationManager database
-  if (conversationManager) {
-    conversationManager.close();
-    console.log('ConversationManager closed');
-  }
+
+  stopPollyServer()
+    .then(() => {
+      stopOllamaServer();
+      if (conversationManager) {
+        conversationManager.close();
+        console.log('ConversationManager closed');
+      }
+      app.quit();
+    })
+    .catch((err) => {
+      console.error('Error during shutdown:', err);
+      app.quit();
+    });
 });
 
 // Handle certificate errors in development

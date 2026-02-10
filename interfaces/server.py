@@ -256,6 +256,27 @@ def create_app(polly_instance=None) -> FastAPI:
         version="0.1.0"
     )
 
+    # Conversation sync (integration-contracts) — register before any middleware so it always exists
+    async def _sync_conversation_handler(request: ConversationSyncRequest):
+        polly = getattr(app.state, "polly", None)
+        if polly is None:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "initializing", "message": "Polly not ready"},
+            )
+        polly.conversation_history = [
+            {"role": m.get("role", "user"), "content": m.get("content", "")}
+            for m in request.messages
+        ]
+        return {"status": "synced", "message_count": len(polly.conversation_history)}
+
+    app.add_api_route(
+        "/polly/conversation/sync",
+        _sync_conversation_handler,
+        methods=["POST"],
+        response_model=None,
+    )
+
     # Phase 23.5: Security Hardening - CORS Policy
     # Load security policy and configure CORS
     cors_configured = False
@@ -314,7 +335,7 @@ def create_app(polly_instance=None) -> FastAPI:
     web_dir = Path(__file__).parent.parent / "web"
     if web_dir.exists():
         app.mount("/static", StaticFiles(directory=str(web_dir / "static")), name="static")
-    
+
     # Include settings API router
     from interfaces.settings_api import create_settings_router
     app.include_router(create_settings_router())
@@ -1428,19 +1449,6 @@ def create_app(polly_instance=None) -> FastAPI:
         polly = get_polly()
         polly.save_state()
         return {"status": "saved"}
-
-    @app.post("/polly/conversation/sync")
-    async def sync_conversation(request: ConversationSyncRequest):
-        """
-        Sync conversation buffer from Electron (integration-contracts).
-        Called when user opens an existing conversation or app restores last conversation.
-        """
-        polly = get_polly()
-        polly.conversation_history = [
-            {"role": m.get("role", "user"), "content": m.get("content", "")}
-            for m in request.messages
-        ]
-        return {"status": "synced", "message_count": len(polly.conversation_history)}
 
     @app.post("/polly/clear")
     async def clear_conversation():
