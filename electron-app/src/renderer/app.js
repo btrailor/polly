@@ -2819,6 +2819,10 @@ function renderSettingsSidebar() {
           <i data-lucide="package" class="nav-icon"></i>
           <span class="nav-label">Compression</span>
         </button>
+        <button class="nav-item settings-nav-item" data-tab="ai-features" style="width: 100%; justify-content: flex-start;">
+          <i data-lucide="sparkles" class="nav-icon"></i>
+          <span class="nav-label">AI Features</span>
+        </button>
         <button class="nav-item settings-nav-item" data-tab="memory" style="width: 100%; justify-content: flex-start;">
           <i data-lucide="database" class="nav-icon"></i>
           <span class="nav-label">Memory</span>

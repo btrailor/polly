@@ -49,6 +49,7 @@ class CompressionManager:
         self.db_path = db_path
         self.config = config or {}
         self.compressor = ConversationCompressor(config=self.config.get("compression", {}))
+        self._current_conversation_id: Optional[str] = None
         self._init_database()
     
     def _init_database(self):
@@ -169,6 +170,35 @@ class CompressionManager:
             'recent': recent_messages
         }
     
+    # ContextContributor (integration-contracts): priority 10
+    context_priority = 10
+
+    def set_current_conversation(self, conversation_id: Optional[str]) -> None:
+        """Set the conversation ID used by build_context for compressed summary."""
+        self._current_conversation_id = conversation_id
+
+    def build_context(
+        self,
+        query: str,
+        domains: List[str],
+        persona: Optional[str] = None,
+        mode: Optional[str] = None,
+        **kwargs: object,
+    ) -> str:
+        """Build compressed conversation summary for system prompt (ContextContributor)."""
+        cid = self._current_conversation_id or kwargs.get("conversation_id")
+        if not cid:
+            return ""
+        compressed = self._get_compressed(cid)
+        if not compressed:
+            return ""
+        try:
+            summary = self.compressor.decompress(compressed)
+            return f"\n\n## Conversation Summary\n\n{summary}\n" if summary else ""
+        except Exception as e:
+            logger.debug(f"Could not decompress for context: {e}")
+            return ""
+
     def load_context(
         self,
         conversation_id: str,

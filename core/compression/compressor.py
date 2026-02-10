@@ -87,7 +87,7 @@ class ConversationCompressor:
         
         Supports:
         - type="conversation": Compress conversation history (existing behavior)
-        - type="mental_model": Compress mental model to PIL format (Phase 14)
+        - type="mental_model": Compress mental model to Compact Format (Phase 14)
         
         Args:
             data: Data to compress (conversation list or mental model dict)
@@ -706,13 +706,13 @@ Artifacts Created:
             "end_time": None
         }
     
-    # ========== Mental Model PIL Compression (Phase 14) ==========
+    # ========== Mental Model Compact Format Compression (Phase 14) ==========
     
     def _compress_mental_model(self, model: dict) -> str:
         """
-        Compress mental model to PIL (Polly Internal Language) format.
+        Compress mental model to Compact Format (formerly PIL).
         
-        PIL Format:
+        Compact Format:
         MM:id|m:mode|p:[principles]|pi:prompt|d:[domains]|pg:[pages]|ps:[personas]|pm:[modes]|k:[keywords]
         
         Symbol system:
@@ -730,7 +730,7 @@ Artifacts Created:
             model: Mental model dict with standard fields
             
         Returns:
-            PIL-compressed string achieving 2.5-3x compression
+            Compact-format string achieving 2.5-3x compression
         """
         parts = []
         
@@ -817,7 +817,7 @@ Artifacts Created:
     
     def _compress_principles(self, principles: list[str]) -> str:
         """
-        Compress principles using PIL symbol system.
+        Compress principles using compact symbol system.
         
         Symbols:
         > = over/instead of

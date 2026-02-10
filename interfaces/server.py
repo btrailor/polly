@@ -106,6 +106,12 @@ class LearnFromConversationRequest(BaseModel):
     category: Optional[str] = None
 
 
+class ConversationSyncRequest(BaseModel):
+    """Sync conversation buffer from Electron (integration-contracts)."""
+    messages: List[Dict[str, str]]  # [{role, content}, ...]; timestamp optional
+    conversation_id: Optional[str] = None
+
+
 class PersonaActivateRequest(BaseModel):
     persona_name: str
 
@@ -1076,40 +1082,19 @@ def create_app(polly_instance=None) -> FastAPI:
         """
         polly = get_polly()
         
-        if not polly.pattern_learner:
-            raise HTTPException(503, "Pattern learner not initialized")
+        if not polly.pattern_engine:
+            raise HTTPException(503, "Pattern engine not initialized")
         
         try:
-            # Convert patterns to dict format
-            patterns = []
-            for pattern in polly.pattern_learner.patterns.values():
-                patterns.append({
-                    'id': pattern.id,
-                    'name': pattern.name,
-                    'description': pattern.description,
-                    'pattern_type': pattern.pattern_type,
-                    'domains': pattern.domains,
-                    'occurrences': pattern.occurrences,
-                    'confidence': pattern.confidence,
-                    'first_seen': pattern.first_seen.isoformat(),
-                    'last_seen': pattern.last_seen.isoformat(),
-                    'metadata': pattern.metadata
-                })
-            
-            # Convert query patterns
-            query_patterns = []
-            for qp in polly.pattern_learner.query_patterns.values():
-                query_patterns.append({
-                    'query_template': qp.query_template,
-                    'common_fills': qp.common_fills,
-                    'frequency': qp.frequency,
-                    'domains': qp.domains
-                })
+            # Get all patterns from unified engine
+            all_patterns = polly.pattern_engine.patterns
+            patterns = [p.to_dict() for p in all_patterns.values()]
             
             return {
                 'patterns': patterns,
-                'query_patterns': query_patterns,
-                'total_count': len(patterns) + len(query_patterns)
+                'query_patterns': [],  # Deprecated — query patterns are now unified
+                'total_count': len(patterns),
+                'stats': polly.pattern_engine.get_stats(),
             }
         except Exception as e:
             logger.error(f"Error fetching patterns: {e}")
@@ -1125,28 +1110,26 @@ def create_app(polly_instance=None) -> FastAPI:
         """
         polly = get_polly()
         
-        if not polly.pattern_learner:
-            raise HTTPException(503, "Pattern learner not initialized")
+        if not polly.pattern_engine:
+            raise HTTPException(503, "Pattern engine not initialized")
         
         try:
-            # Create backup
+            # Create backup via json_backend
             import shutil
             from datetime import datetime
-            backup_path = polly.pattern_learner.storage_path.with_suffix(f'.backup.{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
-            if polly.pattern_learner.storage_path.exists():
-                shutil.copy(polly.pattern_learner.storage_path, backup_path)
+            json_path = polly.pattern_engine.json_backend.json_path
+            backup_path = json_path.with_suffix(f'.backup.{datetime.now().strftime("%Y%m%d_%H%M%S")}.json')
+            if json_path.exists():
+                shutil.copy(json_path, backup_path)
                 logger.info(f"Created backup at {backup_path}")
             
-            # Clear all patterns
-            polly.pattern_learner.patterns.clear()
-            polly.pattern_learner.query_patterns.clear()
-            polly.pattern_learner.query_history.clear()
-            polly.pattern_learner.code_snippets.clear()
-            polly.pattern_learner.concept_mentions.clear()
-            polly.pattern_learner.cross_domain_pairs.clear()
+            # Clear all patterns by deleting every pattern
+            all_ids = list(polly.pattern_engine.patterns.keys())
+            for pid in all_ids:
+                polly.pattern_engine.json_backend.delete(pid)
             
             # Save empty state
-            polly.pattern_learner.save_patterns()
+            polly.pattern_engine.save()
             
             return {
                 "status": "success",
@@ -1446,6 +1429,19 @@ def create_app(polly_instance=None) -> FastAPI:
         polly.save_state()
         return {"status": "saved"}
 
+    @app.post("/polly/conversation/sync")
+    async def sync_conversation(request: ConversationSyncRequest):
+        """
+        Sync conversation buffer from Electron (integration-contracts).
+        Called when user opens an existing conversation or app restores last conversation.
+        """
+        polly = get_polly()
+        polly.conversation_history = [
+            {"role": m.get("role", "user"), "content": m.get("content", "")}
+            for m in request.messages
+        ]
+        return {"status": "synced", "message_count": len(polly.conversation_history)}
+
     @app.post("/polly/clear")
     async def clear_conversation():
         """Clear conversation history."""
@@ -1470,22 +1466,26 @@ def create_app(polly_instance=None) -> FastAPI:
         """
         polly = get_polly()
         
-        if not polly.pattern_learner:
-            raise HTTPException(503, "Pattern learner not initialized")
+        if not polly.pattern_engine:
+            raise HTTPException(503, "Pattern engine not initialized")
         
         try:
             # Convert messages to dict format
             messages_dict = [{"role": m.role, "content": m.content} for m in request.messages]
             
-            # Learn patterns from conversation
-            patterns_learned = polly.pattern_learner.learn_conceptual_patterns(
-                conversation_id=request.conversation_id,
-                messages=messages_dict,
-                category=request.category
-            )
+            # Learn from conversation messages by extracting query patterns
+            patterns_learned = 0
+            for msg in messages_dict:
+                if msg.get("role") == "user":
+                    domain_list = [request.category] if request.category else []
+                    result = polly.pattern_engine.learn_from_query(
+                        query=msg["content"],
+                        domains=domain_list,
+                    )
+                    patterns_learned += len(result)
             
-            # Save patterns to disk
-            polly.pattern_learner.save_patterns()
+            # Save to disk
+            polly.pattern_engine.save()
             
             return {
                 "status": "success",

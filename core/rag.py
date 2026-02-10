@@ -524,7 +524,7 @@ class UnifiedRAG:
         # Save patterns after indexing
         if self.pattern_learner:
             try:
-                self.pattern_learner.save_patterns()
+                self.pattern_learner.save()
                 logger.info("Code patterns saved after indexing")
             except Exception as e:
                 logger.warning(f"Could not save code patterns: {e}")
@@ -704,27 +704,17 @@ class UnifiedRAG:
         if not chunks:
             return False
 
-        # Extract code patterns if pattern learner is available
+        # Extract code patterns if pattern engine is available
         if self.pattern_learner and language in ['python', 'javascript', 'typescript']:
             try:
-                from learners.code_patterns import CodePatternExtractor
-                extractor = CodePatternExtractor()
-                patterns = extractor.extract_patterns(content, language)
-                
-                # Record patterns with pattern learner
-                for pattern_info in patterns:
-                    # Create a pattern ID based on type
-                    pattern_type = pattern_info['type']
-                    
-                    # Record as code pattern
-                    self.pattern_learner.record_code_pattern(
-                        code=content[:200],  # Just a snippet for example
-                        filepath=rel_path,
-                        pattern_type=pattern_type,
-                        domains=[]  # Could infer from filepath
-                    )
-                    
-                logger.debug(f"Extracted {len(patterns)} patterns from {rel_path}")
+                # Use PatternEngine.learn_code_patterns for regex-based extraction
+                learned = self.pattern_learner.learn_code_patterns(
+                    code=content,
+                    domains=[],
+                    filepath=rel_path,
+                )
+                if learned:
+                    logger.debug(f"Extracted {len(learned)} patterns from {rel_path}")
             except Exception as e:
                 logger.warning(f"Could not extract code patterns from {rel_path}: {e}")
 
@@ -842,7 +832,7 @@ class UnifiedRAG:
         if self.pattern_learner and domains:
             for domain in domains:
                 domain_str = domain.value if hasattr(domain, 'value') else str(domain)
-                weights = self.pattern_learner.get_collection_weights_for_domain(domain_str)
+                weights = self.pattern_learner.get_domain_priorities(domain_str)
                 
                 for coll, weight in weights.items():
                     # Use highest weight if multiple domains match same collection
@@ -941,34 +931,38 @@ class UnifiedRAG:
             except Exception as e:
                 logger.error(f"Error searching {source_type}: {e}")
 
-        # Step 1.5: Apply query→chunk pattern boosting (Phase 13A Days 5-8)
+        # Step 1.5: Apply query→chunk pattern boosting
         if self.pattern_learner and all_results:
-            boosted_chunks = self.pattern_learner.get_boosted_chunks_for_query(query)
-            
-            if boosted_chunks:
-                logger.info(f"⚡ Applying learned query→chunk patterns: boosting {len(boosted_chunks)} chunks")
-                
-                # Create lookup for boost factors
-                boost_lookup = {
-                    bc['chunk_id']: bc['boost_factor'] 
-                    for bc in boosted_chunks
-                }
-                
-                # Apply boosts to matching chunks
-                boosted_count = 0
-                for result in all_results:
-                    chunk_id = result.chunk.id
-                    if chunk_id in boost_lookup:
-                        old_score = result.score
-                        result.score *= boost_lookup[chunk_id]
-                        logger.debug(f"  Boosted chunk {chunk_id[:8]}... from {old_score:.3f} to {result.score:.3f} "
-                                   f"({boost_lookup[chunk_id]:.2f}x)")
-                        boosted_count += 1
-                
-                if boosted_count > 0:
-                    logger.info(f"⚡ Boosted {boosted_count}/{len(all_results)} chunks based on query patterns")
-                    # Re-sort after boosting
-                    all_results.sort(key=lambda r: r.score, reverse=True)
+            try:
+                # Get query→chunk patterns from the unified engine's JSON backend
+                qcp_dict = self.pattern_learner.query_chunk_patterns
+                if qcp_dict:
+                    # Build boost lookup from matching patterns
+                    query_sig = self.pattern_learner._create_query_signature(query)
+                    matching_qcp = qcp_dict.get(f"qcp_{query_sig}")
+                    
+                    if matching_qcp and matching_qcp.successful_chunks:
+                        boost_lookup = {}
+                        for sc in matching_qcp.successful_chunks:
+                            # Boost factor: 1.1 to 1.5 based on hit count
+                            boost = min(1.0 + (sc.get("hit_count", 1) * 0.05), 1.5)
+                            boost_lookup[sc["chunk_id"]] = boost
+                        
+                        if boost_lookup:
+                            logger.info(f"Applying learned query→chunk patterns: boosting {len(boost_lookup)} chunks")
+                            boosted_count = 0
+                            for result in all_results:
+                                chunk_id = result.chunk.id
+                                if chunk_id in boost_lookup:
+                                    old_score = result.score
+                                    result.score *= boost_lookup[chunk_id]
+                                    boosted_count += 1
+                            
+                            if boosted_count > 0:
+                                logger.info(f"Boosted {boosted_count}/{len(all_results)} chunks based on query patterns")
+                                all_results.sort(key=lambda r: r.score, reverse=True)
+            except Exception as e:
+                logger.debug(f"Query→chunk boosting failed (non-critical): {e}")
 
         # Step 2: Apply hybrid search if enabled
         if use_hybrid_this_search and self.hybrid_searcher and all_results:

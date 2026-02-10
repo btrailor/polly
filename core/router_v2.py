@@ -300,7 +300,8 @@ class IntelligentRouterV2:
         messages: List[Dict[str, str]],
         task_type: Optional[TaskType] = None,
         confidence: ConfidenceLevel = ConfidenceLevel.BALANCED,
-        max_tokens: int = 2000
+        max_tokens: int = 2000,
+        patterns: Optional[List[Any]] = None,
     ) -> RoutingDecision:
         """
         Route a request to the most appropriate provider and model.
@@ -310,6 +311,7 @@ class IntelligentRouterV2:
             task_type: Type of task (for complexity hints)
             confidence: User's confidence/quality preference
             max_tokens: Maximum tokens to generate
+            patterns: Optional ROUTING_OUTCOME patterns to hint model preference (integration-contracts)
         
         Returns:
             RoutingDecision with selected provider, model, and reasoning
@@ -342,6 +344,26 @@ class IntelligentRouterV2:
             if not candidates:
                 raise AllProvidersFailed("No providers available within budget")
         
+        # Pattern-informed hint: boost a candidate that matches learned ROUTING_OUTCOME (integration-contracts)
+        if patterns:
+            for p in patterns:
+                pt = getattr(p, "pattern_type", None)
+                pt_val = getattr(pt, "value", pt) if pt else None
+                if pt_val != "routing_outcome":
+                    continue
+                if getattr(p, "confidence", 0) < 0.6:
+                    continue
+                meta = getattr(p, "metadata", None) or {}
+                preferred = meta.get("model") or meta.get("preferred_model")
+                if not preferred:
+                    continue
+                for i, (prov, model, _) in enumerate(candidates):
+                    if model == preferred:
+                        candidates.insert(0, candidates.pop(i))
+                        logger.info(f"Pattern-informed routing: boosted {preferred}")
+                        break
+                break  # use only first matching pattern
+
         # Select primary provider (first available candidate)
         provider, model, priority = candidates[0]
         

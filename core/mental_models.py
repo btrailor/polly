@@ -7,7 +7,7 @@ to guide Polly's behavior based on:
 - Page: Context-based (Learning, Code, Projects, etc.)
 - Persona: Mode-based (Architect, Teacher, Socratic, etc.)
 
-Mental models are compressed using PIL (Polly Internal Language) for efficient
+Mental models are compressed using Compact Format (formerly PIL) for efficient
 storage in conversation context.
 """
 
@@ -51,7 +51,7 @@ class MentalModel:
     # System fields
     created: datetime = field(default_factory=datetime.now)
     updated: datetime = field(default_factory=datetime.now)
-    _compressed: Optional[str] = None  # PIL format (generated on demand)
+    _compressed: Optional[str] = None  # Compact format (generated on demand)
     
     def to_dict(self) -> dict:
         """Convert to dictionary for serialization."""
@@ -80,7 +80,7 @@ class MentalModelManager:
     - Loading/saving models from YAML
     - Scoring and selecting relevant models for context
     - CRUD operations
-    - PIL compression integration
+    - Compact format compression integration
     """
     
     def __init__(self, storage_path: str, compressor=None):
@@ -89,12 +89,17 @@ class MentalModelManager:
         
         Args:
             storage_path: Path to YAML file for storing models
-            compressor: Optional ConversationCompressor instance for PIL compression
+            compressor: Optional ConversationCompressor instance for compact format compression
         """
         self.storage_path = Path(storage_path).expanduser()
         self.compressor = compressor
         self.models: Dict[str, MentalModel] = {}
-        
+        # Persona context (integration-contracts: PersonaAware)
+        self._active_persona: Optional[str] = None
+        self._active_mode: Optional[str] = None
+        # Effectiveness tracking (integration-contracts: lightweight heuristic)
+        self._effectiveness_log: List[Dict[str, Any]] = []
+
         # Load existing models or create defaults
         if self.storage_path.exists():
             self._load_models()
@@ -103,7 +108,33 @@ class MentalModelManager:
             self.save_models()
         
         logger.info(f"Mental model manager initialized with {len(self.models)} models")
-    
+
+    def set_active_persona(self, persona_name: str, mode: str) -> None:
+        """Notify of active persona (PersonaAware protocol). Used when caller omits persona in get_models_for_context."""
+        self._active_persona = persona_name or None
+        self._active_mode = mode or None
+
+    def record_activation(
+        self,
+        model_ids: List[str],
+        signals: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Record which models were active and outcome signals (integration-contracts). In-memory; can be flushed later."""
+        from datetime import datetime
+        for model_id in model_ids:
+            self._effectiveness_log.append({
+                "model_id": model_id,
+                "timestamp": datetime.now().isoformat(),
+                "signals": signals or {},
+            })
+        # Keep log bounded
+        if len(self._effectiveness_log) > 1000:
+            self._effectiveness_log = self._effectiveness_log[-500:]
+
+    def get_effectiveness_summary(self) -> Dict[str, Any]:
+        """Return summary of activation log for tuning (integration-contracts)."""
+        return {"entries": len(self._effectiveness_log), "sample": self._effectiveness_log[-10:] if self._effectiveness_log else []}
+
     def get_models_for_context(
         self,
         domain: Optional[str] = None,
@@ -136,8 +167,12 @@ class MentalModelManager:
         Returns:
             List of top 3-5 models sorted by relevance score
         """
+        # Use stored persona when not passed (integration-contracts)
+        persona = persona or self._active_persona
+        persona_mode = persona_mode or self._active_mode
+
         scored_models = []
-        
+
         for model in self.models.values():
             # Skip disabled models if requested
             if enabled_only and not model.enabled:

@@ -124,7 +124,10 @@ class Polly:
 
     def _init_domains(self):
         """Initialize domain engine."""
-        self.domains = DomainEngine(self.config.domains)
+        self.domains = DomainEngine(
+                config_domains=self.config.domains,
+                config_dict={"domains": self.config.domains} if self.config.domains else None,
+            )
         logger.info("Domain engine initialized")
 
     def _init_rag(self):
@@ -134,7 +137,7 @@ class Polly:
             ollama_host=self.config.ollama_host,
             embedding_model=self.config.embedding_model,
             chunk_size=self.config.get("rag.chunk_size", 800),
-            pattern_learner=self.pattern_learner  # Pass pattern learner for code pattern extraction
+            pattern_learner=self.pattern_engine  # Pass pattern engine for code pattern extraction
         )
         
         # Skip BM25 index rebuild at startup to avoid blocking
@@ -264,47 +267,79 @@ class Polly:
         self._init_router_v1_hybrid()
 
     def _init_learners(self):
-        """Initialize pattern learner, knowledge graph, learning tracker, and curriculum manager."""
+        """Initialize pattern engine, knowledge graph, learning tracker, and curriculum manager."""
         try:
-            from learners.patterns import PatternLearner
-            from learners.graph import KnowledgeGraph
+            from core.patterns import PatternEngine
+            from core.entities import EntityStore, EntityExtractor, EntityContextBuilder
             from learners.learning_tracker import LearningTracker
             from learners.curriculum_manager import CurriculumManager
             from learners.curriculum_template_manager import CurriculumTemplateManager
 
             patterns_path = Path(self.config.get("patterns.storage_path", "~/.polly/patterns.json")).expanduser()
             graph_path = Path(self.config.get("graph.storage_path", "~/.polly/knowledge_graph.json")).expanduser()
+            entity_db_path = Path(self.config.get("entities.db_path", "~/.polly/entities.db")).expanduser()
             learning_path = Path(self.config.get("learning.storage_path", "~/.polly/learning.json")).expanduser()
             vault_path = Path(self.config.get("vault_path", "~/polly/vault")).expanduser()
 
-            self.pattern_learner = PatternLearner(patterns_path)
-            self.knowledge_graph = KnowledgeGraph(graph_path)
-            self.learning_tracker = LearningTracker(learning_path)
-            self.curriculum_manager = CurriculumManager(vault_path)
-            self.template_manager = CurriculumTemplateManager(vault_path)
-            
-            # Mem0-backed pattern learner for semantic pattern search when memory.provider=mem0
-            self.pattern_learner_mem0 = None
+            # Unified Pattern Engine — replaces both learners/patterns.PatternLearner
+            # and core/pattern_learning.PatternLearner
+            mem0_config = None
             try:
                 config_dict = getattr(self.config, "_config", {})
                 memory = config_dict.get("memory", {})
                 if memory.get("provider") == "mem0" and memory.get("mem0", {}).get("enabled"):
-                    from core.pattern_learning import PatternLearner as Mem0PatternLearner
-                    self.pattern_learner_mem0 = Mem0PatternLearner(config_dict)
-                    logger.info("Mem0 pattern learner enabled for pattern-informed routing")
+                    mem0_config = config_dict
+                    logger.info("Mem0 enabled for pattern engine semantic search")
             except Exception as mem0_e:
-                logger.debug(f"Mem0 pattern learner not available: {mem0_e}")
+                logger.debug(f"Mem0 config not available: {mem0_e}")
+
+            self.pattern_engine = PatternEngine(
+                json_path=patterns_path,
+                mem0_config=mem0_config,
+            )
+
+            # Run migration from old format if needed (one-time)
+            try:
+                from core.patterns.migration import migrate_from_v2
+                stats = migrate_from_v2(patterns_path, self.pattern_engine)
+                if stats.get("patterns_migrated", 0) > 0:
+                    logger.info(f"Migrated {stats['patterns_migrated']} patterns from old format")
+            except Exception as mig_e:
+                logger.debug(f"Pattern migration skipped: {mig_e}")
+
+            # Backward compat: alias for code that still references pattern_learner
+            self.pattern_learner = self.pattern_engine
+
+            # Unified entity store (replaces KnowledgeGraph)
+            self.entity_store = EntityStore(entity_db_path)
+            self.entity_extractor = EntityExtractor(self.entity_store)
+            self.entity_context = EntityContextBuilder(
+                self.entity_store, pattern_engine=self.pattern_engine
+            )
+            try:
+                from core.entities.migration import migrate_from_json
+                mig_stats = migrate_from_json(graph_path, self.entity_store)
+                if mig_stats.get("entities", 0) > 0:
+                    logger.info(f"Migrated {mig_stats['entities']} entities from knowledge graph JSON")
+            except Exception as mig_e:
+                logger.debug(f"Entity migration skipped: {mig_e}")
+
+            self.learning_tracker = LearningTracker(learning_path)
+            self.curriculum_manager = CurriculumManager(vault_path)
+            self.template_manager = CurriculumTemplateManager(vault_path)
             
-            # Use Case 2: Attach pattern learner to DomainEngine for enhanced detection
-            if self.domains and self.pattern_learner:
-                self.domains.set_pattern_learner(self.pattern_learner)
+            # Use Case 2: Attach pattern engine to DomainEngine for enhanced detection
+            if self.domains and self.pattern_engine:
+                self.domains.set_pattern_learner(self.pattern_engine)
             
             logger.info(f"Learners initialized (tracking {len(self.learning_tracker.topics)} learning topics, {len(self.curriculum_manager.curricula)} curricula, {len(self.template_manager.list_templates())} templates)")
         except Exception as e:
             logger.warning(f"Could not initialize learners: {e}")
+            self.pattern_engine = None
             self.pattern_learner = None
-            self.pattern_learner_mem0 = None
-            self.knowledge_graph = None
+            self.entity_store = None
+            self.entity_extractor = None
+            self.entity_context = None
             self.learning_tracker = None
             self.curriculum_manager = None
             self.template_manager = None
@@ -540,12 +575,10 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         """
         Get most relevant patterns for current query.
         
-        Scores patterns based on:
-        - Confidence (how established the pattern is)
-        - Occurrences (frequency)
-        - Recency (when last seen)
-        - Domain match (relevance to current query)
-        - Query keyword match (for query patterns)
+        Delegates to PatternEngine.get_patterns_for_prompt() which handles:
+        - JSON backend keyword search
+        - Mem0 backend semantic search (when available)
+        - Multi-factor scoring (confidence, recency, domain, keyword match)
         
         Args:
             query: The user's query
@@ -555,105 +588,11 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         Returns:
             List of Pattern objects, sorted by relevance score
         """
-        if not self.pattern_learner and not getattr(self, "pattern_learner_mem0", None):
+        if not self.pattern_engine:
             return []
         
-        # Get patterns from main learner (learners.patterns)
-        all_patterns = list(self.pattern_learner.patterns.values()) if self.pattern_learner else []
-        
-        # Merge in Mem0-backed patterns when enabled (semantic search)
-        if getattr(self, "pattern_learner_mem0", None):
-            try:
-                mem0_results = self.pattern_learner_mem0.search_patterns(query, limit=limit * 2)
-                for p in mem0_results:
-                    # Wrap core.pattern_learning.Pattern to match expected .name, .pattern_type, etc.
-                    last_seen = datetime.now()
-                    if p.timestamp:
-                        try:
-                            last_seen = datetime.fromisoformat(p.timestamp.replace("Z", "+00:00"))
-                        except Exception:
-                            pass
-                    wrap = type("_Mem0Pattern", (), {
-                        "name": p.description[:60] + "..." if len(p.description) > 60 else p.description,
-                        "pattern_type": p.type,
-                        "description": p.description,
-                        "occurrences": p.occurrences,
-                        "examples": [],
-                        "confidence": p.confidence,
-                        "last_seen": last_seen,
-                        "domains": p.metadata.get("domains", []) if isinstance(p.metadata.get("domains"), list) else [],
-                        "metadata": p.metadata,
-                    })()
-                    all_patterns.append(wrap)
-            except Exception as e:
-                logger.debug(f"Mem0 pattern search failed (non-critical): {e}")
-        
-        if not all_patterns:
-            return []
-        
-        # Extract domain values for comparison
         domain_values = [d.value if hasattr(d, 'value') else str(d) for d in detected_domains]
-        
-        # Extract keywords from query for matching
-        query_keywords = set(query.lower().split())
-        
-        # Score patterns
-        scored = []
-        for pattern in all_patterns:
-            score = 0.0
-            
-            # 1. Confidence weight (0-3 points)
-            score += pattern.confidence * 3
-            
-            # 2. Occurrence weight (0-2 points, capped)
-            score += min(pattern.occurrences / 10.0, 2.0)
-            
-            # 3. Recency weight (0-2 points)
-            try:
-                days_ago = (datetime.now() - pattern.last_seen).days
-                if days_ago <= 7:
-                    score += 2.0  # Very recent
-                elif days_ago <= 30:
-                    score += 1.0  # Recent
-                elif days_ago <= 90:
-                    score += 0.5  # Somewhat recent
-            except:
-                pass
-            
-            # 4. Domain match (0-3 points)
-            if pattern.domains:
-                matching_domains = set(pattern.domains) & set(domain_values)
-                if matching_domains:
-                    # Give more weight if multiple domains match
-                    score += min(len(matching_domains) * 1.5, 3.0)
-            
-            # 5. Query keyword match for query patterns (0-2 points)
-            if pattern.pattern_type == "query":
-                # Check if any words from the pattern name appear in current query
-                pattern_words = set(pattern.name.lower().split())
-                matches = pattern_words & query_keywords
-                if matches:
-                    score += min(len(matches) * 0.5, 2.0)
-            
-            # 6. Code pattern boost for code-related queries (0-1 point)
-            if pattern.pattern_type == "code":
-                code_keywords = {'code', 'function', 'class', 'implement', 'write', 'create', 'pattern', 'error', 'handling'}
-                if query_keywords & code_keywords:
-                    score += 1.0
-            
-            # 7. Conceptual pattern boost for exploratory queries (0-1 point)
-            if pattern.pattern_type == "conceptual":
-                explore_keywords = {'how', 'what', 'why', 'explain', 'understand', 'learn', 'explore'}
-                if query_keywords & explore_keywords:
-                    score += 1.0
-            
-            scored.append((score, pattern))
-        
-        # Sort by score (descending)
-        scored.sort(key=lambda x: x[0], reverse=True)
-        
-        # Return top patterns
-        return [pattern for score, pattern in scored[:limit]]
+        return self.pattern_engine.get_patterns_for_prompt(query, domain_values, limit=limit)
     
     def _extract_keywords(self, query: str) -> List[str]:
         """
@@ -785,7 +724,127 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         except Exception as e:
             logger.error(f"Failed to build mental models context: {e}")
             return ""
-    
+
+    def _notify_persona_context(self, persona_name: Optional[str], mode: Optional[str]) -> None:
+        """Notify all persona-aware systems of the active persona (integration-contracts)."""
+        if not persona_name:
+            return
+        mode = mode or ""
+        for system in [self.pattern_engine, self.mental_model_manager, self.entity_context]:
+            if system is not None and hasattr(system, "set_active_persona"):
+                try:
+                    system.set_active_persona(persona_name, mode)
+                except Exception as e:
+                    logger.debug(f"set_active_persona failed for {type(system).__name__}: {e}")
+
+    def _gather_context(
+        self,
+        query: str,
+        domains: List[str],
+        persona: Optional[str] = None,
+        mode: Optional[str] = None,
+        **kwargs: Any,
+    ) -> str:
+        """Gather context from all ContextContributors, ordered by priority (integration-contracts)."""
+        contributors: List[tuple[int, str]] = []
+
+        # Mental models (priority 60) — built via existing method
+        if self.mental_model_manager:
+            try:
+                mm_ctx = self._build_mental_models_context(
+                    query=query,
+                    domain=kwargs.get("domain") or (domains[0] if domains else None),
+                    page=kwargs.get("page"),
+                    persona=persona,
+                    persona_mode=mode,
+                    override_model_ids=kwargs.get("override_model_ids"),
+                )
+                if mm_ctx:
+                    contributors.append((60, mm_ctx))
+            except Exception as e:
+                logger.debug(f"Mental models context failed: {e}")
+
+        # Entity context (priority 40)
+        if self.entity_context and hasattr(self.entity_context, "build_context"):
+            try:
+                ctx = self.entity_context.build_context(
+                    query, domains, persona=persona, mode=mode, **kwargs
+                )
+                if ctx:
+                    contributors.append((self.entity_context.context_priority, ctx))
+            except Exception as e:
+                logger.debug(f"Entity context failed: {e}")
+
+        # Pattern engine (priority 20)
+        if self.pattern_engine and hasattr(self.pattern_engine, "build_context"):
+            try:
+                ctx = self.pattern_engine.build_context(
+                    query, domains, persona=persona, mode=mode,
+                    user_name=self.user_name, **kwargs
+                )
+                if ctx:
+                    contributors.append((self.pattern_engine.context_priority, ctx))
+            except Exception as e:
+                logger.debug(f"Pattern context failed: {e}")
+
+        # Compression summary (priority 10)
+        if self.compression_manager and hasattr(self.compression_manager, "build_context"):
+            try:
+                conv_id = kwargs.get("conversation_id") or (
+                    f"session_{self.session_start.isoformat()}" if self.session_start else None
+                )
+                if conv_id and hasattr(self.compression_manager, "set_current_conversation"):
+                    self.compression_manager.set_current_conversation(conv_id)
+                ctx = self.compression_manager.build_context(
+                    query, domains, persona=persona, mode=mode, **kwargs
+                )
+                if ctx:
+                    contributors.append((self.compression_manager.context_priority, ctx))
+            except Exception as e:
+                logger.debug(f"Compression context failed: {e}")
+
+        contributors.sort(key=lambda x: x[0], reverse=True)
+        return "\n\n".join(c for _, c in contributors)
+
+    def _record_routing_outcome(
+        self,
+        response_metadata: Dict[str, Any],
+        task_type: str = "general",
+        persona: Optional[str] = None,
+        rag_coverage: Optional[float] = None,
+    ) -> None:
+        """Record routing decision as ROUTING_OUTCOME pattern for future pattern-informed routing (integration-contracts)."""
+        if not self.pattern_engine:
+            return
+        try:
+            from core.patterns.models import Pattern, PatternType, generate_pattern_id
+            provider = response_metadata.get("provider", "unknown")
+            model = response_metadata.get("model", "")
+            name = f"route_{task_type}_{provider}_{model}".replace("/", "_")[:80]
+            pid = generate_pattern_id("routing_outcome", name)
+            self.pattern_engine.learn(
+                Pattern(
+                    id=pid,
+                    pattern_type=PatternType.ROUTING_OUTCOME,
+                    name=name,
+                    description=f"{model} for {task_type}",
+                    confidence=0.5,
+                    metadata={
+                        "model": model,
+                        "provider": provider,
+                        "task_type": task_type,
+                        "rag_coverage": rag_coverage,
+                        "persona": persona,
+                        "tokens_in": response_metadata.get("tokens_in"),
+                        "tokens_out": response_metadata.get("tokens_out"),
+                        "cost": response_metadata.get("cost"),
+                    },
+                )
+            )
+            logger.debug(f"Recorded ROUTING_OUTCOME pattern: {name}")
+        except Exception as e:
+            logger.debug(f"Record routing outcome failed: {e}")
+
     def _should_use_local_model(
         self, 
         query: str, 
@@ -938,10 +997,10 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                     f"({result['compressed']['token_stats']['ratio']:.1f}x ratio)"
                 )
                 
-                # **NEW: Feed compressed data to pattern learner (Phase 11c → 13a integration)**
-                if hasattr(self, 'pattern_learner') and self.pattern_learner:
+                # Feed compressed data to pattern engine for RAG optimization learning
+                if self.pattern_engine:
                     try:
-                        # Phase 2 Enhancement: Prepare RAG metadata for pattern learning
+                        # Prepare RAG metadata for pattern learning
                         rag_metadata = None
                         if self._rag_metadata['queries']:
                             rag_metadata = {
@@ -949,20 +1008,18 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                                 'domains': list(self._rag_metadata['domains']),
                                 'successful_files': list(self._rag_metadata['successful_files'])
                             }
-                            logger.info(f"📊 Passing RAG metadata to pattern learner: {len(rag_metadata['queries'])} queries, {len(rag_metadata['domains'])} domains")
+                            logger.info(f"Passing RAG metadata to pattern engine: {len(rag_metadata['queries'])} queries, {len(rag_metadata['domains'])} domains")
                         
-                        learned = self.pattern_learner.learn_from_compressed(
+                        learned = self.pattern_engine.learn_from_compressed(
                             compressed_data=result['compressed'],
                             conversation_id=conversation_id,
-                            rag_metadata=rag_metadata  # NEW: Pass actual RAG metadata
+                            rag_metadata=rag_metadata,
                         )
                         if learned['total'] > 0:
                             logger.info(
-                                f"Pattern learner extracted {learned['total']} patterns "
+                                f"Pattern engine extracted {learned['total']} patterns "
                                 f"(query→chunk: {learned.get('query_chunk_patterns', 0)}, "
-                                f"domain→collection: {learned.get('domain_priority_patterns', 0)}, "
-                                f"file→topic: {learned.get('file_topic_patterns', 0)}, "
-                                f"conceptual: {learned.get('conceptual_patterns', 0)})"
+                                f"domain→collection: {learned.get('domain_priority_patterns', 0)})"
                             )
                         
                         # Reset RAG tracking for next compression cycle
@@ -971,10 +1028,35 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                             'domains': set(),
                             'successful_files': set()
                         }
-                        logger.debug("📊 Reset RAG metadata tracking for next cycle")
+                        logger.debug("Reset RAG metadata tracking for next cycle")
                         
                     except Exception as e:
                         logger.warning(f"Failed to feed compressed data to pattern learner: {e}")
+                    
+                    # Compression→entity integration: extract entities from key concepts and focus topics
+                    if self.entity_extractor:
+                        try:
+                            c = result["compressed"]
+                            domains = list(c.get("domains", [])) if isinstance(c.get("domains"), (list, tuple)) else []
+                            for concept in c.get("key_concepts", []) or []:
+                                text = concept.get("term") or concept.get("definition") or concept.get("concept", "")
+                                if isinstance(text, str) and text.strip():
+                                    self.entity_extractor.extract_and_store(
+                                        text.strip(),
+                                        source_type="compression",
+                                        source_id=conversation_id,
+                                        domains=domains,
+                                    )
+                            for topic in c.get("focus_topics", []) or []:
+                                if isinstance(topic, str) and topic.strip():
+                                    self.entity_extractor.extract_and_store(
+                                        topic.strip(),
+                                        source_type="compression",
+                                        source_id=conversation_id,
+                                        domains=domains,
+                                    )
+                        except Exception as ex:
+                            logger.debug(f"Compression→entity extraction failed: {ex}")
                 
                 # Update conversation_history to only keep recent messages
                 self.conversation_history = recent_messages
@@ -1164,6 +1246,9 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         # 1. Detect domains
         detected_domains = self.domains.detect_domains(query, context)
         domain_names = [d.value for d in detected_domains if d != DomainType.UNKNOWN]
+
+        # Notify persona-aware systems (integration-contracts)
+        self._notify_persona_context(persona, persona_mode)
         
         # Get domain scores for better logging and potential future use
         domain_scores = self.domains.detect_domains_with_scores(query, context)
@@ -1239,15 +1324,17 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             expansion_concepts = []
             used_pattern_id = None  # Track which pattern was used for expansion
             
-            if self.pattern_learner:
+            if self.pattern_engine:
                 try:
                     # Extract key concepts from query
                     query_concepts = set(search_query.lower().split())
                     
                     # Find conceptual patterns that match query concepts
                     # Look for high-confidence patterns (≥ 0.6) to avoid noise
-                    for pattern in self.pattern_learner.patterns.values():
-                        if pattern.pattern_type != 'conceptual' or pattern.confidence < 0.6:
+                    for pattern in self.pattern_engine.patterns.values():
+                        pt = pattern.pattern_type
+                        pt_val = pt.value if hasattr(pt, 'value') else pt
+                        if pt_val != 'conceptual' or pattern.confidence < 0.6:
                             continue
                         
                         concept1 = pattern.metadata.get('concept1', '').lower()
@@ -1257,21 +1344,21 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                         if concept1 in query_concepts and concept2 not in query_concepts:
                             expansion_concepts.append(concept2)
                             used_pattern_id = pattern.id
-                            logger.info(f"📚 Query expansion: '{concept1}' → '{concept2}' (from pattern, confidence={pattern.confidence:.2f})")
+                            logger.info(f"Query expansion: '{concept1}' → '{concept2}' (from pattern, confidence={pattern.confidence:.2f})")
                             break  # Only expand with one concept to avoid noise
                         elif concept2 in query_concepts and concept1 not in query_concepts:
                             expansion_concepts.append(concept1)
                             used_pattern_id = pattern.id
-                            logger.info(f"📚 Query expansion: '{concept2}' → '{concept1}' (from pattern, confidence={pattern.confidence:.2f})")
+                            logger.info(f"Query expansion: '{concept2}' → '{concept1}' (from pattern, confidence={pattern.confidence:.2f})")
                             break
                     
                     if expansion_concepts:
                         expanded_query = f"{search_query} {expansion_concepts[0]}"
-                        logger.info(f"📚 Expanded query: '{search_query}' → '{expanded_query}'")
+                        logger.info(f"Expanded query: '{search_query}' → '{expanded_query}'")
                         
-                        # Phase 13A Days 12-13: Record pattern usage
+                        # Record pattern usage
                         if used_pattern_id:
-                            self.pattern_learner.record_pattern_usage(used_pattern_id, was_helpful=True)
+                            self.pattern_engine.record_pattern_usage(used_pattern_id, was_helpful=True)
                 
                 except Exception as e:
                     logger.warning(f"Query expansion failed: {e}")
@@ -1287,8 +1374,8 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                 domains=domain_names if domain_names else None
             )
         
-        # Phase 13A Days 9-11: Learn domain→collection priorities from search results
-        if self.pattern_learner and rag_results and domain_names and not fetch_all_github_repos:
+        # Learn domain→collection priorities from search results
+        if self.pattern_engine and rag_results and domain_names and not fetch_all_github_repos:
             try:
                 # Group results by collection to calculate performance
                 collection_results = {}
@@ -1306,7 +1393,6 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                 }
                 
                 # Also record 0.0 score for collections that were searched but returned nothing
-                # This helps pattern learner understand which collections are NOT useful for this domain
                 all_searched_collections = self.rag.collections.keys()
                 for coll in all_searched_collections:
                     if coll not in collection_scores:
@@ -1314,12 +1400,12 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                 
                 # Learn priorities for each detected domain
                 for domain in domain_names:
-                    self.pattern_learner.learn_domain_priorities(
+                    self.pattern_engine.learn_domain_priorities(
                         query=query,
                         domain=domain,
-                        collection_results=collection_scores
+                        collection_scores=collection_scores,
                     )
-                    logger.debug(f"⚡ Learned domain priorities for '{domain}' from {len(collection_scores)} collections")
+                    logger.debug(f"Learned domain priorities for '{domain}' from {len(collection_scores)} collections")
             except Exception as e:
                 logger.error(f"Failed to learn domain priorities: {e}")
         
@@ -1354,7 +1440,7 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         
         # Pattern-based retrieval boosting
         # Boost RAG results that match learned patterns
-        if self.pattern_learner and rag_results:
+        if self.pattern_engine and rag_results:
             try:
                 # Get relevant patterns for this query
                 relevant_patterns = self._get_patterns_for_prompt(query, detected_domains, limit=10)
@@ -1511,60 +1597,20 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                 self._debug_query = query_lower
             logger.info(f"Debug info written to {debug_file}")
 
-        # 3. Get pattern context
-        pattern_context = ""
-        if self.pattern_learner:
-            try:
-                relevant_patterns = self._get_patterns_for_prompt(query, detected_domains, limit=5)
-                if relevant_patterns:
-                    pattern_context = "\n\n## Learned Patterns from Your Work\n"
-                    pattern_context += f"You've observed these patterns in how {self.user_name} works:\n\n"
-                    
-                    for p in relevant_patterns:
-                        # Format based on pattern type
-                        if p.pattern_type == "query":
-                            pattern_context += f"- **{p.name}**: You ask this type of question often (seen {p.occurrences} times)\n"
-                        elif p.pattern_type == "code":
-                            pattern_context += f"- **{p.name}**: {p.description} (found in {p.occurrences} files)\n"
-                            if p.examples:
-                                # Include a code snippet example
-                                example = p.examples[0][:150]
-                                pattern_context += f"  Example: `{example}...`\n"
-                        elif p.pattern_type == "conceptual":
-                            pattern_context += f"- **{p.name}**: {p.description}\n"
-                        elif p.pattern_type == "workflow":
-                            pattern_context += f"- **{p.name}**: {p.description} (observed {p.occurrences} times)\n"
-                        else:
-                            pattern_context += f"- **{p.name}**: {p.description}\n"
-                    
-                    pattern_context += "\nUse these patterns to anticipate needs, reference familiar tools/concepts, and provide more relevant responses.\n"
-                    logger.info(f"Added {len(relevant_patterns)} patterns to prompt")
-                else:
-                    logger.debug("No relevant patterns found")
-            except Exception as e:
-                logger.error(f"Failed to retrieve patterns: {e}")
-        
-        # 3a. Get mental models context (Phase 14)
-        mental_models_context = ""
-        if self.mental_model_manager:
-            try:
-                mental_models_context = self._build_mental_models_context(
-                    query=query,
-                    domain=domain_names[0] if domain_names else None,
-                    page=page,
-                    persona=persona,
-                    persona_mode=persona_mode,
-                    override_model_ids=mental_models_override
-                )
-            except Exception as e:
-                logger.error(f"Failed to retrieve mental models: {e}")
+        # 3. Gather context from all contributors (integration-contracts: ContextContributor)
+        domain_values = [d.value if hasattr(d, "value") else str(d) for d in detected_domains]
+        gathered_context = self._gather_context(
+            query,
+            domain_values,
+            persona=persona,
+            mode=persona_mode,
+            domain=domain_names[0] if domain_names else None,
+            page=page,
+            override_model_ids=mental_models_override,
+            conversation_id=f"session_{self.session_start.isoformat()}" if self.session_start else None,
+        )
 
-        # 4. Get knowledge graph context
-        graph_context = ""
-        if self.knowledge_graph:
-            graph_context = self.knowledge_graph.get_context_for_query(query, detected_domains)
-
-        # 5. Build augmented prompt
+        # 4. Build augmented prompt
         # Include cross-domain connections in the domain prompt for multi-domain queries
         domain_prompt = self.domains.get_domain_prompt(detected_domains, include_cross_domain=True)
         
@@ -1610,11 +1656,7 @@ If you suggest an exercise, copy the description directly from the context above
 
 {rag_context if rag_context else "No directly relevant notes found."}
 
-{pattern_context}
-
-{mental_models_context}
-
-{graph_context}
+{gathered_context}
 
 When answering questions, prioritize information from the knowledge base context above. Cite specific notes and details when available.{practices_instruction}
 """
@@ -1688,11 +1730,27 @@ When answering questions, prioritize information from the knowledge base context
                     
                     logger.info(f"Router v2: Using confidence level '{confidence_level.value}'")
                     
+                    # Pattern-informed routing (integration-contracts)
+                    routing_patterns: List[Any] = []
+                    if self.pattern_engine:
+                        try:
+                            from core.patterns.models import PatternQuery, PatternType
+                            routing_patterns = self.pattern_engine.search(
+                                PatternQuery(
+                                    pattern_types=[PatternType.ROUTING_OUTCOME],
+                                    min_confidence=0.6,
+                                    limit=3,
+                                )
+                            )
+                        except Exception as e:
+                            logger.debug(f"Routing patterns fetch failed: {e}")
+                    
                     # Get routing decision
                     routing_decision = await self.router_v2.route(
                         messages=messages,
                         confidence=confidence_level,
-                        max_tokens=4096
+                        max_tokens=4096,
+                        patterns=routing_patterns,
                     )
                     
                     logger.info(f"Router v2 decision: {routing_decision.reason}")
@@ -1769,6 +1827,14 @@ When answering questions, prioritize information from the knowledge base context
                     
                     # Store metadata for access by caller
                     self._last_response_metadata = response_metadata
+
+                    # Record routing outcome for pattern learning (integration-contracts)
+                    self._record_routing_outcome(
+                        response_metadata,
+                        task_type="general",
+                        persona=persona,
+                        rag_coverage=None,
+                    )
                 
             except Exception as e:
                 logger.error(f"Router v2 failed: {e}", exc_info=True)
@@ -1796,17 +1862,22 @@ When answering questions, prioritize information from the knowledge base context
         self.conversation_history.append({'role': 'assistant', 'content': full_response})
 
         # 10. Learn from interaction
-        if self.pattern_learner:
+        if self.pattern_engine:
             try:
-                self.pattern_learner.record_query(query, detected_domains, full_response)
-                self.pattern_learner.save_patterns()  # EXPLICITLY SAVE
+                self.pattern_engine.learn_from_query(query, detected_domains, full_response)
+                self.pattern_engine.save()
                 logger.info(f"Recorded query pattern: {query[:50]}...")
             except Exception as e:
                 logger.error(f"Failed to record pattern: {e}")
 
-        if self.knowledge_graph:
-            self.knowledge_graph.extract_entities_from_text(query, detected_domains)
-            self.knowledge_graph.extract_entities_from_text(full_response, detected_domains)
+        if self.entity_extractor:
+            try:
+                source_id = f"session_{self.session_start.isoformat()}"
+                domain_names = [d.value if hasattr(d, 'value') else str(d) for d in detected_domains]
+                self.entity_extractor.extract_and_store(query, "query", source_id, domain_names)
+                self.entity_extractor.extract_and_store(full_response, "response", source_id, domain_names)
+            except Exception as e:
+                logger.debug(f"Entity extraction failed (non-critical): {e}")
 
     async def index(
         self,
@@ -1871,11 +1942,12 @@ When answering questions, prioritize information from the knowledge base context
             'rag': self.rag.get_stats()
         }
 
-        if self.pattern_learner:
-            stats['patterns'] = len(self.pattern_learner.patterns) + len(self.pattern_learner.query_patterns)
+        if self.pattern_engine:
+            engine_stats = self.pattern_engine.get_stats()
+            stats['patterns'] = engine_stats.get('total_patterns', 0)
 
-        if self.knowledge_graph:
-            stats['graph'] = self.knowledge_graph.get_stats()
+        if self.entity_store:
+            stats['graph'] = self.entity_store.get_stats()
 
         return stats
     
@@ -1914,16 +1986,14 @@ When answering questions, prioritize information from the knowledge base context
             >>> stats = polly.get_pattern_stats()
             >>> print(f"Total patterns: {stats['total_patterns']}")
         """
-        if not self.pattern_learner:
+        if not self.pattern_engine:
             return {}
         
-        return self.pattern_learner.get_pattern_stats()
+        return self.pattern_engine.get_stats()
     
     def get_patterns_for_concept(self, concept: str) -> List[Dict]:
         """
         Get patterns related to a concept.
-        
-        Phase 13A Day 16: Pattern Enhancement APIs
         
         Args:
             concept: The concept to search for (e.g., "docker", "python")
@@ -1936,17 +2006,17 @@ When answering questions, prioritize information from the knowledge base context
             >>> for p in patterns:
             >>>     print(f"{p['concept1']} ↔ {p['concept2']}: {p['confidence']:.2f}")
         """
-        if not self.pattern_learner:
+        if not self.pattern_engine:
             return []
         
-        patterns = self.pattern_learner.get_conceptual_patterns_for_concept(concept)
+        patterns = self.pattern_engine.get_conceptual_patterns(concept)
         return [
             {
                 'concept1': p.metadata.get('concept1'),
                 'concept2': p.metadata.get('concept2'),
                 'confidence': p.confidence,
                 'occurrences': p.occurrences,
-                'usefulness_ratio': p.times_helpful / p.times_used if p.times_used > 0 else 0.0
+                'usefulness_ratio': p.usefulness_ratio,
             }
             for p in patterns
         ]
@@ -1954,8 +2024,6 @@ When answering questions, prioritize information from the knowledge base context
     def get_domain_collection_priorities(self, domain: str) -> Dict[str, float]:
         """
         Get collection priorities for a domain.
-        
-        Phase 13A Day 16: Pattern Enhancement APIs
         
         Args:
             domain: The domain to get priorities for (e.g., "python", "docker")
@@ -1967,16 +2035,14 @@ When answering questions, prioritize information from the knowledge base context
             >>> weights = polly.get_domain_collection_priorities("python")
             >>> print(weights)  # {'codebase': 2.5, 'obsidian': 1.8}
         """
-        if not self.pattern_learner:
+        if not self.pattern_engine:
             return {}
         
-        return self.pattern_learner.get_domain_priorities(domain)
+        return self.pattern_engine.get_domain_priorities(domain)
     
     def export_patterns(self, filepath: Optional[str] = None) -> Dict:
         """
         Export all patterns for analysis.
-        
-        Phase 13A Day 16: Pattern Enhancement APIs
         
         Args:
             filepath: Optional path to save JSON export
@@ -1988,16 +2054,16 @@ When answering questions, prioritize information from the knowledge base context
             >>> data = polly.export_patterns("/tmp/patterns.json")
             >>> print(f"Exported {data['stats']['total_patterns']} patterns")
         """
-        if not self.pattern_learner:
+        if not self.pattern_engine:
             return {}
         
-        data = self.pattern_learner.export_patterns_for_analysis()
+        data = self.pattern_engine.export()
         
         if filepath:
             import json
             with open(filepath, 'w') as f:
-                json.dump(data, f, indent=2)
-            logger.info(f"📊 Exported patterns to {filepath}")
+                json.dump(data, f, indent=2, default=str)
+            logger.info(f"Exported patterns to {filepath}")
         
         return data
 
@@ -2074,11 +2140,11 @@ When answering questions, prioritize information from the knowledge base context
 
     def save_state(self):
         """Save learned state (patterns, graph)."""
-        if self.pattern_learner:
-            self.pattern_learner.save_patterns()
+        if self.pattern_engine:
+            self.pattern_engine.save()
 
-        if self.knowledge_graph:
-            self.knowledge_graph.save_graph()
+        if self.entity_store:
+            self.entity_store.recompute_all_authority()
 
         logger.info("State saved")
     
