@@ -12,6 +12,7 @@ All existing project docs are migrated **into** the OpenSpec standard: OpenSpec 
 | [specs/architecture/spec.md](specs/architecture/spec.md) | Stack, flow | MASTER_ROADMAP (Architecture), docs/planning/tiers/TIER_0, TIER_1 |
 | [specs/design/spec.md](specs/design/spec.md) | Design philosophy | docs/planning/DESIGN_PHILOSOPHY.md |
 | [specs/ui/spec.md](specs/ui/spec.md) | UI, layout, pages | docs/planning/phases/phase-0.5/* (PHASE0.5_OBSIDIAN_INSPIRED_UI, PHASE0.5_UI_DESIGN_SYSTEM) |
+| [specs/themes/spec.md](specs/themes/spec.md) | Aesthetic Theme Engine | Affinity Suite Techniques Catalogue (source material), Phase 27b |
 | [specs/rag/spec.md](specs/rag/spec.md) | RAG, routing | docs/RAG_ROUTING_ARCHITECTURE.md, README_RAG_DOCS.md, RAG_TROUBLESHOOTING_QUICK_REFERENCE.md |
 | [specs/personas/spec.md](specs/personas/spec.md) | Personas | docs/PERSONA_SYSTEM_ARCHITECTURE.md, docs/PERSONA_API.md, docs/planning/phases/phase-11/* |
 | [specs/domains/spec.md](specs/domains/spec.md) | Domain config | docs/planning/phases/phase-1.5/* |

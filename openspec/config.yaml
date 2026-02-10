@@ -4,21 +4,32 @@
 schema: spec-driven
 
 context: |
-  Project: Polly — Edge-Native Personal AI System
-  Repo: single repo with Python backend + Electron frontend
+  Project: Polly — Edge-Native Personal AI System for Polymathic Practice
+  Repo: single repo with Python backend + Electron frontend + mobile companion (future)
 
   Backend:
     - Python 3 (core/, interfaces/, learners/, integrations/)
     - FastAPI-like server in interfaces/server.py
     - Config: config/config.yaml, config/approved_packages.yaml, config/security_policy.yaml
-    - RAG: ChromaDB, hybrid search, domain routing
+    - RAG: ChromaDB, hybrid search, domain routing, entity graph (planned)
     - Personas: core/personas/; curriculum: learners/curriculum_*.py
+    - Knowledge quality: core/knowledge_quality/ (planned); dedup: core/notes_dedup.py (existing)
+    - DRM: core/drm/ (planned); keys in ~/.polly/keys/; trusted-peers in ~/.polly/drm/; cloudflared config in ~/.cloudflared/
 
   Frontend:
     - Electron app in electron-app/ (Node.js, no React)
     - CodeMirror 6, marked, lucide icons, electron-store, better-sqlite3
     - Main process: electron-app/src/main/main.js; preload: preload.js
     - Renderer: electron-app/src/renderer/app.js, index.html
+
+  Mobile:
+    - Companion app (technology TBD) — lightweight capture + chat, thin DRM node
+
+  Data:
+    - SQLite: conversations, knowledge.db (graph, canvases, captures, publications), usage.db (metrics)
+    - ChromaDB: embeddings for RAG
+    - File system: ~/.polly/ (domains, patterns, mental models, templates, curricula), vault/notes
+    - DRM state: ~/.polly/drm/ (peer registry, task queue)
 
   Conventions:
     - Status/roadmap: docs/status/CURRENT.md, MASTER_ROADMAP.md
@@ -27,10 +38,11 @@ context: |
 
 rules:
   proposal:
-    - State which tier/phase this relates to (see MASTER_ROADMAP.md) if applicable
+    - State which tier/phase this relates to (see roadmap.md) if applicable
     - Call out backend vs frontend vs both
   specs:
     - Keep specs in openspec/specs/<domain>/spec.md; link to docs/ when detailed
+    - Domain specs: architecture, design, ui, themes, security, rag, personas, agent-swarms, domains, patterns, mental-models, compression, curriculum, teaching, onboarding, notes, knowledge-graph, library, code-library, dev-philosophy, capture, canvas, publishing, analytics, communication, drm, mobile, integrations, data-autonomy, ethics
   design:
     - Note impact on Python backend and/or Electron app explicitly
   tasks:

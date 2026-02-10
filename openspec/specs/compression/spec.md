@@ -188,7 +188,7 @@ If compression fails, RAG pipeline falls back to uncompressed chunks. Check logs
 
 ## Future Enhancements
 
-- **PIL v2 format** (Task 21) — Extend PIL to cover patterns, knowledge summaries, routing decisions
+- **Compact Format v2** (Task 21) — Extend compact format (formerly PIL) to cover patterns, knowledge summaries, routing decisions
 - **Adaptive compression** — Adjust ratio based on context window size
 - **Compression caching** — Cache compressed chunks to avoid recompression
 

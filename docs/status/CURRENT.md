@@ -16,6 +16,8 @@ Use the OpenSpec project status for "where we are now"; this file is detailed re
 **Current Priority:** Phase 23.5 (Security Hardening) - CRITICAL before Phase 24 🔐  
 **Next Recommended:** Phase 23.5 (Security Hardening) - Must complete before Phase 24
 
+**Tech debt / follow-up:** Known linter (basedpyright) messages are listed in **[docs/status/LINTER_TODO.md](LINTER_TODO.md)** for later cleanup.
+
 ---
 
 ## Recently Completed (Last 7 Days)
