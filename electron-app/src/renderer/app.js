@@ -4,29 +4,29 @@
  */
 
 // API Configuration
-const API_URL = 'http://127.0.0.1:11436';
+const API_URL = "http://127.0.0.1:11436";
 
 // State
-let currentView = 'setup';
-let currentPage = 'dashboard';      // Track current page for conversation context
-let currentMode = 'auto';
+let currentView = "setup";
+let currentPage = "dashboard"; // Track current page for conversation context
+let currentMode = "auto";
 let setupStep = 1;
 let codePaths = [];
 let isServerRunning = false;
 let isOllamaRunning = false;
 
 // Conversation Management State
-let currentConversationId = null;    // Currently active conversation ID
-let currentConversation = null;      // Current conversation object with messages
-let conversations = [];              // List of all conversations
-let categories = [];                 // Available categories
-let needsMigration = false;          // Flag for old data migration
+let currentConversationId = null; // Currently active conversation ID
+let currentConversation = null; // Current conversation object with messages
+let conversations = []; // List of all conversations
+let categories = []; // Available categories
+let needsMigration = false; // Flag for old data migration
 
 // UI State Management (for smooth reloads)
 let preservedUIState = {
   conversationId: null,
   scrollPosition: 0,
-  timestamp: null
+  timestamp: null,
 };
 
 // Global stats (populated from /polly/stats endpoint)
@@ -39,27 +39,28 @@ const MAX_STATS_RETRIES = 3;
  * @param {string} message - Message to display
  * @param {string} type - Type of toast: 'success', 'error', 'info', 'warning'
  */
-function showToast(message, type = 'info') {
+function showToast(message, type = "info") {
   // For now, use console and alert for critical errors
   // In the future, this could be replaced with a proper toast UI component
-  const prefix = {
-    'success': '✓',
-    'error': '✗',
-    'warning': '⚠',
-    'info': 'ℹ'
-  }[type] || 'ℹ';
-  
+  const prefix =
+    {
+      success: "✓",
+      error: "✗",
+      warning: "⚠",
+      info: "ℹ",
+    }[type] || "ℹ";
+
   console.log(`[${type.toUpperCase()}] ${message}`);
-  
+
   // Only show alert for errors
-  if (type === 'error') {
+  if (type === "error") {
     alert(`${prefix} ${message}`);
   }
 }
 
 /**
  * Polly IPC Bridge - Safe Initialization Guard
- * 
+ *
  * This prevents crashes from accessing window.polly before Electron's contextBridge
  * has finished exposing it. Common during early initialization or rapid page loads.
  */
@@ -67,8 +68,8 @@ const PollyBridge = {
   _ready: false,
   _readyPromise: null,
   _maxWaitTime: 10000, // 10 seconds max wait
-  _checkInterval: 50,  // Check every 50ms
-  
+  _checkInterval: 50, // Check every 50ms
+
   /**
    * Wait for window.polly to be available
    * @returns {Promise<boolean>} True if ready, false if timeout
@@ -76,33 +77,33 @@ const PollyBridge = {
   async waitForReady() {
     if (this._ready) return true;
     if (this._readyPromise) return this._readyPromise;
-    
+
     this._readyPromise = new Promise((resolve) => {
       const startTime = Date.now();
-      
+
       const checkReady = () => {
-        if (typeof window.polly !== 'undefined' && window.polly !== null) {
+        if (typeof window.polly !== "undefined" && window.polly !== null) {
           this._ready = true;
-          console.log('[PollyBridge] IPC bridge ready');
+          console.log("[PollyBridge] IPC bridge ready");
           resolve(true);
           return;
         }
-        
+
         if (Date.now() - startTime > this._maxWaitTime) {
-          console.error('[PollyBridge] Timeout waiting for IPC bridge');
+          console.error("[PollyBridge] Timeout waiting for IPC bridge");
           resolve(false);
           return;
         }
-        
+
         setTimeout(checkReady, this._checkInterval);
       };
-      
+
       checkReady();
     });
-    
+
     return this._readyPromise;
   },
-  
+
   /**
    * Safely call a window.polly method with automatic retry
    * @param {string} method - Method name (e.g., 'getStore', 'setStore')
@@ -111,32 +112,39 @@ const PollyBridge = {
    */
   async safeCall(method, ...args) {
     const ready = await this.waitForReady();
-    
+
     if (!ready) {
-      console.error(`[PollyBridge] Cannot call ${method}: IPC bridge not available`);
+      console.error(
+        `[PollyBridge] Cannot call ${method}: IPC bridge not available`,
+      );
       return null;
     }
-    
+
     try {
-      if (typeof window.polly[method] !== 'function') {
-        console.error(`[PollyBridge] Method ${method} not found on window.polly`);
+      if (typeof window.polly[method] !== "function") {
+        console.error(
+          `[PollyBridge] Method ${method} not found on window.polly`,
+        );
         return null;
       }
-      
+
       return await window.polly[method](...args);
     } catch (error) {
       console.error(`[PollyBridge] Error calling ${method}:`, error);
       return null;
     }
   },
-  
+
   /**
    * Check if the bridge is ready synchronously (non-blocking)
    * @returns {boolean}
    */
   isReady() {
-    return this._ready || (typeof window.polly !== 'undefined' && window.polly !== null);
-  }
+    return (
+      this._ready ||
+      (typeof window.polly !== "undefined" && window.polly !== null)
+    );
+  },
 };
 
 /**
@@ -154,26 +162,51 @@ async function safeFetch(url, options = {}, silent = false) {
         ok: false,
         data: null,
         error: `HTTP ${response.status}: ${response.statusText}`,
-        isConnectionError: false
+        isConnectionError: false,
       };
     }
     const data = await response.json();
     return { ok: true, data, error: null, isConnectionError: false };
   } catch (error) {
-    const isConnectionError = error.message.includes('Failed to fetch') || 
-                            error.message.includes('ERR_CONNECTION_REFUSED');
-    
+    const isConnectionError =
+      error.message.includes("Failed to fetch") ||
+      error.message.includes("ERR_CONNECTION_REFUSED");
+
     // Only log if not silent and not an expected connection error
     if (!silent && !isConnectionError) {
       console.warn(`[safeFetch] ${url} failed:`, error.message);
     }
-    
+
     return {
       ok: false,
       data: null,
-      error: error.message || 'Network error',
-      isConnectionError
+      error: error.message || "Network error",
+      isConnectionError,
     };
+  }
+}
+
+/**
+ * Sync conversation messages to Python backend (integration-contracts).
+ * Called when user opens/switches conversation or app restores; keeps Python buffer in sync with Electron.
+ * @param {Array<{role: string, content: string}>} messages - Last N messages (e.g. slice(-50))
+ * @param {string} [conversationId] - Optional conversation ID
+ */
+async function syncConversationToBackend(messages, conversationId = null) {
+  const payload = {
+    messages: (messages || []).map((m) => ({
+      role: m.role || "user",
+      content: m.content || "",
+    })),
+  };
+  if (conversationId) payload.conversation_id = conversationId;
+  const result = await safeFetch(`${API_URL}/polly/conversation/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }, true);
+  if (!result.ok && !result.isConnectionError) {
+    console.warn("[ConversationSync] Backend sync failed:", result.error);
   }
 }
 
@@ -183,16 +216,52 @@ async function safeFetch(url, options = {}, silent = false) {
  * @param {string} context - Context name for logging
  * @returns {Function} Wrapped function
  */
-function withErrorBoundary(fn, context = 'Unknown') {
-  return async function(...args) {
+function withErrorBoundary(fn, context = "Unknown") {
+  return async function (...args) {
     try {
       return await fn.apply(this, args);
     } catch (error) {
       console.error(`[ErrorBoundary:${context}] Caught error:`, error);
-      showToast(`Error in ${context}: ${error.message}`, 'error');
+      showToast(`Error in ${context}: ${error.message}`, "error");
       return null;
     }
   };
+}
+
+const API_HEALTH_URL = "http://127.0.0.1:11436/health";
+
+/**
+ * Wait for the backend server to be reachable (e.g. after Electron has started it).
+ * Polls /health until 200 or timeout. Reduces connection-refused noise during startup.
+ * @param {{ timeoutMs?: number, intervalMs?: number }} options
+ * @returns {Promise<boolean>} true if server responded, false on timeout
+ */
+function waitForServerReady(options = {}) {
+  const timeoutMs = options.timeoutMs ?? 30000;
+  const intervalMs = options.intervalMs ?? 500;
+  const start = Date.now();
+  return new Promise((resolve) => {
+    const tryOnce = () => {
+      fetch(API_HEALTH_URL, { method: "GET" })
+        .then((r) => {
+          if (r.ok) {
+            resolve(true);
+            return;
+          }
+          schedule();
+        })
+        .catch(() => schedule());
+
+      function schedule() {
+        if (Date.now() - start >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+        setTimeout(tryOnce, intervalMs);
+      }
+    };
+    tryOnce();
+  });
 }
 
 /**
@@ -201,42 +270,42 @@ function withErrorBoundary(fn, context = 'Unknown') {
  */
 async function checkPollyInitStatus() {
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/status', {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
+    const response = await fetch("http://127.0.0.1:11436/polly/status", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
     });
-    
+
     if (!response.ok) {
-      console.warn('[Init] Polly status check failed:', response.status);
+      console.warn("[Init] Polly status check failed:", response.status);
       return;
     }
-    
+
     const data = await response.json();
-    
-    const overlay = document.getElementById('polly-init-overlay');
-    const statusText = document.getElementById('init-status-text');
-    
+
+    const overlay = document.getElementById("polly-init-overlay");
+    const statusText = document.getElementById("init-status-text");
+
     if (!overlay) return;
-    
+
     if (data.initializing) {
       // Polly is still initializing
-      overlay.classList.remove('hidden');
-      statusText.textContent = 'Loading AI models...';
-    } else if (data.status === 'ready') {
+      overlay.classList.remove("hidden");
+      statusText.textContent = "Loading AI models...";
+    } else if (data.status === "ready") {
       // Polly is ready - hide overlay
-      overlay.classList.add('hidden');
-      console.log('[Init] Polly initialization complete');
-      
+      overlay.classList.add("hidden");
+      console.log("[Init] Polly initialization complete");
+
       // Stop polling
       if (window.pollyStatusInterval) {
         clearInterval(window.pollyStatusInterval);
         window.pollyStatusInterval = null;
       }
-    } else if (data.status === 'error') {
+    } else if (data.status === "error") {
       // Initialization failed
-      overlay.classList.add('hidden');
-      console.error('[Init] Polly initialization failed:', data.message);
-      
+      overlay.classList.add("hidden");
+      console.error("[Init] Polly initialization failed:", data.message);
+
       // Stop polling
       if (window.pollyStatusInterval) {
         clearInterval(window.pollyStatusInterval);
@@ -245,7 +314,10 @@ async function checkPollyInitStatus() {
     }
   } catch (error) {
     // Network error or server not ready yet - this is expected on startup
-    console.debug('[Init] Polly status check error (expected during startup):', error.message);
+    console.debug(
+      "[Init] Polly status check error (expected during startup):",
+      error.message,
+    );
   }
 }
 
@@ -254,168 +326,206 @@ async function checkPollyInitStatus() {
  * Polls every 500ms for first 10 seconds
  */
 function startPollyStatusPolling() {
-  console.log('[Init] Starting Polly status polling...');
-  
+  console.log("[Init] Starting Polly status polling...");
+
   // Check immediately
   checkPollyInitStatus();
-  
+
   // Poll every 500ms
   window.pollyStatusInterval = setInterval(checkPollyInitStatus, 500);
-  
+
   // Stop polling after 10 seconds (initialization should be done by then)
   setTimeout(() => {
     if (window.pollyStatusInterval) {
-      console.log('[Init] Stopping Polly status polling (timeout)');
+      console.log("[Init] Stopping Polly status polling (timeout)");
       clearInterval(window.pollyStatusInterval);
       window.pollyStatusInterval = null;
-      
+
       // Force hide overlay after timeout
-      const overlay = document.getElementById('polly-init-overlay');
+      const overlay = document.getElementById("polly-init-overlay");
       if (overlay) {
-        overlay.classList.add('hidden');
+        overlay.classList.add("hidden");
       }
     }
   }, 10000);
 }
 
 // DOM Ready
-document.addEventListener('DOMContentLoaded', async () => {
-  console.log('[Init] DOM loaded, starting initialization...');
+document.addEventListener("DOMContentLoaded", async () => {
+  console.log("[Init] DOM loaded, starting initialization...");
   try {
     await initialize();
-    console.log('[Init] Initialize complete, setting up event listeners...');
+    console.log("[Init] Initialize complete, setting up event listeners...");
     setupEventListeners();
-    console.log('[Init] Event listeners setup complete');
+    console.log("[Init] Event listeners setup complete");
   } catch (error) {
-    console.error('[Init] Error during initialization:', error);
+    console.error("[Init] Error during initialization:", error);
   }
   // Populate model selector dropdowns (all providers: Anthropic, OpenAI, GitHub, Grok, Perplexity, Gemini, Mistral, OpenRouter)
   populateModelSelectors();
   // Initialize Lucide icons
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     lucide.createIcons();
   }
-  
+
+  // Initialize Mental Models Editor (after server is ready, to avoid connection-refused noise)
+  if (typeof MentalModelsEditor !== "undefined") {
+    MentalModelsEditor.init();
+  }
+
   // Initialize Template Gallery (Phase 16e)
-  if (typeof TemplateGallery !== 'undefined') {
-    console.log('[Init] Initializing TemplateGallery...');
+  if (typeof TemplateGallery !== "undefined") {
+    console.log("[Init] Initializing TemplateGallery...");
     await TemplateGallery.init();
     // Make globally available
     window.TemplateGallery = TemplateGallery;
-    console.log('[Init] TemplateGallery initialized');
+    console.log("[Init] TemplateGallery initialized");
   }
-  
+
   // Initialize Question Form (Phase 16c)
-  if (typeof QuestionForm !== 'undefined') {
-    console.log('[Init] Initializing QuestionForm...');
+  if (typeof QuestionForm !== "undefined") {
+    console.log("[Init] Initializing QuestionForm...");
     QuestionForm.init();
     // Make globally available
     window.QuestionForm = QuestionForm;
-    console.log('[Init] QuestionForm initialized');
+    console.log("[Init] QuestionForm initialized");
   }
-  
+
   // Initialize Preview Modal (Phase 16c/16e)
-  if (typeof PreviewModal !== 'undefined') {
-    console.log('[Init] Initializing PreviewModal...');
+  if (typeof PreviewModal !== "undefined") {
+    console.log("[Init] Initializing PreviewModal...");
     PreviewModal.init();
     // Make globally available
     window.PreviewModal = PreviewModal;
-    console.log('[Init] PreviewModal initialized');
+    console.log("[Init] PreviewModal initialized");
   }
-  
+
   // Start polling Polly initialization status
   startPollyStatusPolling();
-  
+
   // DEBUG: Check chat input visibility
-  console.log('=== Chat Input Debug ===');
-  const queryInput = document.getElementById('query-input');
-  const chatInputContainer = document.querySelector('.chat-input-container');
-  const rightSidebar = document.querySelector('.right-sidebar');
-  const layout = document.querySelector('.three-column-layout');
-  
-  console.log('query-input element:', queryInput);
-  console.log('chat-input-container:', chatInputContainer);
-  console.log('right-sidebar:', rightSidebar);
-  console.log('layout classes:', layout?.classList.toString());
-  
+  console.log("=== Chat Input Debug ===");
+  const queryInput = document.getElementById("query-input");
+  const chatInputContainer = document.querySelector(".chat-input-container");
+  const rightSidebar = document.querySelector(".right-sidebar");
+  const layout = document.querySelector(".three-column-layout");
+
+  console.log("query-input element:", queryInput);
+  console.log("chat-input-container:", chatInputContainer);
+  console.log("right-sidebar:", rightSidebar);
+  console.log("layout classes:", layout?.classList.toString());
+
   if (queryInput) {
     const styles = window.getComputedStyle(queryInput);
-    console.log('query-input display:', styles.display);
-    console.log('query-input visibility:', styles.visibility);
-    console.log('query-input opacity:', styles.opacity);
-    console.log('query-input parent display:', window.getComputedStyle(queryInput.parentElement).display);
+    console.log("query-input display:", styles.display);
+    console.log("query-input visibility:", styles.visibility);
+    console.log("query-input opacity:", styles.opacity);
+    console.log(
+      "query-input parent display:",
+      window.getComputedStyle(queryInput.parentElement).display,
+    );
   }
-  
+
   if (rightSidebar) {
     const styles = window.getComputedStyle(rightSidebar);
-    console.log('right-sidebar display:', styles.display);
-    console.log('right-sidebar opacity:', styles.opacity);
-    console.log('right-sidebar transform:', styles.transform);
+    console.log("right-sidebar display:", styles.display);
+    console.log("right-sidebar opacity:", styles.opacity);
+    console.log("right-sidebar transform:", styles.transform);
   }
-  console.log('======================');
+  console.log("======================");
 });
 
 /**
  * Initialize the app
  */
-const initialize = withErrorBoundary(async function() {
-  console.log('[Init] Waiting for Polly IPC bridge...');
-  
+const initialize = withErrorBoundary(async function () {
+  console.log("[Init] Waiting for Polly IPC bridge...");
+
   // DEBUG: Check if DOM elements exist
-  console.log('[Init DEBUG] Checking DOM elements...');
-  const centerContent = document.querySelector('.center-content');
-  const rightSidebar = document.querySelector('.right-sidebar');
-  const leftSidebar = document.querySelector('.left-sidebar');
-  console.log('[Init DEBUG] center-content exists:', !!centerContent, 'visible:', centerContent ? window.getComputedStyle(centerContent).display : 'N/A');
-  console.log('[Init DEBUG] right-sidebar exists:', !!rightSidebar, 'visible:', rightSidebar ? window.getComputedStyle(rightSidebar).display : 'N/A');
-  console.log('[Init DEBUG] left-sidebar exists:', !!leftSidebar, 'visible:', leftSidebar ? window.getComputedStyle(leftSidebar).display : 'N/A');
-  
+  console.log("[Init DEBUG] Checking DOM elements...");
+  const centerContent = document.querySelector(".center-content");
+  const rightSidebar = document.querySelector(".right-sidebar");
+  const leftSidebar = document.querySelector(".left-sidebar");
+  console.log(
+    "[Init DEBUG] center-content exists:",
+    !!centerContent,
+    "visible:",
+    centerContent ? window.getComputedStyle(centerContent).display : "N/A",
+  );
+  console.log(
+    "[Init DEBUG] right-sidebar exists:",
+    !!rightSidebar,
+    "visible:",
+    rightSidebar ? window.getComputedStyle(rightSidebar).display : "N/A",
+  );
+  console.log(
+    "[Init DEBUG] left-sidebar exists:",
+    !!leftSidebar,
+    "visible:",
+    leftSidebar ? window.getComputedStyle(leftSidebar).display : "N/A",
+  );
+
   const bridgeReady = await PollyBridge.waitForReady();
-  
+
   if (!bridgeReady) {
-    showToast('Failed to initialize Polly IPC bridge. Please restart the app.', 'error');
+    showToast(
+      "Failed to initialize Polly IPC bridge. Please restart the app.",
+      "error",
+    );
     return;
   }
-  
-  console.log('[Init] IPC bridge ready, starting initialization...');
-  
+
+  console.log("[Init] IPC bridge ready, starting initialization...");
+
   // Check if setup is complete
-  const setupComplete = await PollyBridge.safeCall('getStore', 'setupComplete');
+  const setupComplete = await PollyBridge.safeCall("getStore", "setupComplete");
 
   if (setupComplete) {
-    showView('dashboard');
-    
+    // Wait for backend to be reachable before any API calls (avoids connection-refused flood)
+    console.log("[Init] Waiting for backend server...");
+    const serverReady = await waitForServerReady();
+    if (serverReady) {
+      console.log("[Init] Backend server ready");
+    } else {
+      console.warn("[Init] Backend server not ready within timeout; continuing anyway");
+    }
+
+    showView("dashboard");
+
     // Check both services with retries (services might be starting)
     let attempts = 0;
     const maxAttempts = 10;
     const checkWithRetry = async () => {
       await checkServerStatus();
       await checkOllamaStatus();
-      
+
       if ((!isServerRunning || !isOllamaRunning) && attempts < maxAttempts) {
         attempts++;
         setTimeout(checkWithRetry, 1000);
       }
     };
     checkWithRetry();
-    
-    // Load stats after a brief delay to ensure server is ready
+
+    // Server already waited for above; load dashboard/knowledge soon
     setTimeout(async () => {
       await loadDashboardData();
       await loadKnowledgeData();
-    }, 5000); // Wait 5 seconds for server to be fully ready
+    }, 500);
   } else {
-    showView('setup');
+    showView("setup");
     await checkDependencies();
   }
 
   // Load saved paths
-  const vaultPath = await PollyBridge.safeCall('getStore', 'vaultPath');
-  const savedCodePaths = await PollyBridge.safeCall('getStore', 'codebasePaths');
+  const vaultPath = await PollyBridge.safeCall("getStore", "vaultPath");
+  const savedCodePaths = await PollyBridge.safeCall(
+    "getStore",
+    "codebasePaths",
+  );
 
   if (vaultPath) {
-    document.getElementById('vault-path').value = vaultPath;
-    document.getElementById('obsidian-path').textContent = vaultPath;
+    document.getElementById("vault-path").value = vaultPath;
+    document.getElementById("obsidian-path").textContent = vaultPath;
   }
 
   if (savedCodePaths && savedCodePaths.length) {
@@ -427,7 +537,7 @@ const initialize = withErrorBoundary(async function() {
   window.polly.onServerStatus((data) => {
     updateServerStatus(data.running);
   });
-  
+
   // Listen for Ollama status updates
   window.polly.onOllamaStatus((data) => {
     updateOllamaStatus(data.running);
@@ -437,20 +547,20 @@ const initialize = withErrorBoundary(async function() {
   setInterval(async () => {
     const result = await window.polly.getServerStatus();
     updateServerStatus(result.running);
-    
+
     const ollamaResult = await window.polly.getOllamaStatus();
     updateOllamaStatus(ollamaResult.running);
   }, 5000);
-  
+
   // Periodically save UI state (every 10 seconds if there's an active conversation)
   setInterval(() => {
     if (currentConversationId) {
       saveUIState();
     }
   }, 10000);
-  
+
   // Save UI state before window closes
-  window.addEventListener('beforeunload', () => {
+  window.addEventListener("beforeunload", () => {
     if (currentConversationId) {
       saveUIState();
     }
@@ -469,29 +579,32 @@ const initialize = withErrorBoundary(async function() {
   // Focus query input on shortcut
   window.polly.onFocusQuery(() => {
     // Just focus the chat input in the right sidebar (no need to change view)
-    document.getElementById('query-input').focus();
+    document.getElementById("query-input").focus();
   });
-  
+
   // Initialize conversations (after setup is complete)
   if (setupComplete) {
     // Load preserved UI state before initializing
     loadPreservedUIState();
-    
+
     try {
       await initializeConversations();
     } catch (error) {
-      console.error('[Init] Failed to initialize conversations, but continuing:', error);
+      console.error(
+        "[Init] Failed to initialize conversations, but continuing:",
+        error,
+      );
       // Continue anyway - we'll create a conversation when user first sends a message
     }
-    
+
     // Restore persona state if there's an active persona
     try {
       await restorePersonaState();
     } catch (error) {
-      console.error('[Init] Failed to restore persona state:', error);
+      console.error("[Init] Failed to restore persona state:", error);
     }
   }
-}, 'initialize');
+}, "initialize");
 
 // ============================================
 // Conversation Management Functions
@@ -504,43 +617,48 @@ async function initializeConversations() {
   try {
     // Check ConversationManager status
     const status = await window.polly.conversationManagerStatus();
-    console.log('ConversationManager status:', status);
-    
+    console.log("ConversationManager status:", status);
+
     if (!status.initialized) {
-      throw new Error('ConversationManager not initialized: ' + status.error);
+      throw new Error("ConversationManager not initialized: " + status.error);
     }
-    
+
     // Load categories
     categories = await window.polly.categoryList();
-    
+
     // Check if we need to migrate old data
-    const oldHistory = localStorage.getItem('conversationHistory');
+    const oldHistory = localStorage.getItem("conversationHistory");
     if (oldHistory) {
       needsMigration = true;
       await migrateOldConversation(JSON.parse(oldHistory));
-      localStorage.removeItem('conversationHistory');
+      localStorage.removeItem("conversationHistory");
     }
-    
+
     // Load all conversations
     conversations = await window.polly.conversationList();
-    
+
     // Determine which conversation to load
     let targetConversationId = null;
-    
+
     // First priority: preserved UI state (from previous session)
     if (preservedUIState.conversationId) {
-      const exists = conversations.find(c => c.id === preservedUIState.conversationId);
+      const exists = conversations.find(
+        (c) => c.id === preservedUIState.conversationId,
+      );
       if (exists) {
         targetConversationId = preservedUIState.conversationId;
-        console.log('[Init] Restoring conversation from preserved state:', targetConversationId);
+        console.log(
+          "[Init] Restoring conversation from preserved state:",
+          targetConversationId,
+        );
       }
     }
-    
+
     // Second priority: most recent conversation
     if (!targetConversationId && conversations.length > 0) {
       targetConversationId = conversations[0].id;
     }
-    
+
     // If no conversations exist, create a new one
     if (!targetConversationId) {
       await createNewConversation();
@@ -548,13 +666,13 @@ async function initializeConversations() {
       // Load the target conversation (will restore scroll position if preserved)
       await switchToConversation(targetConversationId, { restoreScroll: true });
     }
-    
+
     // Render the conversation list
     renderConversationList();
-    
-    console.log('Conversations initialized:', conversations.length);
+
+    console.log("Conversations initialized:", conversations.length);
   } catch (error) {
-    console.error('Failed to initialize conversations:', error);
+    console.error("Failed to initialize conversations:", error);
     // Create a fallback conversation
     await createNewConversation();
     renderConversationList();
@@ -564,22 +682,25 @@ async function initializeConversations() {
 /**
  * Create a new conversation
  */
-async function createNewConversation(title = 'New Conversation', categoryId = 'uncategorized') {
+async function createNewConversation(
+  title = "New Conversation",
+  categoryId = "uncategorized",
+) {
   try {
     const conversation = await window.polly.conversationCreate({
       title,
-      category_id: categoryId
+      category_id: categoryId,
     });
-    
+
     // Add to list
     conversations.unshift(conversation);
-    
+
     // Switch to it
     await switchToConversation(conversation.id);
-    
+
     return conversation;
   } catch (error) {
-    console.error('Failed to create conversation:', error);
+    console.error("Failed to create conversation:", error);
     throw error;
   }
 }
@@ -590,64 +711,75 @@ async function createNewConversation(title = 'New Conversation', categoryId = 'u
 async function switchToConversation(conversationId, options = {}) {
   try {
     const { restoreScroll = false } = options;
-    
+
     // Save current scroll position before switching
     if (currentConversationId) {
       saveUIState();
     }
-    
+
     // Check if we're already viewing this conversation (reload scenario)
     const isSameConversation = currentConversationId === conversationId;
-    
+
     // Load conversation with messages
     currentConversation = await window.polly.conversationGet(conversationId);
     currentConversationId = conversationId;
-    
+
+    // Sync to Python backend so compression/learning use same history (integration-contracts)
+    const messages = currentConversation?.messages || [];
+    await syncConversationToBackend(messages.slice(-50), conversationId);
+
     // Only clear and re-render if switching to a different conversation
     // or if there are no messages in the UI
-    const container = document.getElementById('chat-messages');
+    const container = document.getElementById("chat-messages");
     const hasMessagesInUI = container && container.children.length > 0;
-    
+
     if (!isSameConversation || !hasMessagesInUI) {
       // Clear chat and render messages
       clearChat();
       renderConversationMessages();
     } else {
-      console.log('[Switch] Same conversation reload, skipping clear/re-render');
+      console.log(
+        "[Switch] Same conversation reload, skipping clear/re-render",
+      );
     }
-    
+
     // Restore scroll position if requested and available
     if (restoreScroll && preservedUIState.scrollPosition > 0) {
       setTimeout(() => {
         if (container) {
           container.scrollTop = preservedUIState.scrollPosition;
-          console.log('[Switch] Restored scroll position:', preservedUIState.scrollPosition);
+          console.log(
+            "[Switch] Restored scroll position:",
+            preservedUIState.scrollPosition,
+          );
         }
       }, 100); // Small delay to ensure DOM is ready
     }
-    
+
     // Update conversation list to show active state
-    renderConversationList(document.getElementById('conversations-search-input')?.value || '');
-    
+    renderConversationList(
+      document.getElementById("conversations-search-input")?.value || "",
+    );
+
     // Update active chat title and page indicator in sidebar
-    const activeChatTitle = document.getElementById('active-chat-title');
-    const activeChatPage = document.getElementById('active-chat-page');
-    
+    const activeChatTitle = document.getElementById("active-chat-title");
+    const activeChatPage = document.getElementById("active-chat-page");
+
     if (activeChatTitle && currentConversation) {
       activeChatTitle.textContent = currentConversation.title;
-      
+
       if (activeChatPage && currentConversation.page_context) {
         activeChatPage.textContent = `(${getPageName(currentConversation.page_context)})`;
-        activeChatPage.style.display = 'inline';
+        activeChatPage.style.display = "inline";
       } else if (activeChatPage) {
-        activeChatPage.textContent = '';
-        activeChatPage.style.display = 'none';
+        activeChatPage.textContent = "";
+        activeChatPage.style.display = "none";
       }
     }
-    
-    console.log('Switched to conversation:', conversationId);
+
+    console.log("Switched to conversation:", conversationId);
   } catch (error) {
-    console.error('Failed to switch conversation:', error);
+    console.error("Failed to switch conversation:", error);
   }
 }
 
@@ -655,9 +787,9 @@ async function switchToConversation(conversationId, options = {}) {
  * Clear chat messages from UI
  */
 function clearChat() {
-  const container = document.getElementById('chat-messages');
+  const container = document.getElementById("chat-messages");
   if (container) {
-    container.innerHTML = '';
+    container.innerHTML = "";
   }
 }
 
@@ -668,10 +800,11 @@ function renderConversationMessages() {
   if (!currentConversation || !currentConversation.messages) {
     return;
   }
-  
-  currentConversation.messages.forEach(msg => {
-    if (msg.role !== 'system') {
-      const formattedContent = msg.role === 'assistant' ? formatResponse(msg.content) : msg.content;
+
+  currentConversation.messages.forEach((msg) => {
+    if (msg.role !== "system") {
+      const formattedContent =
+        msg.role === "assistant" ? formatResponse(msg.content) : msg.content;
       addMessageToUI(msg.role, formattedContent);
     }
   });
@@ -697,27 +830,32 @@ async function addMessageToConversation(role, content) {
     const message = await window.polly.messageAdd(
       currentConversationId,
       role,
-      content
+      content,
     );
-    
+
     // Add to local conversation object
     if (!currentConversation.messages) {
       currentConversation.messages = [];
     }
     currentConversation.messages.push(message);
     currentConversation.message_count++;
-    
+
     // Check if needs auto-titling (after 3 messages)
-    if (currentConversation.message_count >= 3 && !currentConversation.auto_titled) {
-      const needsTitle = await window.polly.conversationNeedsTitle(currentConversationId);
+    if (
+      currentConversation.message_count >= 3 &&
+      !currentConversation.auto_titled
+    ) {
+      const needsTitle = await window.polly.conversationNeedsTitle(
+        currentConversationId,
+      );
       if (needsTitle) {
         await generateConversationTitle();
       }
     }
-    
+
     return message;
   } catch (error) {
-    console.error('Failed to add message:', error);
+    console.error("Failed to add message:", error);
     throw error;
   }
 }
@@ -726,19 +864,19 @@ async function addMessageToConversation(role, content) {
  * Save UI state to localStorage for smooth reloads
  */
 function saveUIState() {
-  const container = document.getElementById('chat-messages');
+  const container = document.getElementById("chat-messages");
   const state = {
     conversationId: currentConversationId,
     scrollPosition: container ? container.scrollTop : 0,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   };
-  
+
   try {
-    localStorage.setItem('polly-ui-state', JSON.stringify(state));
+    localStorage.setItem("polly-ui-state", JSON.stringify(state));
     preservedUIState = state;
-    console.log('[UI State] Saved:', state);
+    console.log("[UI State] Saved:", state);
   } catch (error) {
-    console.error('[UI State] Failed to save:', error);
+    console.error("[UI State] Failed to save:", error);
   }
 }
 
@@ -747,22 +885,23 @@ function saveUIState() {
  */
 function loadPreservedUIState() {
   try {
-    const saved = localStorage.getItem('polly-ui-state');
+    const saved = localStorage.getItem("polly-ui-state");
     if (saved) {
       const state = JSON.parse(saved);
-      
+
       // Only use state if less than 1 hour old (prevent stale state)
       const age = Date.now() - (state.timestamp || 0);
-      if (age < 3600000) { // 1 hour
+      if (age < 3600000) {
+        // 1 hour
         preservedUIState = state;
-        console.log('[UI State] Loaded:', state);
+        console.log("[UI State] Loaded:", state);
       } else {
-        console.log('[UI State] Discarded stale state (age:', age, 'ms)');
-        localStorage.removeItem('polly-ui-state');
+        console.log("[UI State] Discarded stale state (age:", age, "ms)");
+        localStorage.removeItem("polly-ui-state");
       }
     }
   } catch (error) {
-    console.error('[UI State] Failed to load:', error);
+    console.error("[UI State] Failed to load:", error);
   }
 }
 
@@ -773,9 +912,9 @@ function clearPreservedUIState() {
   preservedUIState = {
     conversationId: null,
     scrollPosition: 0,
-    timestamp: null
+    timestamp: null,
   };
-  localStorage.removeItem('polly-ui-state');
+  localStorage.removeItem("polly-ui-state");
 }
 
 /**
@@ -785,27 +924,27 @@ async function generateConversationTitle() {
   try {
     // Get first few messages for context
     const messages = currentConversation.messages.slice(0, 4);
-    const context = messages.map(m => `${m.role}: ${m.content}`).join('\n');
-    
+    const context = messages.map((m) => `${m.role}: ${m.content}`).join("\n");
+
     // Use the query endpoint to generate a title
     const prompt = `Based on this conversation, generate a short, descriptive title (max 50 characters):\n\n${context}\n\nTitle:`;
-    const result = await window.polly.query(prompt, { mode: 'auto' });
-    
+    const result = await window.polly.query(prompt, { mode: "auto" });
+
     if (result.success) {
       let title = result.result.response.trim();
       // Clean up the title
-      title = title.replace(/^["']|["']$/g, ''); // Remove quotes
+      title = title.replace(/^["']|["']$/g, ""); // Remove quotes
       title = title.substring(0, 60); // Limit length
-      
+
       // Update in database
       await window.polly.conversationSetTitle(currentConversationId, title);
       currentConversation.title = title;
       currentConversation.auto_titled = true;
-      
-      console.log('Generated title:', title);
+
+      console.log("Generated title:", title);
     }
   } catch (error) {
-    console.error('Failed to generate title:', error);
+    console.error("Failed to generate title:", error);
   }
 }
 
@@ -818,19 +957,19 @@ async function generateConversationTitle() {
 async function createNewConversation(options = {}) {
   try {
     const conversation = await window.polly.conversationCreate({
-      title: 'New conversation',
-      page_context: options.page_context || currentPage,  // Pass current page as context
-      category_id: null
+      title: "New conversation",
+      page_context: options.page_context || currentPage, // Pass current page as context
+      category_id: null,
     });
-    
+
     conversations.unshift(conversation);
-    
+
     // Switch to the new conversation
     await switchToConversation(conversation.id);
-    
+
     return conversation;
   } catch (error) {
-    console.error('Failed to create conversation:', error);
+    console.error("Failed to create conversation:", error);
     throw error;
   }
 }
@@ -839,65 +978,68 @@ async function createNewConversation(options = {}) {
  * Setup settings tabs
  */
 function setupSettingsTabs() {
-  const tabButtons = document.querySelectorAll('.settings-tab-btn');
-  const tabContents = document.querySelectorAll('.settings-tab-content');
+  const tabButtons = document.querySelectorAll(".settings-tab-btn");
+  const tabContents = document.querySelectorAll(".settings-tab-content");
 
-  tabButtons.forEach(button => {
-    button.addEventListener('click', () => {
+  tabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
       const targetTab = button.dataset.tab;
-      
+
       // Update button states
-      tabButtons.forEach(btn => btn.classList.remove('active'));
-      button.classList.add('active');
-      
+      tabButtons.forEach((btn) => btn.classList.remove("active"));
+      button.classList.add("active");
+
       // Update content visibility
-      tabContents.forEach(content => {
+      tabContents.forEach((content) => {
         if (content.id === `tab-${targetTab}`) {
-          content.classList.remove('hidden');
+          content.classList.remove("hidden");
         } else {
-          content.classList.add('hidden');
+          content.classList.add("hidden");
         }
       });
-      
+
       // Load domains config when switching to domains tab
-      if (targetTab === 'domains') {
+      if (targetTab === "domains") {
         loadDomainsConfig();
       }
-      
+
       // Load routing settings when switching to routing tab
-      if (targetTab === 'routing') {
+      if (targetTab === "routing") {
         loadRoutingSettings();
         loadRoutingStats();
       }
-      
+
       // Load compression settings when switching to compression tab
-      if (targetTab === 'compression') {
+      if (targetTab === "compression") {
         loadCompressionSettings();
         loadCompressionStats();
       }
-      
+
       // Load mental models when switching to mental models tab (Phase 14)
-      if (targetTab === 'mental-models') {
+      if (targetTab === "mental-models") {
         loadMentalModels();
         refreshMentalModelsStats();
       }
-      
+
       // Load dedup settings when switching to advanced tab (Phase 21)
-      if (targetTab === 'advanced') {
+      if (targetTab === "advanced") {
         loadDedupSettings();
       }
-      
+
       // Load API keys when switching to api-keys tab
-      if (targetTab === 'api-keys') {
-        console.log('[Settings Tab] Switched to API Keys tab');
-        console.log('[Settings Tab] loadAPIKeys type:', typeof loadAPIKeys);
-        console.log('[Settings Tab] loadBudgetStatus type:', typeof loadBudgetStatus);
-        if (typeof loadAPIKeys === 'function') {
-          console.log('[Settings Tab] Calling loadAPIKeys()');
+      if (targetTab === "api-keys") {
+        console.log("[Settings Tab] Switched to API Keys tab");
+        console.log("[Settings Tab] loadAPIKeys type:", typeof loadAPIKeys);
+        console.log(
+          "[Settings Tab] loadBudgetStatus type:",
+          typeof loadBudgetStatus,
+        );
+        if (typeof loadAPIKeys === "function") {
+          console.log("[Settings Tab] Calling loadAPIKeys()");
           loadAPIKeys();
         }
-        if (typeof loadBudgetStatus === 'function') {
-          console.log('[Settings Tab] Calling loadBudgetStatus()');
+        if (typeof loadBudgetStatus === "function") {
+          console.log("[Settings Tab] Calling loadBudgetStatus()");
           loadBudgetStatus();
         }
       }
@@ -912,14 +1054,14 @@ function setupSettingsTabs() {
 /**
  * Render the conversation list in the sidebar
  */
-function renderConversationList(searchQuery = '') {
-  const listEl = document.getElementById('conversations-list');
-  
+function renderConversationList(searchQuery = "") {
+  const listEl = document.getElementById("conversations-list");
+
   // Check if element exists (it may not exist on all views)
   if (!listEl) {
     return; // Silently return - this is expected on views without conversation list
   }
-  
+
   if (!conversations || conversations.length === 0) {
     listEl.innerHTML = `
       <div class="conversations-empty">
@@ -928,55 +1070,55 @@ function renderConversationList(searchQuery = '') {
         <p style="margin-top: 8px;">Click "New Chat" to start</p>
       </div>
     `;
-    if (typeof lucide !== 'undefined') {
+    if (typeof lucide !== "undefined") {
       setTimeout(() => lucide.createIcons(), 0);
     }
     return;
   }
-  
+
   // Get page filter value
-  const pageFilter = document.getElementById('page-filter')?.value || 'all';
-  
+  const pageFilter = document.getElementById("page-filter")?.value || "all";
+
   // Filter conversations by page context
   let filteredConvs = conversations;
-  if (pageFilter === 'current') {
-    filteredConvs = filteredConvs.filter(c => c.page_context === currentPage);
-  } else if (pageFilter && pageFilter !== 'all' && pageFilter !== '') {
-    filteredConvs = filteredConvs.filter(c => c.page_context === pageFilter);
+  if (pageFilter === "current") {
+    filteredConvs = filteredConvs.filter((c) => c.page_context === currentPage);
+  } else if (pageFilter && pageFilter !== "all" && pageFilter !== "") {
+    filteredConvs = filteredConvs.filter((c) => c.page_context === pageFilter);
   }
-  
+
   // Filter by search query
   if (searchQuery) {
-    filteredConvs = filteredConvs.filter(c => 
-      c.title.toLowerCase().includes(searchQuery.toLowerCase())
+    filteredConvs = filteredConvs.filter((c) =>
+      c.title.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }
-  
+
   // Group by category
   const grouped = {};
-  filteredConvs.forEach(conv => {
-    const catId = conv.category_id || 'uncategorized';
+  filteredConvs.forEach((conv) => {
+    const catId = conv.category_id || "uncategorized";
     if (!grouped[catId]) {
       grouped[catId] = [];
     }
     grouped[catId].push(conv);
   });
-  
+
   // Render groups
-  listEl.innerHTML = '';
-  
+  listEl.innerHTML = "";
+
   Object.entries(grouped).forEach(([catId, convs]) => {
-    const category = categories.find(c => c.id === catId) || {
-      id: 'uncategorized',
-      name: 'Uncategorized',
-      icon: 'message-square',
-      color: '#CCCCCC'
+    const category = categories.find((c) => c.id === catId) || {
+      id: "uncategorized",
+      name: "Uncategorized",
+      icon: "message-square",
+      color: "#CCCCCC",
     };
-    
-    const groupEl = document.createElement('div');
-    groupEl.className = 'conversation-category';
+
+    const groupEl = document.createElement("div");
+    groupEl.className = "conversation-category";
     groupEl.dataset.category = catId;
-    
+
     groupEl.innerHTML = `
       <div class="category-header">
         <div class="category-name">
@@ -987,47 +1129,47 @@ function renderConversationList(searchQuery = '') {
         <i data-lucide="chevron-down" class="category-toggle"></i>
       </div>
       <div class="category-conversations">
-        ${convs.map(conv => createConversationItemHTML(conv)).join('')}
+        ${convs.map((conv) => createConversationItemHTML(conv)).join("")}
       </div>
     `;
-    
+
     listEl.appendChild(groupEl);
-    
+
     // Add category toggle listener
-    const header = groupEl.querySelector('.category-header');
-    header.addEventListener('click', () => toggleCategory(catId));
+    const header = groupEl.querySelector(".category-header");
+    header.addEventListener("click", () => toggleCategory(catId));
   });
-  
+
   // Add conversation click listeners
-  listEl.querySelectorAll('.conversation-item').forEach(item => {
+  listEl.querySelectorAll(".conversation-item").forEach((item) => {
     const convId = item.dataset.id;
-    
-    item.addEventListener('click', async (e) => {
-      if (!e.target.closest('.conversation-menu-btn')) {
+
+    item.addEventListener("click", async (e) => {
+      if (!e.target.closest(".conversation-menu-btn")) {
         // Switch to conversation (displays in sidebar automatically)
         await switchToConversation(convId);
       }
     });
-    
+
     // Context menu
-    item.addEventListener('contextmenu', (e) => {
+    item.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       showConversationContextMenu(convId, e.clientX, e.clientY);
     });
-    
+
     // Menu button
-    const menuBtn = item.querySelector('.conversation-menu-btn');
+    const menuBtn = item.querySelector(".conversation-menu-btn");
     if (menuBtn) {
-      menuBtn.addEventListener('click', (e) => {
+      menuBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         const rect = menuBtn.getBoundingClientRect();
         showConversationContextMenu(convId, rect.right, rect.bottom);
       });
     }
   });
-  
+
   // Re-initialize icons
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     setTimeout(() => lucide.createIcons(), 0);
   }
 }
@@ -1037,14 +1179,14 @@ function renderConversationList(searchQuery = '') {
  */
 function getPageIcon(pageContext) {
   const pageIcons = {
-    'dashboard': '<i data-lucide="home"></i>',
-    'knowledge': '<i data-lucide="network"></i>',
-    'notes': '<i data-lucide="file-text"></i>',
-    'learning': '<i data-lucide="brain"></i>',
-    'search': '<i data-lucide="search"></i>',
-    'patterns': '<i data-lucide="shapes"></i>',
-    'domains': '<i data-lucide="globe"></i>',
-    'settings': '<i data-lucide="settings"></i>'
+    dashboard: '<i data-lucide="home"></i>',
+    knowledge: '<i data-lucide="network"></i>',
+    notes: '<i data-lucide="file-text"></i>',
+    learning: '<i data-lucide="brain"></i>',
+    search: '<i data-lucide="search"></i>',
+    patterns: '<i data-lucide="shapes"></i>',
+    domains: '<i data-lucide="globe"></i>',
+    settings: '<i data-lucide="settings"></i>',
   };
   return pageIcons[pageContext] || '<i data-lucide="message-circle"></i>';
 }
@@ -1059,8 +1201,8 @@ function formatRelativeTime(timestamp) {
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
-  
-  if (diffMins < 1) return 'now';
+
+  if (diffMins < 1) return "now";
   if (diffMins < 60) return `${diffMins}m`;
   if (diffHours < 24) return `${diffHours}h`;
   if (diffDays < 30) return `${diffDays}d`;
@@ -1072,20 +1214,20 @@ function formatRelativeTime(timestamp) {
  */
 function getPageName(pageContext) {
   const pageNames = {
-    'dashboard': 'Dashboard',
-    'calendar': 'Calendar',
-    'mail': 'Mail',
-    'code': 'Code',
-    'projects': 'Projects',
-    'knowledge': 'Knowledge',
-    'notes': 'Notes',
-    'learning': 'Learning',
-    'search': 'Search',
-    'patterns': 'Patterns',
-    'domains': 'Domains',
-    'settings': 'Settings'
+    dashboard: "Dashboard",
+    calendar: "Calendar",
+    mail: "Mail",
+    code: "Code",
+    projects: "Projects",
+    knowledge: "Knowledge",
+    notes: "Notes",
+    learning: "Learning",
+    search: "Search",
+    patterns: "Patterns",
+    domains: "Domains",
+    settings: "Settings",
   };
-  return pageNames[pageContext] || 'Global';
+  return pageNames[pageContext] || "Global";
 }
 
 /**
@@ -1094,18 +1236,19 @@ function getPageName(pageContext) {
 function createConversationItemHTML(conv) {
   const isActive = conv.id === currentConversationId;
   const date = formatConversationDate(conv.updated_at);
-  const starred = conv.is_starred ? ' starred' : '';
-  
+  const starred = conv.is_starred ? " starred" : "";
+
   // Check if conversation has mental models override
   const hasOverride = getMentalModelsOverride(conv.id) !== null;
-  const overrideClass = hasOverride ? ' has-override' : '';
-  
+  const overrideClass = hasOverride ? " has-override" : "";
+
   // Generate page badge if page_context exists
-  const pageBadge = conv.page_context ? 
-    `<span class="page-badge" data-page="${conv.page_context}">${getPageName(conv.page_context)}</span>` : '';
-  
+  const pageBadge = conv.page_context
+    ? `<span class="page-badge" data-page="${conv.page_context}">${getPageName(conv.page_context)}</span>`
+    : "";
+
   return `
-    <div class="conversation-item${isActive ? ' active' : ''}${starred}${overrideClass}" data-id="${conv.id}">
+    <div class="conversation-item${isActive ? " active" : ""}${starred}${overrideClass}" data-id="${conv.id}">
       <div class="conversation-header">
         <div class="conversation-title">${conv.title}</div>
         <button class="conversation-menu-btn">
@@ -1131,26 +1274,28 @@ function formatConversationDate(timestamp) {
   const date = new Date(timestamp);
   const now = new Date();
   const diff = now - date;
-  
+
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
-  
-  if (minutes < 1) return 'just now';
+
+  if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   if (days < 7) return `${days}d ago`;
-  
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 /**
  * Toggle category collapsed state
  */
 function toggleCategory(categoryId) {
-  const groupEl = document.querySelector(`.conversation-category[data-category="${categoryId}"]`);
+  const groupEl = document.querySelector(
+    `.conversation-category[data-category="${categoryId}"]`,
+  );
   if (groupEl) {
-    groupEl.classList.toggle('collapsed');
+    groupEl.classList.toggle("collapsed");
   }
 }
 
@@ -1158,82 +1303,85 @@ function toggleCategory(categoryId) {
  * Show context menu for conversation actions
  */
 function showConversationContextMenu(conversationId, x, y) {
-  const menu = document.getElementById('conversation-context-menu');
-  const conv = conversations.find(c => c.id === conversationId);
-  
+  const menu = document.getElementById("conversation-context-menu");
+  const conv = conversations.find((c) => c.id === conversationId);
+
   if (!conv || !menu) {
-    console.log('showConversationContextMenu: missing required elements', { conv: !!conv, menu: !!menu });
+    console.log("showConversationContextMenu: missing required elements", {
+      conv: !!conv,
+      menu: !!menu,
+    });
     return;
   }
-  
+
   // Update star button text if available
   const starBtn = menu.querySelector('[data-action="star"]');
   if (starBtn) {
     // Look for icon - could be <i> or <svg> after Lucide transformation
-    let starIcon = starBtn.querySelector('i');
+    let starIcon = starBtn.querySelector("i");
     if (!starIcon) {
-      starIcon = starBtn.querySelector('svg');
+      starIcon = starBtn.querySelector("svg");
     }
-    const starText = starBtn.querySelector('span');
-    
+    const starText = starBtn.querySelector("span");
+
     if (starText) {
       // Update the icon's data-lucide attribute (will be re-rendered by lucide.createIcons())
       if (starIcon) {
         if (conv.is_starred) {
-          starIcon.setAttribute('data-lucide', 'star-off');
-          starText.textContent = 'Unstar';
+          starIcon.setAttribute("data-lucide", "star-off");
+          starText.textContent = "Unstar";
         } else {
-          starIcon.setAttribute('data-lucide', 'star');
-          starText.textContent = 'Star';
+          starIcon.setAttribute("data-lucide", "star");
+          starText.textContent = "Star";
         }
       } else {
         // If no icon found, just update text
         if (conv.is_starred) {
-          starText.textContent = 'Unstar';
+          starText.textContent = "Unstar";
         } else {
-          starText.textContent = 'Star';
+          starText.textContent = "Star";
         }
       }
     }
   }
-  
+
   // Position and show menu
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
-  menu.classList.remove('hidden');
+  menu.classList.remove("hidden");
   menu.dataset.conversationId = conversationId;
-  
+
   // Adjust position if menu overflows viewport
   setTimeout(() => {
     const menuRect = menu.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    
+
     // If menu overflows right edge, position to the left of cursor
     if (menuRect.right > viewportWidth) {
       menu.style.left = `${Math.max(0, viewportWidth - menuRect.width - 10)}px`;
     }
-    
+
     // If menu overflows bottom edge, position above cursor
     if (menuRect.bottom > viewportHeight) {
       menu.style.top = `${Math.max(0, viewportHeight - menuRect.height - 10)}px`;
     }
   }, 0);
-  
+
   // Re-initialize icons
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     setTimeout(() => lucide.createIcons(), 0);
   }
-  
+
   // Close on click outside
   const closeMenu = (e) => {
     if (!menu.contains(e.target)) {
-      menu.classList.add('hidden');
-      document.removeEventListener('click', closeMenu);
+      menu.classList.add("hidden");
+      document.removeEventListener("click", closeMenu);
     }
   };
   setTimeout(() => {
-    document.addEventListener('click', closeMenu);
+    document.addEventListener("click", closeMenu);
   }, 0);
 }
 
@@ -1241,33 +1389,33 @@ function showConversationContextMenu(conversationId, x, y) {
  * Handle conversation context menu actions
  */
 async function handleConversationAction(action, conversationId) {
-  const conv = conversations.find(c => c.id === conversationId);
+  const conv = conversations.find((c) => c.id === conversationId);
   if (!conv) return;
-  
+
   try {
     switch (action) {
-      case 'rename':
+      case "rename":
         await renameConversation(conversationId);
         break;
-        
-      case 'star':
+
+      case "star":
         await toggleStarConversation(conversationId);
         break;
-        
-      case 'category':
+
+      case "category":
         await changeConversationCategory(conversationId);
         break;
-        
-      case 'mental-models':
+
+      case "mental-models":
         await openMentalModelsOverrideModal(conversationId);
         break;
-        
-      case 'delete':
+
+      case "delete":
         await deleteConversation(conversationId);
         break;
     }
   } catch (error) {
-    console.error('Failed to perform action:', error);
+    console.error("Failed to perform action:", error);
     alert(`Failed to ${action} conversation: ${error.message}`);
   }
 }
@@ -1276,77 +1424,79 @@ async function handleConversationAction(action, conversationId) {
  * Rename a conversation
  */
 async function renameConversation(conversationId) {
-  const conv = conversations.find(c => c.id === conversationId);
+  const conv = conversations.find((c) => c.id === conversationId);
   if (!conv) {
-    console.log('renameConversation: conversation not found', conversationId);
+    console.log("renameConversation: conversation not found", conversationId);
     return;
   }
-  
+
   // Show rename modal
-  const modal = document.getElementById('rename-modal');
-  const input = document.getElementById('rename-input');
-  
+  const modal = document.getElementById("rename-modal");
+  const input = document.getElementById("rename-input");
+
   // Set current title in input
   input.value = conv.title;
-  
+
   // Show modal
-  modal.classList.remove('hidden');
-  
+  modal.classList.remove("hidden");
+
   // Focus input and select text
   setTimeout(() => {
     input.focus();
     input.select();
   }, 100);
-  
+
   // Setup submit handler
   const submitRename = async () => {
     const newTitle = input.value.trim();
-    
+
     if (!newTitle || newTitle === conv.title) {
-      modal.classList.add('hidden');
+      modal.classList.add("hidden");
       return;
     }
-    
+
     try {
-      const updated = await window.polly.conversationUpdate(conversationId, { title: newTitle });
-      
+      const updated = await window.polly.conversationUpdate(conversationId, {
+        title: newTitle,
+      });
+
       // Update local state
-      const index = conversations.findIndex(c => c.id === conversationId);
+      const index = conversations.findIndex((c) => c.id === conversationId);
       if (index !== -1) {
         conversations[index] = { ...conversations[index], ...updated };
       }
-      
+
       if (currentConversationId === conversationId) {
         currentConversation.title = newTitle;
       }
-      
+
       renderConversationList();
-      modal.classList.add('hidden');
+      modal.classList.add("hidden");
     } catch (error) {
-      console.error('Failed to rename conversation:', error);
+      console.error("Failed to rename conversation:", error);
       alert(`Failed to rename conversation: ${error.message}`);
     }
   };
-  
+
   // Setup close handlers
   const closeModal = () => {
-    modal.classList.add('hidden');
+    modal.classList.add("hidden");
   };
-  
-  document.getElementById('close-rename-modal').onclick = closeModal;
-  document.getElementById('cancel-rename-modal').onclick = closeModal;
-  document.getElementById('submit-rename-modal').onclick = submitRename;
-  
+
+  document.getElementById("close-rename-modal").onclick = closeModal;
+  document.getElementById("cancel-rename-modal").onclick = closeModal;
+  document.getElementById("submit-rename-modal").onclick = submitRename;
+
   // Handle Enter key in input
   input.onkeydown = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       submitRename();
-    } else if (e.key === 'Escape') {
+    } else if (e.key === "Escape") {
       closeModal();
     }
   };
-  
+
   // Close on outside click
   modal.onclick = (e) => {
     if (e.target === modal) {
@@ -1360,17 +1510,17 @@ async function renameConversation(conversationId) {
  */
 async function toggleStarConversation(conversationId) {
   const updated = await window.polly.conversationStarToggle(conversationId);
-  
+
   // Update local state
-  const index = conversations.findIndex(c => c.id === conversationId);
+  const index = conversations.findIndex((c) => c.id === conversationId);
   if (index !== -1) {
     conversations[index] = { ...conversations[index], ...updated };
   }
-  
+
   if (currentConversationId === conversationId) {
     currentConversation.is_starred = updated.is_starred;
   }
-  
+
   renderConversationList();
 }
 
@@ -1378,86 +1528,89 @@ async function toggleStarConversation(conversationId) {
  * Change conversation category
  */
 async function changeConversationCategory(conversationId) {
-  const conv = conversations.find(c => c.id === conversationId);
+  const conv = conversations.find((c) => c.id === conversationId);
   if (!conv) {
-    console.log('changeConversationCategory: conversation not found', conversationId);
+    console.log(
+      "changeConversationCategory: conversation not found",
+      conversationId,
+    );
     return;
   }
-  
-  console.log('changeConversationCategory: categories =', categories);
-  
+
+  console.log("changeConversationCategory: categories =", categories);
+
   if (!categories || categories.length === 0) {
-    alert('No categories available. Please check if categories are loaded.');
+    alert("No categories available. Please check if categories are loaded.");
     return;
   }
-  
+
   // Show category selection modal
-  const modal = document.getElementById('category-modal');
-  const categoryList = document.getElementById('category-list');
-  
+  const modal = document.getElementById("category-modal");
+  const categoryList = document.getElementById("category-list");
+
   // Clear existing categories
-  categoryList.innerHTML = '';
-  
+  categoryList.innerHTML = "";
+
   // Create category selection UI
-  categories.forEach(cat => {
-    const item = document.createElement('div');
-    item.className = 'category-list-item';
+  categories.forEach((cat) => {
+    const item = document.createElement("div");
+    item.className = "category-list-item";
     if (cat.id === conv.category_id) {
-      item.classList.add('selected');
+      item.classList.add("selected");
     }
-    
+
     item.innerHTML = `
       <div class="category-icon">${cat.icon}</div>
       <div class="category-info">
         <div class="category-name">${cat.name}</div>
-        <div class="category-description">${cat.description || ''}</div>
+        <div class="category-description">${cat.description || ""}</div>
       </div>
     `;
-    
-    item.addEventListener('click', async () => {
+
+    item.addEventListener("click", async () => {
       try {
         // Update conversation category
-        const updated = await window.polly.conversationUpdate(conversationId, { 
-          category_id: cat.id 
+        const updated = await window.polly.conversationUpdate(conversationId, {
+          category_id: cat.id,
         });
-        
+
         // Update local state
-        const index = conversations.findIndex(c => c.id === conversationId);
+        const index = conversations.findIndex((c) => c.id === conversationId);
         if (index !== -1) {
           conversations[index] = { ...conversations[index], ...updated };
         }
-        
+
         if (currentConversationId === conversationId) {
           currentConversation.category_id = cat.id;
           currentConversation.category_name = cat.name;
         }
-        
+
         // Reload conversations to refresh grouping
         conversations = await window.polly.conversationList();
         renderConversationList();
-        
+
         // Close modal
-        modal.classList.add('hidden');
+        modal.classList.add("hidden");
       } catch (error) {
-        console.error('Failed to update category:', error);
+        console.error("Failed to update category:", error);
         alert(`Failed to update category: ${error.message}`);
       }
     });
-    
+
     categoryList.appendChild(item);
   });
-  
+
   // Show modal
-  modal.classList.remove('hidden');
-  
+  modal.classList.remove("hidden");
+
   // Setup close handlers
   const closeModal = () => {
-    modal.classList.add('hidden');
+    modal.classList.add("hidden");
   };
-  
-  document.getElementById('close-category-modal').onclick = closeModal;
-  document.getElementById('cancel-category-modal').onclick = closeModal;
-  
+
+  document.getElementById("close-category-modal").onclick = closeModal;
+  document.getElementById("cancel-category-modal").onclick = closeModal;
+
   // Close on outside click
   modal.onclick = (e) => {
     if (e.target === modal) {
@@ -1470,16 +1623,16 @@ async function changeConversationCategory(conversationId) {
  * Delete a conversation
  */
 async function deleteConversation(conversationId) {
-  const conv = conversations.find(c => c.id === conversationId);
+  const conv = conversations.find((c) => c.id === conversationId);
   if (!conv) return;
-  
+
   if (!confirm(`Delete "${conv.title}"?`)) return;
-  
+
   await window.polly.conversationDelete(conversationId, true);
-  
+
   // Remove from local state
-  conversations = conversations.filter(c => c.id !== conversationId);
-  
+  conversations = conversations.filter((c) => c.id !== conversationId);
+
   // If we deleted the current conversation, switch to another
   if (currentConversationId === conversationId) {
     if (conversations.length > 0) {
@@ -1488,7 +1641,7 @@ async function deleteConversation(conversationId) {
       await createNewConversation();
     }
   }
-  
+
   renderConversationList();
 }
 
@@ -1498,9 +1651,9 @@ async function deleteConversation(conversationId) {
 function toggleConversationsSidebar() {
   // This function is now handled by the conversations section toggle in the right sidebar
   // Keeping for backward compatibility
-  const section = document.querySelector('.chat-conversations-content');
+  const section = document.querySelector(".chat-conversations-content");
   if (section) {
-    section.style.display = section.style.display === 'none' ? 'block' : 'none';
+    section.style.display = section.style.display === "none" ? "block" : "none";
   }
 }
 
@@ -1508,7 +1661,7 @@ function toggleConversationsSidebar() {
  * Search conversations
  */
 function searchConversations() {
-  const query = document.getElementById('conversations-search-input').value;
+  const query = document.getElementById("conversations-search-input").value;
   renderConversationList(query);
 }
 
@@ -1516,141 +1669,164 @@ function searchConversations() {
  * Setup event listeners
  */
 function setupEventListeners() {
-  console.log('[Setup] Setting up event listeners...');
-  
+  console.log("[Setup] Setting up event listeners...");
+
   // Navigation
-  document.querySelectorAll('.nav-item').forEach(btn => {
-    btn.addEventListener('click', () => {
+  document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
       const view = btn.dataset.view;
       showView(view);
 
-      document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      document
+        .querySelectorAll(".nav-item")
+        .forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
     });
   });
 
   // Ribbon Navigation (Phase 0.5)
-  console.log('[Setup] Setting up ribbon navigation...');
-  const ribbonLogo = document.querySelector('.ribbon-logo');
+  console.log("[Setup] Setting up ribbon navigation...");
+  const ribbonLogo = document.querySelector(".ribbon-logo");
   if (ribbonLogo) {
-    console.log('[Setup] Found ribbon logo, attaching click handler');
-    ribbonLogo.addEventListener('click', () => {
-      showView('dashboard');
-      document.querySelectorAll('.ribbon-item').forEach(b => {
-        b.classList.remove('active', 'glitch');
+    console.log("[Setup] Found ribbon logo, attaching click handler");
+    ribbonLogo.addEventListener("click", () => {
+      showView("dashboard");
+      document.querySelectorAll(".ribbon-item").forEach((b) => {
+        b.classList.remove("active", "glitch");
       });
-      const dashboardBtn = document.querySelector('.ribbon-item[data-view="dashboard"]');
+      const dashboardBtn = document.querySelector(
+        '.ribbon-item[data-view="dashboard"]',
+      );
       if (dashboardBtn) {
-        dashboardBtn.classList.add('active', 'glitch');
+        dashboardBtn.classList.add("active", "glitch");
       }
-      console.log('[Ribbon] Logo clicked, returning to dashboard');
+      console.log("[Ribbon] Logo clicked, returning to dashboard");
     });
   }
 
-  const ribbonItems = document.querySelectorAll('.ribbon-item');
+  const ribbonItems = document.querySelectorAll(".ribbon-item");
   console.log(`[Setup] Found ${ribbonItems.length} ribbon items`);
-  ribbonItems.forEach(btn => {
-    btn.addEventListener('click', () => {
+  ribbonItems.forEach((btn) => {
+    btn.addEventListener("click", () => {
       const view = btn.dataset.view;
       if (view) {
         showView(view);
 
         // Update ribbon active state with glitch effect
-        document.querySelectorAll('.ribbon-item').forEach(b => {
-          b.classList.remove('active', 'glitch');
+        document.querySelectorAll(".ribbon-item").forEach((b) => {
+          b.classList.remove("active", "glitch");
         });
-        btn.classList.add('active', 'glitch');
+        btn.classList.add("active", "glitch");
 
         // Also update sidebar nav to stay in sync
-        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-        const sidebarBtn = document.querySelector(`.nav-item[data-view="${view}"]`);
+        document
+          .querySelectorAll(".nav-item")
+          .forEach((b) => b.classList.remove("active"));
+        const sidebarBtn = document.querySelector(
+          `.nav-item[data-view="${view}"]`,
+        );
         if (sidebarBtn) {
-          sidebarBtn.classList.add('active');
+          sidebarBtn.classList.add("active");
         }
-        
-        console.log('[Ribbon] Switched to view:', view);
+
+        console.log("[Ribbon] Switched to view:", view);
       }
     });
   });
 
   // Sidebar Collapse/Expand (Phase 0.5)
-  const threeColumnLayout = document.querySelector('.three-column-layout');
+  const threeColumnLayout = document.querySelector(".three-column-layout");
 
   // Restore sidebar state from localStorage
-  const leftCollapsed = localStorage.getItem('sidebar-left-collapsed') === 'true';
-  const rightCollapsed = localStorage.getItem('sidebar-right-collapsed') === 'true';
-  
+  const leftCollapsed =
+    localStorage.getItem("sidebar-left-collapsed") === "true";
+  const rightCollapsed =
+    localStorage.getItem("sidebar-right-collapsed") === "true";
+
   if (threeColumnLayout) {
     if (leftCollapsed) {
-      threeColumnLayout.classList.add('left-collapsed');
+      threeColumnLayout.classList.add("left-collapsed");
     }
     if (rightCollapsed) {
-      threeColumnLayout.classList.add('right-collapsed');
+      threeColumnLayout.classList.add("right-collapsed");
     }
   }
 
   // Get titlebar button references
-  const titlebarToggleLeft = document.getElementById('titlebar-toggle-left');
-  const titlebarToggleRight = document.getElementById('titlebar-toggle-right');
+  const titlebarToggleLeft = document.getElementById("titlebar-toggle-left");
+  const titlebarToggleRight = document.getElementById("titlebar-toggle-right");
 
   // Update titlebar button icons and positions based on sidebar state
   function updateTitlebarButtons() {
-    const leftCollapsed = threeColumnLayout?.classList.contains('left-collapsed');
-    const rightCollapsed = threeColumnLayout?.classList.contains('right-collapsed');
-    
+    const leftCollapsed =
+      threeColumnLayout?.classList.contains("left-collapsed");
+    const rightCollapsed =
+      threeColumnLayout?.classList.contains("right-collapsed");
+
     if (titlebarToggleLeft) {
-      const icon = titlebarToggleLeft.querySelector('i');
-      
+      const icon = titlebarToggleLeft.querySelector("i");
+
       // Update icon - chevron-left points left (close), chevron-right points right (open)
       if (icon) {
-        icon.setAttribute('data-lucide', leftCollapsed ? 'chevron-right' : 'chevron-left');
+        icon.setAttribute(
+          "data-lucide",
+          leftCollapsed ? "chevron-right" : "chevron-left",
+        );
       }
-      
+
       // Toggle class to change position via CSS (using absolute positioning instead of transform)
       if (leftCollapsed) {
-        titlebarToggleLeft.classList.remove('sidebar-open');
+        titlebarToggleLeft.classList.remove("sidebar-open");
       } else {
-        titlebarToggleLeft.classList.add('sidebar-open');
+        titlebarToggleLeft.classList.add("sidebar-open");
       }
-      
-      titlebarToggleLeft.classList.toggle('collapsed', leftCollapsed);
-      titlebarToggleLeft.title = leftCollapsed ? 'Show left sidebar (Cmd+B)' : 'Hide left sidebar (Cmd+B)';
+
+      titlebarToggleLeft.classList.toggle("collapsed", leftCollapsed);
+      titlebarToggleLeft.title = leftCollapsed
+        ? "Show left sidebar (Cmd+B)"
+        : "Hide left sidebar (Cmd+B)";
     }
-    
+
     if (titlebarToggleRight) {
-      const icon = titlebarToggleRight.querySelector('i');
-      
+      const icon = titlebarToggleRight.querySelector("i");
+
       // Update icon - chevron-right points right (close), chevron-left points left (open)
       if (icon) {
-        icon.setAttribute('data-lucide', rightCollapsed ? 'chevron-left' : 'chevron-right');
+        icon.setAttribute(
+          "data-lucide",
+          rightCollapsed ? "chevron-left" : "chevron-right",
+        );
       }
-      
+
       // Toggle class to change position via CSS (using absolute positioning instead of transform)
       if (rightCollapsed) {
-        titlebarToggleRight.classList.remove('sidebar-open');
+        titlebarToggleRight.classList.remove("sidebar-open");
       } else {
-        titlebarToggleRight.classList.add('sidebar-open');
+        titlebarToggleRight.classList.add("sidebar-open");
       }
-      
-      titlebarToggleRight.classList.toggle('collapsed', rightCollapsed);
-      titlebarToggleRight.title = rightCollapsed ? 'Show right sidebar (Cmd+/)' : 'Hide right sidebar (Cmd+/)';
+
+      titlebarToggleRight.classList.toggle("collapsed", rightCollapsed);
+      titlebarToggleRight.title = rightCollapsed
+        ? "Show right sidebar (Cmd+/)"
+        : "Hide right sidebar (Cmd+/)";
     }
-    
+
     // Re-init lucide icons
     setTimeout(() => lucide.createIcons(), 50);
   }
 
   function toggleLeftSidebar() {
     if (threeColumnLayout) {
-      const isCollapsed = threeColumnLayout.classList.contains('left-collapsed');
-      threeColumnLayout.classList.toggle('left-collapsed');
-      
+      const isCollapsed =
+        threeColumnLayout.classList.contains("left-collapsed");
+      threeColumnLayout.classList.toggle("left-collapsed");
+
       // Persist state
-      localStorage.setItem('sidebar-left-collapsed', !isCollapsed);
-      
+      localStorage.setItem("sidebar-left-collapsed", !isCollapsed);
+
       // Update titlebar buttons
       updateTitlebarButtons();
-      
+
       // Re-init icons
       setTimeout(() => lucide.createIcons(), 50);
     }
@@ -1658,15 +1834,16 @@ function setupEventListeners() {
 
   function toggleRightSidebar() {
     if (threeColumnLayout) {
-      const isCollapsed = threeColumnLayout.classList.contains('right-collapsed');
-      threeColumnLayout.classList.toggle('right-collapsed');
-      
+      const isCollapsed =
+        threeColumnLayout.classList.contains("right-collapsed");
+      threeColumnLayout.classList.toggle("right-collapsed");
+
       // Persist state
-      localStorage.setItem('sidebar-right-collapsed', !isCollapsed);
-      
+      localStorage.setItem("sidebar-right-collapsed", !isCollapsed);
+
       // Update titlebar buttons
       updateTitlebarButtons();
-      
+
       // Re-init icons
       setTimeout(() => lucide.createIcons(), 50);
     }
@@ -1674,203 +1851,225 @@ function setupEventListeners() {
 
   // Titlebar sidebar toggle button event listeners
   if (titlebarToggleLeft) {
-    titlebarToggleLeft.addEventListener('click', () => {
+    titlebarToggleLeft.addEventListener("click", () => {
       toggleLeftSidebar();
     });
   }
-  
+
   if (titlebarToggleRight) {
-    titlebarToggleRight.addEventListener('click', () => {
+    titlebarToggleRight.addEventListener("click", () => {
       toggleRightSidebar();
     });
   }
-  
+
   // Initialize titlebar button states
   updateTitlebarButtons();
 
   // Keyboard shortcuts for sidebar toggle
-  document.addEventListener('keydown', (e) => {
+  document.addEventListener("keydown", (e) => {
     // Check if focus is inside CodeMirror editor (don't interfere with editor shortcuts)
     const activeElement = document.activeElement;
-    const isInEditor = activeElement && (
-      activeElement.classList.contains('cm-content') || 
-      activeElement.closest('.cm-editor')
-    );
-    
+    const isInEditor =
+      activeElement &&
+      (activeElement.classList.contains("cm-content") ||
+        activeElement.closest(".cm-editor"));
+
     // Cmd+B or Ctrl+B - Toggle left sidebar (unless in editor)
-    if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+    if ((e.metaKey || e.ctrlKey) && e.key === "b") {
       if (!isInEditor) {
         e.preventDefault();
         toggleLeftSidebar();
       }
     }
-    
+
     // Cmd+/ or Ctrl+/ - Toggle right sidebar
-    if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+    if ((e.metaKey || e.ctrlKey) && e.key === "/") {
       e.preventDefault();
       toggleRightSidebar();
     }
   });
 
   // Setup - Check Dependencies
-  document.getElementById('btn-check-deps').addEventListener('click', checkDependencies);
+  document
+    .getElementById("btn-check-deps")
+    .addEventListener("click", checkDependencies);
 
   // Setup - Vault path
-  document.getElementById('btn-select-vault').addEventListener('click', async () => {
-    const path = await window.polly.selectDirectory();
-    if (path) {
-      document.getElementById('vault-path').value = path;
-    }
-  });
+  document
+    .getElementById("btn-select-vault")
+    .addEventListener("click", async () => {
+      const path = await window.polly.selectDirectory();
+      if (path) {
+        document.getElementById("vault-path").value = path;
+      }
+    });
 
   // Setup - Add code path
-  document.getElementById('btn-add-code').addEventListener('click', async () => {
-    const paths = await window.polly.selectDirectories();
-    if (paths.length) {
-      codePaths = [...new Set([...codePaths, ...paths])];
-      renderCodePaths();
-    }
-  });
+  document
+    .getElementById("btn-add-code")
+    .addEventListener("click", async () => {
+      const paths = await window.polly.selectDirectories();
+      if (paths.length) {
+        codePaths = [...new Set([...codePaths, ...paths])];
+        renderCodePaths();
+      }
+    });
 
   // Setup - Navigation
-  document.getElementById('btn-back-1').addEventListener('click', () => goToStep(1));
-  document.getElementById('btn-next-2').addEventListener('click', () => goToStep(3));
-  document.getElementById('btn-back-2').addEventListener('click', () => goToStep(2));
+  document
+    .getElementById("btn-back-1")
+    .addEventListener("click", () => goToStep(1));
+  document
+    .getElementById("btn-next-2")
+    .addEventListener("click", () => goToStep(3));
+  document
+    .getElementById("btn-back-2")
+    .addEventListener("click", () => goToStep(2));
 
   // Setup - Install
-  document.getElementById('btn-install').addEventListener('click', runInstall);
+  document.getElementById("btn-install").addEventListener("click", runInstall);
 
   // Setup - Complete
-  document.getElementById('btn-start-indexing').addEventListener('click', async () => {
-    showView('knowledge');
-    await indexKnowledge({ force: true });
-  });
+  document
+    .getElementById("btn-start-indexing")
+    .addEventListener("click", async () => {
+      showView("knowledge");
+      await indexKnowledge({ force: true });
+    });
 
-  document.getElementById('btn-skip-index').addEventListener('click', () => {
-    showView('chat');
+  document.getElementById("btn-skip-index").addEventListener("click", () => {
+    showView("chat");
   });
 
   // Chat - Send
-  const sendBtn = document.getElementById('btn-send');
+  const sendBtn = document.getElementById("btn-send");
   if (sendBtn) {
-    sendBtn.addEventListener('click', sendQuery);
+    sendBtn.addEventListener("click", sendQuery);
   } else {
-    console.warn('Send button not found (may not be on chat view)');
+    console.warn("Send button not found (may not be on chat view)");
   }
 
   // Chat - Save to Obsidian
-  const saveBtn = document.getElementById('btn-save-conversation');
+  const saveBtn = document.getElementById("btn-save-conversation");
   if (saveBtn) {
-    saveBtn.addEventListener('click', openSaveConversationModal);
+    saveBtn.addEventListener("click", openSaveConversationModal);
   }
 
   // Chat - Toggle Related Notes (legacy buttons - removed in new UI)
-  const toggleRelatedBtn = document.getElementById('btn-toggle-related');
+  const toggleRelatedBtn = document.getElementById("btn-toggle-related");
   if (toggleRelatedBtn) {
-    toggleRelatedBtn.addEventListener('click', toggleRelatedNotes);
+    toggleRelatedBtn.addEventListener("click", toggleRelatedNotes);
   }
-  
-  const closeRelatedBtn = document.getElementById('btn-close-related');
+
+  const closeRelatedBtn = document.getElementById("btn-close-related");
   if (closeRelatedBtn) {
-    closeRelatedBtn.addEventListener('click', closeRelatedNotes);
+    closeRelatedBtn.addEventListener("click", closeRelatedNotes);
   }
-  
+
   // Conversations - New Chat
   // Chat - New conversation button (sidebar)
-  const newChatBtnSidebar = document.getElementById('btn-new-chat-sidebar');
+  const newChatBtnSidebar = document.getElementById("btn-new-chat-sidebar");
   if (newChatBtnSidebar) {
-    newChatBtnSidebar.addEventListener('click', async () => {
+    newChatBtnSidebar.addEventListener("click", async () => {
       await createNewConversation();
       renderConversationList();
     });
   }
-  
+
   // Legacy button support (if it still exists)
-  const newChatBtn = document.getElementById('btn-new-chat');
+  const newChatBtn = document.getElementById("btn-new-chat");
   if (newChatBtn) {
-    newChatBtn.addEventListener('click', async () => {
+    newChatBtn.addEventListener("click", async () => {
       await createNewConversation();
       renderConversationList();
     });
   }
-  
+
   // Conversations - Toggle sidebar (legacy)
-  const toggleSidebarBtn = document.getElementById('btn-toggle-sidebar');
+  const toggleSidebarBtn = document.getElementById("btn-toggle-sidebar");
   if (toggleSidebarBtn) {
-    toggleSidebarBtn.addEventListener('click', toggleConversationsSidebar);
+    toggleSidebarBtn.addEventListener("click", toggleConversationsSidebar);
   }
-  
+
   // Conversations section toggle (new sidebar)
-  const conversationsToggle = document.getElementById('conversations-toggle');
+  const conversationsToggle = document.getElementById("conversations-toggle");
   if (conversationsToggle) {
-    conversationsToggle.addEventListener('click', () => {
-      const section = document.querySelector('.chat-conversations-content');
-      const icon = conversationsToggle.querySelector('[data-lucide]');
+    conversationsToggle.addEventListener("click", () => {
+      const section = document.querySelector(".chat-conversations-content");
+      const icon = conversationsToggle.querySelector("[data-lucide]");
       if (section) {
-        section.style.display = section.style.display === 'none' ? 'block' : 'none';
+        section.style.display =
+          section.style.display === "none" ? "block" : "none";
         if (icon) {
-          icon.setAttribute('data-lucide', section.style.display === 'none' ? 'chevron-right' : 'chevron-down');
+          icon.setAttribute(
+            "data-lucide",
+            section.style.display === "none" ? "chevron-right" : "chevron-down",
+          );
           setTimeout(() => lucide.createIcons(), 10);
         }
       }
     });
   }
-  
+
   // Conversations - Search
-  const searchInput = document.getElementById('conversations-search-input');
+  const searchInput = document.getElementById("conversations-search-input");
   if (searchInput) {
-    searchInput.addEventListener('input', searchConversations);
+    searchInput.addEventListener("input", searchConversations);
   } else {
-    console.warn('Conversations search input not found (may not be on chat view)');
+    console.warn(
+      "Conversations search input not found (may not be on chat view)",
+    );
   }
-  
+
   // Conversations - Page Filter
-  const pageFilter = document.getElementById('page-filter');
+  const pageFilter = document.getElementById("page-filter");
   if (pageFilter) {
-    pageFilter.addEventListener('change', () => {
-      renderConversationList(searchInput?.value || '');
+    pageFilter.addEventListener("change", () => {
+      renderConversationList(searchInput?.value || "");
     });
   } else {
-    console.warn('Page filter not found (may not be on chat view)');
+    console.warn("Page filter not found (may not be on chat view)");
   }
-  
+
   // Context Menu Actions
-  document.querySelectorAll('#conversation-context-menu .context-menu-item').forEach(item => {
-    item.addEventListener('click', async (e) => {
-      const action = item.dataset.action;
-      const menu = document.getElementById('conversation-context-menu');
-      const conversationId = menu.dataset.conversationId;
-      
-      menu.classList.add('hidden');
-      
-      if (conversationId) {
-        await handleConversationAction(action, conversationId);
-      }
+  document
+    .querySelectorAll("#conversation-context-menu .context-menu-item")
+    .forEach((item) => {
+      item.addEventListener("click", async (e) => {
+        const action = item.dataset.action;
+        const menu = document.getElementById("conversation-context-menu");
+        const conversationId = menu.dataset.conversationId;
+
+        menu.classList.add("hidden");
+
+        if (conversationId) {
+          await handleConversationAction(action, conversationId);
+        }
+      });
     });
-  });
 
   // Query input - Enter to send
-  const queryInput = document.getElementById('query-input');
+  const queryInput = document.getElementById("query-input");
   if (queryInput) {
-    queryInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+    queryInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         sendQuery();
       }
     });
   } else {
-    console.warn('Query input not found (may not be on chat view)');
+    console.warn("Query input not found (may not be on chat view)");
   }
-  
+
   // Global keyboard shortcuts
-  document.addEventListener('keydown', async (e) => {
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  document.addEventListener("keydown", async (e) => {
+    const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
     const modifier = isMac ? e.metaKey : e.ctrlKey;
-    
+
     // Only handle shortcuts when not typing in an input
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
       // Exception: Allow Cmd/Ctrl+B even when in input (toggle sidebar)
-      if (modifier && e.key === 'b') {
+      if (modifier && e.key === "b") {
         e.preventDefault();
         toggleConversationsSidebar();
         return;
@@ -1878,199 +2077,237 @@ function setupEventListeners() {
       // Don't handle other shortcuts when typing
       return;
     }
-    
+
     // Cmd/Ctrl+N: New conversation
-    if (modifier && e.key === 'n') {
+    if (modifier && e.key === "n") {
       e.preventDefault();
       await createNewConversation();
       renderConversationList();
-      const queryInput = document.getElementById('query-input');
+      const queryInput = document.getElementById("query-input");
       if (queryInput) queryInput.focus();
     }
-    
+
     // Cmd/Ctrl+B: Toggle sidebar
-    if (modifier && e.key === 'b') {
+    if (modifier && e.key === "b") {
       e.preventDefault();
       toggleConversationsSidebar();
     }
-    
+
     // Cmd/Ctrl+F: Focus search
-    if (modifier && e.key === 'f' && currentView === 'chat') {
+    if (modifier && e.key === "f" && currentView === "chat") {
       e.preventDefault();
-      const searchInput = document.getElementById('conversations-search-input');
+      const searchInput = document.getElementById("conversations-search-input");
       if (searchInput) searchInput.focus();
     }
-    
+
     // /: Focus query input (like Slack/Discord)
-    if (e.key === '/' && currentView === 'chat') {
+    if (e.key === "/" && currentView === "chat") {
       e.preventDefault();
-      const queryInput = document.getElementById('query-input');
+      const queryInput = document.getElementById("query-input");
       if (queryInput) queryInput.focus();
     }
   });
 
   // Auto-resize textarea
-  document.getElementById('query-input').addEventListener('input', function() {
-    this.style.height = 'auto';
-    this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+  document.getElementById("query-input").addEventListener("input", function () {
+    this.style.height = "auto";
+    this.style.height = Math.min(this.scrollHeight, 150) + "px";
   });
 
   // Quick actions
-  document.querySelectorAll('.quick-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.getElementById('query-input').value = btn.dataset.query;
+  document.querySelectorAll(".quick-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.getElementById("query-input").value = btn.dataset.query;
       sendQuery();
     });
   });
 
   // Dashboard - Server toggle
-  document.getElementById('btn-toggle-server').addEventListener('click', toggleServer);
+  document
+    .getElementById("btn-toggle-server")
+    .addEventListener("click", toggleServer);
 
   // Knowledge - Index buttons
-  document.getElementById('btn-reindex').addEventListener('click', () => indexKnowledge({ force: true }));
-  document.getElementById('btn-index-obsidian').addEventListener('click', () => indexKnowledge({ obsidianOnly: true }));
-  document.getElementById('btn-index-code').addEventListener('click', () => indexKnowledge({ codeOnly: true }));
+  document
+    .getElementById("btn-reindex")
+    .addEventListener("click", () => indexKnowledge({ force: true }));
+  document
+    .getElementById("btn-index-obsidian")
+    .addEventListener("click", () => indexKnowledge({ obsidianOnly: true }));
+  document
+    .getElementById("btn-index-code")
+    .addEventListener("click", () => indexKnowledge({ codeOnly: true }));
 
   // Settings - Add code
-  document.getElementById('btn-settings-add-code').addEventListener('click', async () => {
-    const paths = await window.polly.selectDirectories();
-    if (paths.length) {
-      codePaths = [...new Set([...codePaths, ...paths])];
-      renderCodePaths('settings-code-paths');
-    }
-  });
+  document
+    .getElementById("btn-settings-add-code")
+    .addEventListener("click", async () => {
+      const paths = await window.polly.selectDirectories();
+      if (paths.length) {
+        codePaths = [...new Set([...codePaths, ...paths])];
+        renderCodePaths("settings-code-paths");
+      }
+    });
 
   // Settings - Save
-  document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
+  document
+    .getElementById("btn-save-settings")
+    .addEventListener("click", saveSettings);
 
   // Settings - Reset
-  document.getElementById('btn-reset-setup').addEventListener('click', async () => {
-    if (confirm('This will reset all settings. Are you sure?')) {
-      await window.polly.setStore('setupComplete', false);
-      location.reload();
-    }
-  });
-  
+  document
+    .getElementById("btn-reset-setup")
+    .addEventListener("click", async () => {
+      if (confirm("This will reset all settings. Are you sure?")) {
+        await window.polly.setStore("setupComplete", false);
+        location.reload();
+      }
+    });
+
   // Domains - Add Domain
-  document.getElementById('btn-add-domain')?.addEventListener('click', () => {
+  document.getElementById("btn-add-domain")?.addEventListener("click", () => {
     openDomainEditor(null);
   });
-  
+
   // Domains - Folder Numbering Toggle
-  document.getElementById('folder-numbering-toggle')?.addEventListener('change', (e) => {
-    toggleFolderNumbering(e.target.checked);
-  });
-  
+  document
+    .getElementById("folder-numbering-toggle")
+    ?.addEventListener("change", (e) => {
+      toggleFolderNumbering(e.target.checked);
+    });
+
   // Domain Editor - Close
-  document.getElementById('close-domain-editor')?.addEventListener('click', closeDomainEditor);
-  document.getElementById('cancel-domain-editor')?.addEventListener('click', closeDomainEditor);
-  
+  document
+    .getElementById("close-domain-editor")
+    ?.addEventListener("click", closeDomainEditor);
+  document
+    .getElementById("cancel-domain-editor")
+    ?.addEventListener("click", closeDomainEditor);
+
   // Domain Editor - Save
-  document.getElementById('save-domain-editor')?.addEventListener('click', saveDomain);
-  
+  document
+    .getElementById("save-domain-editor")
+    ?.addEventListener("click", saveDomain);
+
   // Domain Editor - Icon Picker
-  document.getElementById('domain-icon-preview')?.addEventListener('click', () => {
-    const iconGrid = document.getElementById('domain-icon-grid');
-    iconGrid.classList.toggle('hidden');
-  });
-  
-  document.querySelectorAll('.icon-option').forEach(btn => {
-    btn.addEventListener('click', () => {
+  document
+    .getElementById("domain-icon-preview")
+    ?.addEventListener("click", () => {
+      const iconGrid = document.getElementById("domain-icon-grid");
+      iconGrid.classList.toggle("hidden");
+    });
+
+  document.querySelectorAll(".icon-option").forEach((btn) => {
+    btn.addEventListener("click", () => {
       selectedIcon = btn.dataset.icon;
       updateIconPreview();
-      document.getElementById('domain-icon-grid').classList.add('hidden');
+      document.getElementById("domain-icon-grid").classList.add("hidden");
     });
   });
-  
+
   // Domain Editor - Color Picker
-  document.querySelectorAll('.color-option').forEach(btn => {
-    btn.addEventListener('click', () => {
+  document.querySelectorAll(".color-option").forEach((btn) => {
+    btn.addEventListener("click", () => {
       selectedColor = btn.dataset.color;
       updateColorPreview();
     });
   });
-  
+
   // Domain Editor - Weight Slider
-  document.getElementById('domain-weight-slider')?.addEventListener('input', (e) => {
-    document.getElementById('domain-weight-value').textContent = `${e.target.value}%`;
-  });
-  
+  document
+    .getElementById("domain-weight-slider")
+    ?.addEventListener("input", (e) => {
+      document.getElementById("domain-weight-value").textContent =
+        `${e.target.value}%`;
+    });
+
   // Domain Editor - Keywords Input
-  document.getElementById('domain-keywords-input')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const keyword = e.target.value.trim();
-      if (keyword) {
-        addKeyword(keyword);
+  document
+    .getElementById("domain-keywords-input")
+    ?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const keyword = e.target.value.trim();
+        if (keyword) {
+          addKeyword(keyword);
+        }
       }
-    }
-  });
-  
+    });
+
   // Domain Editor - Suggest Keywords Button
-  document.getElementById('btn-suggest-keywords')?.addEventListener('click', suggestDomainKeywords);
-  
+  document
+    .getElementById("btn-suggest-keywords")
+    ?.addEventListener("click", suggestDomainKeywords);
+
   // Patterns - Controls
-  const btnRefreshPatterns = document.getElementById('btn-refresh-patterns');
+  const btnRefreshPatterns = document.getElementById("btn-refresh-patterns");
   if (btnRefreshPatterns) {
-    btnRefreshPatterns.addEventListener('click', loadPatterns);
+    btnRefreshPatterns.addEventListener("click", loadPatterns);
   }
-  
-  const btnExportPatterns = document.getElementById('btn-export-patterns');
+
+  const btnExportPatterns = document.getElementById("btn-export-patterns");
   if (btnExportPatterns) {
-    btnExportPatterns.addEventListener('click', exportPatterns);
+    btnExportPatterns.addEventListener("click", exportPatterns);
   }
-  
-  const btnResetPatterns = document.getElementById('btn-reset-patterns');
+
+  const btnResetPatterns = document.getElementById("btn-reset-patterns");
   if (btnResetPatterns) {
-    btnResetPatterns.addEventListener('click', resetPatterns);
+    btnResetPatterns.addEventListener("click", resetPatterns);
   }
-  
-  const patternTimeFilter = document.getElementById('pattern-time-filter');
+
+  const patternTimeFilter = document.getElementById("pattern-time-filter");
   if (patternTimeFilter) {
-    patternTimeFilter.addEventListener('change', filterPatterns);
+    patternTimeFilter.addEventListener("change", filterPatterns);
   }
-  
+
   // Persona Controls (Phase 16c)
-  const personaSelect = document.getElementById('persona-select');
+  const personaSelect = document.getElementById("persona-select");
   if (personaSelect) {
-    personaSelect.addEventListener('change', handlePersonaChange);
+    personaSelect.addEventListener("change", handlePersonaChange);
   }
-  
-  const modeSelect = document.getElementById('mode-select');
+
+  const modeSelect = document.getElementById("mode-select");
   if (modeSelect) {
-    modeSelect.addEventListener('change', handleModeChange);
+    modeSelect.addEventListener("change", handleModeChange);
   }
-  
+
   // Model Selector (Phase 16c)
-  const modelSelect = document.getElementById('model-select');
+  const modelSelect = document.getElementById("model-select");
   if (modelSelect) {
-    modelSelect.addEventListener('change', handleModelChange);
+    modelSelect.addEventListener("change", handleModelChange);
   }
-  
+
   // Curriculum Review Dialog (Phase 23)
-  const saveCurriculumBtn = document.getElementById('btn-save-curriculum');
+  const saveCurriculumBtn = document.getElementById("btn-save-curriculum");
   if (saveCurriculumBtn) {
-    saveCurriculumBtn.addEventListener('click', saveCurriculumFromReview);
+    saveCurriculumBtn.addEventListener("click", saveCurriculumFromReview);
   }
-  
-  const regenerateCurriculumBtn = document.getElementById('btn-regenerate-curriculum');
+
+  const regenerateCurriculumBtn = document.getElementById(
+    "btn-regenerate-curriculum",
+  );
   if (regenerateCurriculumBtn) {
-    regenerateCurriculumBtn.addEventListener('click', regenerateCurriculum);
+    regenerateCurriculumBtn.addEventListener("click", regenerateCurriculum);
   }
 
   // Complete Section Dialog (Phase 23)
-  const masteryLevels = document.querySelectorAll('.mastery-level');
+  const masteryLevels = document.querySelectorAll(".mastery-level");
   if (masteryLevels && masteryLevels.length > 0) {
-    masteryLevels.forEach(level => {
-      level.addEventListener('click', () => {
+    masteryLevels.forEach((level) => {
+      level.addEventListener("click", () => {
         selectMasteryLevel(level.dataset.level);
       });
     });
   }
 
-  const confirmCompleteSectionBtn = document.getElementById('btn-confirm-complete-section');
+  const confirmCompleteSectionBtn = document.getElementById(
+    "btn-confirm-complete-section",
+  );
   if (confirmCompleteSectionBtn) {
-    confirmCompleteSectionBtn.addEventListener('click', handleConfirmCompleteSection);
+    confirmCompleteSectionBtn.addEventListener(
+      "click",
+      handleConfirmCompleteSection,
+    );
   }
 }
 
@@ -2079,23 +2316,23 @@ function setupEventListeners() {
  */
 function showView(view) {
   currentView = view;
-  currentPage = view;  // Track page changes for conversation context
+  currentPage = view; // Track page changes for conversation context
 
   // Hide all views
-  const allViews = document.querySelectorAll('.view');
-  allViews.forEach(v => v.classList.add('hidden'));
-  
+  const allViews = document.querySelectorAll(".view");
+  allViews.forEach((v) => v.classList.add("hidden"));
+
   // Show requested view
   const viewElement = document.getElementById(`view-${view}`);
   if (viewElement) {
-    viewElement.classList.remove('hidden');
+    viewElement.classList.remove("hidden");
   } else {
     console.error(`[showView] View element not found: view-${view}`);
     return;
   }
 
-  document.querySelectorAll('.nav-item').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === view);
+  document.querySelectorAll(".nav-item").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.view === view);
   });
 
   // Update adaptive left sidebar
@@ -2108,48 +2345,50 @@ function showView(view) {
   // Always show chat interface in right sidebar
   // The chat is the primary interaction method and should always be accessible
   try {
-    updateRightSidebar('chat');
+    updateRightSidebar("chat");
   } catch (error) {
     console.error(`[showView] Error updating right sidebar:`, error);
   }
 
   // Load view-specific data
   try {
-    if (view === 'dashboard') {
+    if (view === "dashboard") {
       loadDashboardData();
-    } else if (view === 'knowledge') {
+    } else if (view === "knowledge") {
       loadKnowledgeData();
-    } else if (view === 'patterns') {
+    } else if (view === "patterns") {
       loadPatterns();
-    } else if (view === 'curricula') {
+    } else if (view === "curricula") {
       // Load curricula list (Phase 23)
       loadCurriculaView();
-    } else if (view === 'notes') {
+    } else if (view === "notes") {
       // Initialize notes manager when showing notes view
       // Add small delay to ensure DOM is ready
       setTimeout(() => {
         if (window.notesManager) {
-          window.notesManager.init().catch(err => {
-            console.error('[Notes] Failed to initialize:', err);
+          window.notesManager.init().catch((err) => {
+            console.error("[Notes] Failed to initialize:", err);
           });
         }
       }, 100);
-    } else if (view === 'settings') {
+    } else if (view === "settings") {
       // Load domains config if domains tab is active
-      const domainsTab = document.querySelector('.settings-tab-btn[data-tab="domains"]');
-      if (domainsTab && domainsTab.classList.contains('active')) {
+      const domainsTab = document.querySelector(
+        '.settings-tab-btn[data-tab="domains"]',
+      );
+      if (domainsTab && domainsTab.classList.contains("active")) {
         loadDomainsConfig();
       }
-    } else if (view === 'learning') {
+    } else if (view === "learning") {
       // Initialize Learning page (Phase 22)
       initLearningPage();
     }
   } catch (error) {
     console.error(`[showView] Error loading view data for ${view}:`, error);
   }
-  
+
   // Re-initialize Lucide icons after view change
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     setTimeout(() => lucide.createIcons(), 0);
   }
 }
@@ -2160,84 +2399,94 @@ function showView(view) {
 // Sidebar ribbon configurations: contextual horizontal ribbon buttons per page
 const sidebarRibbonConfigs = {
   dashboard: {
-    containerClass: 'dashboard-ribbon-buttons',
-    btnClass: 'dashboard-ribbon-btn',
+    containerClass: "dashboard-ribbon-buttons",
+    btnClass: "dashboard-ribbon-btn",
     buttons: [
-      { id: 'overview', icon: 'layout-dashboard', label: 'Overview', default: true },
-      { id: 'activity', icon: 'activity', label: 'Activity' },
-      { id: 'stats', icon: 'bar-chart-2', label: 'Stats' }
-    ]
+      {
+        id: "overview",
+        icon: "layout-dashboard",
+        label: "Overview",
+        default: true,
+      },
+      { id: "activity", icon: "activity", label: "Activity" },
+      { id: "stats", icon: "bar-chart-2", label: "Stats" },
+    ],
   },
   notes: {
-    containerClass: 'notes-ribbon-buttons',
-    btnClass: 'notes-ribbon-btn',
+    containerClass: "notes-ribbon-buttons",
+    btnClass: "notes-ribbon-btn",
     buttons: [
-      { id: 'files', icon: 'files', label: 'Files', default: true },
-      { id: 'backlinks', icon: 'link', label: 'Backlinks' },
-      { id: 'tags', icon: 'tag', label: 'Tags' },
-      { id: 'toc', icon: 'list', label: 'TOC' }
-    ]
+      { id: "files", icon: "files", label: "Files", default: true },
+      { id: "backlinks", icon: "link", label: "Backlinks" },
+      { id: "tags", icon: "tag", label: "Tags" },
+      { id: "toc", icon: "list", label: "TOC" },
+    ],
   },
   code: {
-    containerClass: 'code-ribbon-buttons',
-    btnClass: 'code-ribbon-btn',
+    containerClass: "code-ribbon-buttons",
+    btnClass: "code-ribbon-btn",
     buttons: [
-      { id: 'files', icon: 'files', label: 'Files', default: true },
-      { id: 'search', icon: 'search', label: 'Search' }
-    ]
+      { id: "files", icon: "files", label: "Files", default: true },
+      { id: "search", icon: "search", label: "Search" },
+    ],
   },
   knowledge: {
-    containerClass: 'knowledge-ribbon-buttons',
-    btnClass: 'knowledge-ribbon-btn',
+    containerClass: "knowledge-ribbon-buttons",
+    btnClass: "knowledge-ribbon-btn",
     buttons: [
-      { id: 'sources', icon: 'database', label: 'Sources', default: true },
-      { id: 'index', icon: 'search', label: 'Index' },
-      { id: 'domains', icon: 'folder-tree', label: 'Domains' }
-    ]
+      { id: "sources", icon: "database", label: "Sources", default: true },
+      { id: "index", icon: "search", label: "Index" },
+      { id: "domains", icon: "folder-tree", label: "Domains" },
+    ],
   },
   patterns: {
-    containerClass: 'patterns-ribbon-buttons',
-    btnClass: 'patterns-ribbon-btn',
+    containerClass: "patterns-ribbon-buttons",
+    btnClass: "patterns-ribbon-btn",
     buttons: [
-      { id: 'all', icon: 'sparkles', label: 'All', default: true },
-      { id: 'categories', icon: 'grid-3x3', label: 'Categories' },
-      { id: 'export', icon: 'download', label: 'Export' }
-    ]
+      { id: "all", icon: "sparkles", label: "All", default: true },
+      { id: "categories", icon: "grid-3x3", label: "Categories" },
+      { id: "export", icon: "download", label: "Export" },
+    ],
   },
   learning: {
-    containerClass: 'learning-ribbon-buttons',
-    btnClass: 'learning-ribbon-btn',
+    containerClass: "learning-ribbon-buttons",
+    btnClass: "learning-ribbon-btn",
     buttons: [
-      { id: 'curricula', icon: 'graduation-cap', label: 'Curricula', default: true },
-      { id: 'progress', icon: 'trending-up', label: 'Progress' },
-      { id: 'topics', icon: 'book-open', label: 'Topics' }
-    ]
+      {
+        id: "curricula",
+        icon: "graduation-cap",
+        label: "Curricula",
+        default: true,
+      },
+      { id: "progress", icon: "trending-up", label: "Progress" },
+      { id: "topics", icon: "book-open", label: "Topics" },
+    ],
   },
   search: {
-    containerClass: 'search-ribbon-buttons',
-    btnClass: 'search-ribbon-btn',
+    containerClass: "search-ribbon-buttons",
+    btnClass: "search-ribbon-btn",
     buttons: [
-      { id: 'recent', icon: 'clock', label: 'Recent', default: true },
-      { id: 'saved', icon: 'bookmark', label: 'Saved' }
-    ]
+      { id: "recent", icon: "clock", label: "Recent", default: true },
+      { id: "saved", icon: "bookmark", label: "Saved" },
+    ],
   },
   domains: {
-    containerClass: 'domains-ribbon-buttons',
-    btnClass: 'domains-ribbon-btn',
+    containerClass: "domains-ribbon-buttons",
+    btnClass: "domains-ribbon-btn",
     buttons: [
-      { id: 'all', icon: 'folder-tree', label: 'All', default: true },
-      { id: 'active', icon: 'zap', label: 'Active' }
-    ]
+      { id: "all", icon: "folder-tree", label: "All", default: true },
+      { id: "active", icon: "zap", label: "Active" },
+    ],
   },
   settings: {
-    containerClass: 'settings-ribbon-buttons',
-    btnClass: 'settings-ribbon-btn',
+    containerClass: "settings-ribbon-buttons",
+    btnClass: "settings-ribbon-btn",
     buttons: [
-      { id: 'general', icon: 'settings', label: 'General', default: true },
-      { id: 'api-keys', icon: 'key', label: 'API Keys' },
-      { id: 'routing', icon: 'git-branch', label: 'Routing' }
-    ]
-  }
+      { id: "general", icon: "settings", label: "General", default: true },
+      { id: "api-keys", icon: "key", label: "API Keys" },
+      { id: "routing", icon: "git-branch", label: "Routing" },
+    ],
+  },
 };
 
 // Track active sidebar ribbon tab per view
@@ -2248,16 +2497,19 @@ const activeSidebarRibbonTab = {};
  */
 function createSidebarRibbon(view) {
   const config = sidebarRibbonConfigs[view];
-  if (!config) return '';
+  if (!config) return "";
 
-  const buttons = config.buttons.map(btn => {
-    const isActive = activeSidebarRibbonTab[view] === btn.id || 
-                     (!activeSidebarRibbonTab[view] && btn.default);
-    return `<button class="${config.btnClass}${isActive ? ' active' : ''}" data-ribbon-tab="${btn.id}" title="${btn.label}">
+  const buttons = config.buttons
+    .map((btn) => {
+      const isActive =
+        activeSidebarRibbonTab[view] === btn.id ||
+        (!activeSidebarRibbonTab[view] && btn.default);
+      return `<button class="${config.btnClass}${isActive ? " active" : ""}" data-ribbon-tab="${btn.id}" title="${btn.label}">
       <i data-lucide="${btn.icon}"></i>
       <span>${btn.label}</span>
     </button>`;
-  }).join('');
+    })
+    .join("");
 
   return `<div class="${config.containerClass}">${buttons}</div>`;
 }
@@ -2267,31 +2519,34 @@ function createSidebarRibbon(view) {
  */
 function createBrowserRibbon(view) {
   const buttons = [];
-  
-  if (view === 'notes') {
+
+  if (view === "notes") {
     buttons.push(
-      { icon: 'file-plus', title: 'New Note', action: 'new-note' },
-      { icon: 'folder-plus', title: 'New Folder', action: 'new-folder' },
-      { icon: 'fold-vertical', title: 'Collapse All', action: 'collapse-all' },
-      { icon: 'arrow-up-down', title: 'Sort', action: 'sort' },
-      { icon: 'refresh-cw', title: 'Refresh', action: 'refresh' }
+      { icon: "file-plus", title: "New Note", action: "new-note" },
+      { icon: "folder-plus", title: "New Folder", action: "new-folder" },
+      { icon: "fold-vertical", title: "Collapse All", action: "collapse-all" },
+      { icon: "arrow-up-down", title: "Sort", action: "sort" },
+      { icon: "refresh-cw", title: "Refresh", action: "refresh" },
     );
-  } else if (view === 'code') {
+  } else if (view === "code") {
     buttons.push(
-      { icon: 'file-plus', title: 'New File', action: 'new-file' },
-      { icon: 'folder-plus', title: 'New Folder', action: 'new-folder' },
-      { icon: 'fold-vertical', title: 'Collapse All', action: 'collapse-all' },
-      { icon: 'refresh-cw', title: 'Refresh', action: 'refresh' }
+      { icon: "file-plus", title: "New File", action: "new-file" },
+      { icon: "folder-plus", title: "New Folder", action: "new-folder" },
+      { icon: "fold-vertical", title: "Collapse All", action: "collapse-all" },
+      { icon: "refresh-cw", title: "Refresh", action: "refresh" },
     );
   }
 
-  if (buttons.length === 0) return '';
+  if (buttons.length === 0) return "";
 
-  const buttonsHTML = buttons.map(btn => 
-    `<button class="browser-ribbon-btn" data-action="${btn.action}" title="${btn.title}">
+  const buttonsHTML = buttons
+    .map(
+      (btn) =>
+        `<button class="browser-ribbon-btn" data-action="${btn.action}" title="${btn.title}">
       <i data-lucide="${btn.icon}"></i>
-    </button>`
-  ).join('');
+    </button>`,
+    )
+    .join("");
 
   return `<div class="browser-ribbon">${buttonsHTML}</div>`;
 }
@@ -2303,19 +2558,23 @@ function setupSidebarRibbonHandlers(view) {
   const config = sidebarRibbonConfigs[view];
   if (!config) return;
 
-  document.querySelectorAll(`.${config.btnClass}`).forEach(btn => {
-    btn.addEventListener('click', () => {
+  document.querySelectorAll(`.${config.btnClass}`).forEach((btn) => {
+    btn.addEventListener("click", () => {
       const tab = btn.dataset.ribbonTab;
       activeSidebarRibbonTab[view] = tab;
 
       // Update active states
-      document.querySelectorAll(`.${config.btnClass}`).forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      document
+        .querySelectorAll(`.${config.btnClass}`)
+        .forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
 
       // Emit custom event for view-specific handling
-      document.dispatchEvent(new CustomEvent('sidebar-ribbon-change', {
-        detail: { view, tab }
-      }));
+      document.dispatchEvent(
+        new CustomEvent("sidebar-ribbon-change", {
+          detail: { view, tab },
+        }),
+      );
 
       console.log(`[Sidebar Ribbon] ${view} -> ${tab}`);
     });
@@ -2326,36 +2585,40 @@ function setupSidebarRibbonHandlers(view) {
  * Attach event handlers for browser sub-ribbon buttons
  */
 function setupBrowserRibbonHandlers(view) {
-  const container = view === 'notes' 
-    ? document.getElementById('notes-file-tree-container')
-    : document.querySelector('.code-view-content');
-  
+  const container =
+    view === "notes"
+      ? document.getElementById("notes-file-tree-container")
+      : document.querySelector(".code-view-content");
+
   if (!container) return;
 
-  container.querySelectorAll('.browser-ribbon-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  container.querySelectorAll(".browser-ribbon-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const action = btn.dataset.action;
-      
-      if (view === 'notes') {
+
+      if (view === "notes") {
         switch (action) {
-          case 'new-note':
+          case "new-note":
             if (window.notesManager) window.notesManager.showCreateNoteModal();
             break;
-          case 'new-folder':
-            if (window.notesManager) window.notesManager.showCreateFolderModal();
+          case "new-folder":
+            if (window.notesManager)
+              window.notesManager.showCreateFolderModal();
             break;
-          case 'collapse-all':
-            container.querySelectorAll('.file-tree-folder').forEach(folder => {
-              folder.classList.add('collapsed');
-            });
+          case "collapse-all":
+            container
+              .querySelectorAll(".file-tree-folder")
+              .forEach((folder) => {
+                folder.classList.add("collapsed");
+              });
             break;
-          case 'sort':
+          case "sort":
             // Toggle sort select visibility or cycle through sort modes
-            const sortSelect = document.getElementById('notes-sort-select');
+            const sortSelect = document.getElementById("notes-sort-select");
             if (sortSelect) sortSelect.focus();
             break;
-          case 'refresh':
+          case "refresh":
             if (window.notesManager) {
               window.notesManager.loadNotes().then(() => {
                 window.notesManager.updateFileTree();
@@ -2364,16 +2627,18 @@ function setupBrowserRibbonHandlers(view) {
             break;
         }
       }
-      
+
       console.log(`[Browser Ribbon] ${view} action: ${action}`);
     });
   });
 }
 
 function updateLeftSidebar(view) {
-  const sidebarTitle = document.querySelector('.left-sidebar .sidebar-title');
-  const sidebarContent = document.querySelector('.left-sidebar .sidebar-content');
-  
+  const sidebarTitle = document.querySelector(".left-sidebar .sidebar-title");
+  const sidebarContent = document.querySelector(
+    ".left-sidebar .sidebar-content",
+  );
+
   if (!sidebarTitle || !sidebarContent) return;
 
   // Build the horizontal sidebar ribbon for this view
@@ -2382,39 +2647,43 @@ function updateLeftSidebar(view) {
   // Define sidebar content for each view
   const sidebarConfigs = {
     dashboard: {
-      title: 'Quick Links',
-      content: renderDashboardSidebar()
+      title: "Quick Links",
+      content: renderDashboardSidebar(),
     },
     knowledge: {
-      title: 'Sources',
-      content: renderKnowledgeSidebar()
+      title: "Sources",
+      content: renderKnowledgeSidebar(),
     },
     patterns: {
-      title: 'Filters',
-      content: renderPatternsSidebar()
+      title: "Filters",
+      content: renderPatternsSidebar(),
     },
     settings: {
-      title: 'Navigation',
-      content: renderSettingsSidebar()
+      title: "Navigation",
+      content: renderSettingsSidebar(),
     },
     calendar: {
-      title: 'Timeline',
-      content: '<div style="padding: 16px; color: #808080; font-size: 13px;">Calendar navigation coming soon</div>'
+      title: "Timeline",
+      content:
+        '<div style="padding: 16px; color: #808080; font-size: 13px;">Calendar navigation coming soon</div>',
     },
     mail: {
-      title: 'Folders',
-      content: '<div style="padding: 16px; color: #808080; font-size: 13px;">Mail folders coming soon</div>'
+      title: "Folders",
+      content:
+        '<div style="padding: 16px; color: #808080; font-size: 13px;">Mail folders coming soon</div>',
     },
     code: {
-      title: 'Files',
-      content: '<div style="padding: 16px; color: #808080; font-size: 13px;">File browser coming soon</div>'
+      title: "Files",
+      content:
+        '<div style="padding: 16px; color: #808080; font-size: 13px;">File browser coming soon</div>',
     },
     projects: {
-      title: 'Projects',
-      content: '<div style="padding: 16px; color: #808080; font-size: 13px;">Project list coming soon</div>'
+      title: "Projects",
+      content:
+        '<div style="padding: 16px; color: #808080; font-size: 13px;">Project list coming soon</div>',
     },
     notes: {
-      title: 'Notes',
+      title: "Notes",
       content: `
         <div style="padding: 0 12px 12px 12px;">
           <div style="display: flex; gap: 8px; margin-bottom: 8px;">
@@ -2443,10 +2712,10 @@ function updateLeftSidebar(view) {
           </div>
         </div>
         <div id="notes-file-tree-container"></div>
-      `
+      `,
     },
     learning: {
-      title: 'My Curricula',
+      title: "My Curricula",
       content: `
         <div style="padding: 12px;">
           <div id="learning-curricula-list" style="margin-bottom: 12px;">
@@ -2455,30 +2724,33 @@ function updateLeftSidebar(view) {
             </div>
           </div>
         </div>
-      `
+      `,
     },
     curricula: {
-      title: 'My Curricula',
-      content: '<div style="padding: 16px; color: #808080; font-size: 13px;">Use the Professor persona to create curricula</div>'
+      title: "My Curricula",
+      content:
+        '<div style="padding: 16px; color: #808080; font-size: 13px;">Use the Professor persona to create curricula</div>',
     },
     search: {
-      title: 'Recent',
-      content: '<div style="padding: 16px; color: #808080; font-size: 13px;">Recent searches coming soon</div>'
+      title: "Recent",
+      content:
+        '<div style="padding: 16px; color: #808080; font-size: 13px;">Recent searches coming soon</div>',
     },
     domains: {
-      title: 'Domains',
-      content: '<div style="padding: 16px; color: #808080; font-size: 13px;">Domain list coming soon</div>'
-    }
+      title: "Domains",
+      content:
+        '<div style="padding: 16px; color: #808080; font-size: 13px;">Domain list coming soon</div>',
+    },
   };
 
-  const config = sidebarConfigs[view] || { title: 'Navigation', content: '' };
+  const config = sidebarConfigs[view] || { title: "Navigation", content: "" };
   sidebarTitle.textContent = config.title;
-  
+
   // Wrap content in a sidebar container with ribbon at top
   const containerClass = `${view}-sidebar-container`;
   // Remove padding from sidebar-content so ribbon is edge-to-edge
-  sidebarContent.style.padding = '0';
-  sidebarContent.style.overflow = 'hidden';
+  sidebarContent.style.padding = "0";
+  sidebarContent.style.overflow = "hidden";
   sidebarContent.innerHTML = `<div class="${containerClass}">
     ${ribbonHTML}
     <div class="sidebar-view-content" style="flex: 1; overflow-y: auto; min-height: 0; padding: var(--spacing-sm);">
@@ -2487,7 +2759,7 @@ function updateLeftSidebar(view) {
   </div>`;
 
   // Re-initialize icons
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     setTimeout(() => lucide.createIcons(), 50);
   }
 
@@ -2495,13 +2767,16 @@ function updateLeftSidebar(view) {
   setupSidebarRibbonHandlers(view);
 
   // Insert browser sub-ribbon into file tree containers
-  if (view === 'notes') {
-    const treeContainer = document.getElementById('notes-file-tree-container');
+  if (view === "notes") {
+    const treeContainer = document.getElementById("notes-file-tree-container");
     if (treeContainer) {
-      treeContainer.insertAdjacentHTML('afterbegin', createBrowserRibbon('notes'));
-      setupBrowserRibbonHandlers('notes');
+      treeContainer.insertAdjacentHTML(
+        "afterbegin",
+        createBrowserRibbon("notes"),
+      );
+      setupBrowserRibbonHandlers("notes");
       // Re-initialize icons for browser ribbon
-      if (typeof lucide !== 'undefined') {
+      if (typeof lucide !== "undefined") {
         setTimeout(() => lucide.createIcons(), 60);
       }
     }
@@ -2509,138 +2784,154 @@ function updateLeftSidebar(view) {
 
   // Attach event handlers based on view
   setTimeout(() => {
-    if (view === 'dashboard') {
+    if (view === "dashboard") {
       // Quick links navigation
-      document.querySelectorAll('.left-sidebar .nav-item[data-view]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const targetView = btn.dataset.view;
-          showView(targetView);
+      document
+        .querySelectorAll(".left-sidebar .nav-item[data-view]")
+        .forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const targetView = btn.dataset.view;
+            showView(targetView);
+          });
         });
-      });
-      
+
       // Recent conversations
-      document.querySelectorAll('.recent-conv-item').forEach(btn => {
-        btn.addEventListener('click', () => {
+      document.querySelectorAll(".recent-conv-item").forEach((btn) => {
+        btn.addEventListener("click", () => {
           const convId = parseInt(btn.dataset.convId);
-          const conv = conversations.find(c => c.id === convId);
+          const conv = conversations.find((c) => c.id === convId);
           if (conv) {
             switchToConversation(conv);
           }
         });
       });
-    } else if (view === 'learning') {
+    } else if (view === "learning") {
       // Load curricula list
       loadLearningSidebarCurricula();
-    } else if (view === 'knowledge') {
-      const indexObsidianBtn = document.getElementById('sidebar-index-obsidian');
-      const indexCodeBtn = document.getElementById('sidebar-index-code');
-      const domainFilter = document.getElementById('sidebar-domain-filter');
-      
+    } else if (view === "knowledge") {
+      const indexObsidianBtn = document.getElementById(
+        "sidebar-index-obsidian",
+      );
+      const indexCodeBtn = document.getElementById("sidebar-index-code");
+      const domainFilter = document.getElementById("sidebar-domain-filter");
+
       if (indexObsidianBtn) {
-        indexObsidianBtn.addEventListener('click', async () => {
+        indexObsidianBtn.addEventListener("click", async () => {
           await indexKnowledge({ obsidian: true });
         });
       }
       if (indexCodeBtn) {
-        indexCodeBtn.addEventListener('click', async () => {
+        indexCodeBtn.addEventListener("click", async () => {
           await indexKnowledge({ codebase: true });
         });
       }
       if (domainFilter) {
-        domainFilter.addEventListener('change', () => {
+        domainFilter.addEventListener("change", () => {
           const selectedDomain = domainFilter.value;
-          console.log('Knowledge domain filter changed:', selectedDomain);
+          console.log("Knowledge domain filter changed:", selectedDomain);
           // TODO: Filter knowledge results by domain
         });
       }
-    } else if (view === 'patterns') {
-      const refreshBtn = document.getElementById('sidebar-refresh-patterns');
-      const filterSelect = document.getElementById('sidebar-pattern-filter');
-      const categorySelect = document.getElementById('sidebar-pattern-category');
-      const exportBtn = document.getElementById('sidebar-export-patterns');
-      
+    } else if (view === "patterns") {
+      const refreshBtn = document.getElementById("sidebar-refresh-patterns");
+      const filterSelect = document.getElementById("sidebar-pattern-filter");
+      const categorySelect = document.getElementById(
+        "sidebar-pattern-category",
+      );
+      const exportBtn = document.getElementById("sidebar-export-patterns");
+
       if (refreshBtn) {
-        refreshBtn.addEventListener('click', async () => {
+        refreshBtn.addEventListener("click", async () => {
           await loadPatterns();
         });
       }
       if (filterSelect) {
-        filterSelect.addEventListener('change', async () => {
+        filterSelect.addEventListener("change", async () => {
           // Filter patterns based on time range
           await loadPatterns();
         });
       }
       if (categorySelect) {
-        categorySelect.addEventListener('change', async () => {
+        categorySelect.addEventListener("change", async () => {
           // Filter patterns based on category
-          console.log('Pattern category filter changed:', categorySelect.value);
+          console.log("Pattern category filter changed:", categorySelect.value);
           await loadPatterns();
         });
       }
       if (exportBtn) {
-        exportBtn.addEventListener('click', () => {
-          console.log('Export patterns clicked');
+        exportBtn.addEventListener("click", () => {
+          console.log("Export patterns clicked");
           // TODO: Implement pattern export
         });
       }
-    } else if (view === 'settings') {
-      document.querySelectorAll('.settings-nav-item').forEach(btn => {
-        btn.addEventListener('click', () => {
+    } else if (view === "settings") {
+      document.querySelectorAll(".settings-nav-item").forEach((btn) => {
+        btn.addEventListener("click", () => {
           const tab = btn.dataset.tab;
-          
+
           // Update sidebar active state
-          document.querySelectorAll('.settings-nav-item').forEach(b => 
-            b.classList.remove('active')
-          );
-          btn.classList.add('active');
-          
+          document
+            .querySelectorAll(".settings-nav-item")
+            .forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+
           // Switch legacy tab content
-          const tabContents = document.querySelectorAll('.settings-tab-content');
-          tabContents.forEach(content => {
+          const tabContents = document.querySelectorAll(
+            ".settings-tab-content",
+          );
+          tabContents.forEach((content) => {
             if (content.id === `tab-${tab}`) {
-              content.classList.remove('hidden');
+              content.classList.remove("hidden");
             } else {
-              content.classList.add('hidden');
+              content.classList.add("hidden");
             }
           });
-          
+
           // Also switch new settings section content
-          const sectionContents = document.querySelectorAll('.settings-section-content');
-          sectionContents.forEach(section => {
+          const sectionContents = document.querySelectorAll(
+            ".settings-section-content",
+          );
+          sectionContents.forEach((section) => {
             if (section.id === `settings-section-${tab}`) {
-              section.classList.remove('hidden');
+              section.classList.remove("hidden");
             } else {
-              section.classList.add('hidden');
+              section.classList.add("hidden");
             }
           });
-          
+
           // Load tab-specific data
-          if (tab === 'domains') {
+          if (tab === "domains") {
             loadDomainsConfig();
-          } else if (tab === 'routing') {
+          } else if (tab === "routing") {
             loadRoutingSettings();
             loadRoutingStats();
-          } else if (tab === 'api-keys') {
-            console.log('[Settings Sidebar] Switched to API Keys tab');
-            console.log('[Settings Sidebar] loadAPIKeys type:', typeof loadAPIKeys);
-            console.log('[Settings Sidebar] loadBudgetStatus type:', typeof loadBudgetStatus);
-            if (typeof loadAPIKeys === 'function') {
-              console.log('[Settings Sidebar] Calling loadAPIKeys()');
+          } else if (tab === "api-keys") {
+            console.log("[Settings Sidebar] Switched to API Keys tab");
+            console.log(
+              "[Settings Sidebar] loadAPIKeys type:",
+              typeof loadAPIKeys,
+            );
+            console.log(
+              "[Settings Sidebar] loadBudgetStatus type:",
+              typeof loadBudgetStatus,
+            );
+            if (typeof loadAPIKeys === "function") {
+              console.log("[Settings Sidebar] Calling loadAPIKeys()");
               loadAPIKeys();
             }
-            if (typeof loadBudgetStatus === 'function') {
-              console.log('[Settings Sidebar] Calling loadBudgetStatus()');
+            if (typeof loadBudgetStatus === "function") {
+              console.log("[Settings Sidebar] Calling loadBudgetStatus()");
               loadBudgetStatus();
             }
-          } else if (tab === 'compression') {
+          } else if (tab === "compression") {
             loadCompressionSettings();
             loadCompressionStats();
-          } else if (tab === 'memory') {
+          } else if (tab === "memory") {
             loadMemorySettings();
-          } else if (tab === 'mental-models') {
+          } else if (tab === "mental-models") {
             loadMentalModels();
             refreshMentalModelsStats();
-          } else if (tab === 'advanced') {
+          } else if (tab === "advanced") {
             loadDedupSettings();
           }
         });
@@ -2669,25 +2960,32 @@ function renderConversationsSidebar() {
 function renderDashboardSidebar() {
   // Get recent conversations for current page
   const recentConvs = conversations
-    .filter(c => c.page_context === currentPage)
+    .filter((c) => c.page_context === currentPage)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .slice(0, 5);
-  
-  const recentConvsHTML = recentConvs.length > 0 ? `
+
+  const recentConvsHTML =
+    recentConvs.length > 0
+      ? `
     <div style="margin-top: 16px;">
       <div style="font-size: 12px; color: #808080; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Recent on This Page</div>
       <div class="recent-conversations">
-        ${recentConvs.map(conv => `
+        ${recentConvs
+          .map(
+            (conv) => `
           <button class="recent-conv-item" data-conv-id="${conv.id}" title="${conv.title}">
             <span class="recent-conv-icon">${getPageIcon(conv.page_context)}</span>
             <span class="recent-conv-title">${conv.title}</span>
             <span class="recent-conv-time">${formatRelativeTime(conv.created_at)}</span>
           </button>
-        `).join('')}
+        `,
+          )
+          .join("")}
       </div>
     </div>
-  ` : '<div style="margin-top: 16px; padding: 12px; color: #606060; font-size: 12px; text-align: center;">No conversations on this page yet</div>';
-  
+  `
+      : '<div style="margin-top: 16px; padding: 12px; color: #606060; font-size: 12px; text-align: center;">No conversations on this page yet</div>';
+
   return `
     <div style="padding: 16px;">
       <div style="font-size: 12px; color: #808080; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Quick Links</div>
@@ -2852,124 +3150,140 @@ let originalChatHTML = null;
  * (Called after sidebar HTML is replaced)
  */
 function reattachChatEventListeners() {
-  console.log('[Chat] Reattaching event listeners...');
+  console.log("[Chat] Reattaching event listeners...");
   // New chat button
-  const newChatBtnSidebar = document.getElementById('btn-new-chat-sidebar');
+  const newChatBtnSidebar = document.getElementById("btn-new-chat-sidebar");
   if (newChatBtnSidebar) {
-    newChatBtnSidebar.addEventListener('click', async () => {
+    newChatBtnSidebar.addEventListener("click", async () => {
       await createNewConversation();
       renderConversationList();
     });
   }
-  
+
   // Send button
-  const sendBtn = document.getElementById('btn-send');
+  const sendBtn = document.getElementById("btn-send");
   if (sendBtn) {
-    sendBtn.addEventListener('click', () => {
+    sendBtn.addEventListener("click", () => {
       sendQuery();
     });
   }
-  
+
   // Query input Enter key
-  const queryInput = document.getElementById('query-input');
+  const queryInput = document.getElementById("query-input");
   if (queryInput) {
-    queryInput.addEventListener('keydown', async (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+    queryInput.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         await sendQuery();
       }
     });
   }
-  
+
   // Page filter
-  const pageFilter = document.getElementById('page-filter');
+  const pageFilter = document.getElementById("page-filter");
   if (pageFilter) {
-    pageFilter.addEventListener('change', (e) => {
-      renderConversationList(document.getElementById('conversations-search-input')?.value || '');
+    pageFilter.addEventListener("change", (e) => {
+      renderConversationList(
+        document.getElementById("conversations-search-input")?.value || "",
+      );
     });
   }
-  
+
   // Conversations search
-  const conversationsSearchInput = document.getElementById('conversations-search-input');
+  const conversationsSearchInput = document.getElementById(
+    "conversations-search-input",
+  );
   if (conversationsSearchInput) {
-    conversationsSearchInput.addEventListener('input', (e) => {
+    conversationsSearchInput.addEventListener("input", (e) => {
       renderConversationList(e.target.value);
     });
   }
-  
+
   // Conversations toggle
-  const conversationsToggle = document.getElementById('conversations-toggle');
+  const conversationsToggle = document.getElementById("conversations-toggle");
   if (conversationsToggle) {
-    conversationsToggle.addEventListener('click', () => {
-      const section = document.querySelector('.chat-conversations-content');
-      const icon = conversationsToggle.querySelector('[data-lucide]');
+    conversationsToggle.addEventListener("click", () => {
+      const section = document.querySelector(".chat-conversations-content");
+      const icon = conversationsToggle.querySelector("[data-lucide]");
       if (section) {
-        section.classList.toggle('collapsed');
+        section.classList.toggle("collapsed");
         if (icon) {
-          icon.setAttribute('data-lucide', section.classList.contains('collapsed') ? 'chevron-right' : 'chevron-down');
-          if (typeof lucide !== 'undefined') lucide.createIcons();
+          icon.setAttribute(
+            "data-lucide",
+            section.classList.contains("collapsed")
+              ? "chevron-right"
+              : "chevron-down",
+          );
+          if (typeof lucide !== "undefined") lucide.createIcons();
         }
       }
     });
   }
-  
+
   // Persona controls (main sidebar)
-  const personaSelect = document.getElementById('persona-select');
+  const personaSelect = document.getElementById("persona-select");
   if (personaSelect) {
-    personaSelect.addEventListener('change', handlePersonaChange);
-    console.log('[Init] Attached persona-select event listener');
+    personaSelect.addEventListener("change", handlePersonaChange);
+    console.log("[Init] Attached persona-select event listener");
   }
-  
-  const modeSelect = document.getElementById('mode-select');
+
+  const modeSelect = document.getElementById("mode-select");
   if (modeSelect) {
-    modeSelect.addEventListener('change', handleModeChange);
-    console.log('[Init] Attached mode-select event listener');
+    modeSelect.addEventListener("change", handleModeChange);
+    console.log("[Init] Attached mode-select event listener");
   }
-  
+
   // Persona controls (floating chat)
-  const floatingPersonaSelect = document.getElementById('floating-persona-select');
+  const floatingPersonaSelect = document.getElementById(
+    "floating-persona-select",
+  );
   if (floatingPersonaSelect) {
-    floatingPersonaSelect.addEventListener('change', handlePersonaChange);
-    console.log('[Init] Attached floating-persona-select event listener');
+    floatingPersonaSelect.addEventListener("change", handlePersonaChange);
+    console.log("[Init] Attached floating-persona-select event listener");
   }
-  
-  const floatingModeSelect = document.getElementById('floating-mode-select');
+
+  const floatingModeSelect = document.getElementById("floating-mode-select");
   if (floatingModeSelect) {
-    floatingModeSelect.addEventListener('change', handleModeChange);
-    console.log('[Init] Attached floating-mode-select event listener');
+    floatingModeSelect.addEventListener("change", handleModeChange);
+    console.log("[Init] Attached floating-mode-select event listener");
   }
-  
+
   // Model selector: populate all three dropdowns (chat, hidden, floating) and wire change
   populateModelSelectors();
-  const modelSelect = document.getElementById('model-select');
+  const modelSelect = document.getElementById("model-select");
   if (modelSelect) {
-    modelSelect.addEventListener('change', handleModelChange);
+    modelSelect.addEventListener("change", handleModelChange);
   }
-  const chatModelSelect = document.getElementById('chat-model-select');
+  const chatModelSelect = document.getElementById("chat-model-select");
   if (chatModelSelect) {
-    chatModelSelect.addEventListener('change', handleModelChange);
+    chatModelSelect.addEventListener("change", handleModelChange);
   }
-  const floatingModelSelect = document.getElementById('floating-model-select');
+  const floatingModelSelect = document.getElementById("floating-model-select");
   if (floatingModelSelect) {
-    floatingModelSelect.addEventListener('change', handleModelChange);
+    floatingModelSelect.addEventListener("change", handleModelChange);
   }
 
   // Orchestrator toggle (TODO: implement multi-persona orchestration)
-  const orchestratorToggle = document.getElementById('orchestrator-toggle');
+  const orchestratorToggle = document.getElementById("orchestrator-toggle");
   if (orchestratorToggle) {
-    orchestratorToggle.addEventListener('click', () => {
+    orchestratorToggle.addEventListener("click", () => {
       // Toggle the visual state
-      const isActive = orchestratorToggle.getAttribute('aria-checked') === 'true';
-      orchestratorToggle.setAttribute('aria-checked', !isActive);
-      orchestratorToggle.classList.toggle('active');
-      console.log('[Orchestrator] Toggled:', !isActive, '(not yet implemented)');
+      const isActive =
+        orchestratorToggle.getAttribute("aria-checked") === "true";
+      orchestratorToggle.setAttribute("aria-checked", !isActive);
+      orchestratorToggle.classList.toggle("active");
+      console.log(
+        "[Orchestrator] Toggled:",
+        !isActive,
+        "(not yet implemented)",
+      );
     });
   }
-  
+
   // Restore persona state after reattaching listeners
   // (The HTML was replaced, so we need to repopulate the mode dropdown)
   restorePersonaState();
-  
+
   // Render conversation list
   renderConversationList();
 }
@@ -2978,14 +3292,17 @@ function reattachChatEventListeners() {
  * Update right sidebar content based on view
  */
 function updateRightSidebar(view) {
-  const sidebarTitle = document.querySelector('.right-sidebar .sidebar-title');
-  const sidebarContent = document.querySelector('.right-sidebar .sidebar-content');
-  
+  const sidebarTitle = document.querySelector(".right-sidebar .sidebar-title");
+  const sidebarContent = document.querySelector(
+    ".right-sidebar .sidebar-content",
+  );
+
   if (!sidebarTitle || !sidebarContent) return;
-  
-  const hasQueryInput = sidebarContent.querySelector('#query-input') !== null;
-  const hasChatMessages = sidebarContent.querySelector('#chat-messages') !== null;
-  
+
+  const hasQueryInput = sidebarContent.querySelector("#query-input") !== null;
+  const hasChatMessages =
+    sidebarContent.querySelector("#chat-messages") !== null;
+
   // CRITICAL: Don't replace HTML if chat is already initialized with an active conversation
   // This prevents the conversation from being cleared and re-rendered, regardless of current view
   if (hasQueryInput && hasChatMessages && currentConversationId) {
@@ -2993,24 +3310,27 @@ function updateRightSidebar(view) {
   }
 
   // Save original chat HTML on first call (if it exists and hasn't been saved)
-  if (originalChatHTML === null && sidebarContent.querySelector('#query-input')) {
+  if (
+    originalChatHTML === null &&
+    sidebarContent.querySelector("#query-input")
+  ) {
     originalChatHTML = sidebarContent.innerHTML;
   }
-  
+
   // If trying to show chat but we don't have the HTML saved yet, just keep current content
-  if (view === 'chat' && !originalChatHTML) {
+  if (view === "chat" && !originalChatHTML) {
     return;
   }
 
   // Always show chat interface (we simplified this - no more view-specific sidebars)
-  sidebarTitle.textContent = 'Chat';
+  sidebarTitle.textContent = "Chat";
   sidebarContent.innerHTML = originalChatHTML || sidebarContent.innerHTML;
 
   // Re-initialize icons
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     setTimeout(() => lucide.createIcons(), 50);
   }
-  
+
   // Reattach event listeners after restoring HTML
   setTimeout(() => {
     reattachChatEventListeners();
@@ -3040,21 +3360,29 @@ function renderChatRightSidebar() {
 function renderDashboardRightSidebar() {
   // Get stats from conversations
   const totalConvs = conversations.length;
-  const todayConvs = conversations.filter(c => {
-    const createdToday = new Date(c.created_at).toDateString() === new Date().toDateString();
+  const todayConvs = conversations.filter((c) => {
+    const createdToday =
+      new Date(c.created_at).toDateString() === new Date().toDateString();
     return createdToday;
   }).length;
-  
+
   // Get most recent conversation
-  const recentConv = conversations.sort((a, b) => 
-    new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at)
+  const recentConv = conversations.sort(
+    (a, b) =>
+      new Date(b.updated_at || b.created_at) -
+      new Date(a.updated_at || a.created_at),
   )[0];
-  
-  const lastActivity = recentConv ? formatRelativeTime(recentConv.updated_at || recentConv.created_at) : 'No activity';
-  
+
+  const lastActivity = recentConv
+    ? formatRelativeTime(recentConv.updated_at || recentConv.created_at)
+    : "No activity";
+
   // Calculate total messages across all conversations
-  const totalMessages = conversations.reduce((sum, c) => sum + (c.messages?.length || 0), 0);
-  
+  const totalMessages = conversations.reduce(
+    (sum, c) => sum + (c.messages?.length || 0),
+    0,
+  );
+
   return `
     <div style="padding: 16px;">
       <div style="font-size: 12px; color: #808080; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">System Stats</div>
@@ -3074,7 +3402,7 @@ function renderDashboardRightSidebar() {
       <div class="stat-card">
         <div class="stat-label">Last Activity</div>
         <div class="stat-value" style="font-size: 14px;">${lastActivity}</div>
-        <div class="stat-sublabel">${recentConv ? recentConv.title : 'No conversations'}</div>
+        <div class="stat-sublabel">${recentConv ? recentConv.title : "No conversations"}</div>
       </div>
       
       <div style="margin-top: 16px;">
@@ -3095,14 +3423,15 @@ function renderDashboardRightSidebar() {
 function renderKnowledgeRightSidebar() {
   // Get RAG stats from global state (will be populated by loadSystemStats)
   // Support both 'notes' (new native system) and 'obsidian' (legacy)
-  const notesStats = window.pollyStats?.rag_stats?.notes || window.pollyStats?.rag_stats?.obsidian || { count: 0, files: 0 };
+  const notesStats = window.pollyStats?.rag_stats?.notes ||
+    window.pollyStats?.rag_stats?.obsidian || { count: 0, files: 0 };
   const notesCount = notesStats.count;
   const notesFiles = notesStats.files;
   const codeCount = window.pollyStats?.rag_stats?.codebase?.count || 0;
   const codeFiles = window.pollyStats?.rag_stats?.codebase?.files || 0;
   const totalChunks = notesCount + codeCount;
   const totalFiles = notesFiles + codeFiles;
-  
+
   return `
     <div style="padding: 16px;">
       <div style="font-size: 12px; color: #808080; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Knowledge Base</div>
@@ -3144,8 +3473,8 @@ function renderPatternsRightSidebar() {
   // Get pattern stats (will be populated when pattern system is implemented)
   const totalPatterns = window.pollyStats?.patterns?.total || 0;
   const weekPatterns = window.pollyStats?.patterns?.this_week || 0;
-  const topCategory = window.pollyStats?.patterns?.top_category || 'None';
-  
+  const topCategory = window.pollyStats?.patterns?.top_category || "None";
+
   return `
     <div style="padding: 16px;">
       <div style="font-size: 12px; color: #808080; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Pattern Statistics</div>
@@ -3225,44 +3554,48 @@ function renderSettingsRightSidebar() {
  * Check dependencies
  */
 async function checkDependencies() {
-  const btn = document.getElementById('btn-check-deps');
+  const btn = document.getElementById("btn-check-deps");
   btn.disabled = true;
-  btn.textContent = 'Checking...';
+  btn.textContent = "Checking...";
 
   const deps = await window.polly.checkDependencies();
 
   // Update Python status
-  const pythonEl = document.getElementById('dep-python');
+  const pythonEl = document.getElementById("dep-python");
   if (deps.python) {
-    pythonEl.querySelector('.dep-icon').innerHTML = '<i data-lucide="check-circle" style="width: 16px; height: 16px; color: var(--success);"></i>';
-    pythonEl.querySelector('.dep-status').textContent = 'Installed';
+    pythonEl.querySelector(".dep-icon").innerHTML =
+      '<i data-lucide="check-circle" style="width: 16px; height: 16px; color: var(--success);"></i>';
+    pythonEl.querySelector(".dep-status").textContent = "Installed";
   } else {
-    pythonEl.querySelector('.dep-icon').innerHTML = '<i data-lucide="x-circle" style="width: 16px; height: 16px; color: var(--error);"></i>';
-    pythonEl.querySelector('.dep-status').textContent = 'Not found';
+    pythonEl.querySelector(".dep-icon").innerHTML =
+      '<i data-lucide="x-circle" style="width: 16px; height: 16px; color: var(--error);"></i>';
+    pythonEl.querySelector(".dep-status").textContent = "Not found";
   }
 
   // Update Ollama status
-  const ollamaEl = document.getElementById('dep-ollama');
+  const ollamaEl = document.getElementById("dep-ollama");
   if (deps.ollama) {
-    ollamaEl.querySelector('.dep-icon').innerHTML = '<i data-lucide="check-circle" style="width: 16px; height: 16px; color: var(--success);"></i>';
-    ollamaEl.querySelector('.dep-status').textContent = 'Installed';
+    ollamaEl.querySelector(".dep-icon").innerHTML =
+      '<i data-lucide="check-circle" style="width: 16px; height: 16px; color: var(--success);"></i>';
+    ollamaEl.querySelector(".dep-status").textContent = "Installed";
   } else {
-    ollamaEl.querySelector('.dep-icon').innerHTML = '<i data-lucide="alert-circle" style="width: 16px; height: 16px; color: var(--warning);"></i>';
-    ollamaEl.querySelector('.dep-status').textContent = 'Not found (optional)';
+    ollamaEl.querySelector(".dep-icon").innerHTML =
+      '<i data-lucide="alert-circle" style="width: 16px; height: 16px; color: var(--warning);"></i>';
+    ollamaEl.querySelector(".dep-status").textContent = "Not found (optional)";
   }
-  
+
   // Re-initialize Lucide icons
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     lucide.createIcons();
   }
 
   btn.disabled = false;
 
   if (deps.python) {
-    btn.textContent = 'Continue';
+    btn.textContent = "Continue";
     btn.onclick = () => goToStep(2);
   } else {
-    btn.textContent = 'Check Again';
+    btn.textContent = "Check Again";
   }
 }
 
@@ -3272,31 +3605,36 @@ async function checkDependencies() {
 function goToStep(step) {
   setupStep = step;
 
-  document.querySelectorAll('.setup-step').forEach((el, i) => {
-    el.classList.toggle('active', i + 1 === step);
+  document.querySelectorAll(".setup-step").forEach((el, i) => {
+    el.classList.toggle("active", i + 1 === step);
   });
 }
 
 /**
  * Render code paths list
  */
-function renderCodePaths(containerId = 'code-paths') {
+function renderCodePaths(containerId = "code-paths") {
   const container = document.getElementById(containerId);
 
   if (!codePaths.length) {
-    container.innerHTML = '<div class="path-empty">No directories selected</div>';
+    container.innerHTML =
+      '<div class="path-empty">No directories selected</div>';
     return;
   }
 
-  container.innerHTML = codePaths.map((path, i) => `
+  container.innerHTML = codePaths
+    .map(
+      (path, i) => `
     <div class="path-item">
       <span>${path}</span>
       <button class="path-remove" data-index="${i}">✕</button>
     </div>
-  `).join('');
+  `,
+    )
+    .join("");
 
-  container.querySelectorAll('.path-remove').forEach(btn => {
-    btn.addEventListener('click', () => {
+  container.querySelectorAll(".path-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
       codePaths.splice(parseInt(btn.dataset.index), 1);
       renderCodePaths(containerId);
     });
@@ -3307,20 +3645,20 @@ function renderCodePaths(containerId = 'code-paths') {
  * Run installation
  */
 async function runInstall() {
-  const btn = document.getElementById('btn-install');
+  const btn = document.getElementById("btn-install");
   btn.disabled = true;
 
-  const progressContainer = document.getElementById('install-progress');
-  progressContainer.style.display = 'block';
+  const progressContainer = document.getElementById("install-progress");
+  progressContainer.style.display = "block";
 
-  const vaultPath = document.getElementById('vault-path').value;
-  const pullModels = document.getElementById('opt-pull-models').checked;
+  const vaultPath = document.getElementById("vault-path").value;
+  const pullModels = document.getElementById("opt-pull-models").checked;
 
   try {
     const result = await window.polly.runSetup({
       vaultPath,
       codebasePaths: codePaths,
-      pullModels
+      pullModels,
     });
 
     if (result.success) {
@@ -3339,8 +3677,8 @@ async function runInstall() {
  * Update setup progress
  */
 function updateSetupProgress(data) {
-  const fill = document.getElementById('progress-fill');
-  const text = document.getElementById('progress-text');
+  const fill = document.getElementById("progress-fill");
+  const text = document.getElementById("progress-text");
 
   const percent = (data.step / data.total) * 100;
   fill.style.width = `${percent}%`;
@@ -3352,85 +3690,171 @@ function updateSetupProgress(data) {
  */
 async function autoCategorizeConversation(conversationId) {
   if (!conversationId || !categories || categories.length === 0) return;
-  
-  const conv = conversations.find(c => c.id === conversationId);
+
+  const conv = conversations.find((c) => c.id === conversationId);
   if (!conv) return;
-  
+
   // Don't re-categorize if already categorized (not uncategorized)
-  if (conv.category_id && conv.category_id !== 'uncategorized') return;
-  
+  if (conv.category_id && conv.category_id !== "uncategorized") return;
+
   // Get conversation messages to analyze
   const fullConv = await window.polly.conversationGet(conversationId);
   if (!fullConv || !fullConv.messages || fullConv.messages.length === 0) return;
-  
+
   // Combine all messages to analyze content
   const allText = fullConv.messages
-    .map(m => m.content)
-    .join(' ')
+    .map((m) => m.content)
+    .join(" ")
     .toLowerCase();
-  
+
   // Define keywords for each category
   const categoryKeywords = {
-    'sigils': ['auth', 'login', 'password', 'security', 'encrypt', 'decrypt', 'token', 'jwt', 'oauth', 'permission', 'access', 'certificate', 'key', 'signature', 'identity', 'credential'],
-    'signals': ['message', 'notification', 'event', 'webhook', 'socket', 'broadcast', 'publish', 'subscribe', 'channel', 'stream', 'real-time', 'websocket', 'email', 'sms', 'alert'],
-    'scrolls': ['document', 'file', 'storage', 'upload', 'download', 'pdf', 'markdown', 'content', 'blob', 's3', 'bucket', 'attachment', 'media', 'image'],
-    'glyphs': ['ui', 'component', 'button', 'form', 'layout', 'css', 'style', 'design', 'render', 'display', 'view', 'template', 'theme', 'color', 'font', 'icon'],
-    'grids': ['database', 'table', 'query', 'sql', 'schema', 'model', 'data', 'index', 'collection', 'record', 'crud', 'orm', 'migration', 'postgres', 'mongo', 'array', 'list', 'map']
+    sigils: [
+      "auth",
+      "login",
+      "password",
+      "security",
+      "encrypt",
+      "decrypt",
+      "token",
+      "jwt",
+      "oauth",
+      "permission",
+      "access",
+      "certificate",
+      "key",
+      "signature",
+      "identity",
+      "credential",
+    ],
+    signals: [
+      "message",
+      "notification",
+      "event",
+      "webhook",
+      "socket",
+      "broadcast",
+      "publish",
+      "subscribe",
+      "channel",
+      "stream",
+      "real-time",
+      "websocket",
+      "email",
+      "sms",
+      "alert",
+    ],
+    scrolls: [
+      "document",
+      "file",
+      "storage",
+      "upload",
+      "download",
+      "pdf",
+      "markdown",
+      "content",
+      "blob",
+      "s3",
+      "bucket",
+      "attachment",
+      "media",
+      "image",
+    ],
+    glyphs: [
+      "ui",
+      "component",
+      "button",
+      "form",
+      "layout",
+      "css",
+      "style",
+      "design",
+      "render",
+      "display",
+      "view",
+      "template",
+      "theme",
+      "color",
+      "font",
+      "icon",
+    ],
+    grids: [
+      "database",
+      "table",
+      "query",
+      "sql",
+      "schema",
+      "model",
+      "data",
+      "index",
+      "collection",
+      "record",
+      "crud",
+      "orm",
+      "migration",
+      "postgres",
+      "mongo",
+      "array",
+      "list",
+      "map",
+    ],
   };
-  
+
   // Count matches for each category
   const scores = {};
   for (const [catId, keywords] of Object.entries(categoryKeywords)) {
     scores[catId] = keywords.reduce((score, keyword) => {
       // Count occurrences of the keyword
-      const regex = new RegExp(`\\b${keyword}`, 'gi');
+      const regex = new RegExp(`\\b${keyword}`, "gi");
       const matches = allText.match(regex);
       return score + (matches ? matches.length : 0);
     }, 0);
   }
-  
+
   // Find category with highest score
-  let bestCategory = 'uncategorized';
+  let bestCategory = "uncategorized";
   let highestScore = 0;
-  
+
   for (const [catId, score] of Object.entries(scores)) {
     if (score > highestScore) {
       highestScore = score;
       bestCategory = catId;
     }
   }
-  
+
   // Only categorize if we have a reasonable confidence (at least 3 keyword matches)
   if (highestScore >= 3) {
-    console.log(`Auto-categorizing conversation ${conversationId} as ${bestCategory} (score: ${highestScore})`);
-    
+    console.log(
+      `Auto-categorizing conversation ${conversationId} as ${bestCategory} (score: ${highestScore})`,
+    );
+
     try {
-      await window.polly.conversationUpdate(conversationId, { 
-        category_id: bestCategory 
+      await window.polly.conversationUpdate(conversationId, {
+        category_id: bestCategory,
       });
-      
+
       // Update local state
-      const index = conversations.findIndex(c => c.id === conversationId);
+      const index = conversations.findIndex((c) => c.id === conversationId);
       if (index !== -1) {
-        const cat = categories.find(c => c.id === bestCategory);
+        const cat = categories.find((c) => c.id === bestCategory);
         conversations[index].category_id = bestCategory;
         if (cat) {
           conversations[index].category_name = cat.name;
         }
       }
-      
+
       if (currentConversationId === conversationId) {
         currentConversation.category_id = bestCategory;
-        const cat = categories.find(c => c.id === bestCategory);
+        const cat = categories.find((c) => c.id === bestCategory);
         if (cat) {
           currentConversation.category_name = cat.name;
         }
       }
-      
+
       // Refresh the conversation list to show new category
       renderConversationList();
     } catch (error) {
-      console.error('Failed to auto-categorize:', error);
+      console.error("Failed to auto-categorize:", error);
     }
   }
 }
@@ -3444,16 +3868,18 @@ async function autoCategorizeConversation(conversationId) {
  */
 async function handlePersonaChange(e) {
   const personaName = e.target.value;
-  const modeSelect = document.getElementById('mode-select');
-  const floatingModeSelect = document.getElementById('floating-mode-select');
-  const personaSelect = document.getElementById('persona-select');
-  const floatingPersonaSelect = document.getElementById('floating-persona-select');
-  
-  console.log('[Persona] handlePersonaChange called with:', personaName);
-  console.log('[Persona] Event triggered from:', e.target.id);
-  console.log('[Persona] modeSelect element:', modeSelect);
-  console.log('[Persona] floatingModeSelect element:', floatingModeSelect);
-  
+  const modeSelect = document.getElementById("mode-select");
+  const floatingModeSelect = document.getElementById("floating-mode-select");
+  const personaSelect = document.getElementById("persona-select");
+  const floatingPersonaSelect = document.getElementById(
+    "floating-persona-select",
+  );
+
+  console.log("[Persona] handlePersonaChange called with:", personaName);
+  console.log("[Persona] Event triggered from:", e.target.id);
+  console.log("[Persona] modeSelect element:", modeSelect);
+  console.log("[Persona] floatingModeSelect element:", floatingModeSelect);
+
   // Keep both persona selects in sync
   if (personaSelect && personaSelect.value !== personaName) {
     personaSelect.value = personaName;
@@ -3461,124 +3887,143 @@ async function handlePersonaChange(e) {
   if (floatingPersonaSelect && floatingPersonaSelect.value !== personaName) {
     floatingPersonaSelect.value = personaName;
   }
-  
+
   if (!personaName) {
     // Deactivate persona
     try {
-      await fetch('http://127.0.0.1:11436/persona/deactivate', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'}
+      await fetch("http://127.0.0.1:11436/persona/deactivate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
       });
-      
+
       // Disable mode selectors
       if (modeSelect) {
         modeSelect.disabled = true;
-        modeSelect.innerHTML = '<option>Select persona first</option>';
+        modeSelect.innerHTML = "<option>Select persona first</option>";
       }
       if (floatingModeSelect) {
         floatingModeSelect.disabled = true;
-        floatingModeSelect.innerHTML = '<option>Select persona first</option>';
+        floatingModeSelect.innerHTML = "<option>Select persona first</option>";
       }
-      
+
       // Hide teaching mode indicator
       updateTeachingModeIndicator(null, null);
-      
-      console.log('[Persona] Deactivated');
+
+      console.log("[Persona] Deactivated");
     } catch (error) {
-      console.error('[Persona] Failed to deactivate:', error);
+      console.error("[Persona] Failed to deactivate:", error);
     }
     return;
   }
-  
+
   try {
     // Activate persona
-    console.log('[Persona] Activating persona:', personaName);
-    console.log('[Persona] Sending POST to /persona/activate');
-    
-    const response = await fetch('http://127.0.0.1:11436/persona/activate', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({persona_name: personaName})
+    console.log("[Persona] Activating persona:", personaName);
+    console.log("[Persona] Sending POST to /persona/activate");
+
+    const response = await fetch("http://127.0.0.1:11436/persona/activate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ persona_name: personaName }),
     });
-    
-    console.log('[Persona] Response status:', response.status, response.statusText);
-    
+
+    console.log(
+      "[Persona] Response status:",
+      response.status,
+      response.statusText,
+    );
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[Persona] Error response:', errorText);
+      console.error("[Persona] Error response:", errorText);
       throw new Error(`Failed to activate persona: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
-    console.log('[Persona] Activation response:', data);
-    
+    console.log("[Persona] Activation response:", data);
+
     if (data.success && data.state) {
       // Get persona metadata to populate modes
-      const listResponse = await fetch('http://127.0.0.1:11436/persona/list');
+      const listResponse = await fetch("http://127.0.0.1:11436/persona/list");
       const listData = await listResponse.json();
-      console.log('[Persona] List data:', listData);
-      
-      const persona = listData.personas.find(p => p.name === personaName);
-      console.log('[Persona] Found persona:', persona);
-      console.log('[Persona] Available modes:', persona?.available_modes);
-      
+      console.log("[Persona] List data:", listData);
+
+      const persona = listData.personas.find((p) => p.name === personaName);
+      console.log("[Persona] Found persona:", persona);
+      console.log("[Persona] Available modes:", persona?.available_modes);
+
       if (persona && persona.available_modes) {
         // Populate mode selector
-        console.log('[Persona] About to populate mode selectors');
-        console.log('[Persona] modeSelect before:', modeSelect?.innerHTML);
-        console.log('[Persona] floatingModeSelect before:', floatingModeSelect?.innerHTML);
-        
-        const modeOptionsHTML = persona.available_modes.map(mode => 
-          `<option value="${mode}" ${mode === data.state.current_mode ? 'selected' : ''}>${mode.charAt(0).toUpperCase() + mode.slice(1)}</option>`
-        ).join('');
-        
+        console.log("[Persona] About to populate mode selectors");
+        console.log("[Persona] modeSelect before:", modeSelect?.innerHTML);
+        console.log(
+          "[Persona] floatingModeSelect before:",
+          floatingModeSelect?.innerHTML,
+        );
+
+        const modeOptionsHTML = persona.available_modes
+          .map(
+            (mode) =>
+              `<option value="${mode}" ${mode === data.state.current_mode ? "selected" : ""}>${mode.charAt(0).toUpperCase() + mode.slice(1)}</option>`,
+          )
+          .join("");
+
         // Update main mode select
         if (modeSelect) {
           modeSelect.disabled = false;
           modeSelect.innerHTML = modeOptionsHTML;
-          console.log('[Persona] modeSelect after:', modeSelect.innerHTML);
-          console.log('[Persona] modeSelect.disabled:', modeSelect.disabled);
+          console.log("[Persona] modeSelect after:", modeSelect.innerHTML);
+          console.log("[Persona] modeSelect.disabled:", modeSelect.disabled);
         }
-        
+
         // Update floating mode select
         if (floatingModeSelect) {
           floatingModeSelect.disabled = false;
           floatingModeSelect.innerHTML = modeOptionsHTML;
-          console.log('[Persona] floatingModeSelect after:', floatingModeSelect.innerHTML);
-          console.log('[Persona] floatingModeSelect.disabled:', floatingModeSelect.disabled);
+          console.log(
+            "[Persona] floatingModeSelect after:",
+            floatingModeSelect.innerHTML,
+          );
+          console.log(
+            "[Persona] floatingModeSelect.disabled:",
+            floatingModeSelect.disabled,
+          );
         }
-        
-        console.log(`[Persona] Activated ${personaName} in ${data.state.current_mode} mode`);
-        
+
+        console.log(
+          `[Persona] Activated ${personaName} in ${data.state.current_mode} mode`,
+        );
+
         // Update teaching mode indicator
         updateTeachingModeIndicator(personaName, data.state.current_mode);
       } else {
-        console.error('[Persona] No modes found!', {
+        console.error("[Persona] No modes found!", {
           hasPersona: !!persona,
           modes: persona?.available_modes,
-          allData: listData
+          allData: listData,
         });
       }
     } else {
-      console.error('[Persona] Activation failed or no state:', data);
+      console.error("[Persona] Activation failed or no state:", data);
     }
   } catch (error) {
-    console.error('[Persona] Failed to activate persona:', error);
+    console.error("[Persona] Failed to activate persona:", error);
     alert(`Failed to activate ${personaName}: ${error.message}`);
-    
+
     // Reset persona selects
-    e.target.value = '';
-    if (personaSelect && personaSelect !== e.target) personaSelect.value = '';
-    if (floatingPersonaSelect && floatingPersonaSelect !== e.target) floatingPersonaSelect.value = '';
-    
+    e.target.value = "";
+    if (personaSelect && personaSelect !== e.target) personaSelect.value = "";
+    if (floatingPersonaSelect && floatingPersonaSelect !== e.target)
+      floatingPersonaSelect.value = "";
+
     // Reset mode selects
     if (modeSelect) {
       modeSelect.disabled = true;
-      modeSelect.innerHTML = '<option>Select persona first</option>';
+      modeSelect.innerHTML = "<option>Select persona first</option>";
     }
     if (floatingModeSelect) {
       floatingModeSelect.disabled = true;
-      floatingModeSelect.innerHTML = '<option>Select persona first</option>';
+      floatingModeSelect.innerHTML = "<option>Select persona first</option>";
     }
   }
 }
@@ -3588,42 +4033,44 @@ async function handlePersonaChange(e) {
  */
 async function handleModeChange(e) {
   const mode = e.target.value;
-  
+
   // Check if a persona is active first
-  const personaSelect = document.getElementById('persona-select');
-  const floatingPersonaSelect = document.getElementById('floating-persona-select');
+  const personaSelect = document.getElementById("persona-select");
+  const floatingPersonaSelect = document.getElementById(
+    "floating-persona-select",
+  );
   const activePersona = personaSelect?.value || floatingPersonaSelect?.value;
-  
+
   if (!activePersona) {
-    console.warn('[Persona] Cannot switch mode - no persona active');
+    console.warn("[Persona] Cannot switch mode - no persona active");
     return;
   }
-  
+
   try {
-    const response = await fetch('http://127.0.0.1:11436/persona/switch-mode', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({mode})
+    const response = await fetch("http://127.0.0.1:11436/persona/switch-mode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[Persona] Mode switch failed:', errorText);
+      console.error("[Persona] Mode switch failed:", errorText);
       throw new Error(`Failed to switch mode: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
-    
+
     if (data.success) {
       console.log(`[Persona] Switched to ${mode} mode`);
-      
+
       // Update teaching mode indicator if Professor persona is active
       updateTeachingModeIndicator(activePersona, mode);
     }
   } catch (error) {
-    console.error('[Persona] Failed to switch mode:', error);
+    console.error("[Persona] Failed to switch mode:", error);
     // Don't show alert if persona not active - this is expected during initialization
-    if (!error.message.includes('No persona is active')) {
+    if (!error.message.includes("No persona is active")) {
       alert(`Failed to switch to ${mode} mode: ${error.message}`);
     }
   }
@@ -3635,30 +4082,35 @@ async function handleModeChange(e) {
  * @param {string} mode - Current mode
  */
 function updateTeachingModeIndicator(persona, mode) {
-  const indicator = document.getElementById('teaching-mode-indicator');
-  const modeText = document.getElementById('teaching-mode-text');
-  
+  const indicator = document.getElementById("teaching-mode-indicator");
+  const modeText = document.getElementById("teaching-mode-text");
+
   if (!indicator || !modeText) return;
-  
+
   // Only show indicator for Professor persona
-  if (persona === 'professor') {
-    indicator.classList.remove('hidden');
-    
+  if (persona === "professor") {
+    indicator.classList.remove("hidden");
+
     // Update text
     const modeNames = {
-      'socratic': 'Socratic',
-      'explain': 'Explain',
-      'curriculum': 'Curriculum',
-      'quiz': 'Quiz'
+      socratic: "Socratic",
+      explain: "Explain",
+      curriculum: "Curriculum",
+      quiz: "Quiz",
     };
     modeText.textContent = modeNames[mode] || mode;
-    
+
     // Update color classes
-    indicator.classList.remove('mode-socratic', 'mode-explain', 'mode-curriculum', 'mode-quiz');
+    indicator.classList.remove(
+      "mode-socratic",
+      "mode-explain",
+      "mode-curriculum",
+      "mode-quiz",
+    );
     indicator.classList.add(`mode-${mode}`);
   } else {
     // Hide for other personas
-    indicator.classList.add('hidden');
+    indicator.classList.add("hidden");
   }
 }
 
@@ -3668,46 +4120,56 @@ function updateTeachingModeIndicator(persona, mode) {
 async function restorePersonaState() {
   try {
     // Use silent fetch to avoid console noise during startup
-    const response = await fetch('http://127.0.0.1:11436/persona/state');
+    const response = await fetch("http://127.0.0.1:11436/persona/state");
     if (!response.ok) {
       // This is normal if no persona is active
       return;
     }
-    
+
     const data = await response.json();
-    
+
     if (data.active_persona) {
-      console.log('[Persona] Restoring persona state:', data);
-      
-      const personaSelect = document.getElementById('persona-select');
-      const modeSelect = document.getElementById('mode-select');
-      
+      console.log("[Persona] Restoring persona state:", data);
+
+      const personaSelect = document.getElementById("persona-select");
+      const modeSelect = document.getElementById("mode-select");
+
       // Set persona dropdown
       personaSelect.value = data.active_persona;
-      
+
       // Get persona metadata to populate modes
-      const listResponse = await fetch('http://127.0.0.1:11436/persona/list');
+      const listResponse = await fetch("http://127.0.0.1:11436/persona/list");
       const listData = await listResponse.json();
-      
-      const persona = listData.personas.find(p => p.name === data.active_persona);
-      
+
+      const persona = listData.personas.find(
+        (p) => p.name === data.active_persona,
+      );
+
       if (persona && persona.available_modes) {
         // Populate mode selector
         modeSelect.disabled = false;
-        modeSelect.innerHTML = persona.available_modes.map(mode => 
-          `<option value="${mode}" ${mode === data.current_mode ? 'selected' : ''}>${mode.charAt(0).toUpperCase() + mode.slice(1)}</option>`
-        ).join('');
-        
-        console.log(`[Persona] Restored ${data.active_persona} in ${data.current_mode} mode`);
-        
+        modeSelect.innerHTML = persona.available_modes
+          .map(
+            (mode) =>
+              `<option value="${mode}" ${mode === data.current_mode ? "selected" : ""}>${mode.charAt(0).toUpperCase() + mode.slice(1)}</option>`,
+          )
+          .join("");
+
+        console.log(
+          `[Persona] Restored ${data.active_persona} in ${data.current_mode} mode`,
+        );
+
         // Update teaching mode indicator
         updateTeachingModeIndicator(data.active_persona, data.current_mode);
       }
     }
   } catch (error) {
     // Only log if it's not a connection error (expected during startup)
-    if (!error.message.includes('Failed to fetch') && !error.message.includes('ERR_CONNECTION_REFUSED')) {
-      console.log('[Persona] Failed to restore persona state:', error.message);
+    if (
+      !error.message.includes("Failed to fetch") &&
+      !error.message.includes("ERR_CONNECTION_REFUSED")
+    ) {
+      console.log("[Persona] Failed to restore persona state:", error.message);
     }
   }
 }
@@ -3716,19 +4178,19 @@ async function restorePersonaState() {
  * Model selector: provider list and display names (matches backend + LiteLLM/OpenRouter).
  */
 const MODEL_PROVIDERS = [
-  { id: 'anthropic', label: 'Anthropic (Claude)' },
-  { id: 'openai', label: 'OpenAI (GPT)' },
-  { id: 'github', label: 'GitHub' },
-  { id: 'grok', label: 'Grok (xAI)' },
-  { id: 'perplexity', label: 'Perplexity' },
-  { id: 'gemini', label: 'Gemini' },
-  { id: 'mistral', label: 'Mistral' },
-  { id: 'openrouter', label: 'OpenRouter' }
+  { id: "anthropic", label: "Anthropic (Claude)" },
+  { id: "openai", label: "OpenAI (GPT)" },
+  { id: "github", label: "GitHub" },
+  { id: "grok", label: "Grok (xAI)" },
+  { id: "perplexity", label: "Perplexity" },
+  { id: "gemini", label: "Gemini" },
+  { id: "mistral", label: "Mistral" },
+  { id: "openrouter", label: "OpenRouter" },
 ];
 const MODEL_TIERS = [
-  { id: 'fast', label: 'Fast' },
-  { id: 'balanced', label: 'Balanced' },
-  { id: 'thorough', label: 'Thorough' }
+  { id: "fast", label: "Fast" },
+  { id: "balanced", label: "Balanced" },
+  { id: "thorough", label: "Thorough" },
 ];
 
 /**
@@ -3741,7 +4203,7 @@ function buildModelSelectorOptions() {
     for (const prov of MODEL_PROVIDERS) {
       html += `<option value="${prov.id}:${tier.id}">${prov.label}</option>`;
     }
-    html += '</optgroup>';
+    html += "</optgroup>";
   }
   return html;
 }
@@ -3752,17 +4214,27 @@ function buildModelSelectorOptions() {
  */
 function populateModelSelectors() {
   const optionsHtml = buildModelSelectorOptions();
-  const selectIds = ['chat-model-select', 'model-select', 'floating-model-select'];
-  const confidence = sessionStorage.getItem('model-confidence') || 'balanced';
-  const providerOverride = sessionStorage.getItem('model-provider');
-  const saved = providerOverride ? `${providerOverride}:${confidence}` : `auto:${confidence}`;
+  const selectIds = [
+    "chat-model-select",
+    "model-select",
+    "floating-model-select",
+  ];
+  const confidence = sessionStorage.getItem("model-confidence") || "balanced";
+  const providerOverride = sessionStorage.getItem("model-provider");
+  const saved = providerOverride
+    ? `${providerOverride}:${confidence}`
+    : `auto:${confidence}`;
   for (const id of selectIds) {
     const el = document.getElementById(id);
     if (!el) continue;
     const current = el.value;
     el.innerHTML = optionsHtml;
-    const hasCurrent = Array.from(el.options).some(o => o.value === current);
-    el.value = hasCurrent ? current : (Array.from(el.options).some(o => o.value === saved) ? saved : 'auto:balanced');
+    const hasCurrent = Array.from(el.options).some((o) => o.value === current);
+    el.value = hasCurrent
+      ? current
+      : Array.from(el.options).some((o) => o.value === saved)
+        ? saved
+        : "auto:balanced";
   }
 }
 
@@ -3772,25 +4244,29 @@ function populateModelSelectors() {
  * and stores for use in sendQuery
  */
 function handleModelChange(e) {
-  const modelValue = e.target.value;  // e.g., "auto:balanced", "github:thorough", "anthropic:fast"
-  
+  const modelValue = e.target.value; // e.g., "auto:balanced", "github:thorough", "anthropic:fast"
+
   // Parse the value: format is "provider:tier" or "auto:tier"
-  const [provider, tier] = modelValue.split(':');
-  
+  const [provider, tier] = modelValue.split(":");
+
   // Store in sessionStorage for use in sendQuery
-  if (provider === 'auto') {
+  if (provider === "auto") {
     // Auto mode: let router decide, just use the tier
-    sessionStorage.setItem('model-confidence', tier);
-    sessionStorage.removeItem('model-provider');
+    sessionStorage.setItem("model-confidence", tier);
+    sessionStorage.removeItem("model-provider");
     console.log(`[Model] Auto mode with ${tier} tier`);
   } else {
     // Specific provider: set both tier and provider override
-    sessionStorage.setItem('model-confidence', tier);
-    sessionStorage.setItem('model-provider', provider);
+    sessionStorage.setItem("model-confidence", tier);
+    sessionStorage.setItem("model-provider", provider);
     console.log(`[Model] ${provider} provider with ${tier} tier`);
   }
   // Keep all three selects in sync
-  const selectIds = ['chat-model-select', 'model-select', 'floating-model-select'];
+  const selectIds = [
+    "chat-model-select",
+    "model-select",
+    "floating-model-select",
+  ];
   for (const id of selectIds) {
     const el = document.getElementById(id);
     if (el && el !== e.target && el.value !== modelValue) el.value = modelValue;
@@ -3803,52 +4279,56 @@ function handleModelChange(e) {
  */
 async function sendToPersona(query, conversationHistory, loadingId) {
   try {
-    const response = await fetch('http://127.0.0.1:11436/persona/process', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+    const response = await fetch("http://127.0.0.1:11436/persona/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         user_message: query,
         metadata: {
           page: currentPage,
-          conversation_history: conversationHistory
-        }
-      })
+          conversation_history: conversationHistory,
+        },
+      }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Persona request failed: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
-    
+
     if (!data.success) {
-      throw new Error('Persona processing failed');
+      throw new Error("Persona processing failed");
     }
-    
+
     const personaResponse = data.response;
-    
+
     // Remove loading indicator
     removeMessage(loadingId);
-    
+
     // Add persona response to UI
     const formattedContent = formatResponse(personaResponse.content);
-    addMessageToUI('assistant', formattedContent);
-    
+    addMessageToUI("assistant", formattedContent);
+
     // Add to conversation in database
-    await addMessageToConversation('assistant', personaResponse.content);
-    
+    await addMessageToConversation("assistant", personaResponse.content);
+
     // Handle actions
     if (personaResponse.actions && personaResponse.actions.length > 0) {
       for (const action of personaResponse.actions) {
         await handlePersonaAction(action);
       }
     }
-    
-    console.log('[Persona] Response received with', personaResponse.actions?.length || 0, 'actions');
-    
+
+    console.log(
+      "[Persona] Response received with",
+      personaResponse.actions?.length || 0,
+      "actions",
+    );
+
     return true; // Persona handled the request
   } catch (error) {
-    console.error('[Persona] Request failed:', error);
+    console.error("[Persona] Request failed:", error);
     // Return false to fall back to normal query
     return false;
   }
@@ -3858,175 +4338,201 @@ async function sendToPersona(query, conversationHistory, loadingId) {
  * Handle persona action (show_questions, show_preview, etc.)
  */
 async function handlePersonaAction(action) {
-  console.log('[Persona] Handling action:', action.type);
-  
+  console.log("[Persona] Handling action:", action.type);
+
   switch (action.type) {
-    case 'review_curriculum':
+    case "review_curriculum":
       // Show curriculum review dialog (Phase 23)
-      console.log('[Persona] review_curriculum action received');
+      console.log("[Persona] review_curriculum action received");
       handleReviewCurriculumAction(action);
       break;
-    
-    case 'show_template_gallery':
+
+    case "show_template_gallery":
       // Show Template Gallery modal (Phase 16e)
-      console.log('[Persona] show_template_gallery action received');
-      console.log('[Persona] window.TemplateGallery exists:', !!window.TemplateGallery);
-      console.log('[Persona] action.data:', action.data);
-      
+      console.log("[Persona] show_template_gallery action received");
+      console.log(
+        "[Persona] window.TemplateGallery exists:",
+        !!window.TemplateGallery,
+      );
+      console.log("[Persona] action.data:", action.data);
+
       if (window.TemplateGallery && action.data) {
         const suggestedTemplate = action.data.suggested_template || null;
-        console.log('[Persona] Showing template gallery, suggested:', suggestedTemplate);
-        
+        console.log(
+          "[Persona] Showing template gallery, suggested:",
+          suggestedTemplate,
+        );
+
         const callback = async (templateFilename) => {
-          console.log('[Persona] ===== TEMPLATE SELECTED CALLBACK FIRED =====');
-          console.log('[Persona] User selected template:', templateFilename);
-          
+          console.log("[Persona] ===== TEMPLATE SELECTED CALLBACK FIRED =====");
+          console.log("[Persona] User selected template:", templateFilename);
+
           // Send template selection back to persona for enrich mode
           await sendTemplateSelectionToPersona(templateFilename);
         };
-        
-        console.log('[Persona] Registering callback and showing gallery');
+
+        console.log("[Persona] Registering callback and showing gallery");
         window.TemplateGallery.show(suggestedTemplate, callback);
-        console.log('[Persona] Gallery.show() called');
+        console.log("[Persona] Gallery.show() called");
       } else {
-        console.error('[Persona] TemplateGallery not available or no data');
+        console.error("[Persona] TemplateGallery not available or no data");
       }
       break;
-    
-    case 'show_questions':
+
+    case "show_questions":
       // Show QuestionForm modal
       if (window.QuestionForm && action.data) {
         window.QuestionForm.show(action.data, async (answers) => {
-          console.log('[Persona] User answered questions:', answers);
-          
+          console.log("[Persona] User answered questions:", answers);
+
           // Send answers back to persona
           await sendAnswersToPersona(answers);
         });
       } else {
-        console.error('[Persona] QuestionForm not available or no data');
+        console.error("[Persona] QuestionForm not available or no data");
       }
       break;
-      
-    case 'show_preview':
+
+    case "show_preview":
       // Show PreviewModal
       if (window.PreviewModal && action.data) {
         window.PreviewModal.show(action.data, async (noteData) => {
-          console.log('[Persona] User saved note:', noteData);
-          
+          console.log("[Persona] User saved note:", noteData);
+
           // Save note to knowledge base
           await saveNoteToKnowledgeBase(noteData);
         });
       } else {
-        console.error('[Persona] PreviewModal not available or no data');
+        console.error("[Persona] PreviewModal not available or no data");
       }
       break;
-      
-    case 'switch_mode':
-    case 'auto_mode_switch':
+
+    case "switch_mode":
+    case "auto_mode_switch":
       // Auto-switch persona mode
       if (action.data && action.data.target_mode) {
         const targetMode = action.data.target_mode;
-        const modeSelect = document.getElementById('mode-select');
+        const modeSelect = document.getElementById("mode-select");
         if (modeSelect) {
-          console.log('[Persona] Auto-switching to mode:', targetMode);
-          
+          console.log("[Persona] Auto-switching to mode:", targetMode);
+
           // First, ensure the mode option exists in the dropdown
-          const existingOption = Array.from(modeSelect.options).find(opt => opt.value === targetMode);
+          const existingOption = Array.from(modeSelect.options).find(
+            (opt) => opt.value === targetMode,
+          );
           if (!existingOption) {
             // Add the mode option if it doesn't exist
-            const option = document.createElement('option');
+            const option = document.createElement("option");
             option.value = targetMode;
-            option.textContent = targetMode.charAt(0).toUpperCase() + targetMode.slice(1);
+            option.textContent =
+              targetMode.charAt(0).toUpperCase() + targetMode.slice(1);
             modeSelect.appendChild(option);
             modeSelect.disabled = false;
           }
-          
+
           // Set the value
           modeSelect.value = targetMode;
-          
+
           // Call the mode change handler with proper event structure
-          await handleModeChange({target: {value: targetMode}});
-          
+          await handleModeChange({ target: { value: targetMode } });
+
           // Show transition message if provided
           if (action.data.message) {
-            console.log('[Persona] Mode switch message:', action.data.message);
+            console.log("[Persona] Mode switch message:", action.data.message);
           }
-          
+
           // Auto-trigger next step in workflow
           // Send a follow-up query to continue the persona workflow
           setTimeout(async () => {
-            console.log('[Persona] Auto-triggering next step in', targetMode, 'mode');
+            console.log(
+              "[Persona] Auto-triggering next step in",
+              targetMode,
+              "mode",
+            );
             const messages = getCurrentConversationMessages();
-            const conversationHistory = messages.map(msg => ({
+            const conversationHistory = messages.map((msg) => ({
               role: msg.role,
-              content: msg.content
+              content: msg.content,
             }));
-            
+
             // Show loading
-            const followUpLoadingId = addMessageToUI('assistant', '<div class="loading"><div class="loading-spinner"></div>Processing...</div>');
-            
+            const followUpLoadingId = addMessageToUI(
+              "assistant",
+              '<div class="loading"><div class="loading-spinner"></div>Processing...</div>',
+            );
+
             // Send continuation query
-            await sendToPersona('Continue workflow', conversationHistory, followUpLoadingId);
+            await sendToPersona(
+              "Continue workflow",
+              conversationHistory,
+              followUpLoadingId,
+            );
           }, 500);
         }
       } else if (action.data && action.data.mode) {
         // Legacy format support
-        const modeSelect = document.getElementById('mode-select');
+        const modeSelect = document.getElementById("mode-select");
         if (modeSelect) {
           modeSelect.value = action.data.mode;
-          await handleModeChange({target: {value: action.data.mode}});
+          await handleModeChange({ target: { value: action.data.mode } });
         }
       }
       break;
-      
-    case 'suggest_mode_switch':
+
+    case "suggest_mode_switch":
       // Suggest a mode switch (non-automatic, just a suggestion)
       if (action.data && action.data.target_mode) {
         const targetMode = action.data.target_mode;
-        const message = action.data.message || `Consider switching to ${targetMode} mode`;
-        console.log('[Persona] Mode switch suggested:', targetMode, '-', message);
-        
+        const message =
+          action.data.message || `Consider switching to ${targetMode} mode`;
+        console.log(
+          "[Persona] Mode switch suggested:",
+          targetMode,
+          "-",
+          message,
+        );
+
         // Optionally, you could show a toast/notification here
         // For now, just log it - the content message should explain to the user
       }
       break;
-    
-    case 'render_diagram':
+
+    case "render_diagram":
       // Render Mermaid diagram
       if (action.data) {
         await renderDiagram(action.data);
       } else {
-        console.error('[Persona] render_diagram action missing data');
+        console.error("[Persona] render_diagram action missing data");
       }
       break;
-    
-    case 'execute_code':
+
+    case "execute_code":
       // Execute code in sandbox
       if (action.data) {
         await executeCodeInSandbox(action.data);
       } else {
-        console.error('[Persona] execute_code action missing data');
+        console.error("[Persona] execute_code action missing data");
       }
       break;
-    
-    case 'present_exercise':
+
+    case "present_exercise":
       // Present interactive exercise
       if (action.data) {
         await presentExercise(action.data);
       } else {
-        console.error('[Persona] present_exercise action missing data');
+        console.error("[Persona] present_exercise action missing data");
       }
       break;
-      
-    case 'offer_learning_note':
+
+    case "offer_learning_note":
       // Show learning note creation modal
       if (action.data) {
         showLearningNoteModal(action.data);
       }
       break;
-      
+
     default:
-      console.warn('[Persona] Unknown action type:', action.type);
+      console.warn("[Persona] Unknown action type:", action.type);
       break;
   }
 }
@@ -4035,86 +4541,95 @@ async function handlePersonaAction(action) {
  * Send user answers back to persona
  */
 async function sendAnswersToPersona(answers) {
-  const input = document.getElementById('query-input');
-  
+  const input = document.getElementById("query-input");
+
   // Add user answers to UI
-  const answersText = Object.entries(answers).map(([q, a]) => `${q}: ${a}`).join('\n');
-  addMessageToUI('user', `My answers:\n${answersText}`);
-  
+  const answersText = Object.entries(answers)
+    .map(([q, a]) => `${q}: ${a}`)
+    .join("\n");
+  addMessageToUI("user", `My answers:\n${answersText}`);
+
   // Add to conversation
-  await addMessageToConversation('user', answersText);
-  
+  await addMessageToConversation("user", answersText);
+
   // Show loading
-  const loadingId = addMessageToUI('assistant', '<div class="loading"><div class="loading-spinner"></div>Generating note...</div>');
-  
+  const loadingId = addMessageToUI(
+    "assistant",
+    '<div class="loading"><div class="loading-spinner"></div>Generating note...</div>',
+  );
+
   // Switch to enrich mode (organize mode expects answers, then switches to enrich)
   try {
-    await fetch('http://127.0.0.1:11436/persona/switch-mode', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({mode: 'enrich'})
+    await fetch("http://127.0.0.1:11436/persona/switch-mode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "enrich" }),
     });
-    console.log('[Persona] Switched to enrich mode');
+    console.log("[Persona] Switched to enrich mode");
   } catch (error) {
-    console.error('[Persona] Failed to switch mode:', error);
+    console.error("[Persona] Failed to switch mode:", error);
   }
-  
+
   // Send to persona with answers in metadata
   const messages = getCurrentConversationMessages();
-  const conversationHistory = messages.slice(0, -1).map(msg => ({
+  const conversationHistory = messages.slice(0, -1).map((msg) => ({
     role: msg.role,
-    content: msg.content
+    content: msg.content,
   }));
-  
+
   // Call sendToPersona with metadata including answers
   try {
-    const response = await fetch('http://127.0.0.1:11436/persona/process', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+    const response = await fetch("http://127.0.0.1:11436/persona/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user_message: 'Generate the note with my answers',
+        user_message: "Generate the note with my answers",
         metadata: {
           page: currentPage,
           conversation_history: conversationHistory,
-          user_answers: answers  // Include answers here!
-        }
-      })
+          user_answers: answers, // Include answers here!
+        },
+      }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Persona request failed: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
-    
+
     if (!data.success) {
-      throw new Error('Persona processing failed');
+      throw new Error("Persona processing failed");
     }
-    
+
     const personaResponse = data.response;
-    
+
     // Remove loading indicator
     removeMessage(loadingId);
-    
+
     // Add persona response to UI
     const formattedContent = formatResponse(personaResponse.content);
-    addMessageToUI('assistant', formattedContent);
-    
+    addMessageToUI("assistant", formattedContent);
+
     // Add to conversation
-    await addMessageToConversation('assistant', personaResponse.content);
-    
+    await addMessageToConversation("assistant", personaResponse.content);
+
     // Handle any actions
     if (personaResponse.actions && personaResponse.actions.length > 0) {
       for (const action of personaResponse.actions) {
         await handlePersonaAction(action, conversationHistory);
       }
     }
-    
-    console.log('[Persona] Response received with', personaResponse.actions?.length || 0, 'actions');
+
+    console.log(
+      "[Persona] Response received with",
+      personaResponse.actions?.length || 0,
+      "actions",
+    );
   } catch (error) {
     removeMessage(loadingId);
-    console.error('[Persona] Request failed:', error);
-    addMessageToUI('assistant', `Error: ${error.message}`);
+    console.error("[Persona] Request failed:", error);
+    addMessageToUI("assistant", `Error: ${error.message}`);
   }
 }
 
@@ -4122,114 +4637,141 @@ async function sendAnswersToPersona(answers) {
  * Send template selection to persona for enrich mode (Phase 16e)
  */
 async function sendTemplateSelectionToPersona(templateFilename) {
-  const input = document.getElementById('query-input');
-  
+  const input = document.getElementById("query-input");
+
   // Add user selection to UI
-  addMessageToUI('user', `I selected template: ${templateFilename}`);
-  
+  addMessageToUI("user", `I selected template: ${templateFilename}`);
+
   // Add to conversation
-  await addMessageToConversation('user', `Template: ${templateFilename}`);
-  
+  await addMessageToConversation("user", `Template: ${templateFilename}`);
+
   // Show loading
-  const loadingId = addMessageToUI('assistant', '<div class="loading"><div class="loading-spinner"></div>Generating note from template...</div>');
-  
+  const loadingId = addMessageToUI(
+    "assistant",
+    '<div class="loading"><div class="loading-spinner"></div>Generating note from template...</div>',
+  );
+
   // Switch to enrich mode
   try {
-    console.log('[Persona] Switching to enrich mode...');
-    const modeResponse = await fetch('http://127.0.0.1:11436/persona/switch-mode', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({mode: 'enrich'})
-    });
-    
+    console.log("[Persona] Switching to enrich mode...");
+    const modeResponse = await fetch(
+      "http://127.0.0.1:11436/persona/switch-mode",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "enrich" }),
+      },
+    );
+
     if (!modeResponse.ok) {
       throw new Error(`Failed to switch mode: ${modeResponse.statusText}`);
     }
-    
+
     const modeData = await modeResponse.json();
-    console.log('[Persona] Mode switch response:', modeData);
-    
+    console.log("[Persona] Mode switch response:", modeData);
+
     if (!modeData.success) {
-      throw new Error('Mode switch was not successful');
+      throw new Error("Mode switch was not successful");
     }
-    
-    console.log('[Persona] Successfully switched to enrich mode');
+
+    console.log("[Persona] Successfully switched to enrich mode");
   } catch (error) {
-    console.error('[Persona] Failed to switch mode:', error);
+    console.error("[Persona] Failed to switch mode:", error);
     removeMessage(loadingId);
-    addMessageToUI('assistant', `Error switching to enrich mode: ${error.message}`);
+    addMessageToUI(
+      "assistant",
+      `Error switching to enrich mode: ${error.message}`,
+    );
     return;
   }
-  
+
   // Send to persona with template filename in metadata
   const messages = getCurrentConversationMessages();
-  const conversationHistory = messages.slice(0, -1).map(msg => ({
+  const conversationHistory = messages.slice(0, -1).map((msg) => ({
     role: msg.role,
-    content: msg.content
+    content: msg.content,
   }));
-  
+
   // Call sendToPersona with metadata including template filename
   try {
-    console.log('[Persona] Sending process request with template:', templateFilename);
-    
-    const response = await fetch('http://127.0.0.1:11436/persona/process', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+    console.log(
+      "[Persona] Sending process request with template:",
+      templateFilename,
+    );
+
+    const response = await fetch("http://127.0.0.1:11436/persona/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user_message: 'Generate the note using this template',
+        user_message: "Generate the note using this template",
         metadata: {
           page: currentPage,
           conversation_history: conversationHistory,
-          template_filename: templateFilename  // Include template filename
-        }
-      })
+          template_filename: templateFilename, // Include template filename
+        },
+      }),
     });
-    
-    console.log('[Persona] Process response status:', response.status, response.statusText);
-    
+
+    console.log(
+      "[Persona] Process response status:",
+      response.status,
+      response.statusText,
+    );
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[Persona] Process error response:', errorText);
+      console.error("[Persona] Process error response:", errorText);
       throw new Error(`Persona request failed: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
-    console.log('[Persona] Process response data:', data);
-    
+    console.log("[Persona] Process response data:", data);
+
     if (!data.success) {
-      console.error('[Persona] Process failed:', data);
-      throw new Error('Persona processing failed');
+      console.error("[Persona] Process failed:", data);
+      throw new Error("Persona processing failed");
     }
-    
+
     const personaResponse = data.response;
-    console.log('[Persona] Response actions:', personaResponse.actions?.map(a => a.type));
-    
+    console.log(
+      "[Persona] Response actions:",
+      personaResponse.actions?.map((a) => a.type),
+    );
+
     // Remove loading indicator
     removeMessage(loadingId);
-    
+
     // Add persona response to UI
     const formattedContent = formatResponse(personaResponse.content);
-    addMessageToUI('assistant', formattedContent);
-    
+    addMessageToUI("assistant", formattedContent);
+
     // Add to conversation
-    await addMessageToConversation('assistant', personaResponse.content);
-    
+    await addMessageToConversation("assistant", personaResponse.content);
+
     // Handle any actions
     if (personaResponse.actions && personaResponse.actions.length > 0) {
-      console.log('[Persona] Processing', personaResponse.actions.length, 'action(s)');
+      console.log(
+        "[Persona] Processing",
+        personaResponse.actions.length,
+        "action(s)",
+      );
       for (const action of personaResponse.actions) {
-        console.log('[Persona] Processing action:', action.type);
+        console.log("[Persona] Processing action:", action.type);
         await handlePersonaAction(action, conversationHistory);
       }
     } else {
-      console.warn('[Persona] No actions in response');
+      console.warn("[Persona] No actions in response");
     }
-    
-    console.log('[Persona] Response received with', personaResponse.actions?.length || 0, 'actions');
+
+    console.log(
+      "[Persona] Response received with",
+      personaResponse.actions?.length || 0,
+      "actions",
+    );
   } catch (error) {
     removeMessage(loadingId);
-    console.error('[Persona] Request failed:', error);
-    addMessageToUI('assistant', `Error: ${error.message}`);
+    console.error("[Persona] Request failed:", error);
+    addMessageToUI("assistant", `Error: ${error.message}`);
   }
 }
 
@@ -4238,54 +4780,57 @@ async function sendTemplateSelectionToPersona(templateFilename) {
  */
 async function saveNoteToKnowledgeBase(noteData) {
   try {
-    console.log('[Persona] saveNoteToKnowledgeBase received:', noteData);
-    
+    console.log("[Persona] saveNoteToKnowledgeBase received:", noteData);
+
     // Extract note details - support both flat and nested metadata formats
     // New format: {content, metadata: {title, domain, ...}}
     // Old format: {content, title, domain, ...}
-    const title = noteData.metadata?.title || noteData.title || 'Untitled Note';
-    const domain = noteData.metadata?.domain || noteData.domain || 'scrolls';
+    const title = noteData.metadata?.title || noteData.title || "Untitled Note";
+    const domain = noteData.metadata?.domain || noteData.domain || "scrolls";
     const content = noteData.content;
-    
-    console.log('[Persona] Extracted:', {
-      title, 
-      domain, 
+
+    console.log("[Persona] Extracted:", {
+      title,
+      domain,
       contentLength: content?.length,
-      contentPreview: content ? content.substring(0, 100) : 'NO CONTENT',
+      contentPreview: content ? content.substring(0, 100) : "NO CONTENT",
       noteDataKeys: Object.keys(noteData),
-      hasMetadata: !!noteData.metadata
+      hasMetadata: !!noteData.metadata,
     });
-    
+
     if (!content) {
-      console.error('[Persona] Note data structure:', JSON.stringify(noteData, null, 2));
-      throw new Error('Note content is empty');
+      console.error(
+        "[Persona] Note data structure:",
+        JSON.stringify(noteData, null, 2),
+      );
+      throw new Error("Note content is empty");
     }
-    
+
     // Map domain short names to folder names (e.g., "signals" -> "02-Signals")
     const domainMap = {
-      'scrolls': '03-Scrolls',
-      'sigils': '01-Sigils',
-      'signals': '02-Signals',
-      'glyphs': '04-Glyphs',
-      'grids': '05-Grids'
+      scrolls: "03-Scrolls",
+      sigils: "01-Sigils",
+      signals: "02-Signals",
+      glyphs: "04-Glyphs",
+      grids: "05-Grids",
     };
-    
+
     const folderName = domainMap[domain.toLowerCase()] || domain;
-    
-    console.log('[Persona] Saving note:', {title, domain, folderName});
-    
+
+    console.log("[Persona] Saving note:", { title, domain, folderName });
+
     // Use Polly Notes API to create the note
-    const response = await fetch('http://127.0.0.1:11436/polly/notes/create', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+    const response = await fetch("http://127.0.0.1:11436/polly/notes/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: title,
         domain: folderName,
         content: content,
-        check_duplicates: true  // Enable duplicate detection
-      })
+        check_duplicates: true, // Enable duplicate detection
+      }),
     });
-    
+
     if (!response.ok) {
       // Handle HTTP errors (like 409 Conflict)
       let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
@@ -4297,65 +4842,73 @@ async function saveNoteToKnowledgeBase(noteData) {
       }
       throw new Error(errorMessage);
     }
-    
+
     const result = await response.json();
-    
-    if (result.status === 'similar_found') {
+
+    if (result.status === "similar_found") {
       // Show duplicate detection UI
-      console.log('[Persona] Similar notes found:', result.similar_notes);
-      
-      const message = `Found ${result.similar_notes.length} similar note(s):\n` +
-        result.similar_notes.map(n => `- ${n.title} (${Math.round(n.similarity * 100)}% similar)`).join('\n') +
-        '\n\nDo you still want to create this note?';
-      
+      console.log("[Persona] Similar notes found:", result.similar_notes);
+
+      const message =
+        `Found ${result.similar_notes.length} similar note(s):\n` +
+        result.similar_notes
+          .map(
+            (n) => `- ${n.title} (${Math.round(n.similarity * 100)}% similar)`,
+          )
+          .join("\n") +
+        "\n\nDo you still want to create this note?";
+
       if (!confirm(message)) {
-        console.log('[Persona] User cancelled note creation due to duplicates');
+        console.log("[Persona] User cancelled note creation due to duplicates");
         return;
       }
-      
+
       // User confirmed, create anyway
-      const createResponse = await fetch('http://127.0.0.1:11436/polly/notes/create', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          name: title,
-          domain: folderName,
-          content: content,
-          check_duplicates: false  // Skip duplicate check this time
-        })
-      });
-      
+      const createResponse = await fetch(
+        "http://127.0.0.1:11436/polly/notes/create",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: title,
+            domain: folderName,
+            content: content,
+            check_duplicates: false, // Skip duplicate check this time
+          }),
+        },
+      );
+
       const createResult = await createResponse.json();
-      
+
       if (!createResult.success) {
-        throw new Error(createResult.error || 'Failed to create note');
+        throw new Error(createResult.error || "Failed to create note");
       }
-      
-      console.log('[Persona] Note created:', createResult.note.path);
+
+      console.log("[Persona] Note created:", createResult.note.path);
       alert(`Note saved: ${createResult.note.title}`);
     } else if (result.success) {
       // Note created successfully
-      console.log('[Persona] Note created:', result.note.path);
+      console.log("[Persona] Note created:", result.note.path);
       alert(`Note saved: ${result.note.title}`);
     } else {
-      throw new Error(result.error || 'Failed to create note');
+      throw new Error(result.error || "Failed to create note");
     }
-    
+
     // Trigger re-index to update RAG
     setTimeout(async () => {
       try {
-        await fetch('http://127.0.0.1:11436/polly/notes/index/build', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({force: false})
+        await fetch("http://127.0.0.1:11436/polly/notes/index/build", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ force: false }),
         });
-        console.log('[Persona] Triggered notes re-index');
+        console.log("[Persona] Triggered notes re-index");
       } catch (error) {
-        console.error('[Persona] Failed to trigger re-index:', error);
+        console.error("[Persona] Failed to trigger re-index:", error);
       }
     }, 1000);
   } catch (error) {
-    console.error('[Persona] Failed to save note:', error);
+    console.error("[Persona] Failed to save note:", error);
     alert(`Failed to save note: ${error.message}`);
   }
 }
@@ -4371,17 +4924,17 @@ async function saveNoteToKnowledgeBase(noteData) {
  */
 async function fetchCurricula(status = null) {
   try {
-    const url = status 
+    const url = status
       ? `${API_URL}/polly/curricula/list?status=${status}`
       : `${API_URL}/polly/curricula/list`;
     const result = await safeFetch(url);
     if (!result.ok) {
-      throw new Error(result.error || 'Failed to fetch curricula');
+      throw new Error(result.error || "Failed to fetch curricula");
     }
     return result.data.curricula || [];
   } catch (error) {
-    console.error('[Curriculum] Failed to fetch curricula:', error);
-    showToast('Failed to load curricula', 'error');
+    console.error("[Curriculum] Failed to fetch curricula:", error);
+    showToast("Failed to load curricula", "error");
     return [];
   }
 }
@@ -4393,26 +4946,35 @@ async function fetchCurricula(status = null) {
  */
 async function getCurriculum(curriculumId) {
   try {
-    const result = await safeFetch(`${API_URL}/polly/curricula/${curriculumId}`);
-    console.log('[getCurriculum] safeFetch result:', { ok: result.ok, hasData: !!result.data, dataType: typeof result.data });
-    
+    const result = await safeFetch(
+      `${API_URL}/polly/curricula/${curriculumId}`,
+    );
+    console.log("[getCurriculum] safeFetch result:", {
+      ok: result.ok,
+      hasData: !!result.data,
+      dataType: typeof result.data,
+    });
+
     if (!result.ok) {
-      throw new Error(result.error || 'Failed to get curriculum');
+      throw new Error(result.error || "Failed to get curriculum");
     }
-    
+
     // Log the actual data structure
-    console.log('[getCurriculum] result.data keys:', Object.keys(result.data || {}));
-    console.log('[getCurriculum] sections:', { 
-      exists: 'sections' in (result.data || {}),
+    console.log(
+      "[getCurriculum] result.data keys:",
+      Object.keys(result.data || {}),
+    );
+    console.log("[getCurriculum] sections:", {
+      exists: "sections" in (result.data || {}),
       type: typeof result.data?.sections,
       isArray: Array.isArray(result.data?.sections),
-      length: result.data?.sections?.length
+      length: result.data?.sections?.length,
     });
-    
+
     return result.data;
   } catch (error) {
-    console.error('[Curriculum] Failed to get curriculum:', error);
-    showToast('Failed to load curriculum', 'error');
+    console.error("[Curriculum] Failed to get curriculum:", error);
+    showToast("Failed to load curriculum", "error");
     throw error;
   }
 }
@@ -4428,30 +4990,30 @@ async function getCurriculum(curriculumId) {
 async function createCurriculum(title, goal, sections, metadata = {}) {
   try {
     const response = await fetch(`${API_URL}/polly/curricula/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        title, 
-        goal, 
-        sections, 
-        ...metadata 
-      })
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        goal,
+        sections,
+        ...metadata,
+      }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
+
     const result = await response.json();
-    if (result.status === 'success') {
-      showToast(`Curriculum "${title}" created`, 'success');
+    if (result.status === "success") {
+      showToast(`Curriculum "${title}" created`, "success");
       return result.curriculum;
     } else {
-      throw new Error(result.error || 'Failed to create curriculum');
+      throw new Error(result.error || "Failed to create curriculum");
     }
   } catch (error) {
-    console.error('[Curriculum] Failed to create curriculum:', error);
-    showToast('Failed to create curriculum', 'error');
+    console.error("[Curriculum] Failed to create curriculum:", error);
+    showToast("Failed to create curriculum", "error");
     throw error;
   }
 }
@@ -4463,24 +5025,27 @@ async function createCurriculum(title, goal, sections, metadata = {}) {
  */
 async function activateCurriculum(curriculumId) {
   try {
-    const response = await fetch(`${API_URL}/polly/curricula/${curriculumId}/activate`, {
-      method: 'POST'
-    });
-    
+    const response = await fetch(
+      `${API_URL}/polly/curricula/${curriculumId}/activate`,
+      {
+        method: "POST",
+      },
+    );
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
+
     const result = await response.json();
-    if (result.status === 'success') {
-      showToast('Curriculum activated', 'success');
+    if (result.status === "success") {
+      showToast("Curriculum activated", "success");
       return result.curriculum;
     } else {
-      throw new Error(result.error || 'Failed to activate curriculum');
+      throw new Error(result.error || "Failed to activate curriculum");
     }
   } catch (error) {
-    console.error('[Curriculum] Failed to activate curriculum:', error);
-    showToast('Failed to activate curriculum', 'error');
+    console.error("[Curriculum] Failed to activate curriculum:", error);
+    showToast("Failed to activate curriculum", "error");
     throw error;
   }
 }
@@ -4492,24 +5057,27 @@ async function activateCurriculum(curriculumId) {
  */
 async function pauseCurriculum(curriculumId) {
   try {
-    const response = await fetch(`${API_URL}/polly/curricula/${curriculumId}/pause`, {
-      method: 'POST'
-    });
-    
+    const response = await fetch(
+      `${API_URL}/polly/curricula/${curriculumId}/pause`,
+      {
+        method: "POST",
+      },
+    );
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
+
     const result = await response.json();
-    if (result.status === 'success') {
-      showToast('Curriculum paused', 'success');
+    if (result.status === "success") {
+      showToast("Curriculum paused", "success");
       return true;
     } else {
-      throw new Error(result.error || 'Failed to pause curriculum');
+      throw new Error(result.error || "Failed to pause curriculum");
     }
   } catch (error) {
-    console.error('[Curriculum] Failed to pause curriculum:', error);
-    showToast('Failed to pause curriculum', 'error');
+    console.error("[Curriculum] Failed to pause curriculum:", error);
+    showToast("Failed to pause curriculum", "error");
     throw error;
   }
 }
@@ -4521,24 +5089,27 @@ async function pauseCurriculum(curriculumId) {
  */
 async function completeCurriculum(curriculumId) {
   try {
-    const response = await fetch(`${API_URL}/polly/curricula/${curriculumId}/complete`, {
-      method: 'POST'
-    });
-    
+    const response = await fetch(
+      `${API_URL}/polly/curricula/${curriculumId}/complete`,
+      {
+        method: "POST",
+      },
+    );
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
+
     const result = await response.json();
-    if (result.status === 'success') {
-      showToast('Curriculum completed! 🎉', 'success');
+    if (result.status === "success") {
+      showToast("Curriculum completed! 🎉", "success");
       return true;
     } else {
-      throw new Error(result.error || 'Failed to complete curriculum');
+      throw new Error(result.error || "Failed to complete curriculum");
     }
   } catch (error) {
-    console.error('[Curriculum] Failed to complete curriculum:', error);
-    showToast('Failed to complete curriculum', 'error');
+    console.error("[Curriculum] Failed to complete curriculum:", error);
+    showToast("Failed to complete curriculum", "error");
     throw error;
   }
 }
@@ -4551,23 +5122,23 @@ async function completeCurriculum(curriculumId) {
 async function deleteCurriculum(curriculumId) {
   try {
     const response = await fetch(`${API_URL}/polly/curricula/${curriculumId}`, {
-      method: 'DELETE'
+      method: "DELETE",
     });
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
+
     const result = await response.json();
-    if (result.status === 'success') {
-      showToast('Curriculum deleted', 'success');
+    if (result.status === "success") {
+      showToast("Curriculum deleted", "success");
       return true;
     } else {
-      throw new Error(result.error || 'Failed to delete curriculum');
+      throw new Error(result.error || "Failed to delete curriculum");
     }
   } catch (error) {
-    console.error('[Curriculum] Failed to delete curriculum:', error);
-    showToast('Failed to delete curriculum', 'error');
+    console.error("[Curriculum] Failed to delete curriculum:", error);
+    showToast("Failed to delete curriculum", "error");
     return false;
   }
 }
@@ -4582,23 +5153,23 @@ async function startSection(curriculumId, sectionId) {
   try {
     const response = await fetch(
       `${API_URL}/polly/curricula/${curriculumId}/sections/${sectionId}/start`,
-      { method: 'POST' }
+      { method: "POST" },
     );
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
+
     const result = await response.json();
-    if (result.status === 'success') {
-      showToast(`Started: ${result.section.title}`, 'success');
+    if (result.status === "success") {
+      showToast(`Started: ${result.section.title}`, "success");
       return result.section;
     } else {
-      throw new Error(result.error || 'Failed to start section');
+      throw new Error(result.error || "Failed to start section");
     }
   } catch (error) {
-    console.error('[Curriculum] Failed to start section:', error);
-    showToast('Failed to start section', 'error');
+    console.error("[Curriculum] Failed to start section:", error);
+    showToast("Failed to start section", "error");
     throw error;
   }
 }
@@ -4615,26 +5186,26 @@ async function completeSection(curriculumId, sectionId, reflection = {}) {
     const response = await fetch(
       `${API_URL}/polly/curricula/${curriculumId}/sections/${sectionId}/complete`,
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reflection)
-      }
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reflection),
+      },
     );
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
+
     const result = await response.json();
-    if (result.status === 'success') {
-      showToast('Section completed!', 'success');
+    if (result.status === "success") {
+      showToast("Section completed!", "success");
       return result.section;
     } else {
-      throw new Error(result.error || 'Failed to complete section');
+      throw new Error(result.error || "Failed to complete section");
     }
   } catch (error) {
-    console.error('[Curriculum] Failed to complete section:', error);
-    showToast('Failed to complete section', 'error');
+    console.error("[Curriculum] Failed to complete section:", error);
+    showToast("Failed to complete section", "error");
     throw error;
   }
 }
@@ -4646,14 +5217,16 @@ async function completeSection(curriculumId, sectionId, reflection = {}) {
  */
 async function getCurriculumProgress(curriculumId) {
   try {
-    const result = await safeFetch(`${API_URL}/polly/curricula/${curriculumId}/progress`);
+    const result = await safeFetch(
+      `${API_URL}/polly/curricula/${curriculumId}/progress`,
+    );
     if (!result.ok) {
-      throw new Error(result.error || 'Failed to get progress');
+      throw new Error(result.error || "Failed to get progress");
     }
     return result.data;
   } catch (error) {
-    console.error('[Curriculum] Failed to get progress:', error);
-    showToast('Failed to load progress', 'error');
+    console.error("[Curriculum] Failed to get progress:", error);
+    showToast("Failed to load progress", "error");
     throw error;
   }
 }
@@ -4666,32 +5239,35 @@ async function getCurriculumProgress(curriculumId) {
  */
 async function enrichSection(curriculumId, sectionId) {
   try {
-    console.log('[Enrich Section] Starting enrichment for', curriculumId, sectionId);
-    
+    console.log(
+      "[Enrich Section] Starting enrichment for",
+      curriculumId,
+      sectionId,
+    );
+
     const result = await safeFetch(
       `${API_URL}/polly/curricula/${curriculumId}/sections/${sectionId}/enrich`,
-      { method: 'POST' }
+      { method: "POST" },
     );
-    
+
     if (!result.ok) {
-      throw new Error(result.error || 'Failed to enrich section');
+      throw new Error(result.error || "Failed to enrich section");
     }
-    
+
     const data = result.data;
-    
-    if (data.status === 'already_enriched') {
-      console.log('[Enrich Section] Using cached enrichment');
-      showToast('Section materials loaded', 'success');
-    } else if (data.status === 'success') {
-      console.log('[Enrich Section] New enrichment generated');
-      showToast('Section enriched with materials!', 'success');
+
+    if (data.status === "already_enriched") {
+      console.log("[Enrich Section] Using cached enrichment");
+      showToast("Section materials loaded", "success");
+    } else if (data.status === "success") {
+      console.log("[Enrich Section] New enrichment generated");
+      showToast("Section enriched with materials!", "success");
     }
-    
+
     return data.enrichment;
-    
   } catch (error) {
-    console.error('[Curriculum] Failed to enrich section:', error);
-    showToast('Failed to enrich section', 'error');
+    console.error("[Curriculum] Failed to enrich section:", error);
+    showToast("Failed to enrich section", "error");
     throw error;
   }
 }
@@ -4707,15 +5283,15 @@ async function startLearningSession(curriculumId, sectionId) {
     const response = await safeFetch(
       `${API_URL}/polly/curricula/${curriculumId}/session/start`,
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ section_id: sectionId })
-      }
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ section_id: sectionId }),
+      },
     );
     return await response.json();
   } catch (error) {
-    console.error('[Curriculum] Failed to start session:', error);
-    showToast('Failed to start learning session', 'error');
+    console.error("[Curriculum] Failed to start session:", error);
+    showToast("Failed to start learning session", "error");
     throw error;
   }
 }
@@ -4728,18 +5304,15 @@ async function startLearningSession(curriculumId, sectionId) {
  */
 async function endLearningSession(sessionId, summary = {}) {
   try {
-    const response = await safeFetch(
-      `${API_URL}/polly/curricula/session/end`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, ...summary })
-      }
-    );
+    const response = await safeFetch(`${API_URL}/polly/curricula/session/end`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, ...summary }),
+    });
     return await response.json();
   } catch (error) {
-    console.error('[Curriculum] Failed to end session:', error);
-    showToast('Failed to end learning session', 'error');
+    console.error("[Curriculum] Failed to end session:", error);
+    showToast("Failed to end learning session", "error");
     throw error;
   }
 }
@@ -4759,15 +5332,15 @@ async function endLearningSession(sessionId, summary = {}) {
  */
 async function fetchCurriculumTemplates(category = null) {
   try {
-    const url = category 
+    const url = category
       ? `${API_URL}/polly/curricula/templates/list?category=${category}`
       : `${API_URL}/polly/curricula/templates/list`;
     const response = await safeFetch(url);
     const data = await response.json();
     return data.templates || [];
   } catch (error) {
-    console.error('[Template] Failed to fetch templates:', error);
-    showToast('Failed to load templates', 'error');
+    console.error("[Template] Failed to fetch templates:", error);
+    showToast("Failed to load templates", "error");
     return [];
   }
 }
@@ -4779,11 +5352,13 @@ async function fetchCurriculumTemplates(category = null) {
  */
 async function getCurriculumTemplate(templateId) {
   try {
-    const response = await safeFetch(`${API_URL}/polly/curricula/templates/${templateId}`);
+    const response = await safeFetch(
+      `${API_URL}/polly/curricula/templates/${templateId}`,
+    );
     return await response.json();
   } catch (error) {
-    console.error('[Template] Failed to get template:', error);
-    showToast('Failed to load template', 'error');
+    console.error("[Template] Failed to get template:", error);
+    showToast("Failed to load template", "error");
     throw error;
   }
 }
@@ -4792,15 +5367,15 @@ async function getCurriculumTemplate(templateId) {
  * Load and render curricula in Learning page sidebar
  */
 async function loadLearningSidebarCurricula() {
-  const container = document.getElementById('learning-curricula-list');
+  const container = document.getElementById("learning-curricula-list");
   if (!container) {
-    console.error('[Learning] Curricula list container not found');
+    console.error("[Learning] Curricula list container not found");
     return;
   }
 
   try {
     const curricula = await fetchCurricula();
-    
+
     if (!curricula || curricula.length === 0) {
       container.innerHTML = `
         <div style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
@@ -4814,12 +5389,14 @@ async function loadLearningSidebarCurricula() {
     }
 
     // Render curriculum list
-    container.innerHTML = curricula.map(c => `
+    container.innerHTML = curricula
+      .map(
+        (c) => `
       <div class="curriculum-sidebar-item" data-curriculum-id="${c.id}" style="
         padding: 12px;
         margin-bottom: 8px;
-        background: ${c.status === 'active' ? '#2a3a2a' : '#252525'};
-        border: 1px solid ${c.status === 'active' ? '#4a6a4a' : '#2a2a2a'};
+        background: ${c.status === "active" ? "#2a3a2a" : "#252525"};
+        border: 1px solid ${c.status === "active" ? "#4a6a4a" : "#2a2a2a"};
         border-radius: 6px;
         cursor: pointer;
         transition: all 0.2s;
@@ -4834,8 +5411,8 @@ async function loadLearningSidebarCurricula() {
             border-radius: 3px;
             text-transform: uppercase;
             font-weight: 600;
-            background: ${c.status === 'active' ? '#4a6a4a' : c.status === 'completed' ? '#4a5a6a' : '#3a3a3a'};
-            color: ${c.status === 'active' ? '#8fd98f' : c.status === 'completed' ? '#8fb9df' : '#808080'};
+            background: ${c.status === "active" ? "#4a6a4a" : c.status === "completed" ? "#4a5a6a" : "#3a3a3a"};
+            color: ${c.status === "active" ? "#8fd98f" : c.status === "completed" ? "#8fb9df" : "#808080"};
           ">${c.status}</span>
         </div>
         
@@ -4844,11 +5421,13 @@ async function loadLearningSidebarCurricula() {
         </div>
         
         <div class="progress-bar" style="height: 4px; background: #1a1a1a; border-radius: 2px; overflow: hidden; margin-bottom: 8px;">
-          <div style="height: 100%; background: ${c.status === 'active' ? '#8fd98f' : '#4a6a4a'}; width: ${c.completion_percentage}%;"></div>
+          <div style="height: 100%; background: ${c.status === "active" ? "#8fd98f" : "#4a6a4a"}; width: ${c.completion_percentage}%;"></div>
         </div>
         
         <div class="curriculum-actions" style="display: flex; gap: 4px;">
-          ${c.status === 'draft' ? `
+          ${
+            c.status === "draft"
+              ? `
             <button class="btn-activate-curriculum" data-id="${c.id}" style="
               flex: 1;
               padding: 4px 8px;
@@ -4860,9 +5439,13 @@ async function loadLearningSidebarCurricula() {
               cursor: pointer;
               font-weight: 500;
             ">Activate</button>
-          ` : ''}
+          `
+              : ""
+          }
           
-          ${c.status === 'active' ? `
+          ${
+            c.status === "active"
+              ? `
             <button class="btn-pause-curriculum" data-id="${c.id}" style="
               flex: 1;
               padding: 4px 8px;
@@ -4885,9 +5468,13 @@ async function loadLearningSidebarCurricula() {
               cursor: pointer;
               font-weight: 500;
             ">Continue</button>
-          ` : ''}
+          `
+              : ""
+          }
           
-          ${c.status === 'paused' ? `
+          ${
+            c.status === "paused"
+              ? `
             <button class="btn-resume-curriculum" data-id="${c.id}" style="
               flex: 1;
               padding: 4px 8px;
@@ -4899,7 +5486,9 @@ async function loadLearningSidebarCurricula() {
               cursor: pointer;
               font-weight: 500;
             ">Resume</button>
-          ` : ''}
+          `
+              : ""
+          }
           
           <button class="btn-delete-curriculum" data-id="${c.id}" style="
             padding: 4px 8px;
@@ -4912,11 +5501,13 @@ async function loadLearningSidebarCurricula() {
           ">Delete</button>
         </div>
       </div>
-    `).join('');
+    `,
+      )
+      .join("");
 
     // Attach event listeners
-    container.querySelectorAll('.btn-activate-curriculum').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
+    container.querySelectorAll(".btn-activate-curriculum").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const id = btn.dataset.id;
         await handleActivateCurriculum(id);
@@ -4924,8 +5515,8 @@ async function loadLearningSidebarCurricula() {
       });
     });
 
-    container.querySelectorAll('.btn-pause-curriculum').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
+    container.querySelectorAll(".btn-pause-curriculum").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const id = btn.dataset.id;
         await handlePauseCurriculum(id);
@@ -4933,8 +5524,8 @@ async function loadLearningSidebarCurricula() {
       });
     });
 
-    container.querySelectorAll('.btn-resume-curriculum').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
+    container.querySelectorAll(".btn-resume-curriculum").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const id = btn.dataset.id;
         await handleActivateCurriculum(id); // Resume uses same endpoint
@@ -4942,28 +5533,29 @@ async function loadLearningSidebarCurricula() {
       });
     });
 
-    container.querySelectorAll('.btn-delete-curriculum').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
+    container.querySelectorAll(".btn-delete-curriculum").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const id = btn.dataset.id;
-        if (confirm('Are you sure you want to delete this curriculum?')) {
+        if (confirm("Are you sure you want to delete this curriculum?")) {
           await handleDeleteCurriculum(id);
           await loadLearningSidebarCurricula(); // Reload
         }
       });
     });
 
-    container.querySelectorAll('.btn-view-curriculum, .curriculum-sidebar-item').forEach(el => {
-      el.addEventListener('click', async () => {
-        const item = el.closest('.curriculum-sidebar-item');
-        if (!item) return;
-        const id = item.dataset.curriculumId;
-        await loadCurriculumDetail(id);
+    container
+      .querySelectorAll(".btn-view-curriculum, .curriculum-sidebar-item")
+      .forEach((el) => {
+        el.addEventListener("click", async () => {
+          const item = el.closest(".curriculum-sidebar-item");
+          if (!item) return;
+          const id = item.dataset.curriculumId;
+          await loadCurriculumDetail(id);
+        });
       });
-    });
-
   } catch (error) {
-    console.error('[Learning] Error loading curricula:', error);
+    console.error("[Learning] Error loading curricula:", error);
     container.innerHTML = `
       <div style="text-align: center; padding: 20px; color: #e06c75; font-size: 13px;">
         Failed to load curricula
@@ -4979,18 +5571,21 @@ async function loadLearningSidebarCurricula() {
  */
 async function detectCurriculumTemplate(goal) {
   try {
-    const result = await safeFetch(`${API_URL}/polly/curricula/templates/detect`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ goal })
-    });
+    const result = await safeFetch(
+      `${API_URL}/polly/curricula/templates/detect`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal }),
+      },
+    );
     if (!result.ok) {
-      throw new Error(result.error || 'Failed to detect template');
+      throw new Error(result.error || "Failed to detect template");
     }
     return result.data;
   } catch (error) {
-    console.error('[Template] Failed to detect template:', error);
-    showToast('Failed to detect template', 'error');
+    console.error("[Template] Failed to detect template:", error);
+    showToast("Failed to detect template", "error");
     throw error;
   }
 }
@@ -5006,22 +5601,22 @@ async function customizeCurriculumTemplate(templateId, customizations) {
     const result = await safeFetch(
       `${API_URL}/polly/curricula/templates/${templateId}/customize`,
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(customizations)
-      }
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(customizations),
+      },
     );
     if (!result.ok) {
-      throw new Error(result.error || 'Failed to customize template');
+      throw new Error(result.error || "Failed to customize template");
     }
     if (result.data.success) {
       return result.data.curriculum;
     } else {
-      throw new Error(result.data.error || 'Failed to customize template');
+      throw new Error(result.data.error || "Failed to customize template");
     }
   } catch (error) {
-    console.error('[Template] Failed to customize template:', error);
-    showToast('Failed to customize template', 'error');
+    console.error("[Template] Failed to customize template:", error);
+    showToast("Failed to customize template", "error");
     throw error;
   }
 }
@@ -5042,20 +5637,21 @@ let currentSectionForCompletion = null;
  * Load and display curricula list
  */
 async function loadCurriculaView() {
-  console.log('[Curricula View] Loading curricula list');
-  const container = document.getElementById('curricula-list');
-  
+  console.log("[Curricula View] Loading curricula list");
+  const container = document.getElementById("curricula-list");
+
   if (!container) {
-    console.error('[Curricula View] Container not found');
+    console.error("[Curricula View] Container not found");
     return;
   }
 
   // Show loading state
-  container.innerHTML = '<div class="loading-spinner">Loading curricula...</div>';
+  container.innerHTML =
+    '<div class="loading-spinner">Loading curricula...</div>';
 
   try {
     const curricula = await fetchCurricula();
-    console.log('[Curricula View] Loaded curricula:', curricula);
+    console.log("[Curricula View] Loaded curricula:", curricula);
 
     if (!curricula || curricula.length === 0) {
       container.innerHTML = `
@@ -5072,11 +5668,12 @@ async function loadCurriculaView() {
     }
 
     // Render curriculum cards
-    container.innerHTML = curricula.map(c => renderCurriculumCard(c)).join('');
+    container.innerHTML = curricula
+      .map((c) => renderCurriculumCard(c))
+      .join("");
     lucide.createIcons();
-
   } catch (error) {
-    console.error('[Curricula View] Error loading curricula:', error);
+    console.error("[Curricula View] Error loading curricula:", error);
     container.innerHTML = `
       <div class="curriculum-empty">
         <p>failed to load curricula</p>
@@ -5094,7 +5691,7 @@ async function loadCurriculaView() {
 function renderCurriculumCard(curriculum) {
   const statusClass = curriculum.status.toLowerCase();
   const completionPercent = curriculum.completion_percentage || 0;
-  
+
   return `
     <div class="curriculum-card" onclick="loadCurriculumDetail('${curriculum.id}')">
       <div class="curriculum-card-header">
@@ -5102,7 +5699,7 @@ function renderCurriculumCard(curriculum) {
         <span class="curriculum-status-badge ${statusClass}">${curriculum.status}</span>
       </div>
       
-      ${curriculum.goal ? `<p class="curriculum-card-goal">${curriculum.goal}</p>` : ''}
+      ${curriculum.goal ? `<p class="curriculum-card-goal">${curriculum.goal}</p>` : ""}
       
       <div class="curriculum-card-progress">
         <div class="curriculum-progress-bar">
@@ -5118,12 +5715,16 @@ function renderCurriculumCard(curriculum) {
             <i data-lucide="percent"></i>
             <span>${Math.round(completionPercent)}%</span>
           </span>
-          ${curriculum.estimated_duration ? `
+          ${
+            curriculum.estimated_duration
+              ? `
             <span class="curriculum-stat">
               <i data-lucide="clock"></i>
               <span>${curriculum.estimated_duration}</span>
             </span>
-          ` : ''}
+          `
+              : ""
+          }
         </div>
       </div>
     </div>
@@ -5135,38 +5736,46 @@ function renderCurriculumCard(curriculum) {
  * @param {string} curriculumId - Curriculum ID
  */
 async function loadCurriculumDetail(curriculumId) {
-  console.log('[Curriculum Detail] Loading curriculum:', curriculumId);
+  console.log("[Curriculum Detail] Loading curriculum:", curriculumId);
   currentCurriculumDetailId = curriculumId;
 
   // Show in learning view center area
-  const learningDashboard = document.getElementById('learning-dashboard');
-  const learningSession = document.getElementById('learning-session');
-  
+  const learningDashboard = document.getElementById("learning-dashboard");
+  const learningSession = document.getElementById("learning-session");
+
   if (!learningDashboard || !learningSession) {
-    console.error('[Curriculum Detail] Learning view elements not found', {
+    console.error("[Curriculum Detail] Learning view elements not found", {
       dashboard: !!learningDashboard,
-      session: !!learningSession
+      session: !!learningSession,
     });
     return;
   }
 
   // Hide dashboard, show session area for curriculum
-  learningDashboard.classList.add('hidden');
-  learningSession.classList.remove('hidden');
+  learningDashboard.classList.add("hidden");
+  learningSession.classList.remove("hidden");
 
-  const sessionHeader = document.getElementById('session-header');
-  const sessionContent = document.getElementById('session-content');
-  
+  const sessionHeader = document.getElementById("session-header");
+  const sessionContent = document.getElementById("session-content");
+
   if (!sessionHeader || !sessionContent) {
-    console.error('[Curriculum Detail] Session elements not found');
+    console.error("[Curriculum Detail] Session elements not found");
     return;
   }
 
   try {
     const curriculum = await getCurriculum(curriculumId);
-    console.log('[Curriculum Detail] Loaded:', curriculum);
-    console.log('[Curriculum Detail] Sections type:', typeof curriculum.sections, 'Is array:', Array.isArray(curriculum.sections));
-    console.log('[Curriculum Detail] Sections length:', curriculum.sections?.length);
+    console.log("[Curriculum Detail] Loaded:", curriculum);
+    console.log(
+      "[Curriculum Detail] Sections type:",
+      typeof curriculum.sections,
+      "Is array:",
+      Array.isArray(curriculum.sections),
+    );
+    console.log(
+      "[Curriculum Detail] Sections length:",
+      curriculum.sections?.length,
+    );
 
     // Render curriculum detail in session area
     sessionHeader.innerHTML = `
@@ -5184,12 +5793,16 @@ async function loadCurriculumDetail(curriculumId) {
 
     sessionContent.innerHTML = `
       <div style="padding: 20px;">
-        ${curriculum.goal ? `
+        ${
+          curriculum.goal
+            ? `
           <div style="background: #252525; padding: 16px; border-radius: 8px; margin-bottom: 20px; border-left: 3px solid #4a6a4a;">
             <div style="font-size: 12px; text-transform: uppercase; color: #808080; margin-bottom: 6px;">Goal</div>
             <div style="font-size: 14px; color: #e0e0e0;">${curriculum.goal}</div>
           </div>
-        ` : ''}
+        `
+            : ""
+        }
         
         <!-- Progress Bar -->
         <div style="margin-bottom: 20px; background: #252525; padding: 16px; border-radius: 8px;">
@@ -5224,7 +5837,7 @@ async function loadCurriculumDetail(curriculumId) {
           </div>
           <div style="flex: 1; background: #252525; padding: 12px; border-radius: 6px;">
             <div style="font-size: 11px; color: #808080; margin-bottom: 4px;">Status</div>
-            <div style="font-size: 14px; font-weight: 600; color: ${curriculum.status === 'active' ? '#8fd98f' : '#808080'}; text-transform: uppercase;">${curriculum.status}</div>
+            <div style="font-size: 14px; font-weight: 600; color: ${curriculum.status === "active" ? "#8fd98f" : "#808080"}; text-transform: uppercase;">${curriculum.status}</div>
           </div>
         </div>
 
@@ -5238,21 +5851,22 @@ async function loadCurriculumDetail(curriculumId) {
     `;
 
     // Re-initialize Lucide icons
-    if (typeof lucide !== 'undefined') {
+    if (typeof lucide !== "undefined") {
       lucide.createIcons();
     }
 
     // Attach close button handler
-    document.getElementById('btn-close-curriculum')?.addEventListener('click', () => {
-      learningDashboard.classList.remove('hidden');
-      learningSession.classList.add('hidden');
-    });
+    document
+      .getElementById("btn-close-curriculum")
+      ?.addEventListener("click", () => {
+        learningDashboard.classList.remove("hidden");
+        learningSession.classList.add("hidden");
+      });
 
     // Attach section action handlers
     attachCurriculumSectionHandlers(curriculum);
-
   } catch (error) {
-    console.error('[Curriculum Detail] Error loading:', error);
+    console.error("[Curriculum Detail] Error loading:", error);
     sessionContent.innerHTML = `
       <div style="padding: 40px; text-align: center; color: #e06c75;">
         Failed to load curriculum details
@@ -5265,41 +5879,55 @@ async function loadCurriculumDetail(curriculumId) {
  * Render curriculum sections as expandable list
  */
 function renderCurriculumSections(curriculum) {
-  console.log('[Render Sections] Input curriculum:', curriculum);
-  console.log('[Render Sections] Curriculum type:', typeof curriculum);
-  console.log('[Render Sections] Curriculum is null?', curriculum === null);
-  console.log('[Render Sections] Curriculum is undefined?', curriculum === undefined);
-  console.log('[Render Sections] Curriculum keys:', curriculum ? Object.keys(curriculum) : 'N/A');
-  console.log('[Render Sections] Sections property:', curriculum?.sections);
-  console.log('[Render Sections] Sections type:', typeof curriculum?.sections);
-  
-  if (!curriculum || typeof curriculum !== 'object') {
-    console.error('[Render Sections] Invalid curriculum object:', curriculum);
+  console.log("[Render Sections] Input curriculum:", curriculum);
+  console.log("[Render Sections] Curriculum type:", typeof curriculum);
+  console.log("[Render Sections] Curriculum is null?", curriculum === null);
+  console.log(
+    "[Render Sections] Curriculum is undefined?",
+    curriculum === undefined,
+  );
+  console.log(
+    "[Render Sections] Curriculum keys:",
+    curriculum ? Object.keys(curriculum) : "N/A",
+  );
+  console.log("[Render Sections] Sections property:", curriculum?.sections);
+  console.log("[Render Sections] Sections type:", typeof curriculum?.sections);
+
+  if (!curriculum || typeof curriculum !== "object") {
+    console.error("[Render Sections] Invalid curriculum object:", curriculum);
     return '<div style="color: #e06c75; font-size: 13px; padding: 20px; text-align: center;">Error: Invalid curriculum data</div>';
   }
-  
+
   const sections = curriculum.sections || [];
-  
+
   // Ensure sections is an array
   if (!Array.isArray(sections)) {
-    console.error('[Render Sections] Sections is not an array:', typeof sections, sections);
+    console.error(
+      "[Render Sections] Sections is not an array:",
+      typeof sections,
+      sections,
+    );
     return '<div style="color: #e06c75; font-size: 13px; padding: 20px; text-align: center;">Error: Invalid sections data (not an array)</div>';
   }
-  
-  console.log('[Render Sections] Processing', sections.length, 'sections');
-  
+
+  console.log("[Render Sections] Processing", sections.length, "sections");
+
   // Group by parent_id for hierarchical structure
-  const weekSections = sections.filter(s => s.type === 'week');
-  const subSections = sections.filter(s => s.type === 'subheading' || s.parent_id);
-  
-  let html = '';
-  
+  const weekSections = sections.filter((s) => s.type === "week");
+  const subSections = sections.filter(
+    (s) => s.type === "subheading" || s.parent_id,
+  );
+
+  let html = "";
+
   // Render each week with its subsections
-  weekSections.forEach(week => {
-    const children = subSections.filter(s => s.parent_id === week.id);
-    const weekCompleted = children.filter(s => s.status === 'completed').length;
+  weekSections.forEach((week) => {
+    const children = subSections.filter((s) => s.parent_id === week.id);
+    const weekCompleted = children.filter(
+      (s) => s.status === "completed",
+    ).length;
     const weekTotal = children.length;
-    
+
     html += `
       <div class="curriculum-week" style="margin-bottom: 12px; border: 1px solid #2a2a2a; border-radius: 6px; overflow: hidden;">
         <div class="curriculum-week-header" style="
@@ -5314,47 +5942,66 @@ function renderCurriculumSections(curriculum) {
           <div style="font-size: 12px; color: #808080;">${weekCompleted}/${weekTotal} completed</div>
         </div>
         <div class="curriculum-week-content" style="padding: 8px;">
-          ${children.map(s => renderCurriculumSection(s, curriculum.id)).join('')}
+          ${children.map((s) => renderCurriculumSection(s, curriculum.id)).join("")}
         </div>
       </div>
     `;
   });
-  
+
   // Render sections without parent (if any)
-  const orphanSections = sections.filter(s => s.type !== 'week' && !s.parent_id);
+  const orphanSections = sections.filter(
+    (s) => s.type !== "week" && !s.parent_id,
+  );
   if (orphanSections.length > 0) {
-    html += orphanSections.map(s => renderCurriculumSection(s, curriculum.id)).join('');
+    html += orphanSections
+      .map((s) => renderCurriculumSection(s, curriculum.id))
+      .join("");
   }
-  
-  return html || '<div style="color: #808080; font-size: 13px; padding: 20px; text-align: center;">No sections defined</div>';
+
+  return (
+    html ||
+    '<div style="color: #808080; font-size: 13px; padding: 20px; text-align: center;">No sections defined</div>'
+  );
 }
 
 /**
  * Render individual section
  */
 function renderCurriculumSection(section, curriculumId) {
-  const statusIcon = section.status === 'completed' ? 'check-circle' : 
-                     section.status === 'in_progress' ? 'circle-dot' : 'circle';
-  const statusColor = section.status === 'completed' ? '#8fd98f' : 
-                      section.status === 'in_progress' ? '#f0903b' : '#606060';
+  const statusIcon =
+    section.status === "completed"
+      ? "check-circle"
+      : section.status === "in_progress"
+        ? "circle-dot"
+        : "circle";
+  const statusColor =
+    section.status === "completed"
+      ? "#8fd98f"
+      : section.status === "in_progress"
+        ? "#f0903b"
+        : "#606060";
 
   // Helper to format mastery level as stars
   const renderMasteryStars = (level) => {
-    if (!level) return '';
-    const stars = '★'.repeat(level) + '☆'.repeat(5 - level);
+    if (!level) return "";
+    const stars = "★".repeat(level) + "☆".repeat(5 - level);
     return `<span style="color: #f0c030; font-size: 13px; letter-spacing: 1px;" title="Mastery Level: ${level}/5">${stars}</span>`;
   };
 
   // Helper to format timestamps
   const formatTimestamp = (timestamp) => {
-    if (!timestamp) return '';
+    if (!timestamp) return "";
     const date = new Date(timestamp);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   };
 
   // Helper to format time spent
   const formatTimeSpent = (minutes) => {
-    if (!minutes) return '0m';
+    if (!minutes) return "0m";
     if (minutes < 60) return `${minutes}m`;
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
@@ -5374,49 +6021,75 @@ function renderCurriculumSection(section, curriculumId) {
           <i data-lucide="${statusIcon}" style="width: 16px; height: 16px; color: ${statusColor}; margin-top: 2px;"></i>
           <div style="flex: 1;">
             <div style="font-size: 13px; font-weight: 500; color: #e0e0e0; margin-bottom: 4px;">${section.title}</div>
-            ${section.description ? `
+            ${
+              section.description
+                ? `
               <div style="font-size: 11px; color: #808080; margin-bottom: 6px;">${section.description}</div>
-            ` : ''}
+            `
+                : ""
+            }
             
             <!-- Progress Info -->
             <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 11px; color: #808080;">
-              ${section.estimated_time ? `
+              ${
+                section.estimated_time
+                  ? `
                 <span style="display: flex; align-items: center; gap: 4px;">
                   <i data-lucide="clock" style="width: 11px; height: 11px;"></i>
                   ${section.estimated_time}
                 </span>
-              ` : ''}
-              ${section.concepts && section.concepts.length > 0 ? `
+              `
+                  : ""
+              }
+              ${
+                section.concepts && section.concepts.length > 0
+                  ? `
                 <span style="display: flex; align-items: center; gap: 4px;">
                   <i data-lucide="tag" style="width: 11px; height: 11px;"></i>
                   ${section.concepts.length} concepts
                 </span>
-              ` : ''}
-              ${section.time_spent_minutes > 0 ? `
+              `
+                  : ""
+              }
+              ${
+                section.time_spent_minutes > 0
+                  ? `
                 <span style="display: flex; align-items: center; gap: 4px; color: #8fb9df;">
                   <i data-lucide="timer" style="width: 11px; height: 11px;"></i>
                   ${formatTimeSpent(section.time_spent_minutes)} spent
                 </span>
-              ` : ''}
-              ${section.completed_at ? `
+              `
+                  : ""
+              }
+              ${
+                section.completed_at
+                  ? `
                 <span style="display: flex; align-items: center; gap: 4px; color: #8fd98f;">
                   <i data-lucide="calendar-check" style="width: 11px; height: 11px;"></i>
                   Completed ${formatTimestamp(section.completed_at)}
                 </span>
-              ` : ''}
+              `
+                  : ""
+              }
             </div>
           </div>
         </div>
         
         <!-- Actions -->
         <div class="curriculum-section-actions" style="display: flex; align-items: center; gap: 8px;">
-          ${section.status === 'completed' && section.mastery_level ? `
+          ${
+            section.status === "completed" && section.mastery_level
+              ? `
             <div style="margin-right: 4px;">
               ${renderMasteryStars(section.mastery_level)}
             </div>
-          ` : ''}
+          `
+              : ""
+          }
           
-          ${section.status === 'not_started' ? `
+          ${
+            section.status === "not_started"
+              ? `
             <button class="btn-start-section" data-curriculum-id="${curriculumId}" data-section-id="${section.id}" style="
               padding: 6px 14px;
               font-size: 11px;
@@ -5427,8 +6100,12 @@ function renderCurriculumSection(section, curriculumId) {
               cursor: pointer;
               font-weight: 500;
             ">Start</button>
-          ` : ''}
-          ${section.status === 'in_progress' ? `
+          `
+              : ""
+          }
+          ${
+            section.status === "in_progress"
+              ? `
             <button class="btn-view-section" data-curriculum-id="${curriculumId}" data-section-id="${section.id}" style="
               padding: 6px 14px;
               font-size: 11px;
@@ -5449,8 +6126,12 @@ function renderCurriculumSection(section, curriculumId) {
               cursor: pointer;
               font-weight: 500;
             ">Complete</button>
-          ` : ''}
-          ${section.status === 'completed' ? `
+          `
+              : ""
+          }
+          ${
+            section.status === "completed"
+              ? `
             <button class="btn-view-section" data-curriculum-id="${curriculumId}" data-section-id="${section.id}" style="
               padding: 6px 14px;
               font-size: 11px;
@@ -5461,7 +6142,9 @@ function renderCurriculumSection(section, curriculumId) {
               cursor: pointer;
               font-weight: 500;
             ">View</button>
-          ` : ''}
+          `
+              : ""
+          }
         </div>
       </div>
     </div>
@@ -5472,8 +6155,8 @@ function renderCurriculumSection(section, curriculumId) {
  * Attach event handlers to section action buttons
  */
 function attachCurriculumSectionHandlers(curriculum) {
-  document.querySelectorAll('.btn-start-section').forEach(btn => {
-    btn.addEventListener('click', async () => {
+  document.querySelectorAll(".btn-start-section").forEach((btn) => {
+    btn.addEventListener("click", async () => {
       const curriculumId = btn.dataset.curriculumId;
       const sectionId = btn.dataset.sectionId;
       await handleStartSection(curriculumId, sectionId);
@@ -5482,20 +6165,24 @@ function attachCurriculumSectionHandlers(curriculum) {
     });
   });
 
-  document.querySelectorAll('.btn-view-section').forEach(btn => {
-    btn.addEventListener('click', async () => {
+  document.querySelectorAll(".btn-view-section").forEach((btn) => {
+    btn.addEventListener("click", async () => {
       const curriculumId = btn.dataset.curriculumId;
       const sectionId = btn.dataset.sectionId;
       await handleViewSection(curriculumId, sectionId);
     });
   });
 
-  document.querySelectorAll('.btn-complete-section').forEach(btn => {
-    btn.addEventListener('click', () => {
+  document.querySelectorAll(".btn-complete-section").forEach((btn) => {
+    btn.addEventListener("click", () => {
       const curriculumId = btn.dataset.curriculumId;
       const sectionId = btn.dataset.sectionId;
-      const section = curriculum.sections.find(s => s.id === sectionId);
-      showCompleteSectionDialog(curriculumId, sectionId, section?.title || 'Section');
+      const section = curriculum.sections.find((s) => s.id === sectionId);
+      showCompleteSectionDialog(
+        curriculumId,
+        sectionId,
+        section?.title || "Section",
+      );
     });
   });
 }
@@ -5509,9 +6196,9 @@ function attachCurriculumSectionHandlers(curriculum) {
  * Toggle week section expansion
  */
 function toggleWeekExpanded(headerElement) {
-  const weekElement = headerElement.closest('.curriculum-week');
+  const weekElement = headerElement.closest(".curriculum-week");
   if (weekElement) {
-    weekElement.classList.toggle('collapsed');
+    weekElement.classList.toggle("collapsed");
     lucide.createIcons();
   }
 }
@@ -5525,7 +6212,7 @@ async function handleActivateCurriculum(curriculumId) {
     // Reload detail view
     await loadCurriculumDetail(curriculumId);
   } catch (error) {
-    console.error('[Curriculum] Activation failed:', error);
+    console.error("[Curriculum] Activation failed:", error);
   }
 }
 
@@ -5538,7 +6225,7 @@ async function handlePauseCurriculum(curriculumId) {
     // Reload detail view
     await loadCurriculumDetail(curriculumId);
   } catch (error) {
-    console.error('[Curriculum] Pause failed:', error);
+    console.error("[Curriculum] Pause failed:", error);
   }
 }
 
@@ -5546,7 +6233,11 @@ async function handlePauseCurriculum(curriculumId) {
  * Handle delete curriculum button
  */
 async function handleDeleteCurriculum(curriculumId) {
-  if (!confirm('Are you sure you want to delete this curriculum? This cannot be undone.')) {
+  if (
+    !confirm(
+      "Are you sure you want to delete this curriculum? This cannot be undone.",
+    )
+  ) {
     return;
   }
 
@@ -5555,7 +6246,7 @@ async function handleDeleteCurriculum(curriculumId) {
     // Go back to list
     await loadCurriculaView();
   } catch (error) {
-    console.error('[Curriculum] Delete failed:', error);
+    console.error("[Curriculum] Delete failed:", error);
   }
 }
 
@@ -5564,16 +6255,16 @@ async function handleDeleteCurriculum(curriculumId) {
  */
 async function handleStartSection(curriculumId, sectionId) {
   try {
-    console.log('[Start Section] Starting section:', curriculumId, sectionId);
-    
+    console.log("[Start Section] Starting section:", curriculumId, sectionId);
+
     // Start the section (mark as in_progress)
     await startSection(curriculumId, sectionId);
-    
+
     // Show loading message
-    showToast('Enriching section with materials...', 'info');
-    
+    showToast("Enriching section with materials...", "info");
+
     // Show loading state in session content
-    const sessionContent = document.getElementById('session-content');
+    const sessionContent = document.getElementById("session-content");
     if (sessionContent) {
       sessionContent.innerHTML = `
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; text-align: center;">
@@ -5588,25 +6279,25 @@ async function handleStartSection(curriculumId, sectionId) {
         </div>
       `;
     }
-    
+
     // Enrich the section (get materials)
     const enrichment = await enrichSection(curriculumId, sectionId);
-    
+
     // Get curriculum to determine template type
     const curriculum = await getCurriculum(curriculumId);
-    const templateId = curriculum?.curriculum_template_id || curriculum?.template_id;
-    
+    const templateId =
+      curriculum?.curriculum_template_id || curriculum?.template_id;
+
     // Display enriched materials
     displaySectionMaterials(curriculumId, sectionId, enrichment, templateId);
-    
+
     // Refresh sidebar
     await loadLearningSidebarCurricula();
-    
   } catch (error) {
-    console.error('[Curriculum] Start section failed:', error);
-    
+    console.error("[Curriculum] Start section failed:", error);
+
     // Show error in session content
-    const sessionContent = document.getElementById('session-content');
+    const sessionContent = document.getElementById("session-content");
     if (sessionContent) {
       sessionContent.innerHTML = `
         <div style="padding: 40px; text-align: center;">
@@ -5614,7 +6305,7 @@ async function handleStartSection(curriculumId, sectionId) {
             Failed to load section materials
           </div>
           <div style="color: #808080; font-size: 13px; margin-bottom: 20px;">
-            ${error.message || 'Unknown error'}
+            ${error.message || "Unknown error"}
           </div>
           <button class="btn btn-secondary" onclick="loadCurriculumDetail('${curriculumId}')">
             Back to Curriculum
@@ -5630,10 +6321,14 @@ async function handleStartSection(curriculumId, sectionId) {
  */
 async function handleViewSection(curriculumId, sectionId) {
   try {
-    console.log('[View Section] Loading materials for:', curriculumId, sectionId);
-    
+    console.log(
+      "[View Section] Loading materials for:",
+      curriculumId,
+      sectionId,
+    );
+
     // Show loading state
-    const sessionContent = document.getElementById('session-content');
+    const sessionContent = document.getElementById("session-content");
     if (sessionContent) {
       sessionContent.innerHTML = `
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; text-align: center;">
@@ -5644,21 +6339,21 @@ async function handleViewSection(curriculumId, sectionId) {
         </div>
       `;
     }
-    
+
     // Get enriched materials (will use cached version if available)
     const enrichment = await enrichSection(curriculumId, sectionId);
-    
+
     // Get curriculum to determine template type
     const curriculum = await getCurriculum(curriculumId);
-    const templateId = curriculum?.curriculum_template_id || curriculum?.template_id;
-    
+    const templateId =
+      curriculum?.curriculum_template_id || curriculum?.template_id;
+
     // Display enriched materials
     displaySectionMaterials(curriculumId, sectionId, enrichment, templateId);
-    
   } catch (error) {
-    console.error('[View Section] Failed to load materials:', error);
-    
-    const sessionContent = document.getElementById('session-content');
+    console.error("[View Section] Failed to load materials:", error);
+
+    const sessionContent = document.getElementById("session-content");
     if (sessionContent) {
       sessionContent.innerHTML = `
         <div style="padding: 40px; text-align: center;">
@@ -5666,7 +6361,7 @@ async function handleViewSection(curriculumId, sectionId) {
             Failed to load section materials
           </div>
           <div style="color: #808080; font-size: 13px; margin-bottom: 20px;">
-            ${error.message || 'Unknown error'}
+            ${error.message || "Unknown error"}
           </div>
           <button class="btn btn-secondary" onclick="loadCurriculumDetail('${curriculumId}')">
             Back to Curriculum
@@ -5680,34 +6375,50 @@ async function handleViewSection(curriculumId, sectionId) {
 /**
  * Display enriched section materials in session view
  */
-function displaySectionMaterials(curriculumId, sectionId, enrichment, templateId) {
-  console.log('[Display Materials] Showing enrichment for:', sectionId, enrichment);
-  console.log('[Display Materials] Enrichment keys:', Object.keys(enrichment || {}));
-  console.log('[Display Materials] Template ID:', templateId);
-  
+function displaySectionMaterials(
+  curriculumId,
+  sectionId,
+  enrichment,
+  templateId,
+) {
+  console.log(
+    "[Display Materials] Showing enrichment for:",
+    sectionId,
+    enrichment,
+  );
+  console.log(
+    "[Display Materials] Enrichment keys:",
+    Object.keys(enrichment || {}),
+  );
+  console.log("[Display Materials] Template ID:", templateId);
+
   // Determine if this is a programming curriculum
-  const isProgramming = templateId && ['programming-language', 'framework-library'].includes(templateId);
-  const examplesHeading = isProgramming ? 'Code Examples' : 'Real-World Examples';
-  const examplesIcon = isProgramming ? 'code' : 'book-open';
-  
-  const sessionContent = document.getElementById('session-content');
+  const isProgramming =
+    templateId &&
+    ["programming-language", "framework-library"].includes(templateId);
+  const examplesHeading = isProgramming
+    ? "Code Examples"
+    : "Real-World Examples";
+  const examplesIcon = isProgramming ? "code" : "book-open";
+
+  const sessionContent = document.getElementById("session-content");
   if (!sessionContent) {
-    console.error('[Display Materials] session-content element not found');
+    console.error("[Display Materials] session-content element not found");
     return;
   }
-  
+
   // Make sure the learning session view is visible
-  const learningSession = document.getElementById('learning-session');
+  const learningSession = document.getElementById("learning-session");
   if (learningSession) {
-    console.log('[Display Materials] Showing learning-session div');
-    learningSession.classList.remove('hidden');
+    console.log("[Display Materials] Showing learning-session div");
+    learningSession.classList.remove("hidden");
   } else {
-    console.error('[Display Materials] learning-session element not found');
+    console.error("[Display Materials] learning-session element not found");
   }
-  
+
   // Get section info (from enrichment or fetch it)
   const sectionTitle = sectionId; // Will be improved when we have full section data
-  
+
   let html = `
     <div style="padding: 20px; max-width: 900px; margin: 0 auto;">
       
@@ -5725,7 +6436,9 @@ function displaySectionMaterials(curriculumId, sectionId, enrichment, templateId
       </div>
       
       <!-- Explanation -->
-      ${enrichment.explanation ? `
+      ${
+        enrichment.explanation
+          ? `
         <div style="margin-bottom: 32px;">
           <h3 style="font-size: 16px; font-weight: 600; color: #e0e0e0; margin-bottom: 12px;">
             <i data-lucide="book-open" style="width: 16px; height: 16px; margin-right: 8px;"></i>
@@ -5735,64 +6448,93 @@ function displaySectionMaterials(curriculumId, sectionId, enrichment, templateId
             ${marked.parse(enrichment.explanation)}
           </div>
         </div>
-      ` : ''}
+      `
+          : ""
+      }
       
       <!-- Diagrams -->
-      ${enrichment.diagrams && enrichment.diagrams.length > 0 ? `
+      ${
+        enrichment.diagrams && enrichment.diagrams.length > 0
+          ? `
         <div style="margin-bottom: 32px;">
           <h3 style="font-size: 16px; font-weight: 600; color: #e0e0e0; margin-bottom: 12px;">
             <i data-lucide="git-graph" style="width: 16px; height: 16px; margin-right: 8px;"></i>
             Visual Diagrams
           </h3>
-          ${enrichment.diagrams.map((diagram, idx) => `
+          ${enrichment.diagrams
+            .map(
+              (diagram, idx) => `
             <div style="background: #252525; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
-              ${diagram.caption ? `<div style="font-size: 13px; color: #808080; margin-bottom: 12px;">${diagram.caption}</div>` : ''}
+              ${diagram.caption ? `<div style="font-size: 13px; color: #808080; margin-bottom: 12px;">${diagram.caption}</div>` : ""}
               <div class="mermaid" style="background: white; padding: 20px; border-radius: 6px;">
                 ${diagram.source}
               </div>
             </div>
-          `).join('')}
+          `,
+            )
+            .join("")}
         </div>
-      ` : ''}
+      `
+          : ""
+      }
       
       <!-- Examples -->
-      ${enrichment.examples && enrichment.examples.length > 0 ? `
+      ${
+        enrichment.examples && enrichment.examples.length > 0
+          ? `
         <div style="margin-bottom: 32px;">
           <h3 style="font-size: 16px; font-weight: 600; color: #e0e0e0; margin-bottom: 12px;">
             <i data-lucide="${examplesIcon}" style="width: 16px; height: 16px; margin-right: 8px;"></i>
             ${examplesHeading}
           </h3>
-          ${enrichment.examples.map((example, idx) => `
+          ${enrichment.examples
+            .map(
+              (example, idx) => `
             <div style="background: #252525; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
               <div style="font-size: 14px; font-weight: 600; color: #e0e0e0; margin-bottom: 8px;">
                 ${example.title}
               </div>
-              ${example.code ? `
+              ${
+                example.code
+                  ? `
                 <pre style="background: #1a1a1a; padding: 12px; border-radius: 6px; overflow-x: auto; margin-bottom: 8px;"><code>${escapeHtml(example.code)}</code></pre>
-              ` : ''}
-              ${example.description ? `
+              `
+                  : ""
+              }
+              ${
+                example.description
+                  ? `
                 <div style="font-size: 13px; color: #c8c8c8; margin-bottom: 8px; line-height: 1.6;">${example.description}</div>
-              ` : ''}
-              ${example.explanation ? `<div style="font-size: 13px; color: #a8a8a8; font-style: italic;">${example.explanation}</div>` : ''}
+              `
+                  : ""
+              }
+              ${example.explanation ? `<div style="font-size: 13px; color: #a8a8a8; font-style: italic;">${example.explanation}</div>` : ""}
             </div>
-          `).join('')}
+          `,
+            )
+            .join("")}
         </div>
-      ` : ''}
+      `
+          : ""
+      }
       
       <!-- Exercises -->
-      ${enrichment.exercises && enrichment.exercises.length > 0 ? `
+      ${
+        enrichment.exercises && enrichment.exercises.length > 0
+          ? `
         <div style="margin-bottom: 32px;">
           <h3 style="font-size: 16px; font-weight: 600; color: #e0e0e0; margin-bottom: 12px;">
             <i data-lucide="dumbbell" style="width: 16px; height: 16px; margin-right: 8px;"></i>
             Practice Exercises
           </h3>
-          ${enrichment.exercises.map((exercise, idx) => {
-            const exerciseId = exercise.id || `exercise-${idx}`;
-            const editorId = `editor-${curriculumId}-${sectionId}-${exerciseId}`;
-            const outputId = `output-${curriculumId}-${sectionId}-${exerciseId}`;
-            const feedbackId = `feedback-${curriculumId}-${sectionId}-${exerciseId}`;
-            
-            return `
+          ${enrichment.exercises
+            .map((exercise, idx) => {
+              const exerciseId = exercise.id || `exercise-${idx}`;
+              const editorId = `editor-${curriculumId}-${sectionId}-${exerciseId}`;
+              const outputId = `output-${curriculumId}-${sectionId}-${exerciseId}`;
+              const feedbackId = `feedback-${curriculumId}-${sectionId}-${exerciseId}`;
+
+              return `
             <div style="background: #252525; padding: 16px; border-radius: 8px; margin-bottom: 16px;" data-exercise-id="${exerciseId}">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                 <div style="font-size: 14px; font-weight: 600; color: #e0e0e0;">
@@ -5824,7 +6566,7 @@ function displaySectionMaterials(curriculumId, sectionId, enrichment, templateId
                   <button 
                     class="btn-reset-code" 
                     data-editor-id="${editorId}"
-                    data-starter-code="${escapeHtml(exercise.starter_code || '')}"
+                    data-starter-code="${escapeHtml(exercise.starter_code || "")}"
                     style="padding: 6px 12px; font-size: 11px; background: #3a3a3a; color: #808080; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; display: flex; align-items: center; gap: 4px;"
                   >
                     <i data-lucide="rotate-ccw" style="width: 12px; height: 12px;"></i>
@@ -5833,7 +6575,7 @@ function displaySectionMaterials(curriculumId, sectionId, enrichment, templateId
                 </div>
               </div>
               
-              ${exercise.description ? `<div style="font-size: 13px; color: #c8c8c8; margin-bottom: 12px;">${exercise.description}</div>` : ''}
+              ${exercise.description ? `<div style="font-size: 13px; color: #c8c8c8; margin-bottom: 12px;">${exercise.description}</div>` : ""}
               
               <!-- Code Editor -->
               <div style="margin-bottom: 12px;">
@@ -5854,7 +6596,7 @@ function displaySectionMaterials(curriculumId, sectionId, enrichment, templateId
                     resize: vertical;
                     outline: none;
                   "
-                >${escapeHtml(exercise.starter_code || '')}</textarea>
+                >${escapeHtml(exercise.starter_code || "")}</textarea>
               </div>
               
               <!-- Output Console -->
@@ -5868,7 +6610,9 @@ function displaySectionMaterials(curriculumId, sectionId, enrichment, templateId
               
               <!-- Hints/Solution -->
               <div style="margin-top: 12px; display: flex; gap: 8px;">
-                ${exercise.solution ? `
+                ${
+                  exercise.solution
+                    ? `
                   <details style="flex: 1;">
                     <summary style="font-size: 12px; color: #808080; cursor: pointer; padding: 8px; background: #2a2a2a; border-radius: 4px;">
                       <i data-lucide="lightbulb" style="width: 12px; height: 12px; margin-right: 4px;"></i>
@@ -5876,36 +6620,52 @@ function displaySectionMaterials(curriculumId, sectionId, enrichment, templateId
                     </summary>
                     <pre style="background: #1a1a1a; padding: 12px; border-radius: 6px; margin-top: 8px; font-size: 12px;"><code>${escapeHtml(exercise.solution)}</code></pre>
                   </details>
-                ` : ''}
+                `
+                    : ""
+                }
               </div>
             </div>
           `;
-          }).join('')}
+            })
+            .join("")}
         </div>
-      ` : ''}
+      `
+          : ""
+      }
       
       <!-- Resources -->
-      ${enrichment.resources && enrichment.resources.length > 0 ? `
+      ${
+        enrichment.resources && enrichment.resources.length > 0
+          ? `
         <div style="margin-bottom: 32px;">
           <h3 style="font-size: 16px; font-weight: 600; color: #e0e0e0; margin-bottom: 12px;">
             <i data-lucide="link" style="width: 16px; height: 16px; margin-right: 8px;"></i>
             Additional Resources
           </h3>
           <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${enrichment.resources.map(resource => `
+            ${enrichment.resources
+              .map(
+                (resource) => `
               <div style="background: #252525; padding: 12px; border-radius: 6px;">
                 <div style="font-size: 13px; font-weight: 600; color: #e0e0e0;">
                   ${resource.url ? `<a href="${resource.url}" target="_blank" style="color: #61afef; text-decoration: none;">${resource.title}</a>` : resource.title}
                 </div>
-                ${resource.description ? `<div style="font-size: 12px; color: #808080; margin-top: 4px;">${resource.description}</div>` : ''}
+                ${resource.description ? `<div style="font-size: 12px; color: #808080; margin-top: 4px;">${resource.description}</div>` : ""}
               </div>
-            `).join('')}
+            `,
+              )
+              .join("")}
           </div>
         </div>
-      ` : ''}
+      `
+          : ""
+      }
       
       <!-- Assessment Criteria -->
-      ${enrichment.assessment_criteria && enrichment.assessment_criteria.length > 0 ? `
+      ${
+        enrichment.assessment_criteria &&
+        enrichment.assessment_criteria.length > 0
+          ? `
         <div style="margin-bottom: 32px;">
           <h3 style="font-size: 16px; font-weight: 600; color: #e0e0e0; margin-bottom: 12px;">
             <i data-lucide="check-circle" style="width: 16px; height: 16px; margin-right: 8px;"></i>
@@ -5915,15 +6675,21 @@ function displaySectionMaterials(curriculumId, sectionId, enrichment, templateId
             <div style="font-size: 12px; color: #808080; margin-bottom: 12px;">
               You've mastered this section when:
             </div>
-            ${enrichment.assessment_criteria.map(criterion => `
+            ${enrichment.assessment_criteria
+              .map(
+                (criterion) => `
               <div style="display: flex; align-items: start; gap: 8px; margin-bottom: 8px;">
                 <i data-lucide="circle" style="width: 14px; height: 14px; color: #4a6a4a; flex-shrink: 0; margin-top: 2px;"></i>
                 <div style="font-size: 13px; color: #c8c8c8;">${criterion}</div>
               </div>
-            `).join('')}
+            `,
+              )
+              .join("")}
           </div>
         </div>
-      ` : ''}
+      `
+          : ""
+      }
       
       <!-- Complete Button -->
       <div style="display: flex; justify-content: center; padding: 20px 0;">
@@ -5939,17 +6705,17 @@ function displaySectionMaterials(curriculumId, sectionId, enrichment, templateId
       
     </div>
   `;
-  
+
   sessionContent.innerHTML = html;
-  
+
   // Re-initialize icons and mermaid
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     lucide.createIcons();
   }
-  if (typeof mermaid !== 'undefined') {
-    mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+  if (typeof mermaid !== "undefined") {
+    mermaid.init(undefined, document.querySelectorAll(".mermaid"));
   }
-  
+
   // Attach exercise interaction handlers
   attachExerciseHandlers();
 }
@@ -5959,30 +6725,37 @@ function displaySectionMaterials(curriculumId, sectionId, enrichment, templateId
  */
 function attachExerciseHandlers() {
   // Run Code buttons
-  document.querySelectorAll('.btn-run-code').forEach(btn => {
-    btn.addEventListener('click', async () => {
+  document.querySelectorAll(".btn-run-code").forEach((btn) => {
+    btn.addEventListener("click", async () => {
       const editorId = btn.dataset.editorId;
       const outputId = btn.dataset.outputId;
       await runExerciseCode(editorId, outputId);
     });
   });
-  
+
   // Check Solution buttons
-  document.querySelectorAll('.btn-check-solution').forEach(btn => {
-    btn.addEventListener('click', async () => {
+  document.querySelectorAll(".btn-check-solution").forEach((btn) => {
+    btn.addEventListener("click", async () => {
       const curriculumId = btn.dataset.curriculumId;
       const sectionId = btn.dataset.sectionId;
       const exerciseId = btn.dataset.exerciseId;
       const editorId = btn.dataset.editorId;
       const outputId = btn.dataset.outputId;
       const feedbackId = btn.dataset.feedbackId;
-      await checkExerciseSolution(curriculumId, sectionId, exerciseId, editorId, outputId, feedbackId);
+      await checkExerciseSolution(
+        curriculumId,
+        sectionId,
+        exerciseId,
+        editorId,
+        outputId,
+        feedbackId,
+      );
     });
   });
-  
+
   // Reset Code buttons
-  document.querySelectorAll('.btn-reset-code').forEach(btn => {
-    btn.addEventListener('click', () => {
+  document.querySelectorAll(".btn-reset-code").forEach((btn) => {
+    btn.addEventListener("click", () => {
       const editorId = btn.dataset.editorId;
       const starterCode = btn.dataset.starterCode;
       resetExerciseCode(editorId, starterCode);
@@ -5997,85 +6770,91 @@ function attachExerciseHandlers() {
 async function runExerciseCode(editorId, outputId) {
   const editor = document.getElementById(editorId);
   const outputDiv = document.getElementById(outputId);
-  const outputContent = outputDiv.querySelector('.output-content');
-  
+  const outputContent = outputDiv.querySelector(".output-content");
+
   if (!editor || !outputDiv || !outputContent) {
-    console.error('[Exercise] Editor or output elements not found');
+    console.error("[Exercise] Editor or output elements not found");
     return;
   }
-  
+
   const code = editor.value;
-  
+
   // Show output panel with loading state
-  outputDiv.style.display = 'block';
-  outputContent.textContent = 'Running code in sandbox...';
-  outputContent.style.color = '#808080';
-  
+  outputDiv.style.display = "block";
+  outputContent.textContent = "Running code in sandbox...";
+  outputContent.style.color = "#808080";
+
   try {
     // Phase 23.5: Execute directly in Pyodide sandbox (more secure)
     // Code never leaves the renderer process
     const result = await runPythonInSandbox(code, 5); // 5 second timeout
-    
-    if (result.status === 'success') {
-      outputContent.textContent = result.output || '(no output)';
-      outputContent.style.color = '#8fd98f';
-    } else if (result.status === 'error') {
+
+    if (result.status === "success") {
+      outputContent.textContent = result.output || "(no output)";
+      outputContent.style.color = "#8fd98f";
+    } else if (result.status === "error") {
       outputContent.textContent = `Error:\n${result.error || result.output}`;
-      outputContent.style.color = '#e06c75';
-    } else if (result.status === 'timeout') {
-      outputContent.textContent = result.error || 'Code execution timed out';
-      outputContent.style.color = '#f0903b';
+      outputContent.style.color = "#e06c75";
+    } else if (result.status === "timeout") {
+      outputContent.textContent = result.error || "Code execution timed out";
+      outputContent.style.color = "#f0903b";
     }
-    
+
     // Log execution to server for audit (non-blocking)
     try {
       await fetch(`${API_URL}/polly/exercises/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           code: code.substring(0, 100), // Only send first 100 chars for audit
           timeout: 5,
           executed_locally: true,
-          result_status: result.status
-        })
+          result_status: result.status,
+        }),
       }).catch(() => {}); // Ignore errors - audit logging is non-critical
     } catch (e) {
       // Silent fail for audit logging
     }
-    
   } catch (error) {
-    console.error('[Exercise] Error running code:', error);
+    console.error("[Exercise] Error running code:", error);
     outputContent.textContent = `Failed to run code: ${error.message}`;
-    outputContent.style.color = '#e06c75';
+    outputContent.style.color = "#e06c75";
   }
 }
 
 /**
  * Check exercise solution and get feedback
  */
-async function checkExerciseSolution(curriculumId, sectionId, exerciseId, editorId, outputId, feedbackId) {
+async function checkExerciseSolution(
+  curriculumId,
+  sectionId,
+  exerciseId,
+  editorId,
+  outputId,
+  feedbackId,
+) {
   const editor = document.getElementById(editorId);
   const outputDiv = document.getElementById(outputId);
-  const outputContent = outputDiv.querySelector('.output-content');
+  const outputContent = outputDiv.querySelector(".output-content");
   const feedbackDiv = document.getElementById(feedbackId);
-  
+
   if (!editor || !feedbackDiv) {
-    console.error('[Exercise] Editor or feedback elements not found');
+    console.error("[Exercise] Editor or feedback elements not found");
     return;
   }
-  
+
   const code = editor.value;
-  
+
   // First run the code to get output
   await runExerciseCode(editorId, outputId);
-  
+
   // Wait a moment for execution to complete
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  const output = outputContent ? outputContent.textContent : '';
-  
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  const output = outputContent ? outputContent.textContent : "";
+
   // Show loading feedback
-  feedbackDiv.style.display = 'block';
+  feedbackDiv.style.display = "block";
   feedbackDiv.innerHTML = `
     <div style="background: #2a2a2a; padding: 12px; border-radius: 6px; border-left: 3px solid #4a5a6a;">
       <div style="font-size: 12px; color: #8fb9df;">
@@ -6084,53 +6863,52 @@ async function checkExerciseSolution(curriculumId, sectionId, exerciseId, editor
       </div>
     </div>
   `;
-  if (typeof lucide !== 'undefined') lucide.createIcons();
-  
+  if (typeof lucide !== "undefined") lucide.createIcons();
+
   try {
     const response = await fetch(`${API_URL}/polly/exercises/validate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         curriculum_id: curriculumId,
         section_id: sectionId,
         exercise_id: exerciseId,
         code,
-        output
-      })
+        output,
+      }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    
+
     const result = await response.json();
     const validation = result.validation;
-    
+
     // Display feedback
-    const borderColor = validation.correct ? '#4a6a4a' : '#6a4a4a';
-    const iconColor = validation.correct ? '#8fd98f' : '#f0903b';
-    const icon = validation.correct ? 'check-circle' : 'info';
-    
+    const borderColor = validation.correct ? "#4a6a4a" : "#6a4a4a";
+    const iconColor = validation.correct ? "#8fd98f" : "#f0903b";
+    const icon = validation.correct ? "check-circle" : "info";
+
     feedbackDiv.innerHTML = `
       <div style="background: #2a2a2a; padding: 16px; border-radius: 6px; border-left: 3px solid ${borderColor};">
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
           <i data-lucide="${icon}" style="width: 16px; height: 16px; color: ${iconColor};"></i>
           <div style="font-size: 14px; font-weight: 600; color: #e0e0e0;">
-            ${validation.correct ? 'Great work!' : 'Keep trying!'}
+            ${validation.correct ? "Great work!" : "Keep trying!"}
           </div>
         </div>
         <div style="font-size: 13px; color: #c8c8c8; white-space: pre-wrap;">${validation.feedback}</div>
       </div>
     `;
-    
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-    
+
+    if (typeof lucide !== "undefined") lucide.createIcons();
+
     if (validation.correct) {
-      showToast('Exercise completed successfully!', 'success');
+      showToast("Exercise completed successfully!", "success");
     }
-    
   } catch (error) {
-    console.error('[Exercise] Error checking solution:', error);
+    console.error("[Exercise] Error checking solution:", error);
     feedbackDiv.innerHTML = `
       <div style="background: #2a2a2a; padding: 12px; border-radius: 6px; border-left: 3px solid #6a4a4a;">
         <div style="font-size: 12px; color: #e06c75;">
@@ -6148,10 +6926,10 @@ function resetExerciseCode(editorId, starterCode) {
   const editor = document.getElementById(editorId);
   if (editor) {
     // Decode HTML entities
-    const textarea = document.createElement('textarea');
+    const textarea = document.createElement("textarea");
     textarea.innerHTML = starterCode;
     editor.value = textarea.value;
-    showToast('Code reset to starter template', 'info');
+    showToast("Code reset to starter template", "info");
   }
 }
 
@@ -6171,19 +6949,25 @@ function escapeHtml(unsafe) {
  * Show complete section dialog
  */
 function showCompleteSectionDialog(curriculumId, sectionId, sectionTitle) {
-  console.log('[Complete Section] Opening dialog for:', sectionTitle);
-  
-  currentSectionForCompletion = { curriculumId, sectionId, title: sectionTitle };
-  
+  console.log("[Complete Section] Opening dialog for:", sectionTitle);
+
+  currentSectionForCompletion = {
+    curriculumId,
+    sectionId,
+    title: sectionTitle,
+  };
+
   // Reset form
-  document.getElementById('complete-section-struggles').value = '';
-  document.getElementById('complete-section-breakthroughs').value = '';
-  
+  document.getElementById("complete-section-struggles").value = "";
+  document.getElementById("complete-section-breakthroughs").value = "";
+
   // Reset mastery selector
-  document.querySelectorAll('.mastery-level').forEach(el => el.classList.remove('selected'));
-  
+  document
+    .querySelectorAll(".mastery-level")
+    .forEach((el) => el.classList.remove("selected"));
+
   // Show dialog
-  document.getElementById('complete-section-dialog').classList.remove('hidden');
+  document.getElementById("complete-section-dialog").classList.remove("hidden");
   lucide.createIcons();
 }
 
@@ -6191,10 +6975,12 @@ function showCompleteSectionDialog(curriculumId, sectionId, sectionTitle) {
  * Handle mastery level selection
  */
 function selectMasteryLevel(level) {
-  document.querySelectorAll('.mastery-level').forEach(el => {
-    el.classList.remove('selected');
+  document.querySelectorAll(".mastery-level").forEach((el) => {
+    el.classList.remove("selected");
   });
-  document.querySelector(`.mastery-level[data-level="${level}"]`).classList.add('selected');
+  document
+    .querySelector(`.mastery-level[data-level="${level}"]`)
+    .classList.add("selected");
 }
 
 /**
@@ -6202,20 +6988,24 @@ function selectMasteryLevel(level) {
  */
 async function handleConfirmCompleteSection() {
   if (!currentSectionForCompletion) {
-    console.error('[Complete Section] No section data');
+    console.error("[Complete Section] No section data");
     return;
   }
 
   // Get selected mastery level
-  const selectedMastery = document.querySelector('.mastery-level.selected');
+  const selectedMastery = document.querySelector(".mastery-level.selected");
   if (!selectedMastery) {
-    showToast('Please select a mastery level', 'error');
+    showToast("Please select a mastery level", "error");
     return;
   }
 
   const masteryLevel = parseInt(selectedMastery.dataset.level);
-  const struggles = document.getElementById('complete-section-struggles').value.trim();
-  const breakthroughs = document.getElementById('complete-section-breakthroughs').value.trim();
+  const struggles = document
+    .getElementById("complete-section-struggles")
+    .value.trim();
+  const breakthroughs = document
+    .getElementById("complete-section-breakthroughs")
+    .value.trim();
 
   try {
     // Complete section
@@ -6225,22 +7015,22 @@ async function handleConfirmCompleteSection() {
       {
         mastery_level: masteryLevel,
         struggles: struggles ? [struggles] : [],
-        breakthroughs: breakthroughs ? [breakthroughs] : []
-      }
+        breakthroughs: breakthroughs ? [breakthroughs] : [],
+      },
     );
 
     // Close dialog
-    document.getElementById('complete-section-dialog').classList.add('hidden');
-    
+    document.getElementById("complete-section-dialog").classList.add("hidden");
+
     // Reload curriculum detail view
     await loadCurriculumDetail(currentSectionForCompletion.curriculumId);
-    
+
     // Refresh sidebar curriculum list to update progress
     await loadLearningSidebarCurricula();
-    
+
     currentSectionForCompletion = null;
   } catch (error) {
-    console.error('[Complete Section] Failed:', error);
+    console.error("[Complete Section] Failed:", error);
   }
 }
 
@@ -6263,25 +7053,25 @@ let currentCurriculumData = null;
  * @param {Object} action - PersonaAction with curriculum_data
  */
 function handleReviewCurriculumAction(action) {
-  console.log('[Curriculum Review] Opening review dialog', action);
-  
+  console.log("[Curriculum Review] Opening review dialog", action);
+
   if (!action.data || !action.data.curriculum_data) {
-    console.error('[Curriculum Review] No curriculum data in action');
-    showToast('Failed to load curriculum data', 'error');
+    console.error("[Curriculum Review] No curriculum data in action");
+    showToast("Failed to load curriculum data", "error");
     return;
   }
-  
+
   // Store curriculum data globally
   currentCurriculumData = action.data.curriculum_data;
-  
+
   // Populate dialog
   populateCurriculumReviewDialog(currentCurriculumData);
-  
+
   // Show dialog
-  const dialog = document.getElementById('curriculum-review-dialog');
+  const dialog = document.getElementById("curriculum-review-dialog");
   if (dialog) {
-    dialog.classList.remove('hidden');
-    
+    dialog.classList.remove("hidden");
+
     // Initialize Lucide icons in dialog
     if (window.lucide) {
       setTimeout(() => lucide.createIcons(), 50);
@@ -6294,14 +7084,16 @@ function handleReviewCurriculumAction(action) {
  */
 async function loadCurriculumTemplates() {
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/curricula/templates/list');
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/curricula/templates/list",
+    );
     if (!response.ok) {
       throw new Error(`Failed to load templates: ${response.statusText}`);
     }
     const data = await response.json();
     return data.templates || [];
   } catch (error) {
-    console.error('[Templates] Failed to load:', error);
+    console.error("[Templates] Failed to load:", error);
     return [];
   }
 }
@@ -6310,19 +7102,19 @@ async function loadCurriculumTemplates() {
  * Update the template auto-detected indicator
  */
 function updateTemplateAutoDetectedIndicator(selectedTemplateId) {
-  const icon = document.getElementById('template-indicator-icon');
-  const text = document.getElementById('template-indicator-text');
-  
+  const icon = document.getElementById("template-indicator-icon");
+  const text = document.getElementById("template-indicator-text");
+
   if (!icon || !text || !currentCurriculumData) return;
-  
+
   if (selectedTemplateId === currentCurriculumData.template_id_original) {
-    icon.setAttribute('data-lucide', 'sparkles');
-    text.textContent = 'Auto-detected';
+    icon.setAttribute("data-lucide", "sparkles");
+    text.textContent = "Auto-detected";
   } else {
-    icon.setAttribute('data-lucide', 'pencil');
-    text.textContent = 'Modified';
+    icon.setAttribute("data-lucide", "pencil");
+    text.textContent = "Modified";
   }
-  
+
   if (window.lucide) {
     lucide.createIcons();
   }
@@ -6333,13 +7125,13 @@ function updateTemplateAutoDetectedIndicator(selectedTemplateId) {
  */
 function handleTemplateChange(event) {
   const newTemplateId = event.target.value;
-  
-  console.log('[Curriculum] Template changed to:', newTemplateId);
-  
+
+  console.log("[Curriculum] Template changed to:", newTemplateId);
+
   if (currentCurriculumData) {
     currentCurriculumData.template_id = newTemplateId;
   }
-  
+
   updateTemplateAutoDetectedIndicator(newTemplateId);
 }
 
@@ -6348,59 +7140,59 @@ function handleTemplateChange(event) {
  * @param {Object} curriculumData - Curriculum data with title, goal, sections
  */
 function populateCurriculumReviewDialog(curriculumData) {
-  console.log('[Curriculum Review] Populating dialog', curriculumData);
-  
+  console.log("[Curriculum Review] Populating dialog", curriculumData);
+
   // Set title
-  const titleInput = document.getElementById('curriculum-title-input');
+  const titleInput = document.getElementById("curriculum-title-input");
   if (titleInput) {
-    titleInput.value = curriculumData.title || '';
+    titleInput.value = curriculumData.title || "";
   }
-  
+
   // Set goal
-  const goalInput = document.getElementById('curriculum-goal-input');
+  const goalInput = document.getElementById("curriculum-goal-input");
   if (goalInput) {
-    goalInput.value = curriculumData.goal || '';
+    goalInput.value = curriculumData.goal || "";
   }
-  
+
   // Populate template selector
-  const templateSelect = document.getElementById('curriculum-template-select');
+  const templateSelect = document.getElementById("curriculum-template-select");
   if (templateSelect) {
     // Store original auto-detected template
     if (!curriculumData.template_id_original) {
       curriculumData.template_id_original = curriculumData.template_id;
     }
-    
+
     // Load all templates
-    loadCurriculumTemplates().then(templates => {
+    loadCurriculumTemplates().then((templates) => {
       if (!templates || templates.length === 0) {
-        console.warn('[Curriculum] No templates loaded');
+        console.warn("[Curriculum] No templates loaded");
         return;
       }
-      
+
       // Clear and populate dropdown
-      templateSelect.innerHTML = '';
-      templates.forEach(template => {
-        const option = document.createElement('option');
+      templateSelect.innerHTML = "";
+      templates.forEach((template) => {
+        const option = document.createElement("option");
         option.value = template.id;
         option.textContent = template.name;
         option.title = template.description; // Show description on hover
-        
+
         if (template.id === curriculumData.template_id) {
           option.selected = true;
         }
-        
+
         templateSelect.appendChild(option);
       });
-      
+
       // Add change listener
-      templateSelect.removeEventListener('change', handleTemplateChange);
-      templateSelect.addEventListener('change', handleTemplateChange);
-      
+      templateSelect.removeEventListener("change", handleTemplateChange);
+      templateSelect.addEventListener("change", handleTemplateChange);
+
       // Initialize indicator
       updateTemplateAutoDetectedIndicator(curriculumData.template_id);
     });
   }
-  
+
   // Render sections
   renderCurriculumSectionsDialog(curriculumData.sections || []);
 }
@@ -6412,9 +7204,9 @@ function populateCurriculumReviewDialog(curriculumData) {
  */
 function formatTemplateName(templateId) {
   return templateId
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 /**
@@ -6422,12 +7214,12 @@ function formatTemplateName(templateId) {
  * @param {Array} sections - Array of section objects
  */
 function renderCurriculumSectionsDialog(sections) {
-  const container = document.getElementById('curriculum-sections-container');
+  const container = document.getElementById("curriculum-sections-container");
   if (!container) return;
-  
+
   // Clear container
-  container.innerHTML = '';
-  
+  container.innerHTML = "";
+
   if (!sections || sections.length === 0) {
     container.innerHTML = `
       <div class="curriculum-empty">
@@ -6437,13 +7229,13 @@ function renderCurriculumSectionsDialog(sections) {
     `;
     return;
   }
-  
+
   // Group sections by weeks
-  const weeks = sections.filter(s => s.type === 'week');
-  const subsections = sections.filter(s => s.type === 'subheading');
-  
-  weeks.forEach(week => {
-    const weekSections = subsections.filter(s => s.parent_id === week.id);
+  const weeks = sections.filter((s) => s.type === "week");
+  const subsections = sections.filter((s) => s.type === "subheading");
+
+  weeks.forEach((week) => {
+    const weekSections = subsections.filter((s) => s.parent_id === week.id);
     const weekElement = createWeekElement(week, weekSections);
     container.appendChild(weekElement);
   });
@@ -6456,10 +7248,10 @@ function renderCurriculumSectionsDialog(sections) {
  * @returns {HTMLElement} Week element
  */
 function createWeekElement(week, subsections) {
-  const weekDiv = document.createElement('div');
-  weekDiv.className = 'curriculum-week';
+  const weekDiv = document.createElement("div");
+  weekDiv.className = "curriculum-week";
   weekDiv.dataset.weekId = week.id;
-  
+
   weekDiv.innerHTML = `
     <div class="curriculum-week-header">
       <div class="curriculum-week-title">
@@ -6467,27 +7259,29 @@ function createWeekElement(week, subsections) {
         <span>${week.title}</span>
       </div>
       <div class="curriculum-week-toggle">
-        <span>${subsections.length} section${subsections.length !== 1 ? 's' : ''}</span>
+        <span>${subsections.length} section${subsections.length !== 1 ? "s" : ""}</span>
         <i data-lucide="chevron-down"></i>
       </div>
     </div>
     <div class="curriculum-week-subsections"></div>
   `;
-  
+
   // Add click handler for collapse/expand
-  const header = weekDiv.querySelector('.curriculum-week-header');
-  header.addEventListener('click', () => {
-    weekDiv.classList.toggle('collapsed');
+  const header = weekDiv.querySelector(".curriculum-week-header");
+  header.addEventListener("click", () => {
+    weekDiv.classList.toggle("collapsed");
     if (window.lucide) lucide.createIcons();
   });
-  
+
   // Add subsections
-  const subsectionsContainer = weekDiv.querySelector('.curriculum-week-subsections');
-  subsections.forEach(subsection => {
+  const subsectionsContainer = weekDiv.querySelector(
+    ".curriculum-week-subsections",
+  );
+  subsections.forEach((subsection) => {
     const subElement = createSubsectionElement(subsection);
     subsectionsContainer.appendChild(subElement);
   });
-  
+
   return weekDiv;
 }
 
@@ -6497,29 +7291,34 @@ function createWeekElement(week, subsections) {
  * @returns {HTMLElement} Subsection element
  */
 function createSubsectionElement(subsection) {
-  const subDiv = document.createElement('div');
-  subDiv.className = 'curriculum-subheading';
+  const subDiv = document.createElement("div");
+  subDiv.className = "curriculum-subheading";
   subDiv.dataset.sectionId = subsection.id;
-  
-  const conceptsHtml = subsection.concepts && subsection.concepts.length > 0
-    ? `<div class="curriculum-concepts">
-         ${subsection.concepts.map(c => `<span class="curriculum-concept-tag">${c}</span>`).join('')}
+
+  const conceptsHtml =
+    subsection.concepts && subsection.concepts.length > 0
+      ? `<div class="curriculum-concepts">
+         ${subsection.concepts.map((c) => `<span class="curriculum-concept-tag">${c}</span>`).join("")}
        </div>`
-    : '';
-  
+      : "";
+
   subDiv.innerHTML = `
     <div class="curriculum-subheading-header">
       <div class="curriculum-subheading-content">
         <div class="curriculum-subheading-title">${subsection.title}</div>
-        <div class="curriculum-subheading-description">${subsection.description || ''}</div>
+        <div class="curriculum-subheading-description">${subsection.description || ""}</div>
         ${conceptsHtml}
         <div class="curriculum-subheading-meta">
-          ${subsection.estimated_time ? `
+          ${
+            subsection.estimated_time
+              ? `
             <div class="curriculum-meta-item">
               <i data-lucide="clock"></i>
               <span>${subsection.estimated_time}</span>
             </div>
-          ` : ''}
+          `
+              : ""
+          }
         </div>
       </div>
       <button class="curriculum-edit-btn" data-section-id="${subsection.id}">
@@ -6527,14 +7326,14 @@ function createSubsectionElement(subsection) {
       </button>
     </div>
   `;
-  
+
   // Add edit button handler
-  const editBtn = subDiv.querySelector('.curriculum-edit-btn');
-  editBtn.addEventListener('click', (e) => {
+  const editBtn = subDiv.querySelector(".curriculum-edit-btn");
+  editBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     toggleSectionEdit(subsection.id);
   });
-  
+
   return subDiv;
 }
 
@@ -6545,36 +7344,36 @@ function createSubsectionElement(subsection) {
 function toggleSectionEdit(sectionId) {
   const subDiv = document.querySelector(`[data-section-id="${sectionId}"]`);
   if (!subDiv) return;
-  
-  const isEditing = subDiv.classList.contains('editing');
-  
+
+  const isEditing = subDiv.classList.contains("editing");
+
   if (isEditing) {
     // Cancel edit - remove form
-    const form = subDiv.querySelector('.curriculum-edit-form');
+    const form = subDiv.querySelector(".curriculum-edit-form");
     if (form) form.remove();
-    subDiv.classList.remove('editing');
+    subDiv.classList.remove("editing");
   } else {
     // Enter edit mode - show form
     const section = findSectionById(sectionId);
     if (!section) return;
-    
+
     const formHtml = `
       <div class="curriculum-edit-form">
         <div class="curriculum-form-group">
           <label class="curriculum-form-label">Title</label>
-          <input type="text" class="curriculum-form-input" data-field="title" value="${section.title || ''}" />
+          <input type="text" class="curriculum-form-input" data-field="title" value="${section.title || ""}" />
         </div>
         <div class="curriculum-form-group">
           <label class="curriculum-form-label">Description</label>
-          <textarea class="curriculum-form-textarea" data-field="description" rows="3">${section.description || ''}</textarea>
+          <textarea class="curriculum-form-textarea" data-field="description" rows="3">${section.description || ""}</textarea>
         </div>
         <div class="curriculum-form-group">
           <label class="curriculum-form-label">Concepts (comma-separated)</label>
-          <input type="text" class="curriculum-form-input" data-field="concepts" value="${(section.concepts || []).join(', ')}" />
+          <input type="text" class="curriculum-form-input" data-field="concepts" value="${(section.concepts || []).join(", ")}" />
         </div>
         <div class="curriculum-form-group">
           <label class="curriculum-form-label">Estimated Time</label>
-          <input type="text" class="curriculum-form-input" data-field="estimated_time" value="${section.estimated_time || ''}" placeholder="e.g., 3 hours" />
+          <input type="text" class="curriculum-form-input" data-field="estimated_time" value="${section.estimated_time || ""}" placeholder="e.g., 3 hours" />
         </div>
         <div class="curriculum-form-actions">
           <button class="btn-cancel">Cancel</button>
@@ -6582,26 +7381,26 @@ function toggleSectionEdit(sectionId) {
         </div>
       </div>
     `;
-    
-    subDiv.insertAdjacentHTML('beforeend', formHtml);
-    subDiv.classList.add('editing');
-    
+
+    subDiv.insertAdjacentHTML("beforeend", formHtml);
+    subDiv.classList.add("editing");
+
     // Add form handlers
-    const form = subDiv.querySelector('.curriculum-edit-form');
-    const cancelBtn = form.querySelector('.btn-cancel');
-    const saveBtn = form.querySelector('.btn-save');
-    
-    cancelBtn.addEventListener('click', (e) => {
+    const form = subDiv.querySelector(".curriculum-edit-form");
+    const cancelBtn = form.querySelector(".btn-cancel");
+    const saveBtn = form.querySelector(".btn-save");
+
+    cancelBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       toggleSectionEdit(sectionId);
     });
-    
-    saveBtn.addEventListener('click', (e) => {
+
+    saveBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       saveSectionEdits(sectionId, form);
     });
   }
-  
+
   // Reinitialize icons
   if (window.lucide) {
     setTimeout(() => lucide.createIcons(), 50);
@@ -6615,26 +7414,34 @@ function toggleSectionEdit(sectionId) {
  */
 function saveSectionEdits(sectionId, form) {
   if (!currentCurriculumData || !currentCurriculumData.sections) return;
-  
+
   const section = findSectionById(sectionId);
   if (!section) return;
-  
+
   // Collect form data
   const title = form.querySelector('[data-field="title"]').value.trim();
-  const description = form.querySelector('[data-field="description"]').value.trim();
-  const conceptsStr = form.querySelector('[data-field="concepts"]').value.trim();
-  const estimatedTime = form.querySelector('[data-field="estimated_time"]').value.trim();
-  
+  const description = form
+    .querySelector('[data-field="description"]')
+    .value.trim();
+  const conceptsStr = form
+    .querySelector('[data-field="concepts"]')
+    .value.trim();
+  const estimatedTime = form
+    .querySelector('[data-field="estimated_time"]')
+    .value.trim();
+
   // Update section
   section.title = title;
   section.description = description;
-  section.concepts = conceptsStr ? conceptsStr.split(',').map(c => c.trim()) : [];
+  section.concepts = conceptsStr
+    ? conceptsStr.split(",").map((c) => c.trim())
+    : [];
   section.estimated_time = estimatedTime;
-  
+
   // Re-render sections
   renderCurriculumSectionsDialog(currentCurriculumData.sections);
-  
-  showToast('Section updated', 'success');
+
+  showToast("Section updated", "success");
 }
 
 /**
@@ -6644,7 +7451,7 @@ function saveSectionEdits(sectionId, form) {
  */
 function findSectionById(sectionId) {
   if (!currentCurriculumData || !currentCurriculumData.sections) return null;
-  return currentCurriculumData.sections.find(s => s.id === sectionId);
+  return currentCurriculumData.sections.find((s) => s.id === sectionId);
 }
 
 /**
@@ -6652,56 +7459,55 @@ function findSectionById(sectionId) {
  */
 async function saveCurriculumFromReview() {
   if (!currentCurriculumData) {
-    showToast('No curriculum data to save', 'error');
+    showToast("No curriculum data to save", "error");
     return;
   }
-  
+
   try {
     // Get current title and goal from inputs
-    const titleInput = document.getElementById('curriculum-title-input');
-    const goalInput = document.getElementById('curriculum-goal-input');
-    
+    const titleInput = document.getElementById("curriculum-title-input");
+    const goalInput = document.getElementById("curriculum-goal-input");
+
     const title = titleInput?.value.trim() || currentCurriculumData.title;
     const goal = goalInput?.value.trim() || currentCurriculumData.goal;
-    
+
     if (!title || !goal) {
-      showToast('Title and goal are required', 'error');
+      showToast("Title and goal are required", "error");
       return;
     }
-    
+
     // Create curriculum via API
     const metadata = {};
     if (currentCurriculumData.template_id) {
       metadata.template_id = currentCurriculumData.template_id;
     }
-    
+
     const curriculum = await createCurriculum(
       title,
       goal,
       currentCurriculumData.sections,
-      metadata
+      metadata,
     );
-    
-    console.log('[Curriculum Review] Curriculum created:', curriculum);
-    
+
+    console.log("[Curriculum Review] Curriculum created:", curriculum);
+
     // Close dialog
-    const dialog = document.getElementById('curriculum-review-dialog');
-    if (dialog) dialog.classList.add('hidden');
-    
+    const dialog = document.getElementById("curriculum-review-dialog");
+    if (dialog) dialog.classList.add("hidden");
+
     // Clear state
     currentCurriculumData = null;
-    
+
     // Show success message with option to activate
-    showToast(`Curriculum "${title}" saved successfully!`, 'success');
-    
+    showToast(`Curriculum "${title}" saved successfully!`, "success");
+
     // Refresh the curricula list in the sidebar
     await loadLearningSidebarCurricula();
-    
+
     // TODO: Ask if user wants to activate curriculum
-    
   } catch (error) {
-    console.error('[Curriculum Review] Failed to save curriculum:', error);
-    showToast('Failed to save curriculum', 'error');
+    console.error("[Curriculum Review] Failed to save curriculum:", error);
+    showToast("Failed to save curriculum", "error");
   }
 }
 
@@ -6710,33 +7516,39 @@ async function saveCurriculumFromReview() {
  */
 async function regenerateCurriculum() {
   if (!currentCurriculumData) return;
-  
+
   // Get current selections BEFORE clearing state
-  const goal = document.getElementById('curriculum-goal-input')?.value || currentCurriculumData.goal || 'the curriculum';
-  const selectedTemplateId = document.getElementById('curriculum-template-select')?.value || currentCurriculumData.template_id;
-  
+  const goal =
+    document.getElementById("curriculum-goal-input")?.value ||
+    currentCurriculumData.goal ||
+    "the curriculum";
+  const selectedTemplateId =
+    document.getElementById("curriculum-template-select")?.value ||
+    currentCurriculumData.template_id;
+
   // Close dialog
-  const dialog = document.getElementById('curriculum-review-dialog');
-  if (dialog) dialog.classList.add('hidden');
-  
+  const dialog = document.getElementById("curriculum-review-dialog");
+  if (dialog) dialog.classList.add("hidden");
+
   // Build message based on whether template was changed
   let message;
   if (selectedTemplateId !== currentCurriculumData.template_id_original) {
-    const templateName = document.getElementById('curriculum-template-select')
-      ?.options[document.getElementById('curriculum-template-select')?.selectedIndex]
-      ?.textContent || '';
+    const templateName =
+      document.getElementById("curriculum-template-select")?.options[
+        document.getElementById("curriculum-template-select")?.selectedIndex
+      ]?.textContent || "";
     message = `Regenerate the curriculum for "${goal}" using the ${templateName} template.`;
   } else {
     message = `Can you regenerate the curriculum for "${goal}"? I'd like a different approach.`;
   }
-  
-  console.log('[Curriculum] Regenerating with message:', message);
-  
+
+  console.log("[Curriculum] Regenerating with message:", message);
+
   // Clear state AFTER building message
   currentCurriculumData = null;
-  
+
   // Send via chat
-  const input = document.getElementById('query-input');
+  const input = document.getElementById("query-input");
   if (input) {
     input.value = message;
     await sendQuery();
@@ -6751,13 +7563,13 @@ async function regenerateCurriculum() {
  * Send query
  */
 async function sendQuery() {
-  const input = document.getElementById('query-input');
+  const input = document.getElementById("query-input");
   const query = input?.value.trim();
 
   if (!query) return;
-  
-  console.log('[Send Query] Sending message:', query);
-  
+
+  console.log("[Send Query] Sending message:", query);
+
   // Check for persona intent and handle switch if needed
   await checkAndHandlePersonaSwitch(query, async () => {
     await sendQueryInternal(query);
@@ -6770,42 +7582,46 @@ async function sendQuery() {
 async function sendQueryInternal(query) {
   // Ensure we have a conversation
   if (!currentConversationId) {
-    console.log('No conversation, creating new one...');
+    console.log("No conversation, creating new one...");
     await createNewConversation();
   }
 
   // Clear input
-  const input = document.getElementById('query-input');
+  const input = document.getElementById("query-input");
   if (input) {
-    input.value = '';
-    input.style.height = 'auto';
+    input.value = "";
+    input.style.height = "auto";
   }
 
   // Add user message to UI
-  addMessageToUI('user', query);
-  
+  addMessageToUI("user", query);
+
   // Add to conversation in database
-  await addMessageToConversation('user', query);
+  await addMessageToConversation("user", query);
 
   // Add typing indicator
   const loadingId = addTypingIndicator();
 
   try {
     // Check if persona is active (Phase 16c)
-    const personaSelect = document.getElementById('persona-select');
+    const personaSelect = document.getElementById("persona-select");
     const activePersona = personaSelect ? personaSelect.value : null;
-    
+
     // Get conversation history (excluding the message we just added - it will be included in the query)
     const messages = getCurrentConversationMessages();
     // Convert to format expected by backend: [{role: 'user', content: '...'}, {role: 'assistant', content: '...'}]
     // Exclude the last message (the one we just added)
-    const conversationHistory = messages.slice(0, -1).map(msg => ({
+    const conversationHistory = messages.slice(0, -1).map((msg) => ({
       role: msg.role,
-      content: msg.content
+      content: msg.content,
     }));
-    
-    console.log('Sending query with conversation history:', conversationHistory.length, 'messages');
-    
+
+    console.log(
+      "Sending query with conversation history:",
+      conversationHistory.length,
+      "messages",
+    );
+
     // Route through persona if active
     if (activePersona) {
       const result = await sendToPersona(query, conversationHistory, loadingId);
@@ -6814,26 +7630,26 @@ async function sendQueryInternal(query) {
       }
       // If persona failed, fall through to normal query
     }
-    
+
     // Get router v2 settings from model selector (stored in sessionStorage)
-    const confidence = sessionStorage.getItem('model-confidence') || 'balanced';
-    const providerOverride = sessionStorage.getItem('model-provider') || null;
-    
+    const confidence = sessionStorage.getItem("model-confidence") || "balanced";
+    const providerOverride = sessionStorage.getItem("model-provider") || null;
+
     // Get mental models override for this conversation
     const mentalModelsOverride = getMentalModelsOverride(currentConversationId);
-    const queryOptions = { 
+    const queryOptions = {
       mode: currentMode,
       conversation_history: conversationHistory,
-      page: currentPage,  // Pass current page to backend for mental models & RAG filtering
-      confidence: confidence,  // Router v2: fast/balanced/thorough
-      provider_override: providerOverride  // Router v2: force specific provider
+      page: currentPage, // Pass current page to backend for mental models & RAG filtering
+      confidence: confidence, // Router v2: fast/balanced/thorough
+      provider_override: providerOverride, // Router v2: force specific provider
     };
-    
+
     // Add mental models override if present
     if (mentalModelsOverride && !mentalModelsOverride.useDefaults) {
       queryOptions.mental_models_override = mentalModelsOverride.modelIds;
     }
-    
+
     const result = await window.polly.query(query, queryOptions);
 
     // Remove loading and add response
@@ -6841,49 +7657,50 @@ async function sendQueryInternal(query) {
 
     if (result.success) {
       const response = formatResponse(result.result.response);
-      
+
       // Check if we have router v2 metadata
       let metadata = result.result.metadata;
       let messageContent = response;
-      
+
       if (metadata) {
         // Add metadata footer to response
-        const costStr = metadata.cost ? `$${metadata.cost.toFixed(4)}` : '-';
-        const tokensStr = metadata.tokens_in && metadata.tokens_out 
-          ? `${metadata.tokens_in + metadata.tokens_out} tokens` 
-          : '-';
-        const providerStr = metadata.provider || '-';
-        const modelStr = metadata.model || '-';
-        const estimatedStr = metadata.estimated ? ' (estimated)' : '';
-        
+        const costStr = metadata.cost ? `$${metadata.cost.toFixed(4)}` : "-";
+        const tokensStr =
+          metadata.tokens_in && metadata.tokens_out
+            ? `${metadata.tokens_in + metadata.tokens_out} tokens`
+            : "-";
+        const providerStr = metadata.provider || "-";
+        const modelStr = metadata.model || "-";
+        const estimatedStr = metadata.estimated ? " (estimated)" : "";
+
         messageContent += `
           <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #2a2a2a; font-size: 11px; color: #808080; font-family: monospace;">
             ✓ ${providerStr} (${modelStr}) • ${costStr} • ${tokensStr}${estimatedStr}
           </div>
         `;
-        
-        console.log('Router v2 metadata:', metadata);
+
+        console.log("Router v2 metadata:", metadata);
       }
-      
-      addMessageToUI('assistant', messageContent);
-      
+
+      addMessageToUI("assistant", messageContent);
+
       // Add to conversation in database
-      await addMessageToConversation('assistant', result.result.response);
-      
+      await addMessageToConversation("assistant", result.result.response);
+
       // Auto-categorize conversation after response
       // Use setTimeout to not block the UI
       setTimeout(() => {
         autoCategorizeConversation(currentConversationId);
       }, 100);
-      
+
       // Related notes feature temporarily disabled in new UI
       // Will be reimplemented in a future update
     } else {
-      addMessageToUI('system', `Error: ${result.error}`);
+      addMessageToUI("system", `Error: ${result.error}`);
     }
   } catch (error) {
     removeMessage(loadingId);
-    addMessageToUI('system', `Error: ${error.message}`);
+    addMessageToUI("system", `Error: ${error.message}`);
   }
 }
 
@@ -6891,32 +7708,32 @@ async function sendQueryInternal(query) {
  * Add message to UI
  */
 function addMessageToUI(role, content) {
-  const container = document.getElementById('chat-messages');
+  const container = document.getElementById("chat-messages");
   const id = `msg-${Date.now()}`;
   const timestamp = new Date();
 
-  const div = document.createElement('div');
+  const div = document.createElement("div");
   div.className = `message ${role}`;
   div.id = id;
   div.dataset.timestamp = timestamp.toISOString();
-  
+
   div.innerHTML = `
     <div class="message-content">${content}</div>
     <div class="message-timestamp" title="${timestamp.toLocaleString()}">${getRelativeTime(timestamp)}</div>
   `;
 
   container.appendChild(div);
-  
+
   // Smooth scroll to bottom
   requestAnimationFrame(() => {
     container.scrollTo({
       top: container.scrollHeight,
-      behavior: 'smooth'
+      behavior: "smooth",
     });
   });
 
   // Re-initialize icons if any were added
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     setTimeout(() => lucide.createIcons(), 0);
   }
 
@@ -6927,11 +7744,11 @@ function addMessageToUI(role, content) {
  * Add typing indicator (better than generic loading spinner)
  */
 function addTypingIndicator() {
-  const container = document.getElementById('chat-messages');
+  const container = document.getElementById("chat-messages");
   const id = `typing-${Date.now()}`;
-  
-  const div = document.createElement('div');
-  div.className = 'message assistant';
+
+  const div = document.createElement("div");
+  div.className = "message assistant";
   div.id = id;
   div.innerHTML = `
     <div class="typing-indicator">
@@ -6942,17 +7759,17 @@ function addTypingIndicator() {
       </div>
     </div>
   `;
-  
+
   container.appendChild(div);
-  
+
   // Smooth scroll to bottom
   requestAnimationFrame(() => {
     container.scrollTo({
       top: container.scrollHeight,
-      behavior: 'smooth'
+      behavior: "smooth",
     });
   });
-  
+
   return id;
 }
 
@@ -6979,13 +7796,13 @@ function getRelativeTime(date) {
   const diffMins = Math.floor(diffSecs / 60);
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
-  
-  if (diffSecs < 10) return 'just now';
+
+  if (diffSecs < 10) return "just now";
   if (diffSecs < 60) return `${diffSecs}s ago`;
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
-  
+
   // For older messages, show date
   return date.toLocaleDateString();
 }
@@ -6995,7 +7812,7 @@ function getRelativeTime(date) {
  */
 function formatResponse(text) {
   // Check if marked library is available
-  if (typeof marked !== 'undefined') {
+  if (typeof marked !== "undefined") {
     try {
       // Configure marked for better rendering
       marked.setOptions({
@@ -7004,25 +7821,26 @@ function formatResponse(text) {
         headerIds: false, // Don't add IDs to headers
         mangle: false, // Don't escape autolinked email addresses
       });
-      
+
       // Custom renderer for code blocks with copy button
       const renderer = new marked.Renderer();
       const originalCodeRenderer = renderer.code.bind(renderer);
-      
-      renderer.code = function(code, language) {
+
+      renderer.code = function (code, language) {
         // Ensure code is a string (marked.js sometimes passes objects)
-        const codeStr = typeof code === 'string' ? code : (code?.text || String(code || ''));
-        
+        const codeStr =
+          typeof code === "string" ? code : code?.text || String(code || "");
+
         const escapedCode = codeStr
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#39;');
-        
-        const langLabel = language ? language : 'text';
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+
+        const langLabel = language ? language : "text";
         const codeId = `code-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
+
         return `
           <div class="code-block-wrapper">
             <div class="code-block-header">
@@ -7035,12 +7853,12 @@ function formatResponse(text) {
           </div>
         `;
       };
-      
+
       marked.use({ renderer });
-      
+
       return marked.parse(text);
     } catch (error) {
-      console.error('[Format] Error using marked.js:', error);
+      console.error("[Format] Error using marked.js:", error);
       // Fall back to basic formatting
       return basicMarkdownFormat(text);
     }
@@ -7056,32 +7874,36 @@ function formatResponse(text) {
 function copyCodeToClipboard(codeId) {
   const codeElement = document.getElementById(codeId);
   if (!codeElement) return;
-  
+
   const code = codeElement.textContent;
-  navigator.clipboard.writeText(code).then(() => {
-    // Visual feedback
-    const btn = event.target.closest('.code-copy-btn');
-    if (btn) {
-      const originalHTML = btn.innerHTML;
-      btn.innerHTML = '<i data-lucide="check" style="width: 14px; height: 14px;"></i>';
-      btn.style.color = '#4ade80';
-      
-      // Re-initialize icons
-      if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-      }
-      
-      setTimeout(() => {
-        btn.innerHTML = originalHTML;
-        btn.style.color = '';
-        if (typeof lucide !== 'undefined') {
+  navigator.clipboard
+    .writeText(code)
+    .then(() => {
+      // Visual feedback
+      const btn = event.target.closest(".code-copy-btn");
+      if (btn) {
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML =
+          '<i data-lucide="check" style="width: 14px; height: 14px;"></i>';
+        btn.style.color = "#4ade80";
+
+        // Re-initialize icons
+        if (typeof lucide !== "undefined") {
           lucide.createIcons();
         }
-      }, 2000);
-    }
-  }).catch(err => {
-    console.error('[Copy] Failed to copy code:', err);
-  });
+
+        setTimeout(() => {
+          btn.innerHTML = originalHTML;
+          btn.style.color = "";
+          if (typeof lucide !== "undefined") {
+            lucide.createIcons();
+          }
+        }, 2000);
+      }
+    })
+    .catch((err) => {
+      console.error("[Copy] Failed to copy code:", err);
+    });
 }
 
 /**
@@ -7089,11 +7911,14 @@ function copyCodeToClipboard(codeId) {
  */
 function basicMarkdownFormat(text) {
   return text
-    .replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/\n/g, '<br>');
+    .replace(
+      /```(\w*)\n?([\s\S]*?)```/g,
+      '<pre><code class="language-$1">$2</code></pre>',
+    )
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/\n/g, "<br>");
 }
 
 /**
@@ -7118,37 +7943,37 @@ async function checkOllamaStatus() {
 function updateServerStatus(running) {
   isServerRunning = running;
 
-  const dot = document.getElementById('status-dot');
-  const indicator = document.getElementById('server-indicator');
-  const statusText = document.getElementById('server-status-text');
-  const btn = document.getElementById('btn-toggle-server');
+  const dot = document.getElementById("status-dot");
+  const indicator = document.getElementById("server-indicator");
+  const statusText = document.getElementById("server-status-text");
+  const btn = document.getElementById("btn-toggle-server");
 
   // Update status dot in ribbon (always exists)
   if (dot) {
     if (running) {
-      dot.className = 'status-dot online';
+      dot.className = "status-dot online";
     } else {
-      dot.className = 'status-dot offline';
+      dot.className = "status-dot offline";
     }
   }
 
   // Update server indicator on dashboard (may not exist)
   if (indicator) {
     if (running) {
-      indicator.classList.add('running');
+      indicator.classList.add("running");
     } else {
-      indicator.classList.remove('running');
+      indicator.classList.remove("running");
     }
   }
 
   // Update status text on dashboard (may not exist)
   if (statusText) {
-    statusText.textContent = running ? 'Running on port 11436' : 'Stopped';
+    statusText.textContent = running ? "Running on port 11436" : "Stopped";
   }
 
   // Update toggle button on dashboard (may not exist)
   if (btn) {
-    btn.textContent = running ? 'Stop' : 'Start';
+    btn.textContent = running ? "Stop" : "Start";
   }
 }
 
@@ -7158,15 +7983,15 @@ function updateServerStatus(running) {
 function updateOllamaStatus(running) {
   isOllamaRunning = running;
 
-  const indicator = document.getElementById('ollama-indicator');
-  const statusText = document.getElementById('ollama-status-text');
+  const indicator = document.getElementById("ollama-indicator");
+  const statusText = document.getElementById("ollama-status-text");
 
   if (running) {
-    indicator?.classList.add('running');
-    if (statusText) statusText.textContent = 'Running on port 11434';
+    indicator?.classList.add("running");
+    if (statusText) statusText.textContent = "Running on port 11434";
   } else {
-    indicator?.classList.remove('running');
-    if (statusText) statusText.textContent = 'Not running';
+    indicator?.classList.remove("running");
+    if (statusText) statusText.textContent = "Not running";
   }
 }
 
@@ -7174,43 +7999,43 @@ function updateOllamaStatus(running) {
  * Toggle server
  */
 async function toggleServer() {
-  const btn = document.getElementById('btn-toggle-server');
+  const btn = document.getElementById("btn-toggle-server");
   btn.disabled = true;
 
   try {
     if (isServerRunning) {
       // Stop server
-      btn.textContent = 'Stopping...';
+      btn.textContent = "Stopping...";
       await window.polly.stopServer();
-      
+
       // Wait a bit for server to shut down
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       // Update status
       updateServerStatus(false);
     } else {
       // Start server
-      btn.textContent = 'Starting...';
+      btn.textContent = "Starting...";
       const result = await window.polly.startServer();
-      
+
       if (result.success) {
         // Wait for server to be ready
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
         // Verify server is actually running
         try {
-          const response = await fetch('http://127.0.0.1:11436/health');
+          const response = await fetch("http://127.0.0.1:11436/health");
           updateServerStatus(response.ok);
         } catch {
           updateServerStatus(false);
         }
       } else {
-        console.error('Failed to start server:', result.error);
+        console.error("Failed to start server:", result.error);
         updateServerStatus(false);
       }
     }
   } catch (error) {
-    console.error('Toggle server error:', error);
+    console.error("Toggle server error:", error);
   } finally {
     btn.disabled = false;
   }
@@ -7219,144 +8044,170 @@ async function toggleServer() {
 /**
  * Load dashboard data
  */
-const loadDashboardData = withErrorBoundary(async function() {
+const loadDashboardData = withErrorBoundary(async function () {
   // Use silent mode if we're retrying (to avoid console spam)
   const silent = statsRetryCount > 0;
-  const statsResult = await safeFetch('http://127.0.0.1:11436/polly/stats', {}, silent);
-  
+  const statsResult = await safeFetch(
+    "http://127.0.0.1:11436/polly/stats",
+    {},
+    silent,
+  );
+
   if (statsResult.ok && statsResult.data) {
     const data = statsResult.data;
-    
+
     // Store in global state for sidebars (normalize to rag_stats)
     // Support both 'notes' (new native system) and 'obsidian' (legacy)
-    const notesStats = data.rag?.notes || data.rag?.obsidian || { count: 0, files: 0 };
-    
+    const notesStats = data.rag?.notes ||
+      data.rag?.obsidian || { count: 0, files: 0 };
+
     window.pollyStats = {
       rag_stats: {
-        obsidian: notesStats,  // Keep for backward compatibility
-        notes: notesStats,     // Add notes key
+        obsidian: notesStats, // Keep for backward compatibility
+        notes: notesStats, // Add notes key
         codebase: data.rag?.codebase || { count: 0, files: 0 },
         documents: data.rag?.documents || { count: 0, files: 0 },
-        patterns: data.rag?.patterns || { count: 0, files: 0 }
+        patterns: data.rag?.patterns || { count: 0, files: 0 },
       },
       patterns: {
         total: data.patterns || 0,
         this_week: 0, // TODO: Backend should provide this
-        top_category: 'None' // TODO: Backend should provide this
-      }
+        top_category: "None", // TODO: Backend should provide this
+      },
     };
 
-    const statObsidian = document.getElementById('stat-obsidian');
-    const statCodebase = document.getElementById('stat-codebase');
-    const statPatterns = document.getElementById('stat-patterns');
-    const statEntities = document.getElementById('stat-entities');
-    
+    const statObsidian = document.getElementById("stat-obsidian");
+    const statCodebase = document.getElementById("stat-codebase");
+    const statPatterns = document.getElementById("stat-patterns");
+    const statEntities = document.getElementById("stat-entities");
+
     if (statObsidian) statObsidian.textContent = notesStats.count || 0;
     if (statCodebase) statCodebase.textContent = data.rag?.codebase?.count || 0;
     if (statPatterns) statPatterns.textContent = data.patterns || 0;
     if (statEntities) statEntities.textContent = data.graph?.entities || 0;
-    
+
     // Update right sidebar if on dashboard (NOT on chat view to avoid re-renders)
-    if (currentView === 'dashboard') {
-      updateRightSidebar('dashboard');
+    if (currentView === "dashboard") {
+      updateRightSidebar("dashboard");
     }
     // Note: We don't call updateRightSidebar for 'chat' view to prevent
     // unnecessary DOM replacement that would clear the conversation
-    
+
     // Reset retry count on success
     statsRetryCount = 0;
-
   } else {
     statsRetryCount++;
     // Only log on first attempt
     if (statsRetryCount === 1 && statsResult.isConnectionError) {
-      console.log('[Dashboard] Waiting for server to start...');
+      console.log("[Dashboard] Waiting for server to start...");
     }
     // Only retry up to MAX_STATS_RETRIES times
     if (statsRetryCount <= MAX_STATS_RETRIES) {
       setTimeout(loadDashboardData, 3000);
     } else if (statsRetryCount === MAX_STATS_RETRIES + 1) {
       // Only log once when we give up
-      console.log('[Dashboard] Server not ready after retries');
+      console.log("[Dashboard] Server not ready after retries");
     }
   }
-}, 'loadDashboardData');
+}, "loadDashboardData");
 
 /**
  * Load knowledge data
  */
-const loadKnowledgeData = withErrorBoundary(async function() {
-  console.log('[Knowledge] loadKnowledgeData() called');
-  
+const loadKnowledgeData = withErrorBoundary(async function () {
+  console.log("[Knowledge] loadKnowledgeData() called");
+
   // Get notes path from server (supports both native and Obsidian)
-  let notesPath = 'Not configured';
-  
+  let notesPath = "Not configured";
+
   // Try to fetch notes path from server API (silent to avoid startup noise)
-  const notesSourceResult = await safeFetch('http://127.0.0.1:11436/polly/notes/source', {}, true);
+  const notesSourceResult = await safeFetch(
+    "http://127.0.0.1:11436/polly/notes/source",
+    {},
+    true,
+  );
   if (notesSourceResult.ok && notesSourceResult.data) {
-    notesPath = notesSourceResult.data.notes_path || 'Not configured';
-    console.log('[Knowledge] Notes path:', notesPath);
+    notesPath = notesSourceResult.data.notes_path || "Not configured";
+    console.log("[Knowledge] Notes path:", notesPath);
   } else if (!notesSourceResult.isConnectionError) {
     // Only log non-connection errors
-    console.log('[Knowledge] Could not fetch notes path:', notesSourceResult.error);
+    console.log(
+      "[Knowledge] Could not fetch notes path:",
+      notesSourceResult.error,
+    );
   }
-  
+
   // Fallback to old vault path if server not available (safe IPC call)
   if (!notesSourceResult.ok) {
-    const vaultPath = await PollyBridge.safeCall('getStore', 'vaultPath');
+    const vaultPath = await PollyBridge.safeCall("getStore", "vaultPath");
     if (vaultPath) {
       notesPath = vaultPath;
-      console.log('[Knowledge] Using fallback vault path:', vaultPath);
+      console.log("[Knowledge] Using fallback vault path:", vaultPath);
     }
   }
-  
-  const obsidianPathEl = document.getElementById('obsidian-path');
+
+  const obsidianPathEl = document.getElementById("obsidian-path");
   if (obsidianPathEl) {
     obsidianPathEl.textContent = notesPath;
   }
 
   // Safe IPC call to get codebase paths
-  const savedCodePaths = await PollyBridge.safeCall('getStore', 'codebasePaths') || [];
-  const container = document.getElementById('code-source-paths');
+  const savedCodePaths =
+    (await PollyBridge.safeCall("getStore", "codebasePaths")) || [];
+  const container = document.getElementById("code-source-paths");
 
   if (container) {
     if (savedCodePaths.length) {
-      container.innerHTML = savedCodePaths.map(p => `<div class="source-path">${p}</div>`).join('');
+      container.innerHTML = savedCodePaths
+        .map((p) => `<div class="source-path">${p}</div>`)
+        .join("");
     } else {
-      container.innerHTML = '<div class="path-empty">No directories configured</div>';
+      container.innerHTML =
+        '<div class="path-empty">No directories configured</div>';
     }
   }
 
   // Load stats from server with safe fetch (silent mode for retries)
   const silent = statsRetryCount > 0;
-  const statsResult = await safeFetch('http://127.0.0.1:11436/polly/stats', {}, silent);
-  
-  console.log('[Knowledge] Stats fetch result:', { ok: statsResult.ok, hasData: !!statsResult.data });
-  
+  const statsResult = await safeFetch(
+    "http://127.0.0.1:11436/polly/stats",
+    {},
+    silent,
+  );
+
+  console.log("[Knowledge] Stats fetch result:", {
+    ok: statsResult.ok,
+    hasData: !!statsResult.data,
+  });
+
   if (statsResult.ok && statsResult.data) {
     const data = statsResult.data;
-    
-    console.log('[Knowledge] Raw stats from server:', JSON.stringify(data.rag, null, 2));
-    
+
+    console.log(
+      "[Knowledge] Raw stats from server:",
+      JSON.stringify(data.rag, null, 2),
+    );
+
     // Store in global state for sidebars (normalize to rag_stats)
     // Support both 'notes' (new native system) and 'obsidian' (legacy)
-    const notesStats = data.rag?.notes || data.rag?.obsidian || { count: 0, files: 0 };
-    
-    console.log('[Knowledge] Extracted notesStats:', notesStats);
-    
+    const notesStats = data.rag?.notes ||
+      data.rag?.obsidian || { count: 0, files: 0 };
+
+    console.log("[Knowledge] Extracted notesStats:", notesStats);
+
     window.pollyStats = {
       rag_stats: {
-        obsidian: notesStats,  // Keep obsidian key for backward compatibility
-        notes: notesStats,     // Add notes key for new system
+        obsidian: notesStats, // Keep obsidian key for backward compatibility
+        notes: notesStats, // Add notes key for new system
         codebase: data.rag?.codebase || { count: 0, files: 0 },
         documents: data.rag?.documents || { count: 0, files: 0 },
-        patterns: data.rag?.patterns || { count: 0, files: 0 }
+        patterns: data.rag?.patterns || { count: 0, files: 0 },
       },
       patterns: {
         total: data.patterns || 0,
         this_week: 0,
-        top_category: 'None'
-      }
+        top_category: "None",
+      },
     };
 
     // Update knowledge view stats (using notes data)
@@ -7365,40 +8216,45 @@ const loadKnowledgeData = withErrorBoundary(async function() {
     const codebaseCount = data.rag?.codebase?.count || 0;
     const codebaseFiles = data.rag?.codebase?.files || 0;
 
-    console.log('[Knowledge] Updating UI with stats:', { notesCount, notesFiles, codebaseCount, codebaseFiles });
+    console.log("[Knowledge] Updating UI with stats:", {
+      notesCount,
+      notesFiles,
+      codebaseCount,
+      codebaseFiles,
+    });
 
-    const obsidianFilesEl = document.getElementById('obsidian-files');
-    const obsidianChunksEl = document.getElementById('obsidian-chunks');
-    const codeFilesEl = document.getElementById('code-files');
-    const codeChunksEl = document.getElementById('code-chunks');
-    
-    console.log('[Knowledge] DOM elements found:', {
+    const obsidianFilesEl = document.getElementById("obsidian-files");
+    const obsidianChunksEl = document.getElementById("obsidian-chunks");
+    const codeFilesEl = document.getElementById("code-files");
+    const codeChunksEl = document.getElementById("code-chunks");
+
+    console.log("[Knowledge] DOM elements found:", {
       obsidianFilesEl: !!obsidianFilesEl,
       obsidianChunksEl: !!obsidianChunksEl,
       codeFilesEl: !!codeFilesEl,
-      codeChunksEl: !!codeChunksEl
+      codeChunksEl: !!codeChunksEl,
     });
-    
+
     if (obsidianFilesEl) obsidianFilesEl.textContent = `${notesFiles} files`;
     if (obsidianChunksEl) obsidianChunksEl.textContent = `${notesCount} chunks`;
     if (codeFilesEl) codeFilesEl.textContent = `${codebaseFiles} files`;
     if (codeChunksEl) codeChunksEl.textContent = `${codebaseCount} chunks`;
-    
-    console.log('[Knowledge] UI elements updated');
+
+    console.log("[Knowledge] UI elements updated");
     // Also update dashboard stats
-    const statObsidian = document.getElementById('stat-obsidian');
-    const statCodebase = document.getElementById('stat-codebase');
-    const statPatterns = document.getElementById('stat-patterns');
-    const statEntities = document.getElementById('stat-entities');
-    
+    const statObsidian = document.getElementById("stat-obsidian");
+    const statCodebase = document.getElementById("stat-codebase");
+    const statPatterns = document.getElementById("stat-patterns");
+    const statEntities = document.getElementById("stat-entities");
+
     if (statObsidian) statObsidian.textContent = notesCount;
     if (statCodebase) statCodebase.textContent = codebaseCount;
     if (statPatterns) statPatterns.textContent = data.rag?.patterns?.count || 0;
     if (statEntities) statEntities.textContent = data.graph?.entities || 0;
-    
+
     // Update right sidebar if on knowledge view (NOT on chat view to avoid re-renders)
-    if (currentView === 'knowledge') {
-      updateRightSidebar('knowledge');
+    if (currentView === "knowledge") {
+      updateRightSidebar("knowledge");
     }
     // Note: We don't call updateRightSidebar for 'chat' view to prevent
     // unnecessary DOM replacement that would clear the conversation
@@ -7406,38 +8262,38 @@ const loadKnowledgeData = withErrorBoundary(async function() {
     statsRetryCount++;
     // Only log on first attempt
     if (statsRetryCount === 1 && statsResult.isConnectionError) {
-      console.log('[Knowledge] Waiting for server to start...');
+      console.log("[Knowledge] Waiting for server to start...");
     }
     // Only retry up to MAX_STATS_RETRIES times
     if (statsRetryCount <= MAX_STATS_RETRIES) {
       setTimeout(loadKnowledgeData, 3000);
     } else if (statsRetryCount === MAX_STATS_RETRIES + 1) {
       // Only log once when we give up
-      console.log('[Knowledge] Server not ready after retries');
+      console.log("[Knowledge] Server not ready after retries");
     }
   }
-}, 'loadKnowledgeData');
+}, "loadKnowledgeData");
 
 /**
  * Index knowledge base
  */
 async function indexKnowledge(options = {}) {
-  const logContainer = document.getElementById('index-log');
-  const logContent = document.getElementById('index-log-content');
+  const logContainer = document.getElementById("index-log");
+  const logContent = document.getElementById("index-log-content");
 
-  logContainer.style.display = 'block';
-  logContent.textContent = 'Starting indexing...\n';
+  logContainer.style.display = "block";
+  logContent.textContent = "Starting indexing...\n";
 
   try {
     const result = await window.polly.indexKnowledge(options);
 
     if (result.success) {
-      appendIndexLog('\n✓ Indexing complete!');
+      appendIndexLog("\n✓ Indexing complete!");
     } else {
       appendIndexLog(`\n✗ Error: ${result.error}`);
     }
   } catch (error) {
-    console.error('Indexing error:', error);
+    console.error("Indexing error:", error);
     appendIndexLog(`\n✗ Error: ${error.message}`);
   }
 }
@@ -7446,7 +8302,7 @@ async function indexKnowledge(options = {}) {
  * Append to index log
  */
 function appendIndexLog(message) {
-  const logContent = document.getElementById('index-log-content');
+  const logContent = document.getElementById("index-log-content");
   if (logContent) {
     logContent.textContent += message;
     logContent.scrollTop = logContent.scrollHeight;
@@ -7458,18 +8314,18 @@ function appendIndexLog(message) {
  */
 async function loadPatterns() {
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/patterns');
+    const response = await fetch("http://127.0.0.1:11436/polly/patterns");
     if (!response.ok) {
-      console.log('Could not load patterns, API returned:', response.status);
+      console.log("Could not load patterns, API returned:", response.status);
       return;
     }
 
     const data = await response.json();
-    const patternsList = document.getElementById('patterns-list');
-    
+    const patternsList = document.getElementById("patterns-list");
+
     // Clear loading/empty state
-    patternsList.innerHTML = '';
-    
+    patternsList.innerHTML = "";
+
     if (data.total_count === 0) {
       // Show empty state
       patternsList.innerHTML = `
@@ -7482,32 +8338,32 @@ async function loadPatterns() {
       lucide.createIcons();
       return;
     }
-    
+
     // Display patterns by type
     const patternsByType = {
-      'conceptual': [],
-      'code': [],
-      'query': []
+      conceptual: [],
+      code: [],
+      query: [],
     };
-    
+
     // Group conceptual patterns
-    data.patterns.forEach(p => {
-      if (p.pattern_type === 'conceptual') {
+    data.patterns.forEach((p) => {
+      if (p.pattern_type === "conceptual") {
         patternsByType.conceptual.push(p);
-      } else if (p.pattern_type === 'code') {
+      } else if (p.pattern_type === "code") {
         patternsByType.code.push(p);
       }
     });
-    
+
     // Add query patterns
-    data.query_patterns.forEach(qp => {
+    data.query_patterns.forEach((qp) => {
       patternsByType.query.push(qp);
     });
-    
+
     // Render conceptual patterns
     if (patternsByType.conceptual.length > 0) {
-      const section = document.createElement('div');
-      section.className = 'pattern-section';
+      const section = document.createElement("div");
+      section.className = "pattern-section";
       section.innerHTML = `
         <h3 class="pattern-section-title">
           <i data-lucide="brain" class="pattern-section-icon"></i>
@@ -7515,18 +8371,23 @@ async function loadPatterns() {
         </h3>
         <div class="pattern-section-desc">Concepts you frequently explore together</div>
       `;
-      
-      patternsByType.conceptual.forEach(pattern => {
-        const card = document.createElement('div');
-        card.className = 'pattern-card';
-        
-        const domainBadges = pattern.domains.map(d => 
-          `<span class="pattern-domain ${d}">${d}</span>`
-        ).join('');
-        
+
+      patternsByType.conceptual.forEach((pattern) => {
+        const card = document.createElement("div");
+        card.className = "pattern-card";
+
+        const domainBadges = pattern.domains
+          .map((d) => `<span class="pattern-domain ${d}">${d}</span>`)
+          .join("");
+
         const confidencePercent = Math.round(pattern.confidence * 100);
-        const confidenceClass = confidencePercent >= 70 ? 'high' : confidencePercent >= 40 ? 'medium' : 'low';
-        
+        const confidenceClass =
+          confidencePercent >= 70
+            ? "high"
+            : confidencePercent >= 40
+              ? "medium"
+              : "low";
+
         card.innerHTML = `
           <div class="pattern-header">
             <div class="pattern-name">${pattern.name}</div>
@@ -7541,17 +8402,17 @@ async function loadPatterns() {
             <div class="pattern-domains">${domainBadges}</div>
           </div>
         `;
-        
+
         section.appendChild(card);
       });
-      
+
       patternsList.appendChild(section);
     }
-    
+
     // Render query patterns
     if (patternsByType.query.length > 0) {
-      const section = document.createElement('div');
-      section.className = 'pattern-section';
+      const section = document.createElement("div");
+      section.className = "pattern-section";
       section.innerHTML = `
         <h3 class="pattern-section-title">
           <i data-lucide="message-square" class="pattern-section-icon"></i>
@@ -7559,27 +8420,30 @@ async function loadPatterns() {
         </h3>
         <div class="pattern-section-desc">How you typically phrase questions</div>
       `;
-      
-      patternsByType.query.forEach(pattern => {
-        const card = document.createElement('div');
-        card.className = 'pattern-card pattern-card-query';
-        
-        const domainBadges = pattern.domains.map(d => 
-          `<span class="pattern-domain ${d}">${d}</span>`
-        ).join('');
-        
+
+      patternsByType.query.forEach((pattern) => {
+        const card = document.createElement("div");
+        card.className = "pattern-card pattern-card-query";
+
+        const domainBadges = pattern.domains
+          .map((d) => `<span class="pattern-domain ${d}">${d}</span>`)
+          .join("");
+
         // Show example fills
-        let fillsHtml = '';
-        if (pattern.common_fills && Object.keys(pattern.common_fills).length > 0) {
+        let fillsHtml = "";
+        if (
+          pattern.common_fills &&
+          Object.keys(pattern.common_fills).length > 0
+        ) {
           fillsHtml = '<div class="pattern-fills">';
           for (const [key, values] of Object.entries(pattern.common_fills)) {
             if (values.length > 0) {
-              fillsHtml += `<div class="pattern-fill"><strong>{${key}}:</strong> ${values.slice(0, 3).join(', ')}</div>`;
+              fillsHtml += `<div class="pattern-fill"><strong>{${key}}:</strong> ${values.slice(0, 3).join(", ")}</div>`;
             }
           }
-          fillsHtml += '</div>';
+          fillsHtml += "</div>";
         }
-        
+
         card.innerHTML = `
           <div class="pattern-header">
             <div class="pattern-name">${pattern.query_template}</div>
@@ -7590,17 +8454,17 @@ async function loadPatterns() {
             <div class="pattern-domains">${domainBadges}</div>
           </div>
         `;
-        
+
         section.appendChild(card);
       });
-      
+
       patternsList.appendChild(section);
     }
-    
+
     // Render code patterns (if any)
     if (patternsByType.code.length > 0) {
-      const section = document.createElement('div');
-      section.className = 'pattern-section';
+      const section = document.createElement("div");
+      section.className = "pattern-section";
       section.innerHTML = `
         <h3 class="pattern-section-title">
           <i data-lucide="code-2" class="pattern-section-icon"></i>
@@ -7608,18 +8472,23 @@ async function loadPatterns() {
         </h3>
         <div class="pattern-section-desc">Recurring patterns in your code</div>
       `;
-      
-      patternsByType.code.forEach(pattern => {
-        const card = document.createElement('div');
-        card.className = 'pattern-card';
-        
-        const domainBadges = pattern.domains.map(d => 
-          `<span class="pattern-domain ${d}">${d}</span>`
-        ).join('');
-        
+
+      patternsByType.code.forEach((pattern) => {
+        const card = document.createElement("div");
+        card.className = "pattern-card";
+
+        const domainBadges = pattern.domains
+          .map((d) => `<span class="pattern-domain ${d}">${d}</span>`)
+          .join("");
+
         const confidencePercent = Math.round(pattern.confidence * 100);
-        const confidenceClass = confidencePercent >= 70 ? 'high' : confidencePercent >= 40 ? 'medium' : 'low';
-        
+        const confidenceClass =
+          confidencePercent >= 70
+            ? "high"
+            : confidencePercent >= 40
+              ? "medium"
+              : "low";
+
         card.innerHTML = `
           <div class="pattern-header">
             <div class="pattern-name">${pattern.name}</div>
@@ -7634,19 +8503,18 @@ async function loadPatterns() {
             <div class="pattern-domains">${domainBadges}</div>
           </div>
         `;
-        
+
         section.appendChild(card);
       });
-      
+
       patternsList.appendChild(section);
     }
-    
+
     // Re-initialize lucide icons
     lucide.createIcons();
-    
   } catch (error) {
-    console.log('Could not load patterns:', error.message);
-    const patternsList = document.getElementById('patterns-list');
+    console.log("Could not load patterns:", error.message);
+    const patternsList = document.getElementById("patterns-list");
     patternsList.innerHTML = `
       <div class="pattern-empty">
         <i data-lucide="alert-circle" class="pattern-empty-icon"></i>
@@ -7662,35 +8530,35 @@ async function loadPatterns() {
  * Filter patterns by time
  */
 async function filterPatterns() {
-  const timeFilter = document.getElementById('pattern-time-filter').value;
-  
+  const timeFilter = document.getElementById("pattern-time-filter").value;
+
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/patterns');
+    const response = await fetch("http://127.0.0.1:11436/polly/patterns");
     if (!response.ok) return;
 
     const data = await response.json();
-    
-    if (timeFilter === 'all') {
+
+    if (timeFilter === "all") {
       // Show all patterns - just reload
       await loadPatterns();
       return;
     }
-    
+
     // Filter by time
     const daysAgo = parseInt(timeFilter);
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysAgo);
-    
+
     // Filter patterns
-    const filteredPatterns = data.patterns.filter(p => {
+    const filteredPatterns = data.patterns.filter((p) => {
       const lastSeen = new Date(p.last_seen);
       return lastSeen >= cutoffDate;
     });
-    
+
     // Display filtered patterns
-    const patternsList = document.getElementById('patterns-list');
-    patternsList.innerHTML = '';
-    
+    const patternsList = document.getElementById("patterns-list");
+    patternsList.innerHTML = "";
+
     if (filteredPatterns.length === 0) {
       patternsList.innerHTML = `
         <div class="pattern-empty">
@@ -7702,57 +8570,64 @@ async function filterPatterns() {
       lucide.createIcons();
       return;
     }
-    
+
     // Group and render (similar to loadPatterns)
     const patternsByType = {
-      'conceptual': [],
-      'code': [],
-      'query': []
+      conceptual: [],
+      code: [],
+      query: [],
     };
-    
-    filteredPatterns.forEach(p => {
+
+    filteredPatterns.forEach((p) => {
       if (patternsByType[p.pattern_type]) {
         patternsByType[p.pattern_type].push(p);
       }
     });
-    
+
     // Render each type (simplified version)
     Object.entries(patternsByType).forEach(([type, patterns]) => {
       if (patterns.length === 0) return;
-      
-      const section = document.createElement('div');
-      section.className = 'pattern-section';
-      
+
+      const section = document.createElement("div");
+      section.className = "pattern-section";
+
       const titles = {
-        'conceptual': 'Conceptual Patterns',
-        'code': 'Code Patterns',
-        'query': 'Query Patterns'
+        conceptual: "Conceptual Patterns",
+        code: "Code Patterns",
+        query: "Query Patterns",
       };
-      
+
       const icons = {
-        'conceptual': 'brain',
-        'code': 'code-2',
-        'query': 'message-square'
+        conceptual: "brain",
+        code: "code-2",
+        query: "message-square",
       };
-      
+
       section.innerHTML = `
         <h3 class="pattern-section-title">
           <i data-lucide="${icons[type]}" class="pattern-section-icon"></i>
           ${titles[type]}
         </h3>
       `;
-      
-      patterns.forEach(pattern => {
-        const card = document.createElement('div');
-        card.className = 'pattern-card';
-        
-        const domainBadges = pattern.domains ? pattern.domains.map(d => 
-          `<span class="pattern-domain ${d}">${d}</span>`
-        ).join('') : '';
-        
+
+      patterns.forEach((pattern) => {
+        const card = document.createElement("div");
+        card.className = "pattern-card";
+
+        const domainBadges = pattern.domains
+          ? pattern.domains
+              .map((d) => `<span class="pattern-domain ${d}">${d}</span>`)
+              .join("")
+          : "";
+
         const confidencePercent = Math.round(pattern.confidence * 100);
-        const confidenceClass = confidencePercent >= 70 ? 'high' : confidencePercent >= 40 ? 'medium' : 'low';
-        
+        const confidenceClass =
+          confidencePercent >= 70
+            ? "high"
+            : confidencePercent >= 40
+              ? "medium"
+              : "low";
+
         card.innerHTML = `
           <div class="pattern-header">
             <div class="pattern-name">${pattern.name}</div>
@@ -7767,17 +8642,16 @@ async function filterPatterns() {
             <div class="pattern-domains">${domainBadges}</div>
           </div>
         `;
-        
+
         section.appendChild(card);
       });
-      
+
       patternsList.appendChild(section);
     });
-    
+
     lucide.createIcons();
-    
   } catch (error) {
-    console.error('Error filtering patterns:', error);
+    console.error("Error filtering patterns:", error);
   }
 }
 
@@ -7786,29 +8660,31 @@ async function filterPatterns() {
  */
 async function exportPatterns() {
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/patterns');
+    const response = await fetch("http://127.0.0.1:11436/polly/patterns");
     if (!response.ok) {
-      alert('Could not export patterns');
+      alert("Could not export patterns");
       return;
     }
 
     const data = await response.json();
-    
+
     // Create blob and download
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `polly-patterns-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `polly-patterns-${new Date().toISOString().split("T")[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
-    showNotification('Patterns exported successfully');
+
+    showNotification("Patterns exported successfully");
   } catch (error) {
-    console.error('Error exporting patterns:', error);
-    showNotification('Failed to export patterns', 'error');
+    console.error("Error exporting patterns:", error);
+    showNotification("Failed to export patterns", "error");
   }
 }
 
@@ -7817,49 +8693,53 @@ async function exportPatterns() {
  */
 async function resetPatterns() {
   const confirmed = confirm(
-    'Are you sure you want to reset all learned patterns?\n\n' +
-    'This will:\n' +
-    '• Delete all patterns\n' +
-    '• Clear query history\n' +
-    '• Create a backup first\n\n' +
-    'This action cannot be undone.'
+    "Are you sure you want to reset all learned patterns?\n\n" +
+      "This will:\n" +
+      "• Delete all patterns\n" +
+      "• Clear query history\n" +
+      "• Create a backup first\n\n" +
+      "This action cannot be undone.",
   );
-  
+
   if (!confirmed) return;
-  
+
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/patterns/reset', {
-      method: 'POST'
-    });
-    
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/patterns/reset",
+      {
+        method: "POST",
+      },
+    );
+
     if (!response.ok) {
-      throw new Error('Reset failed');
+      throw new Error("Reset failed");
     }
-    
+
     const result = await response.json();
-    
+
     if (result.backup_path) {
-      showNotification(`Patterns reset. Backup saved to: ${result.backup_path}`);
+      showNotification(
+        `Patterns reset. Backup saved to: ${result.backup_path}`,
+      );
     } else {
-      showNotification('Patterns reset successfully');
+      showNotification("Patterns reset successfully");
     }
-    
+
     // Reload patterns (should show empty state)
     await loadPatterns();
-    
   } catch (error) {
-    console.error('Error resetting patterns:', error);
-    showNotification('Failed to reset patterns', 'error');
+    console.error("Error resetting patterns:", error);
+    showNotification("Failed to reset patterns", "error");
   }
 }
 
 /**
  * Show notification to user
  */
-function showNotification(message, type = 'success') {
+function showNotification(message, type = "success") {
   // Simple alert-based notification
   // In the future, this could be replaced with a toast notification
-  if (type === 'error') {
+  if (type === "error") {
     alert(`Error: ${message}`);
   } else {
     alert(message);
@@ -7870,42 +8750,42 @@ function showNotification(message, type = 'success') {
  * Save settings
  */
 async function saveSettings() {
-  const routingModeEl = document.getElementById('settings-routing-mode');
-  const apiKeyEl = document.getElementById('settings-api-key');
-  const portEl = document.getElementById('settings-port');
-  const autoStartEl = document.getElementById('settings-auto-start');
+  const routingModeEl = document.getElementById("settings-routing-mode");
+  const apiKeyEl = document.getElementById("settings-api-key");
+  const portEl = document.getElementById("settings-port");
+  const autoStartEl = document.getElementById("settings-auto-start");
 
   // Save settings only if elements exist (they might be in different tabs)
   if (routingModeEl) {
-    await window.polly.setStore('routingMode', routingModeEl.value);
+    await window.polly.setStore("routingMode", routingModeEl.value);
   }
-  
+
   if (portEl) {
-    await window.polly.setStore('port', parseInt(portEl.value));
+    await window.polly.setStore("port", parseInt(portEl.value));
   }
-  
+
   if (autoStartEl) {
-    await window.polly.setStore('autoStart', autoStartEl.checked);
+    await window.polly.setStore("autoStart", autoStartEl.checked);
   }
 
   if (apiKeyEl && apiKeyEl.value) {
     // In production, this should be stored securely
-    await window.polly.setStore('apiKey', apiKeyEl.value);
+    await window.polly.setStore("apiKey", apiKeyEl.value);
   }
 
   // Note: vault path is now managed in Integrations → Obsidian
-  await window.polly.setStore('codebasePaths', codePaths);
+  await window.polly.setStore("codebasePaths", codePaths);
 
   // Save deduplication settings (Phase 21)
   try {
     await saveDedupSettings();
   } catch (error) {
-    console.error('Failed to save dedup settings:', error);
-    alert('Settings saved, but deduplication settings failed to save.');
+    console.error("Failed to save dedup settings:", error);
+    alert("Settings saved, but deduplication settings failed to save.");
     return;
   }
 
-  alert('Settings saved!');
+  alert("Settings saved!");
 }
 
 /**
@@ -7916,50 +8796,50 @@ async function saveSettings() {
 
 // Tab switching logic
 function initSettingsTabs() {
-  const tabButtons = document.querySelectorAll('.settings-tab-btn');
-  const tabContents = document.querySelectorAll('.settings-tab-content');
+  const tabButtons = document.querySelectorAll(".settings-tab-btn");
+  const tabContents = document.querySelectorAll(".settings-tab-content");
 
-  tabButtons.forEach(button => {
-    button.addEventListener('click', () => {
+  tabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
       const targetTab = button.dataset.tab;
-      
+
       // Update button states
-      tabButtons.forEach(btn => btn.classList.remove('active'));
-      button.classList.add('active');
-      
+      tabButtons.forEach((btn) => btn.classList.remove("active"));
+      button.classList.add("active");
+
       // Update content visibility
-      tabContents.forEach(content => {
+      tabContents.forEach((content) => {
         if (content.id === `tab-${targetTab}`) {
-          content.classList.remove('hidden');
+          content.classList.remove("hidden");
         } else {
-          content.classList.add('hidden');
+          content.classList.add("hidden");
         }
       });
-      
+
       // Load domains config when switching to domains tab
-      if (targetTab === 'domains') {
+      if (targetTab === "domains") {
         loadDomainsConfig();
       }
-      
+
       // Load routing settings when switching to routing tab
-      if (targetTab === 'routing') {
+      if (targetTab === "routing") {
         loadRoutingSettings();
         loadRoutingStats();
       }
-      
+
       // Load compression settings when switching to compression tab
-      if (targetTab === 'compression') {
+      if (targetTab === "compression") {
         loadCompressionSettings();
         loadCompressionStats();
       }
-      
+
       // Load mental models when switching to mental models tab (Phase 14)
-      if (targetTab === 'mental-models') {
+      if (targetTab === "mental-models") {
         loadMentalModels();
       }
-      
+
       // Load dedup settings when switching to advanced tab (Phase 21)
-      if (targetTab === 'advanced') {
+      if (targetTab === "advanced") {
         loadDedupSettings();
       }
     });
@@ -7977,25 +8857,40 @@ function initSettingsTabs() {
  */
 async function loadRoutingSettings() {
   try {
-    const response = await fetch('http://127.0.0.1:11436/routing/settings');
+    const response = await fetch("http://127.0.0.1:11436/routing/settings");
     if (!response.ok) {
-      console.error('Failed to load routing settings:', response.status);
+      console.error("Failed to load routing settings:", response.status);
       return;
     }
-    
+
     const data = await response.json();
     const thresholds = data.thresholds || {};
-    
+
     // Update sliders and value displays
-    updateRoutingSlider('routing-min-top-score', thresholds.min_top_score || 0.75);
-    updateRoutingSlider('routing-min-quality-results', thresholds.min_high_quality_results || 2);
-    updateRoutingSlider('routing-min-context-chars', thresholds.min_context_chars || 500);
-    updateRoutingSlider('routing-exceptional-score', thresholds.exceptional_score || 0.85);
-    updateRoutingSlider('routing-exceptional-min-results', thresholds.exceptional_min_results || 3);
-    
-    console.log('Loaded routing settings:', data);
+    updateRoutingSlider(
+      "routing-min-top-score",
+      thresholds.min_top_score || 0.75,
+    );
+    updateRoutingSlider(
+      "routing-min-quality-results",
+      thresholds.min_high_quality_results || 2,
+    );
+    updateRoutingSlider(
+      "routing-min-context-chars",
+      thresholds.min_context_chars || 500,
+    );
+    updateRoutingSlider(
+      "routing-exceptional-score",
+      thresholds.exceptional_score || 0.85,
+    );
+    updateRoutingSlider(
+      "routing-exceptional-min-results",
+      thresholds.exceptional_min_results || 3,
+    );
+
+    console.log("Loaded routing settings:", data);
   } catch (error) {
-    console.error('Error loading routing settings:', error);
+    console.error("Error loading routing settings:", error);
   }
 }
 
@@ -8004,28 +8899,35 @@ async function loadRoutingSettings() {
  */
 async function loadRoutingStats() {
   try {
-    const response = await fetch('http://127.0.0.1:11436/routing/stats');
+    const response = await fetch("http://127.0.0.1:11436/routing/stats");
     if (!response.ok) {
-      console.error('Failed to load routing stats:', response.status);
+      console.error("Failed to load routing stats:", response.status);
       return;
     }
-    
+
     const data = await response.json();
-    
+
     // Update stat displays
-    const statLocalToday = document.getElementById('stat-local-today');
-    const statCloudToday = document.getElementById('stat-cloud-today');
-    const statAvgLocalScore = document.getElementById('stat-avg-local-score');
-    const statCostSaved = document.getElementById('stat-cost-saved');
-    
+    const statLocalToday = document.getElementById("stat-local-today");
+    const statCloudToday = document.getElementById("stat-cloud-today");
+    const statAvgLocalScore = document.getElementById("stat-avg-local-score");
+    const statCostSaved = document.getElementById("stat-cost-saved");
+
     if (statLocalToday) statLocalToday.textContent = data.local_today || 0;
     if (statCloudToday) statCloudToday.textContent = data.cloud_today || 0;
-    if (statAvgLocalScore) statAvgLocalScore.textContent = data.avg_local_score ? data.avg_local_score.toFixed(2) : 'N/A';
-    if (statCostSaved) statCostSaved.textContent = (data.cost_saved_today && typeof data.cost_saved_today === 'number') ? `$${data.cost_saved_today.toFixed(2)}` : '$0.00';
-    
-    console.log('Loaded routing stats:', data);
+    if (statAvgLocalScore)
+      statAvgLocalScore.textContent = data.avg_local_score
+        ? data.avg_local_score.toFixed(2)
+        : "N/A";
+    if (statCostSaved)
+      statCostSaved.textContent =
+        data.cost_saved_today && typeof data.cost_saved_today === "number"
+          ? `$${data.cost_saved_today.toFixed(2)}`
+          : "$0.00";
+
+    console.log("Loaded routing stats:", data);
   } catch (error) {
-    console.error('Error loading routing stats:', error);
+    console.error("Error loading routing stats:", error);
   }
 }
 
@@ -8035,7 +8937,7 @@ async function loadRoutingStats() {
 function updateRoutingSlider(sliderId, value) {
   const slider = document.getElementById(sliderId);
   const valueDisplay = document.getElementById(`${sliderId}-value`);
-  
+
   if (slider) {
     slider.value = value;
   }
@@ -8050,17 +8952,17 @@ function updateRoutingSlider(sliderId, value) {
 function initRoutingSettings() {
   // Slider value update listeners
   const sliders = [
-    'routing-min-top-score',
-    'routing-min-quality-results',
-    'routing-min-context-chars',
-    'routing-exceptional-score',
-    'routing-exceptional-min-results'
+    "routing-min-top-score",
+    "routing-min-quality-results",
+    "routing-min-context-chars",
+    "routing-exceptional-score",
+    "routing-exceptional-min-results",
   ];
-  
-  sliders.forEach(sliderId => {
+
+  sliders.forEach((sliderId) => {
     const slider = document.getElementById(sliderId);
     if (slider) {
-      slider.addEventListener('input', (e) => {
+      slider.addEventListener("input", (e) => {
         const valueDisplay = document.getElementById(`${sliderId}-value`);
         if (valueDisplay) {
           valueDisplay.textContent = e.target.value;
@@ -8068,33 +8970,39 @@ function initRoutingSettings() {
       });
     }
   });
-  
+
   // Save button
-  const saveBtn = document.getElementById('btn-save-routing-settings');
+  const saveBtn = document.getElementById("btn-save-routing-settings");
   if (saveBtn) {
-    saveBtn.addEventListener('click', saveRoutingSettings);
+    saveBtn.addEventListener("click", saveRoutingSettings);
   }
-  
+
   // Reset button
-  const resetBtn = document.getElementById('btn-reset-routing-settings');
+  const resetBtn = document.getElementById("btn-reset-routing-settings");
   if (resetBtn) {
-    resetBtn.addEventListener('click', resetRoutingSettings);
+    resetBtn.addEventListener("click", resetRoutingSettings);
   }
-  
+
   // Preset buttons
-  const aggressiveBtn = document.getElementById('routing-preset-aggressive');
+  const aggressiveBtn = document.getElementById("routing-preset-aggressive");
   if (aggressiveBtn) {
-    aggressiveBtn.addEventListener('click', () => applyRoutingPreset('aggressive'));
+    aggressiveBtn.addEventListener("click", () =>
+      applyRoutingPreset("aggressive"),
+    );
   }
-  
-  const balancedBtn = document.getElementById('routing-preset-balanced');
+
+  const balancedBtn = document.getElementById("routing-preset-balanced");
   if (balancedBtn) {
-    balancedBtn.addEventListener('click', () => applyRoutingPreset('balanced'));
+    balancedBtn.addEventListener("click", () => applyRoutingPreset("balanced"));
   }
-  
-  const conservativeBtn = document.getElementById('routing-preset-conservative');
+
+  const conservativeBtn = document.getElementById(
+    "routing-preset-conservative",
+  );
   if (conservativeBtn) {
-    conservativeBtn.addEventListener('click', () => applyRoutingPreset('conservative'));
+    conservativeBtn.addEventListener("click", () =>
+      applyRoutingPreset("conservative"),
+    );
   }
 }
 
@@ -8106,30 +9014,40 @@ async function saveRoutingSettings() {
     const settings = {
       enabled: true,
       thresholds: {
-        min_top_score: parseFloat(document.getElementById('routing-min-top-score').value),
-        min_high_quality_results: parseInt(document.getElementById('routing-min-quality-results').value),
-        min_context_chars: parseInt(document.getElementById('routing-min-context-chars').value),
-        exceptional_score: parseFloat(document.getElementById('routing-exceptional-score').value),
-        exceptional_min_results: parseInt(document.getElementById('routing-exceptional-min-results').value)
-      }
+        min_top_score: parseFloat(
+          document.getElementById("routing-min-top-score").value,
+        ),
+        min_high_quality_results: parseInt(
+          document.getElementById("routing-min-quality-results").value,
+        ),
+        min_context_chars: parseInt(
+          document.getElementById("routing-min-context-chars").value,
+        ),
+        exceptional_score: parseFloat(
+          document.getElementById("routing-exceptional-score").value,
+        ),
+        exceptional_min_results: parseInt(
+          document.getElementById("routing-exceptional-min-results").value,
+        ),
+      },
     };
-    
-    const response = await fetch('http://127.0.0.1:11436/routing/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings)
+
+    const response = await fetch("http://127.0.0.1:11436/routing/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Failed to save: ${response.status}`);
     }
-    
-    alert('Routing settings saved successfully!');
-    
+
+    alert("Routing settings saved successfully!");
+
     // Reload stats to show impact
     await loadRoutingStats();
   } catch (error) {
-    console.error('Error saving routing settings:', error);
+    console.error("Error saving routing settings:", error);
     alert(`Failed to save routing settings: ${error.message}`);
   }
 }
@@ -8138,12 +9056,12 @@ async function saveRoutingSettings() {
  * Reset routing settings to defaults
  */
 async function resetRoutingSettings() {
-  if (!confirm('Reset routing settings to defaults?')) {
+  if (!confirm("Reset routing settings to defaults?")) {
     return;
   }
-  
+
   // Apply balanced preset (default)
-  applyRoutingPreset('balanced');
+  applyRoutingPreset("balanced");
 }
 
 /**
@@ -8156,37 +9074,43 @@ function applyRoutingPreset(preset) {
       min_high_quality_results: 1,
       min_context_chars: 300,
       exceptional_score: 0.75,
-      exceptional_min_results: 1
+      exceptional_min_results: 1,
     },
     balanced: {
       min_top_score: 0.75,
       min_high_quality_results: 2,
       min_context_chars: 500,
       exceptional_score: 0.85,
-      exceptional_min_results: 3
+      exceptional_min_results: 3,
     },
     conservative: {
       min_top_score: 0.85,
       min_high_quality_results: 3,
       min_context_chars: 800,
-      exceptional_score: 0.90,
-      exceptional_min_results: 4
-    }
+      exceptional_score: 0.9,
+      exceptional_min_results: 4,
+    },
   };
-  
+
   const values = presets[preset];
   if (!values) {
-    console.error('Unknown preset:', preset);
+    console.error("Unknown preset:", preset);
     return;
   }
-  
+
   // Update all sliders
-  updateRoutingSlider('routing-min-top-score', values.min_top_score);
-  updateRoutingSlider('routing-min-quality-results', values.min_high_quality_results);
-  updateRoutingSlider('routing-min-context-chars', values.min_context_chars);
-  updateRoutingSlider('routing-exceptional-score', values.exceptional_score);
-  updateRoutingSlider('routing-exceptional-min-results', values.exceptional_min_results);
-  
+  updateRoutingSlider("routing-min-top-score", values.min_top_score);
+  updateRoutingSlider(
+    "routing-min-quality-results",
+    values.min_high_quality_results,
+  );
+  updateRoutingSlider("routing-min-context-chars", values.min_context_chars);
+  updateRoutingSlider("routing-exceptional-score", values.exceptional_score);
+  updateRoutingSlider(
+    "routing-exceptional-min-results",
+    values.exceptional_min_results,
+  );
+
   console.log(`Applied ${preset} preset`);
 }
 
@@ -8199,28 +9123,37 @@ function applyRoutingPreset(preset) {
 // Toggle integration config panel
 function initIntegrationConfig() {
   const configButtons = document.querySelectorAll('[id$="-config-btn"]');
-  console.log('Found config buttons:', configButtons.length, Array.from(configButtons).map(b => b.id));
-  
-  configButtons.forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      console.log('Config button clicked:', e.target.id);
-      const integration = e.target.id.replace('-config-btn', '');
+  console.log(
+    "Found config buttons:",
+    configButtons.length,
+    Array.from(configButtons).map((b) => b.id),
+  );
+
+  configButtons.forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      console.log("Config button clicked:", e.target.id);
+      const integration = e.target.id.replace("-config-btn", "");
       const configPanel = document.getElementById(`${integration}-config`);
-      console.log('Config panel:', configPanel, 'hidden?', configPanel?.classList.contains('hidden'));
-      
-      if (configPanel && configPanel.classList.contains('hidden')) {
-        configPanel.classList.remove('hidden');
-        e.target.textContent = 'hide config';
-        console.log('Showed config panel');
-        
+      console.log(
+        "Config panel:",
+        configPanel,
+        "hidden?",
+        configPanel?.classList.contains("hidden"),
+      );
+
+      if (configPanel && configPanel.classList.contains("hidden")) {
+        configPanel.classList.remove("hidden");
+        e.target.textContent = "hide config";
+        console.log("Showed config panel");
+
         // Load integration-specific config when opening
-        if (integration === 'obsidian') {
+        if (integration === "obsidian") {
           loadObsidianVaultPath();
         }
       } else if (configPanel) {
-        configPanel.classList.add('hidden');
-        e.target.textContent = 'configure';
-        console.log('Hid config panel');
+        configPanel.classList.add("hidden");
+        e.target.textContent = "configure";
+        console.log("Hid config panel");
       }
     });
   });
@@ -8230,49 +9163,50 @@ function initIntegrationConfig() {
 function updateIntegrationCard(integration, data) {
   const card = document.querySelector(`[data-integration="${integration}"]`);
   if (!card) return;
-  
-  const statusDot = card.querySelector('.status-dot');
-  const statusText = card.querySelector('.status-text');
-  const connectBtn = card.querySelector(`#${integration}-connect-btn`) || 
-                     card.querySelector(`#${integration}-enable-btn`);
+
+  const statusDot = card.querySelector(".status-dot");
+  const statusText = card.querySelector(".status-text");
+  const connectBtn =
+    card.querySelector(`#${integration}-connect-btn`) ||
+    card.querySelector(`#${integration}-enable-btn`);
   const syncBtn = card.querySelector(`#${integration}-sync-btn`);
   const configBtn = card.querySelector(`#${integration}-config-btn`);
-  
+
   if (data.authenticated || data.enabled) {
     // Connected state
-    if (statusDot) statusDot.classList.add('connected');
-    if (statusText) statusText.textContent = data.statusText || 'connected';
-    
+    if (statusDot) statusDot.classList.add("connected");
+    if (statusText) statusText.textContent = data.statusText || "connected";
+
     if (connectBtn) {
-      connectBtn.classList.add('hidden');
+      connectBtn.classList.add("hidden");
     }
     if (syncBtn) {
-      syncBtn.classList.remove('hidden');
+      syncBtn.classList.remove("hidden");
     }
     if (configBtn) {
-      configBtn.classList.remove('hidden');
+      configBtn.classList.remove("hidden");
     }
-    
+
     // Update last sync time if available
     if (data.last_sync) {
-      const lastSyncEl = card.querySelector('.last-sync');
+      const lastSyncEl = card.querySelector(".last-sync");
       if (lastSyncEl) {
         lastSyncEl.textContent = `Last sync: ${formatTimeAgo(data.last_sync)}`;
       }
     }
   } else {
     // Disconnected state
-    if (statusDot) statusDot.classList.remove('connected');
-    if (statusText) statusText.textContent = data.statusText || 'not connected';
-    
+    if (statusDot) statusDot.classList.remove("connected");
+    if (statusText) statusText.textContent = data.statusText || "not connected";
+
     if (connectBtn) {
-      connectBtn.classList.remove('hidden');
+      connectBtn.classList.remove("hidden");
     }
     if (syncBtn) {
-      syncBtn.classList.add('hidden');
+      syncBtn.classList.add("hidden");
     }
     if (configBtn) {
-      configBtn.classList.add('hidden');
+      configBtn.classList.add("hidden");
     }
   }
 }
@@ -8282,8 +9216,8 @@ function formatTimeAgo(timestamp) {
   const now = new Date();
   const then = new Date(timestamp);
   const seconds = Math.floor((now - then) / 1000);
-  
-  if (seconds < 60) return 'just now';
+
+  if (seconds < 60) return "just now";
   if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
   return `${Math.floor(seconds / 86400)} days ago`;
@@ -8303,147 +9237,158 @@ async function restoreIntegrationStatus() {
     } catch (e) {
       // Server not ready yet
     }
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  
+
   if (!serverReady) {
-    console.warn('Server not ready, skipping integration restore');
+    console.warn("Server not ready, skipping integration restore");
     return;
   }
-  
+
   // Check GitHub connection
-  const githubToken = await window.polly.getCredential('github_token');
+  const githubToken = await window.polly.getCredential("github_token");
   if (githubToken && githubToken.success && githubToken.password) {
-    const username = await window.polly.getStore('github_username');
+    const username = await window.polly.getStore("github_username");
     if (username) {
-      updateIntegrationCard('github', {
+      updateIntegrationCard("github", {
         authenticated: true,
-        statusText: `connected as @${username}`
+        statusText: `connected as @${username}`,
       });
-      
+
       // Reconnect to backend
       try {
-        const backendResult = await window.polly.integrationConnect('github', { token: githubToken.password });
-        console.log('Backend connection result:', backendResult);
-        
+        const backendResult = await window.polly.integrationConnect("github", {
+          token: githubToken.password,
+        });
+        console.log("Backend connection result:", backendResult);
+
         if (backendResult && !backendResult.success) {
-          console.error('Failed to connect backend:', backendResult.error);
+          console.error("Failed to connect backend:", backendResult.error);
           // Show warning in UI but don't block
-          console.warn('GitHub UI connected but backend connection failed. Click "sync now" to retry.');
+          console.warn(
+            'GitHub UI connected but backend connection failed. Click "sync now" to retry.',
+          );
         }
       } catch (error) {
-        console.error('Backend connection error:', error);
-        console.warn('Will retry connection on first sync.');
+        console.error("Backend connection error:", error);
+        console.warn("Will retry connection on first sync.");
       }
     }
   }
-  
+
   // Check Context7 connection
   try {
-    const context7ApiKey = await window.polly.getCredential('context7_api_key');
+    const context7ApiKey = await window.polly.getCredential("context7_api_key");
     if (context7ApiKey && context7ApiKey.success && context7ApiKey.password) {
-      console.log('Found saved Context7 API key, reconnecting...');
-      
-      updateIntegrationCard('context7', {
+      console.log("Found saved Context7 API key, reconnecting...");
+
+      updateIntegrationCard("context7", {
         authenticated: true,
-        statusText: 'connected'
+        statusText: "connected",
       });
-      
+
       // Show sync and config buttons
-      const connectBtn = document.getElementById('context7-connect-btn');
-      const syncBtn = document.getElementById('context7-sync-btn');
-      const configBtn = document.getElementById('context7-config-btn');
-      
-      if (connectBtn) connectBtn.classList.add('hidden');
-      if (syncBtn) syncBtn.classList.remove('hidden');
-      if (configBtn) configBtn.classList.remove('hidden');
-      
+      const connectBtn = document.getElementById("context7-connect-btn");
+      const syncBtn = document.getElementById("context7-sync-btn");
+      const configBtn = document.getElementById("context7-config-btn");
+
+      if (connectBtn) connectBtn.classList.add("hidden");
+      if (syncBtn) syncBtn.classList.remove("hidden");
+      if (configBtn) configBtn.classList.remove("hidden");
+
       // Reconnect to backend
       try {
-        const backendResult = await fetch('http://127.0.0.1:11436/polly/integrations/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            integration: 'context7',
-            credentials: { api_key: context7ApiKey.password }
-          })
-        });
-        
+        const backendResult = await fetch(
+          "http://127.0.0.1:11436/polly/integrations/connect",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              integration: "context7",
+              credentials: { api_key: context7ApiKey.password },
+            }),
+          },
+        );
+
         const result = await backendResult.json();
-        console.log('Context7 backend reconnect result:', result);
-        
+        console.log("Context7 backend reconnect result:", result);
+
         if (result && !result.success) {
-          console.error('Failed to connect Context7 backend:', result.error);
-          updateIntegrationCard('context7', {
+          console.error("Failed to connect Context7 backend:", result.error);
+          updateIntegrationCard("context7", {
             authenticated: false,
-            statusText: 'connection failed'
+            statusText: "connection failed",
           });
         } else {
-          console.log('Context7 backend reconnected successfully');
+          console.log("Context7 backend reconnected successfully");
         }
       } catch (error) {
-        console.error('Context7 backend connection error:', error);
-        updateIntegrationCard('context7', {
+        console.error("Context7 backend connection error:", error);
+        updateIntegrationCard("context7", {
           authenticated: false,
-          statusText: 'connection error'
+          statusText: "connection error",
         });
       }
     } else {
-      console.log('No saved Context7 API key found');
+      console.log("No saved Context7 API key found");
     }
   } catch (error) {
-    console.error('Error checking Context7 credentials:', error);
+    console.error("Error checking Context7 credentials:", error);
   }
-  
+
   // Check Obsidian connection - it should auto-connect on server startup
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/integrations');
+    const response = await fetch("http://127.0.0.1:11436/polly/integrations");
     const result = await response.json();
-    
+
     if (result.integrations && result.integrations.obsidian) {
       const obsidianStatus = result.integrations.obsidian;
-      
-      if (obsidianStatus.status === 'connected') {
-        console.log('Obsidian integration is connected');
-        updateIntegrationCard('obsidian', {
+
+      if (obsidianStatus.status === "connected") {
+        console.log("Obsidian integration is connected");
+        updateIntegrationCard("obsidian", {
           authenticated: true,
-          statusText: 'connected'
+          statusText: "connected",
         });
-        
+
         // Show sync button and stats
-        const syncBtn = document.getElementById('obsidian-sync-btn');
-        if (syncBtn) syncBtn.classList.remove('hidden');
-        
-        const writeTestBtn = document.getElementById('obsidian-write-test-btn');
-        if (writeTestBtn) writeTestBtn.classList.remove('hidden');
-        
-        const statsDiv = document.getElementById('obsidian-stats');
-        if (statsDiv) statsDiv.classList.remove('hidden');
-        
+        const syncBtn = document.getElementById("obsidian-sync-btn");
+        if (syncBtn) syncBtn.classList.remove("hidden");
+
+        const writeTestBtn = document.getElementById("obsidian-write-test-btn");
+        if (writeTestBtn) writeTestBtn.classList.remove("hidden");
+
+        const statsDiv = document.getElementById("obsidian-stats");
+        if (statsDiv) statsDiv.classList.remove("hidden");
+
         // Update vault path
         if (obsidianStatus.vault_path) {
-          const vaultPathEl = document.getElementById('obsidian-vault-path-display');
+          const vaultPathEl = document.getElementById(
+            "obsidian-vault-path-display",
+          );
           if (vaultPathEl) {
-            const vaultName = obsidianStatus.vault_path.split('/').pop();
+            const vaultName = obsidianStatus.vault_path.split("/").pop();
             vaultPathEl.textContent = vaultName;
           }
         }
-        
+
         // Update indexed files count
         if (obsidianStatus.indexed_files !== undefined) {
-          const indexedFilesEl = document.getElementById('obsidian-indexed-files');
+          const indexedFilesEl = document.getElementById(
+            "obsidian-indexed-files",
+          );
           if (indexedFilesEl) {
             indexedFilesEl.textContent = obsidianStatus.indexed_files;
           }
         }
       } else {
-        console.log('Obsidian integration not connected yet');
+        console.log("Obsidian integration not connected yet");
       }
     }
   } catch (error) {
-    console.error('Error checking Obsidian status:', error);
+    console.error("Error checking Obsidian status:", error);
   }
-  
+
   // Check iCal connections (Phase 4)
   // etc.
 }
@@ -8451,208 +9396,224 @@ async function restoreIntegrationStatus() {
 // Helper: Update integration status (simple wrapper)
 function updateIntegrationStatus(integration, status) {
   updateIntegrationCard(integration, {
-    authenticated: status === 'connected',
-    statusText: status
+    authenticated: status === "connected",
+    statusText: status,
   });
 }
 
 // Sync Calendar Events
 async function syncCalendar(daysAhead = 7) {
-  const syncBtn = document.getElementById('calendar-sync-btn');
-  
+  const syncBtn = document.getElementById("calendar-sync-btn");
+
   if (syncBtn) {
     syncBtn.disabled = true;
-    syncBtn.textContent = 'Syncing...';
+    syncBtn.textContent = "Syncing...";
   }
-  
+
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/integrations/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        integration: 'calendar',
-        options: {
-          days_ahead: daysAhead
-        }
-      })
-    });
-    
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/integrations/sync",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          integration: "calendar",
+          options: {
+            days_ahead: daysAhead,
+          },
+        }),
+      },
+    );
+
     const result = await response.json();
-    
+
     if (result.success) {
-      console.log('Calendar sync successful:', result);
-      updateIntegrationCard('calendar', {
+      console.log("Calendar sync successful:", result);
+      updateIntegrationCard("calendar", {
         authenticated: true,
         statusText: `synced ${result.fetched} events`,
-        last_sync: new Date().toISOString()
+        last_sync: new Date().toISOString(),
       });
     } else {
-      console.error('Calendar sync failed:', result);
-      alert(`Sync failed: ${result.detail || 'Unknown error'}`);
+      console.error("Calendar sync failed:", result);
+      alert(`Sync failed: ${result.detail || "Unknown error"}`);
     }
   } catch (error) {
-    console.error('Calendar sync error:', error);
-    alert('Sync failed. Is the server running?');
+    console.error("Calendar sync error:", error);
+    alert("Sync failed. Is the server running?");
   } finally {
     if (syncBtn) {
       syncBtn.disabled = false;
-      syncBtn.textContent = 'sync now';
+      syncBtn.textContent = "sync now";
     }
   }
 }
 
 // Sync Reminders
 async function syncReminders(includeCompleted = false) {
-  const syncBtn = document.getElementById('reminders-sync-btn');
-  
+  const syncBtn = document.getElementById("reminders-sync-btn");
+
   if (syncBtn) {
     syncBtn.disabled = true;
-    syncBtn.textContent = 'Syncing...';
+    syncBtn.textContent = "Syncing...";
   }
-  
+
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/integrations/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        integration: 'reminders',
-        options: {
-          include_completed: includeCompleted
-        }
-      })
-    });
-    
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/integrations/sync",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          integration: "reminders",
+          options: {
+            include_completed: includeCompleted,
+          },
+        }),
+      },
+    );
+
     const result = await response.json();
-    
+
     if (result.success) {
-      console.log('Reminders sync successful:', result);
-      updateIntegrationCard('reminders', {
+      console.log("Reminders sync successful:", result);
+      updateIntegrationCard("reminders", {
         authenticated: true,
         statusText: `synced ${result.fetched} reminders`,
-        last_sync: new Date().toISOString()
+        last_sync: new Date().toISOString(),
       });
     } else {
-      console.error('Reminders sync failed:', result);
-      alert(`Sync failed: ${result.detail || 'Unknown error'}`);
+      console.error("Reminders sync failed:", result);
+      alert(`Sync failed: ${result.detail || "Unknown error"}`);
     }
   } catch (error) {
-    console.error('Reminders sync error:', error);
-    alert('Sync failed. Is the server running?');
+    console.error("Reminders sync error:", error);
+    alert("Sync failed. Is the server running?");
   } finally {
     if (syncBtn) {
       syncBtn.disabled = false;
-      syncBtn.textContent = 'sync now';
+      syncBtn.textContent = "sync now";
     }
   }
 }
 
 // Sync Context7 Documentation
-async function syncContext7Documentation(libraries = ['react', 'nextjs', 'python']) {
-  const syncBtn = document.getElementById('context7-sync-btn');
-  
+async function syncContext7Documentation(
+  libraries = ["react", "nextjs", "python"],
+) {
+  const syncBtn = document.getElementById("context7-sync-btn");
+
   if (syncBtn) {
     syncBtn.disabled = true;
-    syncBtn.textContent = 'Syncing...';
+    syncBtn.textContent = "Syncing...";
   }
-  
+
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/integrations/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        integration: 'context7',
-        options: {
-          libraries: libraries,
-          query: 'comprehensive documentation and examples'
-        }
-      })
-    });
-    
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/integrations/sync",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          integration: "context7",
+          options: {
+            libraries: libraries,
+            query: "comprehensive documentation and examples",
+          },
+        }),
+      },
+    );
+
     const result = await response.json();
-    
+
     if (result.success) {
-      console.log('Context7 sync successful:', result);
-      updateIntegrationCard('context7', {
+      console.log("Context7 sync successful:", result);
+      updateIntegrationCard("context7", {
         authenticated: true,
         statusText: `synced ${result.fetched} docs`,
-        last_sync: new Date().toISOString()
+        last_sync: new Date().toISOString(),
       });
     } else {
-      console.error('Context7 sync failed:', result);
-      alert(`Sync failed: ${result.detail || 'Unknown error'}`);
+      console.error("Context7 sync failed:", result);
+      alert(`Sync failed: ${result.detail || "Unknown error"}`);
     }
   } catch (error) {
-    console.error('Context7 sync error:', error);
-    alert('Sync failed. Is the server running?');
+    console.error("Context7 sync error:", error);
+    alert("Sync failed. Is the server running?");
   } finally {
     if (syncBtn) {
       syncBtn.disabled = false;
-      syncBtn.textContent = 'sync now';
+      syncBtn.textContent = "sync now";
     }
   }
 }
 
 // Sync Obsidian Vault
 async function syncObsidian() {
-  const syncBtn = document.getElementById('obsidian-sync-btn');
-  
+  const syncBtn = document.getElementById("obsidian-sync-btn");
+
   if (syncBtn) {
     syncBtn.disabled = true;
-    syncBtn.textContent = 'Syncing...';
+    syncBtn.textContent = "Syncing...";
   }
-  
+
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/integrations/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        integration: 'obsidian',
-        options: {}
-      })
-    });
-    
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/integrations/sync",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          integration: "obsidian",
+          options: {},
+        }),
+      },
+    );
+
     const result = await response.json();
-    
+
     if (result.success) {
-      console.log('Obsidian sync successful:', result);
-      
+      console.log("Obsidian sync successful:", result);
+
       // Build status message
       let statusText = `synced ${result.indexed} documents`;
       if (result.skipped > 0) {
         statusText += ` (${result.skipped} skipped)`;
       }
-      
+
       // Update status
-      updateIntegrationCard('obsidian', {
+      updateIntegrationCard("obsidian", {
         authenticated: true,
         statusText: statusText,
-        last_sync: new Date().toISOString()
+        last_sync: new Date().toISOString(),
       });
-      
+
       // Update stats
-      const indexedFilesEl = document.getElementById('obsidian-indexed-files');
+      const indexedFilesEl = document.getElementById("obsidian-indexed-files");
       if (indexedFilesEl) {
         indexedFilesEl.textContent = result.indexed || 0;
       }
-      
+
       // Update vault path if available
-      const vaultPathEl = document.getElementById('obsidian-vault-path-display');
+      const vaultPathEl = document.getElementById(
+        "obsidian-vault-path-display",
+      );
       if (vaultPathEl && result.metadata && result.metadata.vault_path) {
         // Show just the vault name (last part of path)
-        const vaultName = result.metadata.vault_path.split('/').pop();
+        const vaultName = result.metadata.vault_path.split("/").pop();
         vaultPathEl.textContent = vaultName;
       }
     } else {
-      console.error('Obsidian sync failed:', result);
-      alert(`Sync failed: ${result.detail || 'Unknown error'}`);
+      console.error("Obsidian sync failed:", result);
+      alert(`Sync failed: ${result.detail || "Unknown error"}`);
     }
   } catch (error) {
-    console.error('Obsidian sync error:', error);
-    alert('Sync failed. Is the server running?');
+    console.error("Obsidian sync error:", error);
+    alert("Sync failed. Is the server running?");
   } finally {
     if (syncBtn) {
       syncBtn.disabled = false;
-      syncBtn.textContent = 'sync now';
+      syncBtn.textContent = "sync now";
     }
   }
 }
@@ -8660,23 +9621,23 @@ async function syncObsidian() {
 // Load current Obsidian vault path
 async function loadObsidianVaultPath() {
   try {
-    const config = await window.polly.getConfig('obsidian.vault_path');
+    const config = await window.polly.getConfig("obsidian.vault_path");
     if (config && config.success && config.value) {
-      const pathInput = document.getElementById('obsidian-vault-path-input');
+      const pathInput = document.getElementById("obsidian-vault-path-input");
       if (pathInput) {
         pathInput.value = config.value;
       }
     }
   } catch (error) {
-    console.error('Error loading vault path:', error);
+    console.error("Error loading vault path:", error);
   }
 }
 
 // Update Obsidian vault path display
 function updateObsidianVaultDisplay(vaultPath) {
-  const vaultPathEl = document.getElementById('obsidian-vault-path-display');
+  const vaultPathEl = document.getElementById("obsidian-vault-path-display");
   if (vaultPathEl && vaultPath) {
-    const vaultName = vaultPath.split('/').pop();
+    const vaultName = vaultPath.split("/").pop();
     vaultPathEl.textContent = vaultName;
   }
 }
@@ -8684,863 +9645,990 @@ function updateObsidianVaultDisplay(vaultPath) {
 // Placeholder connect buttons (will be implemented in later phases)
 function initIntegrationPlaceholders() {
   // GitHub OAuth link
-  const githubOAuthLink = document.getElementById('github-oauth-link');
+  const githubOAuthLink = document.getElementById("github-oauth-link");
   if (githubOAuthLink) {
-    githubOAuthLink.addEventListener('click', (e) => {
+    githubOAuthLink.addEventListener("click", (e) => {
       e.preventDefault();
-      window.polly.openExternal('https://github.com/settings/developers');
+      window.polly.openExternal("https://github.com/settings/developers");
     });
   }
-  
+
   // GitHub save config button
-  const githubSaveConfigBtn = document.getElementById('github-save-config-btn');
+  const githubSaveConfigBtn = document.getElementById("github-save-config-btn");
   if (githubSaveConfigBtn) {
-    githubSaveConfigBtn.addEventListener('click', async () => {
-      const clientId = document.getElementById('github-client-id').value.trim();
-      const clientSecret = document.getElementById('github-client-secret').value.trim();
-      
+    githubSaveConfigBtn.addEventListener("click", async () => {
+      const clientId = document.getElementById("github-client-id").value.trim();
+      const clientSecret = document
+        .getElementById("github-client-secret")
+        .value.trim();
+
       if (!clientId || !clientSecret) {
-        alert('Please enter both Client ID and Client Secret');
+        alert("Please enter both Client ID and Client Secret");
         return;
       }
-      
+
       // Store in electron-store
-      await window.polly.setStore('github_oauth_client_id', clientId);
-      await window.polly.setStore('github_oauth_client_secret', clientSecret);
-      
-      alert('GitHub OAuth configuration saved! You can now click "connect" to authenticate.');
-      
+      await window.polly.setStore("github_oauth_client_id", clientId);
+      await window.polly.setStore("github_oauth_client_secret", clientSecret);
+
+      alert(
+        'GitHub OAuth configuration saved! You can now click "connect" to authenticate.',
+      );
+
       // Show the connect button and hide config panel
-      const configPanel = document.getElementById('github-config');
-      if (configPanel) configPanel.classList.add('hidden');
+      const configPanel = document.getElementById("github-config");
+      if (configPanel) configPanel.classList.add("hidden");
     });
   }
-  
+
   // Load saved OAuth config
   (async () => {
-    const clientId = await window.polly.getStore('github_oauth_client_id');
-    const clientSecret = await window.polly.getStore('github_oauth_client_secret');
-    
+    const clientId = await window.polly.getStore("github_oauth_client_id");
+    const clientSecret = await window.polly.getStore(
+      "github_oauth_client_secret",
+    );
+
     if (clientId) {
-      document.getElementById('github-client-id').value = clientId;
+      document.getElementById("github-client-id").value = clientId;
     }
     if (clientSecret) {
-      document.getElementById('github-client-secret').value = clientSecret;
+      document.getElementById("github-client-secret").value = clientSecret;
     }
   })();
-  
+
   // GitHub connect button
-  const githubBtn = document.getElementById('github-connect-btn');
+  const githubBtn = document.getElementById("github-connect-btn");
   if (githubBtn) {
-    githubBtn.addEventListener('click', async () => {
+    githubBtn.addEventListener("click", async () => {
       try {
         // Check if OAuth is configured
-        const clientId = await window.polly.getStore('github_oauth_client_id');
-        const clientSecret = await window.polly.getStore('github_oauth_client_secret');
-        
+        const clientId = await window.polly.getStore("github_oauth_client_id");
+        const clientSecret = await window.polly.getStore(
+          "github_oauth_client_secret",
+        );
+
         if (!clientId || !clientSecret) {
-          alert('Please configure GitHub OAuth first. Click the "configure" button to set up your Client ID and Secret.');
-          
+          alert(
+            'Please configure GitHub OAuth first. Click the "configure" button to set up your Client ID and Secret.',
+          );
+
           // Show config panel if available
-          const configBtn = document.getElementById('github-config-btn');
-          if (configBtn && configBtn.classList.contains('hidden')) {
+          const configBtn = document.getElementById("github-config-btn");
+          if (configBtn && configBtn.classList.contains("hidden")) {
             // Unhide config button temporarily so user can configure
-            configBtn.classList.remove('hidden');
+            configBtn.classList.remove("hidden");
           }
           return;
         }
-        
+
         // Update button state
         githubBtn.disabled = true;
-        githubBtn.textContent = 'connecting...';
-        
+        githubBtn.textContent = "connecting...";
+
         const result = await window.polly.githubOAuth();
-        
+
         if (result.success) {
           // Update card to show connected state
-          updateIntegrationCard('github', {
+          updateIntegrationCard("github", {
             authenticated: true,
             statusText: `connected as @${result.username}`,
-            lastSync: new Date().toISOString()
+            lastSync: new Date().toISOString(),
           });
-          
+
           // Store username in electron-store for persistence
-          await window.polly.setStore('github_username', result.username);
-          
+          await window.polly.setStore("github_username", result.username);
+
           // Connect integration to backend (pass token)
-          const tokenResult = await window.polly.getCredential('github_token');
+          const tokenResult = await window.polly.getCredential("github_token");
           if (tokenResult.success && tokenResult.password) {
-            await window.polly.integrationConnect('github', { token: tokenResult.password });
+            await window.polly.integrationConnect("github", {
+              token: tokenResult.password,
+            });
           }
-          
+
           alert(`Successfully connected to GitHub as @${result.username}`);
         } else {
           alert(`Failed to connect to GitHub: ${result.error}`);
           githubBtn.disabled = false;
-          githubBtn.textContent = 'connect';
+          githubBtn.textContent = "connect";
         }
       } catch (error) {
         alert(`Error: ${error.message}`);
         githubBtn.disabled = false;
-        githubBtn.textContent = 'connect';
+        githubBtn.textContent = "connect";
       }
     });
   }
-  
+
   // GitHub sync button
-  const githubSyncBtn = document.getElementById('github-sync-btn');
+  const githubSyncBtn = document.getElementById("github-sync-btn");
   if (githubSyncBtn) {
-    githubSyncBtn.addEventListener('click', async () => {
+    githubSyncBtn.addEventListener("click", async () => {
       try {
         githubSyncBtn.disabled = true;
-        githubSyncBtn.textContent = 'syncing...';
-        
+        githubSyncBtn.textContent = "syncing...";
+
         // First, ensure backend is connected
         const statusResult = await window.polly.integrationStatus();
-        const isConnected = statusResult.connected && statusResult.connected.includes('github');
-        
+        const isConnected =
+          statusResult.connected && statusResult.connected.includes("github");
+
         if (!isConnected) {
-          console.log('Backend not connected, connecting now...');
-          const token = await window.polly.getCredential('github_token');
+          console.log("Backend not connected, connecting now...");
+          const token = await window.polly.getCredential("github_token");
           if (token.success && token.password) {
-            const connectResult = await window.polly.integrationConnect('github', { token: token.password });
+            const connectResult = await window.polly.integrationConnect(
+              "github",
+              { token: token.password },
+            );
             if (!connectResult.success) {
-              throw new Error(`Backend connection failed: ${connectResult.error}`);
-  }
-  
-  // Save Conversation Modal Handlers
-  const closeSaveModalBtn = document.getElementById('close-save-modal');
-  if (closeSaveModalBtn) {
-    closeSaveModalBtn.addEventListener('click', closeSaveConversationModal);
-  }
-  
-  const cancelSaveBtn = document.getElementById('btn-cancel-save');
-  if (cancelSaveBtn) {
-    cancelSaveBtn.addEventListener('click', closeSaveConversationModal);
-  }
-  
-  const confirmSaveBtn = document.getElementById('btn-confirm-save');
-  if (confirmSaveBtn) {
-    confirmSaveBtn.addEventListener('click', saveConversationToObsidian);
-  }
-  
-  const suggestFolderBtn = document.getElementById('btn-suggest-folder');
-  if (suggestFolderBtn) {
-    suggestFolderBtn.addEventListener('click', suggestFolder);
-  }
-  
-  const useFolderBtn = document.getElementById('btn-use-folder');
-  if (useFolderBtn) {
-    useFolderBtn.addEventListener('click', () => {
-      const suggestedFolder = document.getElementById('suggested-folder-name').textContent;
-      document.getElementById('note-folder').value = suggestedFolder;
-    });
-  }
-  
-  const suggestTagsBtn = document.getElementById('btn-suggest-tags');
-  if (suggestTagsBtn) {
-    suggestTagsBtn.addEventListener('click', suggestTags);
-  }
-  
-  
+              throw new Error(
+                `Backend connection failed: ${connectResult.error}`,
+              );
+            }
+
+            // Save Conversation Modal Handlers
+            const closeSaveModalBtn =
+              document.getElementById("close-save-modal");
+            if (closeSaveModalBtn) {
+              closeSaveModalBtn.addEventListener(
+                "click",
+                closeSaveConversationModal,
+              );
+            }
+
+            const cancelSaveBtn = document.getElementById("btn-cancel-save");
+            if (cancelSaveBtn) {
+              cancelSaveBtn.addEventListener(
+                "click",
+                closeSaveConversationModal,
+              );
+            }
+
+            const confirmSaveBtn = document.getElementById("btn-confirm-save");
+            if (confirmSaveBtn) {
+              confirmSaveBtn.addEventListener(
+                "click",
+                saveConversationToObsidian,
+              );
+            }
+
+            const suggestFolderBtn =
+              document.getElementById("btn-suggest-folder");
+            if (suggestFolderBtn) {
+              suggestFolderBtn.addEventListener("click", suggestFolder);
+            }
+
+            const useFolderBtn = document.getElementById("btn-use-folder");
+            if (useFolderBtn) {
+              useFolderBtn.addEventListener("click", () => {
+                const suggestedFolder = document.getElementById(
+                  "suggested-folder-name",
+                ).textContent;
+                document.getElementById("note-folder").value = suggestedFolder;
+              });
+            }
+
+            const suggestTagsBtn = document.getElementById("btn-suggest-tags");
+            if (suggestTagsBtn) {
+              suggestTagsBtn.addEventListener("click", suggestTags);
+            }
           } else {
-            throw new Error('No GitHub token found. Please connect first.');
+            throw new Error("No GitHub token found. Please connect first.");
           }
         }
-        
+
         // Now sync
-        const result = await window.polly.integrationSync('github', {
+        const result = await window.polly.integrationSync("github", {
           include_repos: true,
           include_issues: false,
           include_prs: false,
-          repo_limit: 30
+          repo_limit: 30,
         });
-        
+
         if (result.success) {
-          alert(`Synced ${result.fetched} items from GitHub. Indexed ${result.indexed} documents.`);
-          
+          alert(
+            `Synced ${result.fetched} items from GitHub. Indexed ${result.indexed} documents.`,
+          );
+
           // Update last sync time
-          updateIntegrationCard('github', {
+          updateIntegrationCard("github", {
             authenticated: true,
-            statusText: `connected as @${await window.polly.getStore('github_username')}`,
-            lastSync: new Date().toISOString()
+            statusText: `connected as @${await window.polly.getStore("github_username")}`,
+            lastSync: new Date().toISOString(),
           });
         } else {
           alert(`Sync failed: ${result.error}`);
         }
-        
+
         githubSyncBtn.disabled = false;
-        githubSyncBtn.textContent = 'sync now';
+        githubSyncBtn.textContent = "sync now";
       } catch (error) {
         alert(`Error: ${error.message}`);
-        console.error('Sync error:', error);
+        console.error("Sync error:", error);
         githubSyncBtn.disabled = false;
-        githubSyncBtn.textContent = 'sync now';
+        githubSyncBtn.textContent = "sync now";
       }
     });
   }
 
   // Context7 Integration
-  const context7Btn = document.getElementById('context7-connect-btn');
+  const context7Btn = document.getElementById("context7-connect-btn");
   if (context7Btn) {
-    context7Btn.addEventListener('click', () => {
+    context7Btn.addEventListener("click", () => {
       // Show modal
-      document.getElementById('context7-modal').classList.remove('hidden');
-      document.getElementById('context7-api-key-input').value = '';
-      document.getElementById('context7-modal-error').classList.add('hidden');
-      document.getElementById('context7-api-key-input').focus();
+      document.getElementById("context7-modal").classList.remove("hidden");
+      document.getElementById("context7-api-key-input").value = "";
+      document.getElementById("context7-modal-error").classList.add("hidden");
+      document.getElementById("context7-api-key-input").focus();
     });
   }
-  
+
   // Context7 API key input - submit on Enter
-  const context7ApiKeyInput = document.getElementById('context7-api-key-input');
+  const context7ApiKeyInput = document.getElementById("context7-api-key-input");
   if (context7ApiKeyInput) {
-    context7ApiKeyInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        document.getElementById('context7-connect-submit').click();
+    context7ApiKeyInput.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        document.getElementById("context7-connect-submit").click();
       }
     });
   }
 
   // Context7 modal submit
-  const context7SubmitBtn = document.getElementById('context7-connect-submit');
+  const context7SubmitBtn = document.getElementById("context7-connect-submit");
   if (context7SubmitBtn) {
-    context7SubmitBtn.addEventListener('click', async () => {
-      const apiKey = document.getElementById('context7-api-key-input').value.trim();
-      const errorEl = document.getElementById('context7-modal-error');
-      
+    context7SubmitBtn.addEventListener("click", async () => {
+      const apiKey = document
+        .getElementById("context7-api-key-input")
+        .value.trim();
+      const errorEl = document.getElementById("context7-modal-error");
+
       // Validate API key format
       if (!apiKey) {
-        errorEl.textContent = 'Please enter an API key';
-        errorEl.classList.remove('hidden');
+        errorEl.textContent = "Please enter an API key";
+        errorEl.classList.remove("hidden");
         return;
       }
-      
-      if (!apiKey.startsWith('ctx7sk-')) {
-        errorEl.textContent = 'Invalid API key format. Key must start with "ctx7sk-"';
-        errorEl.classList.remove('hidden');
+
+      if (!apiKey.startsWith("ctx7sk-")) {
+        errorEl.textContent =
+          'Invalid API key format. Key must start with "ctx7sk-"';
+        errorEl.classList.remove("hidden");
         return;
       }
-      
+
       // Disable button and show loading
       context7SubmitBtn.disabled = true;
-      context7SubmitBtn.textContent = 'Connecting...';
-      errorEl.classList.add('hidden');
-      
+      context7SubmitBtn.textContent = "Connecting...";
+      errorEl.classList.add("hidden");
+
       try {
         // Connect to Context7
-        console.log('Attempting to connect to Context7...');
-        const response = await fetch('http://127.0.0.1:11436/polly/integrations/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            integration: 'context7',
-            credentials: { api_key: apiKey }
-          })
-        });
-        
-        console.log('Response status:', response.status);
-        console.log('Response headers:', response.headers);
-        
+        console.log("Attempting to connect to Context7...");
+        const response = await fetch(
+          "http://127.0.0.1:11436/polly/integrations/connect",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              integration: "context7",
+              credentials: { api_key: apiKey },
+            }),
+          },
+        );
+
+        console.log("Response status:", response.status);
+        console.log("Response headers:", response.headers);
+
         if (!response.ok) {
           const errorText = await response.text();
-          console.error('Server error response:', errorText);
+          console.error("Server error response:", errorText);
           errorEl.textContent = `Server error: ${response.status}`;
-          errorEl.classList.remove('hidden');
+          errorEl.classList.remove("hidden");
           return;
         }
-        
+
         const result = await response.json();
-        console.log('Connection result:', result);
-        
+        console.log("Connection result:", result);
+
         if (result.success) {
           // Success! Save API key to credential store
-          await window.polly.setCredential('context7_api_key', apiKey);
-          
+          await window.polly.setCredential("context7_api_key", apiKey);
+
           // Close modal and update UI
-          document.getElementById('context7-modal').classList.add('hidden');
-          updateIntegrationStatus('context7', 'connected');
-          
+          document.getElementById("context7-modal").classList.add("hidden");
+          updateIntegrationStatus("context7", "connected");
+
           // Show sync and config buttons
-          document.getElementById('context7-connect-btn').classList.add('hidden');
-          document.getElementById('context7-sync-btn').classList.remove('hidden');
-          
-          const configBtn = document.getElementById('context7-config-btn');
-          configBtn.classList.remove('hidden');
-          
+          document
+            .getElementById("context7-connect-btn")
+            .classList.add("hidden");
+          document
+            .getElementById("context7-sync-btn")
+            .classList.remove("hidden");
+
+          const configBtn = document.getElementById("context7-config-btn");
+          configBtn.classList.remove("hidden");
+
           // Note: Click handler is already attached by initIntegrationConfig()
           // which runs on DOMContentLoaded and attaches to all *-config-btn buttons
-          
+
           // Optionally auto-sync
           setTimeout(() => syncContext7Documentation(), 1000);
         } else {
-          errorEl.textContent = result.error || 'Connection failed';
-          errorEl.classList.remove('hidden');
+          errorEl.textContent = result.error || "Connection failed";
+          errorEl.classList.remove("hidden");
         }
       } catch (error) {
-        console.error('Context7 connection error:', error);
-        console.error('Error details:', {
+        console.error("Context7 connection error:", error);
+        console.error("Error details:", {
           message: error.message,
           stack: error.stack,
-          type: error.constructor.name
+          type: error.constructor.name,
         });
         errorEl.textContent = `Connection failed: ${error.message}`;
-        errorEl.classList.remove('hidden');
+        errorEl.classList.remove("hidden");
       } finally {
         context7SubmitBtn.disabled = false;
-        context7SubmitBtn.textContent = 'Connect';
+        context7SubmitBtn.textContent = "Connect";
       }
     });
   }
-  
+
   // Context7 sync button - use selected libraries or defaults
-  const context7SyncBtn = document.getElementById('context7-sync-btn');
+  const context7SyncBtn = document.getElementById("context7-sync-btn");
   if (context7SyncBtn) {
-    context7SyncBtn.addEventListener('click', () => {
-      const checkboxes = document.querySelectorAll('.context7-lib-checkbox:checked');
-      const customInput = document.getElementById('context7-custom-libraries-input');
-      
-      let libraries = Array.from(checkboxes).map(cb => cb.value);
-      
+    context7SyncBtn.addEventListener("click", () => {
+      const checkboxes = document.querySelectorAll(
+        ".context7-lib-checkbox:checked",
+      );
+      const customInput = document.getElementById(
+        "context7-custom-libraries-input",
+      );
+
+      let libraries = Array.from(checkboxes).map((cb) => cb.value);
+
       // Add custom libraries
       if (customInput && customInput.value.trim()) {
-        const customLibs = customInput.value.split(',').map(lib => lib.trim()).filter(lib => lib);
+        const customLibs = customInput.value
+          .split(",")
+          .map((lib) => lib.trim())
+          .filter((lib) => lib);
         libraries.push(...customLibs);
       }
-      
+
       // Use defaults if nothing selected
       if (libraries.length === 0) {
-        libraries = ['react', 'nextjs', 'python'];
+        libraries = ["react", "nextjs", "python"];
       }
-      
+
       syncContext7Documentation(libraries);
     });
   }
-  
-  
+
   // Context7 Popular Libraries Management
   const POPULAR_LIBRARIES = [
     // Frontend Frameworks
-    { name: 'react', category: 'Frontend' },
-    { name: 'vue', category: 'Frontend' },
-    { name: 'angular', category: 'Frontend' },
-    { name: 'svelte', category: 'Frontend' },
-    { name: 'nextjs', category: 'Frontend' },
-    { name: 'nuxt', category: 'Frontend' },
-    { name: 'remix', category: 'Frontend' },
-    
+    { name: "react", category: "Frontend" },
+    { name: "vue", category: "Frontend" },
+    { name: "angular", category: "Frontend" },
+    { name: "svelte", category: "Frontend" },
+    { name: "nextjs", category: "Frontend" },
+    { name: "nuxt", category: "Frontend" },
+    { name: "remix", category: "Frontend" },
+
     // Backend Frameworks
-    { name: 'express', category: 'Backend' },
-    { name: 'fastapi', category: 'Backend' },
-    { name: 'django', category: 'Backend' },
-    { name: 'flask', category: 'Backend' },
-    { name: 'nestjs', category: 'Backend' },
-    
+    { name: "express", category: "Backend" },
+    { name: "fastapi", category: "Backend" },
+    { name: "django", category: "Backend" },
+    { name: "flask", category: "Backend" },
+    { name: "nestjs", category: "Backend" },
+
     // Languages
-    { name: 'python', category: 'Languages' },
-    { name: 'typescript', category: 'Languages' },
-    { name: 'javascript', category: 'Languages' },
-    { name: 'rust', category: 'Languages' },
-    { name: 'go', category: 'Languages' },
-    
+    { name: "python", category: "Languages" },
+    { name: "typescript", category: "Languages" },
+    { name: "javascript", category: "Languages" },
+    { name: "rust", category: "Languages" },
+    { name: "go", category: "Languages" },
+
     // Mobile
-    { name: 'react-native', category: 'Mobile' },
-    { name: 'flutter', category: 'Mobile' },
-    
+    { name: "react-native", category: "Mobile" },
+    { name: "flutter", category: "Mobile" },
+
     // Databases & ORMs
-    { name: 'prisma', category: 'Database' },
-    { name: 'supabase', category: 'Database' },
-    { name: 'postgresql', category: 'Database' },
-    { name: 'mongodb', category: 'Database' },
-    
+    { name: "prisma", category: "Database" },
+    { name: "supabase", category: "Database" },
+    { name: "postgresql", category: "Database" },
+    { name: "mongodb", category: "Database" },
+
     // Styling
-    { name: 'tailwindcss', category: 'Styling' },
-    { name: 'styled-components', category: 'Styling' },
-    
+    { name: "tailwindcss", category: "Styling" },
+    { name: "styled-components", category: "Styling" },
+
     // Build Tools
-    { name: 'vite', category: 'Build' },
-    { name: 'webpack', category: 'Build' },
-    
+    { name: "vite", category: "Build" },
+    { name: "webpack", category: "Build" },
+
     // Testing
-    { name: 'jest', category: 'Testing' },
-    { name: 'vitest', category: 'Testing' },
-    { name: 'playwright', category: 'Testing' },
-    { name: 'cypress', category: 'Testing' },
+    { name: "jest", category: "Testing" },
+    { name: "vitest", category: "Testing" },
+    { name: "playwright", category: "Testing" },
+    { name: "cypress", category: "Testing" },
   ];
-  
+
   // Populate popular libraries checkboxes
   function initContext7Libraries() {
-    const container = document.getElementById('context7-popular-libraries');
+    const container = document.getElementById("context7-popular-libraries");
     if (!container) return;
-    
-    container.innerHTML = '';
-    
-    POPULAR_LIBRARIES.forEach(lib => {
-      const checkbox = document.createElement('label');
-      checkbox.style.cssText = 'display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 4px 6px; border-radius: 3px; font-size: 12px;';
+
+    container.innerHTML = "";
+
+    POPULAR_LIBRARIES.forEach((lib) => {
+      const checkbox = document.createElement("label");
+      checkbox.style.cssText =
+        "display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 4px 6px; border-radius: 3px; font-size: 12px;";
       checkbox.innerHTML = `
         <input type="checkbox" value="${lib.name}" class="context7-lib-checkbox" style="cursor: pointer;">
         <span style="user-select: none;">${lib.name}</span>
       `;
-      
-      checkbox.addEventListener('mouseenter', function() {
-        this.style.background = 'var(--bg-primary)';
+
+      checkbox.addEventListener("mouseenter", function () {
+        this.style.background = "var(--bg-primary)";
       });
-      checkbox.addEventListener('mouseleave', function() {
-        this.style.background = 'transparent';
+      checkbox.addEventListener("mouseleave", function () {
+        this.style.background = "transparent";
       });
-      
+
       container.appendChild(checkbox);
     });
-    
+
     // Update preview when checkboxes change
-    container.addEventListener('change', updateContext7Preview);
+    container.addEventListener("change", updateContext7Preview);
   }
-  
+
   // Update the selected libraries preview
   function updateContext7Preview() {
-    const checkboxes = document.querySelectorAll('.context7-lib-checkbox:checked');
-    const customInput = document.getElementById('context7-custom-libraries-input');
-    const preview = document.getElementById('context7-selected-preview');
-    
-    const selectedLibs = Array.from(checkboxes).map(cb => cb.value);
-    
+    const checkboxes = document.querySelectorAll(
+      ".context7-lib-checkbox:checked",
+    );
+    const customInput = document.getElementById(
+      "context7-custom-libraries-input",
+    );
+    const preview = document.getElementById("context7-selected-preview");
+
+    const selectedLibs = Array.from(checkboxes).map((cb) => cb.value);
+
     // Add custom libraries
     if (customInput && customInput.value.trim()) {
-      const customLibs = customInput.value.split(',').map(lib => lib.trim()).filter(lib => lib);
+      const customLibs = customInput.value
+        .split(",")
+        .map((lib) => lib.trim())
+        .filter((lib) => lib);
       selectedLibs.push(...customLibs);
     }
-    
+
     if (selectedLibs.length === 0) {
-      preview.textContent = 'None selected';
-      preview.style.color = 'var(--text-secondary)';
+      preview.textContent = "None selected";
+      preview.style.color = "var(--text-secondary)";
     } else {
-      preview.textContent = selectedLibs.join(', ');
-      preview.style.color = 'var(--text-primary)';
+      preview.textContent = selectedLibs.join(", ");
+      preview.style.color = "var(--text-primary)";
     }
   }
-  
+
   // Initialize when config section opens
   initContext7Libraries();
-  
+
   // Update preview when custom input changes
-  const customInput = document.getElementById('context7-custom-libraries-input');
+  const customInput = document.getElementById(
+    "context7-custom-libraries-input",
+  );
   if (customInput) {
-    customInput.addEventListener('input', updateContext7Preview);
+    customInput.addEventListener("input", updateContext7Preview);
   }
-  
+
   // Context7 save libraries button
-  const context7SaveLibrariesBtn = document.getElementById('context7-save-libraries-btn');
+  const context7SaveLibrariesBtn = document.getElementById(
+    "context7-save-libraries-btn",
+  );
   if (context7SaveLibrariesBtn) {
-    context7SaveLibrariesBtn.addEventListener('click', () => {
-      const checkboxes = document.querySelectorAll('.context7-lib-checkbox:checked');
-      const customInput = document.getElementById('context7-custom-libraries-input');
-      
-      const libraries = Array.from(checkboxes).map(cb => cb.value);
-      
+    context7SaveLibrariesBtn.addEventListener("click", () => {
+      const checkboxes = document.querySelectorAll(
+        ".context7-lib-checkbox:checked",
+      );
+      const customInput = document.getElementById(
+        "context7-custom-libraries-input",
+      );
+
+      const libraries = Array.from(checkboxes).map((cb) => cb.value);
+
       // Add custom libraries
       if (customInput && customInput.value.trim()) {
-        const customLibs = customInput.value.split(',').map(lib => lib.trim()).filter(lib => lib);
+        const customLibs = customInput.value
+          .split(",")
+          .map((lib) => lib.trim())
+          .filter((lib) => lib);
         libraries.push(...customLibs);
       }
-      
+
       if (libraries.length === 0) {
-        alert('Please select at least one library');
+        alert("Please select at least one library");
         return;
       }
-      
+
       syncContext7Documentation(libraries);
     });
   }
 
   // Obsidian Integration
-  const obsidianConnectBtn = document.getElementById('obsidian-connect-btn');
+  const obsidianConnectBtn = document.getElementById("obsidian-connect-btn");
   if (obsidianConnectBtn) {
-    obsidianConnectBtn.addEventListener('click', async () => {
+    obsidianConnectBtn.addEventListener("click", async () => {
       obsidianConnectBtn.disabled = true;
-      obsidianConnectBtn.textContent = 'Connecting...';
-      
+      obsidianConnectBtn.textContent = "Connecting...";
+
       try {
-        const response = await fetch('http://127.0.0.1:11436/polly/integrations/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            integration: 'obsidian',
-            credentials: {}
-          })
-        });
-        
+        const response = await fetch(
+          "http://127.0.0.1:11436/polly/integrations/connect",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              integration: "obsidian",
+              credentials: {},
+            }),
+          },
+        );
+
         const result = await response.json();
-        
+
         if (result.success) {
-          console.log('Obsidian connected successfully');
-          updateIntegrationStatus('obsidian', 'connected');
-          
+          console.log("Obsidian connected successfully");
+          updateIntegrationStatus("obsidian", "connected");
+
           // Show sync button
-          const syncBtn = document.getElementById('obsidian-sync-btn');
-          if (syncBtn) syncBtn.classList.remove('hidden');
-          
+          const syncBtn = document.getElementById("obsidian-sync-btn");
+          if (syncBtn) syncBtn.classList.remove("hidden");
+
           // Show stats
-          const statsDiv = document.getElementById('obsidian-stats');
-          if (statsDiv) statsDiv.classList.remove('hidden');
-          
+          const statsDiv = document.getElementById("obsidian-stats");
+          if (statsDiv) statsDiv.classList.remove("hidden");
+
           // Trigger initial sync
           syncObsidian();
         } else {
-          console.error('Obsidian connection failed:', result);
-          updateIntegrationStatus('obsidian', 'error');
-          alert(`Connection failed: ${result.error || 'Unknown error'}`);
+          console.error("Obsidian connection failed:", result);
+          updateIntegrationStatus("obsidian", "error");
+          alert(`Connection failed: ${result.error || "Unknown error"}`);
         }
       } catch (error) {
-        console.error('Obsidian connection error:', error);
-        updateIntegrationStatus('obsidian', 'error');
-        alert('Connection failed. Is the server running?');
+        console.error("Obsidian connection error:", error);
+        updateIntegrationStatus("obsidian", "error");
+        alert("Connection failed. Is the server running?");
       } finally {
         obsidianConnectBtn.disabled = false;
-        obsidianConnectBtn.textContent = 'connect';
+        obsidianConnectBtn.textContent = "connect";
       }
     });
   }
 
   // Obsidian sync button
-  const obsidianSyncBtn = document.getElementById('obsidian-sync-btn');
+  const obsidianSyncBtn = document.getElementById("obsidian-sync-btn");
   if (obsidianSyncBtn) {
-    obsidianSyncBtn.addEventListener('click', () => syncObsidian());
+    obsidianSyncBtn.addEventListener("click", () => syncObsidian());
   }
 
   // Note: Obsidian config button is handled by initIntegrationConfig()
 
   // Obsidian choose folder button
-  const obsidianChooseFolderBtn = document.getElementById('obsidian-choose-folder-btn');
+  const obsidianChooseFolderBtn = document.getElementById(
+    "obsidian-choose-folder-btn",
+  );
   if (obsidianChooseFolderBtn) {
-    obsidianChooseFolderBtn.addEventListener('click', async () => {
+    obsidianChooseFolderBtn.addEventListener("click", async () => {
       try {
         const result = await window.polly.chooseDirectory();
         if (result && result.success && result.path) {
-          const pathInput = document.getElementById('obsidian-vault-path-input');
+          const pathInput = document.getElementById(
+            "obsidian-vault-path-input",
+          );
           if (pathInput) {
             pathInput.value = result.path;
           }
         }
       } catch (error) {
-        console.error('Error choosing folder:', error);
-        alert('Failed to choose folder');
+        console.error("Error choosing folder:", error);
+        alert("Failed to choose folder");
       }
     });
   }
 
   // Obsidian save config button
-  const obsidianSaveConfigBtn = document.getElementById('obsidian-save-config-btn');
+  const obsidianSaveConfigBtn = document.getElementById(
+    "obsidian-save-config-btn",
+  );
   if (obsidianSaveConfigBtn) {
-    obsidianSaveConfigBtn.addEventListener('click', async () => {
-      const pathInput = document.getElementById('obsidian-vault-path-input');
-      const syncEnabledCheckbox = document.getElementById('obsidian-sync-enabled');
+    obsidianSaveConfigBtn.addEventListener("click", async () => {
+      const pathInput = document.getElementById("obsidian-vault-path-input");
+      const syncEnabledCheckbox = document.getElementById(
+        "obsidian-sync-enabled",
+      );
       const vaultPath = pathInput?.value;
       const syncEnabled = syncEnabledCheckbox?.checked || false;
-      
+
       if (syncEnabled && !vaultPath) {
-        alert('Please select a vault folder when sync is enabled');
+        alert("Please select a vault folder when sync is enabled");
         return;
       }
-      
+
       obsidianSaveConfigBtn.disabled = true;
-      obsidianSaveConfigBtn.textContent = 'Saving...';
-      
+      obsidianSaveConfigBtn.textContent = "Saving...";
+
       try {
         // Save sync preference
-        await window.polly.updateConfig('notes.obsidian.sync_enabled', syncEnabled);
-        
+        await window.polly.updateConfig(
+          "notes.obsidian.sync_enabled",
+          syncEnabled,
+        );
+
         // Save vault path if provided
         if (vaultPath) {
-          await window.polly.updateConfig('obsidian.vault_path', vaultPath);
+          await window.polly.updateConfig("obsidian.vault_path", vaultPath);
         }
-        
+
         // Hide config panel
-        const configPanel = document.getElementById('obsidian-config');
+        const configPanel = document.getElementById("obsidian-config");
         if (configPanel) {
-          configPanel.classList.add('hidden');
+          configPanel.classList.add("hidden");
         }
-        
+
         if (syncEnabled) {
           // Try to connect to Obsidian if sync is enabled
-          const response = await fetch('http://127.0.0.1:11436/polly/integrations/connect', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              integration: 'obsidian',
-              credentials: {}
-            })
-          });
-          
+          const response = await fetch(
+            "http://127.0.0.1:11436/polly/integrations/connect",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                integration: "obsidian",
+                credentials: {},
+              }),
+            },
+          );
+
           const result = await response.json();
-          
+
           if (result.success) {
-            console.log('Obsidian connected successfully');
-            updateIntegrationStatus('obsidian', 'connected');
-            
+            console.log("Obsidian connected successfully");
+            updateIntegrationStatus("obsidian", "connected");
+
             // Show sync button
-            const syncBtn = document.getElementById('obsidian-sync-btn');
-            if (syncBtn) syncBtn.classList.remove('hidden');
-            
+            const syncBtn = document.getElementById("obsidian-sync-btn");
+            if (syncBtn) syncBtn.classList.remove("hidden");
+
             // Show write test button
-            const writeTestBtn = document.getElementById('obsidian-write-test-btn');
-            if (writeTestBtn) writeTestBtn.classList.remove('hidden');
-            
+            const writeTestBtn = document.getElementById(
+              "obsidian-write-test-btn",
+            );
+            if (writeTestBtn) writeTestBtn.classList.remove("hidden");
+
             // Show stats
-            const statsDiv = document.getElementById('obsidian-stats');
-            if (statsDiv) statsDiv.classList.remove('hidden');
-            
+            const statsDiv = document.getElementById("obsidian-stats");
+            if (statsDiv) statsDiv.classList.remove("hidden");
+
             // Update vault path display
             updateObsidianVaultDisplay(vaultPath);
-            
-            alert('Obsidian sync enabled! New notes will be copied to your vault.');
+
+            alert(
+              "Obsidian sync enabled! New notes will be copied to your vault.",
+            );
           } else {
-            console.error('Obsidian connection failed:', result);
-            alert(`Failed to connect to vault: ${result.error || 'Unknown error'}`);
+            console.error("Obsidian connection failed:", result);
+            alert(
+              `Failed to connect to vault: ${result.error || "Unknown error"}`,
+            );
           }
         } else {
           // Sync disabled
-          updateIntegrationStatus('obsidian', 'not connected');
-          alert('Configuration saved. Obsidian sync is disabled.');
+          updateIntegrationStatus("obsidian", "not connected");
+          alert("Configuration saved. Obsidian sync is disabled.");
         }
       } catch (error) {
-        console.error('Error saving Obsidian config:', error);
-        alert('Failed to save configuration');
+        console.error("Error saving Obsidian config:", error);
+        alert("Failed to save configuration");
       } finally {
         obsidianSaveConfigBtn.disabled = false;
-        obsidianSaveConfigBtn.textContent = 'Save Configuration';
+        obsidianSaveConfigBtn.textContent = "Save Configuration";
       }
     });
   }
 
   // Obsidian write test toggle button
-  const obsidianWriteTestBtn = document.getElementById('obsidian-write-test-btn');
+  const obsidianWriteTestBtn = document.getElementById(
+    "obsidian-write-test-btn",
+  );
   if (obsidianWriteTestBtn) {
-    obsidianWriteTestBtn.addEventListener('click', () => {
-      const testPanel = document.getElementById('obsidian-write-test');
+    obsidianWriteTestBtn.addEventListener("click", () => {
+      const testPanel = document.getElementById("obsidian-write-test");
       if (testPanel) {
-        testPanel.classList.toggle('hidden');
+        testPanel.classList.toggle("hidden");
       }
     });
   }
 
   // Obsidian write test - create note
-  const obsidianTestCreateBtn = document.getElementById('obsidian-test-create-btn');
+  const obsidianTestCreateBtn = document.getElementById(
+    "obsidian-test-create-btn",
+  );
   if (obsidianTestCreateBtn) {
-    obsidianTestCreateBtn.addEventListener('click', async () => {
-      const title = document.getElementById('obsidian-test-title').value;
-      const content = document.getElementById('obsidian-test-content').value;
-      const folder = document.getElementById('obsidian-test-folder').value;
-      
+    obsidianTestCreateBtn.addEventListener("click", async () => {
+      const title = document.getElementById("obsidian-test-title").value;
+      const content = document.getElementById("obsidian-test-content").value;
+      const folder = document.getElementById("obsidian-test-folder").value;
+
       if (!title) {
-        alert('Please enter a note title');
+        alert("Please enter a note title");
         return;
       }
-      
+
       obsidianTestCreateBtn.disabled = true;
-      obsidianTestCreateBtn.textContent = 'Creating...';
-      
+      obsidianTestCreateBtn.textContent = "Creating...";
+
       try {
         // Step 1: Get preview
-        const previewResponse = await fetch('http://127.0.0.1:11436/polly/obsidian/create-note', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: title,
-            content: content,
-            folder: folder || null,
-            tags: ['test'],
-            confirmed: false
-          })
-        });
-        
+        const previewResponse = await fetch(
+          "http://127.0.0.1:11436/polly/obsidian/create-note",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: title,
+              content: content,
+              folder: folder || null,
+              tags: ["test"],
+              confirmed: false,
+            }),
+          },
+        );
+
         const preview = await previewResponse.json();
-        console.log('Note preview:', preview);
-        
+        console.log("Note preview:", preview);
+
         // Step 2: Show confirmation dialog
         const confirmMsg = `Create note: ${preview.note_path}\n\nPreview:\n${preview.content_preview}\n\nProceed?`;
         if (!confirm(confirmMsg)) {
           obsidianTestCreateBtn.disabled = false;
-          obsidianTestCreateBtn.textContent = 'Create Test Note';
+          obsidianTestCreateBtn.textContent = "Create Test Note";
           return;
         }
-        
+
         // Step 3: Execute creation
-        const createResponse = await fetch('http://127.0.0.1:11436/polly/obsidian/create-note', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            confirmed: true,
-            preview: preview
-          })
-        });
-        
+        const createResponse = await fetch(
+          "http://127.0.0.1:11436/polly/obsidian/create-note",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              confirmed: true,
+              preview: preview,
+            }),
+          },
+        );
+
         const result = await createResponse.json();
-        console.log('Create result:', result);
-        
+        console.log("Create result:", result);
+
         if (result.success) {
           alert(`Note created successfully!\n${result.note_path}`);
           // Clear form
-          document.getElementById('obsidian-test-title').value = '';
-          document.getElementById('obsidian-test-content').value = '';
-          document.getElementById('obsidian-test-folder').value = '';
+          document.getElementById("obsidian-test-title").value = "";
+          document.getElementById("obsidian-test-content").value = "";
+          document.getElementById("obsidian-test-folder").value = "";
         } else {
-          alert(`Failed to create note: ${result.error || 'Unknown error'}`);
+          alert(`Failed to create note: ${result.error || "Unknown error"}`);
         }
-        
       } catch (error) {
-        console.error('Error creating note:', error);
-        alert('Failed to create note. Check console for details.');
+        console.error("Error creating note:", error);
+        alert("Failed to create note. Check console for details.");
       } finally {
         obsidianTestCreateBtn.disabled = false;
-        obsidianTestCreateBtn.textContent = 'Create Test Note';
+        obsidianTestCreateBtn.textContent = "Create Test Note";
       }
     });
   }
 
   // Calendar Integration
-  const calendarConnectBtn = document.getElementById('calendar-connect-btn');
+  const calendarConnectBtn = document.getElementById("calendar-connect-btn");
   if (calendarConnectBtn) {
-    calendarConnectBtn.addEventListener('click', async () => {
+    calendarConnectBtn.addEventListener("click", async () => {
       calendarConnectBtn.disabled = true;
-      calendarConnectBtn.textContent = 'Connecting...';
-      
+      calendarConnectBtn.textContent = "Connecting...";
+
       try {
-        const response = await fetch('http://127.0.0.1:11436/polly/integrations/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            integration: 'calendar',
-            credentials: {}  // No credentials needed for macOS Calendar
-          })
-        });
-        
+        const response = await fetch(
+          "http://127.0.0.1:11436/polly/integrations/connect",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              integration: "calendar",
+              credentials: {}, // No credentials needed for macOS Calendar
+            }),
+          },
+        );
+
         const result = await response.json();
-        
+
         if (result.success) {
-          updateIntegrationStatus('calendar', 'connected');
-          
+          updateIntegrationStatus("calendar", "connected");
+
           // Show sync and config buttons
-          document.getElementById('calendar-connect-btn').classList.add('hidden');
-          document.getElementById('calendar-sync-btn').classList.remove('hidden');
-          document.getElementById('calendar-config-btn').classList.remove('hidden');
-          
+          document
+            .getElementById("calendar-connect-btn")
+            .classList.add("hidden");
+          document
+            .getElementById("calendar-sync-btn")
+            .classList.remove("hidden");
+          document
+            .getElementById("calendar-config-btn")
+            .classList.remove("hidden");
+
           // Auto-sync
           setTimeout(() => syncCalendar(), 500);
         } else {
-          alert(`Calendar connection failed: ${result.error || 'Unknown error'}`);
-          updateIntegrationStatus('calendar', 'error');
+          alert(
+            `Calendar connection failed: ${result.error || "Unknown error"}`,
+          );
+          updateIntegrationStatus("calendar", "error");
         }
       } catch (error) {
-        console.error('Calendar connection error:', error);
-        alert('Connection failed. Is the server running?');
+        console.error("Calendar connection error:", error);
+        alert("Connection failed. Is the server running?");
       } finally {
         calendarConnectBtn.disabled = false;
-        calendarConnectBtn.textContent = 'enable';
+        calendarConnectBtn.textContent = "enable";
       }
     });
   }
-  
+
   // Calendar sync
-  const calendarSyncBtn = document.getElementById('calendar-sync-btn');
+  const calendarSyncBtn = document.getElementById("calendar-sync-btn");
   if (calendarSyncBtn) {
-    calendarSyncBtn.addEventListener('click', () => syncCalendar());
+    calendarSyncBtn.addEventListener("click", () => syncCalendar());
   }
-  
+
   // Calendar config save
-  const calendarSaveConfigBtn = document.getElementById('calendar-save-config-btn');
+  const calendarSaveConfigBtn = document.getElementById(
+    "calendar-save-config-btn",
+  );
   if (calendarSaveConfigBtn) {
-    calendarSaveConfigBtn.addEventListener('click', () => {
-      const daysInput = document.getElementById('calendar-days-input');
+    calendarSaveConfigBtn.addEventListener("click", () => {
+      const daysInput = document.getElementById("calendar-days-input");
       const days = parseInt(daysInput.value) || 7;
       syncCalendar(days);
     });
   }
-  
+
   // Reminders Integration
-  const remindersConnectBtn = document.getElementById('reminders-connect-btn');
+  const remindersConnectBtn = document.getElementById("reminders-connect-btn");
   if (remindersConnectBtn) {
-    remindersConnectBtn.addEventListener('click', async () => {
+    remindersConnectBtn.addEventListener("click", async () => {
       remindersConnectBtn.disabled = true;
-      remindersConnectBtn.textContent = 'Connecting...';
-      
+      remindersConnectBtn.textContent = "Connecting...";
+
       try {
-        const response = await fetch('http://127.0.0.1:11436/polly/integrations/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            integration: 'reminders',
-            credentials: {}  // No credentials needed for macOS Reminders
-          })
-        });
-        
+        const response = await fetch(
+          "http://127.0.0.1:11436/polly/integrations/connect",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              integration: "reminders",
+              credentials: {}, // No credentials needed for macOS Reminders
+            }),
+          },
+        );
+
         const result = await response.json();
-        
+
         if (result.success) {
-          updateIntegrationStatus('reminders', 'connected');
-          
+          updateIntegrationStatus("reminders", "connected");
+
           // Show sync and config buttons
-          document.getElementById('reminders-connect-btn').classList.add('hidden');
-          document.getElementById('reminders-sync-btn').classList.remove('hidden');
-          document.getElementById('reminders-config-btn').classList.remove('hidden');
-          
+          document
+            .getElementById("reminders-connect-btn")
+            .classList.add("hidden");
+          document
+            .getElementById("reminders-sync-btn")
+            .classList.remove("hidden");
+          document
+            .getElementById("reminders-config-btn")
+            .classList.remove("hidden");
+
           // Auto-sync
           setTimeout(() => syncReminders(), 500);
         } else {
-          alert(`Reminders connection failed: ${result.error || 'Unknown error'}`);
-          updateIntegrationStatus('reminders', 'error');
+          alert(
+            `Reminders connection failed: ${result.error || "Unknown error"}`,
+          );
+          updateIntegrationStatus("reminders", "error");
         }
       } catch (error) {
-        console.error('Reminders connection error:', error);
-        alert('Connection failed. Is the server running?');
+        console.error("Reminders connection error:", error);
+        alert("Connection failed. Is the server running?");
       } finally {
         remindersConnectBtn.disabled = false;
-        remindersConnectBtn.textContent = 'enable';
+        remindersConnectBtn.textContent = "enable";
       }
     });
   }
-  
+
   // Reminders sync
-  const remindersSyncBtn = document.getElementById('reminders-sync-btn');
+  const remindersSyncBtn = document.getElementById("reminders-sync-btn");
   if (remindersSyncBtn) {
-    remindersSyncBtn.addEventListener('click', () => syncReminders());
+    remindersSyncBtn.addEventListener("click", () => syncReminders());
   }
-  
+
   // Reminders config save
-  const remindersSaveConfigBtn = document.getElementById('reminders-save-config-btn');
+  const remindersSaveConfigBtn = document.getElementById(
+    "reminders-save-config-btn",
+  );
   if (remindersSaveConfigBtn) {
-    remindersSaveConfigBtn.addEventListener('click', () => {
-      const includeCompleted = document.getElementById('reminders-completed-checkbox').checked;
+    remindersSaveConfigBtn.addEventListener("click", () => {
+      const includeCompleted = document.getElementById(
+        "reminders-completed-checkbox",
+      ).checked;
       syncReminders(includeCompleted);
     });
   }
 
-  const icalBtn = document.getElementById('ical-connect-btn');
+  const icalBtn = document.getElementById("ical-connect-btn");
   if (icalBtn) {
-    icalBtn.addEventListener('click', () => {
-      alert('Calendar account modal will be implemented in Phase 4');
+    icalBtn.addEventListener("click", () => {
+      alert("Calendar account modal will be implemented in Phase 4");
     });
   }
 
-  const macosBtn = document.getElementById('macos-enable-btn');
+  const macosBtn = document.getElementById("macos-enable-btn");
   if (macosBtn) {
-    macosBtn.addEventListener('click', () => {
-      alert('macOS permissions will be implemented in Phase 9');
+    macosBtn.addEventListener("click", () => {
+      alert("macOS permissions will be implemented in Phase 9");
     });
   }
 
-  const regenerateBtn = document.getElementById('btn-regenerate-key');
+  const regenerateBtn = document.getElementById("btn-regenerate-key");
   if (regenerateBtn) {
-    regenerateBtn.addEventListener('click', () => {
-      const newKey = 'polly-local-' + Math.random().toString(36).substring(2, 15);
-      document.getElementById('opencode-api-key').value = newKey;
-      alert('New API key generated!');
+    regenerateBtn.addEventListener("click", () => {
+      const newKey =
+        "polly-local-" + Math.random().toString(36).substring(2, 15);
+      document.getElementById("opencode-api-key").value = newKey;
+      alert("New API key generated!");
     });
   }
 }
 
 // Initialize settings tabs and integrations when settings view is loaded
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener("DOMContentLoaded", () => {
   initSettingsTabs();
   initIntegrationConfig();
   initIntegrationPlaceholders();
@@ -9549,14 +10637,14 @@ document.addEventListener('DOMContentLoaded', () => {
   setupMigration(); // Phase 16 - Migration UI
   setupCompressionSettings(); // Compression settings UI
   setupMemorySettings(); // Memory provider settings UI
-  
+
   // Ensure all integration config panels start hidden
-  document.querySelectorAll('.integration-config').forEach(panel => {
-    if (!panel.classList.contains('hidden')) {
-      panel.classList.add('hidden');
+  document.querySelectorAll(".integration-config").forEach((panel) => {
+    if (!panel.classList.contains("hidden")) {
+      panel.classList.add("hidden");
     }
   });
-  
+
   restoreIntegrationStatus();
 });
 
@@ -9569,33 +10657,34 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 function openSaveConversationModal() {
   const messages = getCurrentConversationMessages();
-  
+
   if (messages.length === 0) {
-    alert('No conversation to save. Start chatting first!');
+    alert("No conversation to save. Start chatting first!");
     return;
   }
-  
+
   // Reset modal
-  document.getElementById('note-title').value = '';
-  document.getElementById('note-folder').value = '30-Ideas';
-  document.getElementById('note-tags-input').value = '';
-  document.getElementById('folder-suggestion').classList.add('hidden');
-  document.getElementById('suggested-tags').innerHTML = '';
-  document.getElementById('selected-tags').innerHTML = '';
-  document.getElementById('save-modal-status').classList.add('hidden');
-  
+  document.getElementById("note-title").value = "";
+  document.getElementById("note-folder").value = "30-Ideas";
+  document.getElementById("note-tags-input").value = "";
+  document.getElementById("folder-suggestion").classList.add("hidden");
+  document.getElementById("suggested-tags").innerHTML = "";
+  document.getElementById("selected-tags").innerHTML = "";
+  document.getElementById("save-modal-status").classList.add("hidden");
+
   // Generate title from first user message
-  const firstUserMsg = messages.find(m => m.role === 'user');
+  const firstUserMsg = messages.find((m) => m.role === "user");
   if (firstUserMsg) {
     const title = firstUserMsg.content.substring(0, 60);
-    document.getElementById('note-title').placeholder = title + (firstUserMsg.content.length > 60 ? '...' : '');
+    document.getElementById("note-title").placeholder =
+      title + (firstUserMsg.content.length > 60 ? "..." : "");
   }
-  
+
   // Show modal
-  document.getElementById('save-conversation-modal').classList.remove('hidden');
-  
+  document.getElementById("save-conversation-modal").classList.remove("hidden");
+
   // Re-initialize icons
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     setTimeout(() => lucide.createIcons(), 0);
   }
 }
@@ -9604,50 +10693,56 @@ function openSaveConversationModal() {
  * Close save conversation modal
  */
 function closeSaveConversationModal() {
-  document.getElementById('save-conversation-modal').classList.add('hidden');
+  document.getElementById("save-conversation-modal").classList.add("hidden");
 }
 
 /**
  * Suggest folder for note
  */
 async function suggestFolder() {
-  const title = document.getElementById('note-title').value || document.getElementById('note-title').placeholder;
-  const statusEl = document.getElementById('save-modal-status');
-  
+  const title =
+    document.getElementById("note-title").value ||
+    document.getElementById("note-title").placeholder;
+  const statusEl = document.getElementById("save-modal-status");
+
   // Show loading
-  statusEl.textContent = 'Getting folder suggestion...';
-  statusEl.className = 'status-message loading';
-  statusEl.classList.remove('hidden');
-  
+  statusEl.textContent = "Getting folder suggestion...";
+  statusEl.className = "status-message loading";
+  statusEl.classList.remove("hidden");
+
   try {
     // Combine conversation for analysis
     const messages = getCurrentConversationMessages();
-    const content = messages.map(m => m.content).join('\n\n');
-    
-    const response = await fetch(`http://127.0.0.1:11436/polly/obsidian/suggest-folder?title=${encodeURIComponent(title)}&content=${encodeURIComponent(content)}`);
-    
+    const content = messages.map((m) => m.content).join("\n\n");
+
+    const response = await fetch(
+      `http://127.0.0.1:11436/polly/obsidian/suggest-folder?title=${encodeURIComponent(title)}&content=${encodeURIComponent(content)}`,
+    );
+
     if (!response.ok) {
       throw new Error(`Server returned ${response.status}`);
     }
-    
+
     const result = await response.json();
-    
+
     // Show suggestion
-    document.getElementById('suggested-folder-name').textContent = result.suggested_folder;
-    document.getElementById('suggested-folder-domain').textContent = `(${result.domain}, ${Math.round(result.confidence * 100)}% confidence)`;
-    document.getElementById('folder-reasoning').textContent = result.reasoning;
-    document.getElementById('folder-suggestion').classList.remove('hidden');
-    
-    statusEl.classList.add('hidden');
-    
+    document.getElementById("suggested-folder-name").textContent =
+      result.suggested_folder;
+    document.getElementById("suggested-folder-domain").textContent =
+      `(${result.domain}, ${Math.round(result.confidence * 100)}% confidence)`;
+    document.getElementById("folder-reasoning").textContent = result.reasoning;
+    document.getElementById("folder-suggestion").classList.remove("hidden");
+
+    statusEl.classList.add("hidden");
+
     // Re-initialize icons
-    if (typeof lucide !== 'undefined') {
+    if (typeof lucide !== "undefined") {
       setTimeout(() => lucide.createIcons(), 0);
     }
   } catch (error) {
-    console.error('Error suggesting folder:', error);
+    console.error("Error suggesting folder:", error);
     statusEl.textContent = `Error: ${error.message}`;
-    statusEl.className = 'status-message error';
+    statusEl.className = "status-message error";
   }
 }
 
@@ -9655,48 +10750,51 @@ async function suggestFolder() {
  * Suggest tags for note
  */
 async function suggestTags() {
-  const title = document.getElementById('note-title').value || document.getElementById('note-title').placeholder;
-  const statusEl = document.getElementById('save-modal-status');
-  
+  const title =
+    document.getElementById("note-title").value ||
+    document.getElementById("note-title").placeholder;
+  const statusEl = document.getElementById("save-modal-status");
+
   // Show loading
-  statusEl.textContent = 'Getting tag suggestions...';
-  statusEl.className = 'status-message loading';
-  statusEl.classList.remove('hidden');
-  
+  statusEl.textContent = "Getting tag suggestions...";
+  statusEl.className = "status-message loading";
+  statusEl.classList.remove("hidden");
+
   try {
     // Combine conversation for analysis
     const messages = getCurrentConversationMessages();
-    const content = messages.map(m => m.content).join('\n\n');
-    
-    const response = await fetch(`http://127.0.0.1:11436/polly/obsidian/suggest-tags?title=${encodeURIComponent(title)}&content=${encodeURIComponent(content)}`);
-    
+    const content = messages.map((m) => m.content).join("\n\n");
+
+    const response = await fetch(
+      `http://127.0.0.1:11436/polly/obsidian/suggest-tags?title=${encodeURIComponent(title)}&content=${encodeURIComponent(content)}`,
+    );
+
     if (!response.ok) {
       throw new Error(`Server returned ${response.status}`);
     }
-    
+
     const result = await response.json();
-    
+
     // Display suggested tags
-    const suggestedTagsContainer = document.getElementById('suggested-tags');
-    suggestedTagsContainer.innerHTML = '';
-    
-    result.suggested_tags.forEach(tagInfo => {
-      const chip = document.createElement('span');
-      chip.className = 'tag-chip suggested';
+    const suggestedTagsContainer = document.getElementById("suggested-tags");
+    suggestedTagsContainer.innerHTML = "";
+
+    result.suggested_tags.forEach((tagInfo) => {
+      const chip = document.createElement("span");
+      chip.className = "tag-chip suggested";
       chip.innerHTML = `
         ${tagInfo.tag}
         <span class="tag-confidence">${Math.round(tagInfo.confidence * 100)}%</span>
       `;
-      chip.addEventListener('click', () => addTagToSelection(tagInfo.tag));
+      chip.addEventListener("click", () => addTagToSelection(tagInfo.tag));
       suggestedTagsContainer.appendChild(chip);
     });
-    
-    statusEl.classList.add('hidden');
-    
+
+    statusEl.classList.add("hidden");
   } catch (error) {
-    console.error('Error suggesting tags:', error);
+    console.error("Error suggesting tags:", error);
     statusEl.textContent = `Error: ${error.message}`;
-    statusEl.className = 'status-message error';
+    statusEl.className = "status-message error";
   }
 }
 
@@ -9704,26 +10802,28 @@ async function suggestTags() {
  * Add tag to selection
  */
 function addTagToSelection(tag) {
-  const selectedTagsContainer = document.getElementById('selected-tags');
-  
+  const selectedTagsContainer = document.getElementById("selected-tags");
+
   // Check if already added
-  const existingTags = Array.from(selectedTagsContainer.querySelectorAll('.tag-chip')).map(el => el.dataset.tag);
+  const existingTags = Array.from(
+    selectedTagsContainer.querySelectorAll(".tag-chip"),
+  ).map((el) => el.dataset.tag);
   if (existingTags.includes(tag)) {
     return;
   }
-  
-  const chip = document.createElement('span');
-  chip.className = 'tag-chip selected';
+
+  const chip = document.createElement("span");
+  chip.className = "tag-chip selected";
   chip.dataset.tag = tag;
   chip.innerHTML = `
     ${tag}
     <span class="tag-remove">×</span>
   `;
-  
-  chip.querySelector('.tag-remove').addEventListener('click', () => {
+
+  chip.querySelector(".tag-remove").addEventListener("click", () => {
     chip.remove();
   });
-  
+
   selectedTagsContainer.appendChild(chip);
 }
 
@@ -9731,57 +10831,64 @@ function addTagToSelection(tag) {
  * Save conversation to Obsidian
  */
 async function saveConversationToObsidian() {
-  const title = document.getElementById('note-title').value || document.getElementById('note-title').placeholder;
-  const folder = document.getElementById('note-folder').value || '30-Ideas';
-  const statusEl = document.getElementById('save-modal-status');
-  
+  const title =
+    document.getElementById("note-title").value ||
+    document.getElementById("note-title").placeholder;
+  const folder = document.getElementById("note-folder").value || "30-Ideas";
+  const statusEl = document.getElementById("save-modal-status");
+
   // Get selected tags
-  const selectedTags = Array.from(document.getElementById('selected-tags').querySelectorAll('.tag-chip')).map(el => el.dataset.tag);
-  
+  const selectedTags = Array.from(
+    document.getElementById("selected-tags").querySelectorAll(".tag-chip"),
+  ).map((el) => el.dataset.tag);
+
   // Show loading
-  statusEl.textContent = 'Creating note...';
-  statusEl.className = 'status-message loading';
-  statusEl.classList.remove('hidden');
-  
-  document.getElementById('btn-confirm-save').disabled = true;
-  
+  statusEl.textContent = "Creating note...";
+  statusEl.className = "status-message loading";
+  statusEl.classList.remove("hidden");
+
+  document.getElementById("btn-confirm-save").disabled = true;
+
   try {
     const messages = getCurrentConversationMessages();
-    const response = await fetch('http://127.0.0.1:11436/polly/obsidian/from-conversation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: messages,
-        title: title,
-        folder: folder,
-        confirmed: true
-      })
-    });
-    
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/obsidian/from-conversation",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: messages,
+          title: title,
+          folder: folder,
+          confirmed: true,
+        }),
+      },
+    );
+
     if (!response.ok) {
       throw new Error(`Server returned ${response.status}`);
     }
-    
+
     const result = await response.json();
-    
-    if (result.status === 'created') {
+
+    if (result.status === "created") {
       // Success!
       statusEl.textContent = `✓ Note created: ${result.path}`;
-      statusEl.className = 'status-message success';
-      
+      statusEl.className = "status-message success";
+
       // Close modal after 1.5 seconds
       setTimeout(() => {
         closeSaveConversationModal();
       }, 1500);
     } else {
-      throw new Error('Note creation failed');
+      throw new Error("Note creation failed");
     }
   } catch (error) {
-    console.error('Error saving conversation:', error);
+    console.error("Error saving conversation:", error);
     statusEl.textContent = `Error: ${error.message}`;
-    statusEl.className = 'status-message error';
+    statusEl.className = "status-message error";
   } finally {
-    document.getElementById('btn-confirm-save').disabled = false;
+    document.getElementById("btn-confirm-save").disabled = false;
   }
 }
 
@@ -9794,7 +10901,7 @@ async function saveConversationToObsidian() {
 function toggleRelatedNotes() {
   // Related notes panel removed in new UI redesign
   // Will be reimplemented in a future update
-  console.log('Related notes feature temporarily disabled during UI redesign');
+  console.log("Related notes feature temporarily disabled during UI redesign");
 }
 
 /**
@@ -9809,11 +10916,11 @@ function closeRelatedNotes() {
  * Update related notes based on current conversation
  */
 async function updateRelatedNotes() {
-  const statusEl = document.getElementById('related-notes-status');
-  const listEl = document.getElementById('related-notes-list');
-  
+  const statusEl = document.getElementById("related-notes-status");
+  const listEl = document.getElementById("related-notes-list");
+
   const messages = getCurrentConversationMessages();
-  
+
   if (messages.length === 0) {
     statusEl.innerHTML = `
       <div style="text-align: center; padding: 20px; color: var(--text-secondary); font-size: 13px;">
@@ -9821,13 +10928,13 @@ async function updateRelatedNotes() {
         <p>Start chatting to see related notes from your vault</p>
       </div>
     `;
-    listEl.innerHTML = '';
-    if (typeof lucide !== 'undefined') {
+    listEl.innerHTML = "";
+    if (typeof lucide !== "undefined") {
       setTimeout(() => lucide.createIcons(), 0);
     }
     return;
   }
-  
+
   // Show loading
   statusEl.innerHTML = `
     <div style="text-align: center; padding: 12px; color: var(--text-secondary); font-size: 12px;">
@@ -9835,31 +10942,33 @@ async function updateRelatedNotes() {
       Finding related notes...
     </div>
   `;
-  listEl.innerHTML = '';
-  
+  listEl.innerHTML = "";
+
   try {
     // Combine recent conversation for context
     const recentMessages = messages.slice(-5); // Last 5 messages
-    const content = recentMessages.map(m => m.content).join('\n\n');
-    
-    const response = await fetch(`http://127.0.0.1:11436/polly/obsidian/find-related?content=${encodeURIComponent(content)}&limit=8`);
-    
+    const content = recentMessages.map((m) => m.content).join("\n\n");
+
+    const response = await fetch(
+      `http://127.0.0.1:11436/polly/obsidian/find-related?content=${encodeURIComponent(content)}&limit=8`,
+    );
+
     if (!response.ok) {
       throw new Error(`Server returned ${response.status}`);
     }
-    
+
     const result = await response.json();
-    
+
     if (result.related_notes && result.related_notes.length > 0) {
       statusEl.innerHTML = `
         <div style="padding: 8px; color: var(--text-secondary); font-size: 12px;">
           Found ${result.related_notes.length} related notes
         </div>
       `;
-      
+
       // Display notes
-      listEl.innerHTML = '';
-      result.related_notes.forEach(note => {
+      listEl.innerHTML = "";
+      result.related_notes.forEach((note) => {
         const noteEl = createRelatedNoteElement(note);
         listEl.appendChild(noteEl);
       });
@@ -9870,24 +10979,24 @@ async function updateRelatedNotes() {
           <p>No related notes found</p>
         </div>
       `;
-      listEl.innerHTML = '';
+      listEl.innerHTML = "";
     }
-    
+
     // Re-initialize icons
-    if (typeof lucide !== 'undefined') {
+    if (typeof lucide !== "undefined") {
       setTimeout(() => lucide.createIcons(), 0);
     }
   } catch (error) {
-    console.error('Error finding related notes:', error);
+    console.error("Error finding related notes:", error);
     statusEl.innerHTML = `
       <div style="text-align: center; padding: 20px; color: var(--error); font-size: 13px;">
         <i data-lucide="alert-circle" style="width: 20px; height: 20px; margin-bottom: 8px;"></i>
         <p>Error: ${error.message}</p>
       </div>
     `;
-    listEl.innerHTML = '';
-    
-    if (typeof lucide !== 'undefined') {
+    listEl.innerHTML = "";
+
+    if (typeof lucide !== "undefined") {
       setTimeout(() => lucide.createIcons(), 0);
     }
   }
@@ -9897,31 +11006,35 @@ async function updateRelatedNotes() {
  * Create related note element
  */
 function createRelatedNoteElement(note) {
-  const div = document.createElement('div');
-  div.className = 'related-note-item';
-  
+  const div = document.createElement("div");
+  div.className = "related-note-item";
+
   const similarityPercent = Math.round(note.similarity * 100);
-  let similarityClass = '';
-  if (note.similarity >= 0.8) similarityClass = 'high';
-  else if (note.similarity >= 0.7) similarityClass = 'medium';
-  
+  let similarityClass = "";
+  if (note.similarity >= 0.8) similarityClass = "high";
+  else if (note.similarity >= 0.7) similarityClass = "medium";
+
   const concepts = note.connections?.shared_concepts || [];
-  const conceptsHtml = concepts.length > 0
-    ? concepts.slice(0, 3).map(c => `<span>${c}</span>`).join('')
-    : '';
-  
+  const conceptsHtml =
+    concepts.length > 0
+      ? concepts
+          .slice(0, 3)
+          .map((c) => `<span>${c}</span>`)
+          .join("")
+      : "";
+
   div.innerHTML = `
     <div class="related-note-title">${note.title}</div>
     <div class="related-note-path">${note.path}</div>
     <div class="related-note-similarity ${similarityClass}">${similarityPercent}% similar</div>
-    ${conceptsHtml ? `<div class="related-note-concepts">${conceptsHtml}</div>` : ''}
+    ${conceptsHtml ? `<div class="related-note-concepts">${conceptsHtml}</div>` : ""}
   `;
-  
+
   // Add click handler to open note in Obsidian
-  div.addEventListener('click', () => {
+  div.addEventListener("click", () => {
     openNoteInObsidian(note.path);
   });
-  
+
   return div;
 }
 
@@ -9931,25 +11044,25 @@ function createRelatedNoteElement(note) {
 async function openNoteInObsidian(notePath) {
   try {
     // Use Obsidian URI protocol
-    const vaultPath = await window.polly.getStore('vaultPath');
+    const vaultPath = await window.polly.getStore("vaultPath");
     if (!vaultPath) {
-      alert('Obsidian vault not configured');
+      alert("Obsidian vault not configured");
       return;
     }
-    
+
     // Extract vault name from path
-    const vaultName = vaultPath.split('/').pop();
-    
+    const vaultName = vaultPath.split("/").pop();
+
     // Encode the path
     const encodedPath = encodeURIComponent(notePath);
-    
+
     // Construct Obsidian URI
     const uri = `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodedPath}`;
-    
+
     // Open in default browser (which will trigger Obsidian)
-    window.open(uri, '_blank');
+    window.open(uri, "_blank");
   } catch (error) {
-    console.error('Error opening note:', error);
+    console.error("Error opening note:", error);
     alert(`Could not open note: ${error.message}`);
   }
 }
@@ -9967,44 +11080,61 @@ const MENTAL_MODEL_TEMPLATES = {
     prompt_injection: "Guide learning through questions and examples.",
     applies_to: ["scrolls"],
     active_on_pages: ["learning"],
-    keywords: ["learn", "teach", "understand"]
+    keywords: ["learn", "teach", "understand"],
   },
   creative: {
     name: "Creative Process",
     description: "A model for creative work and ideation",
-    principles: ["Diverge before converging", "Embrace constraints", "Iterate rapidly"],
+    principles: [
+      "Diverge before converging",
+      "Embrace constraints",
+      "Iterate rapidly",
+    ],
     prompt_injection: "Encourage exploration and multiple perspectives.",
     applies_to: ["glyphs", "scrolls"],
     active_on_pages: ["notes", "projects"],
-    keywords: ["create", "design", "ideate", "brainstorm"]
+    keywords: ["create", "design", "ideate", "brainstorm"],
   },
   productivity: {
     name: "Productivity System",
     description: "A model for effective task management",
-    principles: ["Prioritize ruthlessly", "Time-box work", "Minimize context switching"],
+    principles: [
+      "Prioritize ruthlessly",
+      "Time-box work",
+      "Minimize context switching",
+    ],
     prompt_injection: "Help organize tasks and manage time effectively.",
     applies_to: ["grids"],
     active_on_pages: ["projects", "calendar"],
-    keywords: ["productivity", "tasks", "organize", "schedule"]
+    keywords: ["productivity", "tasks", "organize", "schedule"],
   },
   systems: {
     name: "Systems Approach",
     description: "A model for thinking about complex systems",
-    principles: ["Everything is connected", "Feedback loops matter", "Emergence is key"],
-    prompt_injection: "Consider second-order effects and systemic implications.",
+    principles: [
+      "Everything is connected",
+      "Feedback loops matter",
+      "Emergence is key",
+    ],
+    prompt_injection:
+      "Consider second-order effects and systemic implications.",
     applies_to: ["grids", "sigils"],
     active_on_pages: ["code", "projects"],
-    keywords: ["system", "architecture", "design", "complexity"]
+    keywords: ["system", "architecture", "design", "complexity"],
   },
   communication: {
     name: "Communication Style",
     description: "A model for effective communication",
-    principles: ["Clarity over cleverness", "Context is king", "Listen actively"],
+    principles: [
+      "Clarity over cleverness",
+      "Context is king",
+      "Listen actively",
+    ],
     prompt_injection: "Communicate with clarity and empathy.",
     applies_to: ["scrolls"],
     active_on_pages: ["mail", "notes"],
-    keywords: ["communicate", "write", "explain", "clarify"]
-  }
+    keywords: ["communicate", "write", "explain", "clarify"],
+  },
 };
 
 let mentalModels = [];
@@ -10014,26 +11144,29 @@ let editingModelId = null;
  * Load mental models from server
  */
 async function loadMentalModels() {
-  const listContainer = document.getElementById('mental-models-list');
-  const countEl = document.querySelector('.mental-models-count');
-  
+  const listContainer = document.getElementById("mental-models-list");
+  const countEl = document.querySelector(".mental-models-count");
+
   try {
     // Show loading state
-    listContainer.innerHTML = '<div class="mental-models-loading">Loading mental models...</div>';
-    
+    listContainer.innerHTML =
+      '<div class="mental-models-loading">Loading mental models...</div>';
+
     // Fetch from API
-    const response = await fetch('http://127.0.0.1:11436/polly/mental-models/list');
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/mental-models/list",
+    );
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
     mentalModels = data.models || [];
-    
+
     // Update count
-    const enabledCount = mentalModels.filter(m => m.enabled).length;
+    const enabledCount = mentalModels.filter((m) => m.enabled).length;
     countEl.textContent = `${mentalModels.length} models (${enabledCount} enabled)`;
-    
+
     // Render models
     if (mentalModels.length === 0) {
       listContainer.innerHTML = `
@@ -10043,31 +11176,43 @@ async function loadMentalModels() {
         </div>
       `;
     } else {
-      listContainer.innerHTML = mentalModels.map(renderMentalModelCard).join('');
-      
+      listContainer.innerHTML = mentalModels
+        .map(renderMentalModelCard)
+        .join("");
+
       // Attach event listeners
-      mentalModels.forEach(model => {
+      mentalModels.forEach((model) => {
         // Toggle
-        const toggleEl = document.getElementById(`mental-model-toggle-${model.id}`);
+        const toggleEl = document.getElementById(
+          `mental-model-toggle-${model.id}`,
+        );
         if (toggleEl) {
-          toggleEl.addEventListener('click', () => toggleMentalModel(model.id));
+          toggleEl.addEventListener("click", () => toggleMentalModel(model.id));
         }
-        
+
         // Edit
-        const editBtn = document.getElementById(`mental-model-edit-${model.id}`);
+        const editBtn = document.getElementById(
+          `mental-model-edit-${model.id}`,
+        );
         if (editBtn) {
-          editBtn.addEventListener('click', () => openMentalModelModal(model.id));
+          editBtn.addEventListener("click", () =>
+            openMentalModelModal(model.id),
+          );
         }
-        
+
         // Delete
-        const deleteBtn = document.getElementById(`mental-model-delete-${model.id}`);
+        const deleteBtn = document.getElementById(
+          `mental-model-delete-${model.id}`,
+        );
         if (deleteBtn) {
-          deleteBtn.addEventListener('click', () => deleteMentalModel(model.id));
+          deleteBtn.addEventListener("click", () =>
+            deleteMentalModel(model.id),
+          );
         }
       });
     }
   } catch (error) {
-    console.error('Error loading mental models:', error);
+    console.error("Error loading mental models:", error);
     listContainer.innerHTML = `
       <div class="mental-models-empty">
         <h3>Error Loading Models</h3>
@@ -10082,41 +11227,43 @@ async function loadMentalModels() {
  */
 function renderMentalModelCard(model) {
   const tags = [];
-  
+
   // Add domain tags
   if (model.applies_to && model.applies_to.length > 0) {
-    model.applies_to.forEach(domain => {
+    model.applies_to.forEach((domain) => {
       tags.push(`<span class="mental-model-tag domain">${domain}</span>`);
     });
   }
-  
+
   // Add page tags (limit to 3)
   if (model.active_on_pages && model.active_on_pages.length > 0) {
     const pagesToShow = model.active_on_pages.slice(0, 3);
-    pagesToShow.forEach(page => {
+    pagesToShow.forEach((page) => {
       tags.push(`<span class="mental-model-tag page">${page}</span>`);
     });
     if (model.active_on_pages.length > 3) {
-      tags.push(`<span class="mental-model-tag page">+${model.active_on_pages.length - 3}</span>`);
+      tags.push(
+        `<span class="mental-model-tag page">+${model.active_on_pages.length - 3}</span>`,
+      );
     }
   }
-  
+
   // Add persona tags
   if (model.active_for_personas && model.active_for_personas.length > 0) {
-    model.active_for_personas.forEach(persona => {
+    model.active_for_personas.forEach((persona) => {
       tags.push(`<span class="mental-model-tag persona">${persona}</span>`);
     });
   }
-  
+
   // Add mode tags
   if (model.active_for_modes && model.active_for_modes.length > 0) {
-    model.active_for_modes.forEach(mode => {
+    model.active_for_modes.forEach((mode) => {
       tags.push(`<span class="mental-model-tag mode">${mode}</span>`);
     });
   }
-  
+
   return `
-    <div class="mental-model-card ${!model.enabled ? 'disabled' : ''}">
+    <div class="mental-model-card ${!model.enabled ? "disabled" : ""}">
       <div class="mental-model-card-header">
         <div>
           <div class="mental-model-card-title">${model.name}</div>
@@ -10124,12 +11271,12 @@ function renderMentalModelCard(model) {
         </div>
         <div 
           id="mental-model-toggle-${model.id}"
-          class="mental-model-toggle ${model.enabled ? 'active' : ''}"
-          title="${model.enabled ? 'Disable' : 'Enable'}"
+          class="mental-model-toggle ${model.enabled ? "active" : ""}"
+          title="${model.enabled ? "Disable" : "Enable"}"
         ></div>
       </div>
       <div class="mental-model-card-description">${model.description}</div>
-      ${tags.length > 0 ? `<div class="mental-model-card-tags">${tags.join('')}</div>` : ''}
+      ${tags.length > 0 ? `<div class="mental-model-card-tags">${tags.join("")}</div>` : ""}
       <div class="mental-model-card-actions">
         <button id="mental-model-edit-${model.id}">
           <i data-lucide="edit-2" style="width: 14px; height: 14px;"></i>
@@ -10148,29 +11295,29 @@ function renderMentalModelCard(model) {
  * Open mental model modal for add/edit
  */
 function openMentalModelModal(modelId = null) {
-  const modal = document.getElementById('mental-model-modal');
-  const title = document.getElementById('mental-model-modal-title');
-  const templateSelect = document.getElementById('mental-model-template');
-  
+  const modal = document.getElementById("mental-model-modal");
+  const title = document.getElementById("mental-model-modal-title");
+  const templateSelect = document.getElementById("mental-model-template");
+
   editingModelId = modelId;
-  
+
   if (modelId) {
     // Edit mode
-    title.textContent = 'Edit Mental Model';
-    templateSelect.style.display = 'none';
-    
-    const model = mentalModels.find(m => m.id === modelId);
+    title.textContent = "Edit Mental Model";
+    templateSelect.style.display = "none";
+
+    const model = mentalModels.find((m) => m.id === modelId);
     if (model) {
       populateModalFromModel(model);
     }
   } else {
     // Add mode
-    title.textContent = 'Add Mental Model';
-    templateSelect.style.display = 'block';
+    title.textContent = "Add Mental Model";
+    templateSelect.style.display = "block";
     clearModalForm();
   }
-  
-  modal.classList.remove('hidden');
+
+  modal.classList.remove("hidden");
   lucide.createIcons();
 }
 
@@ -10178,7 +11325,7 @@ function openMentalModelModal(modelId = null) {
  * Close mental model modal
  */
 function closeMentalModelModal() {
-  document.getElementById('mental-model-modal').classList.add('hidden');
+  document.getElementById("mental-model-modal").classList.add("hidden");
   editingModelId = null;
   clearModalForm();
 }
@@ -10187,53 +11334,67 @@ function closeMentalModelModal() {
  * Clear modal form
  */
 function clearModalForm() {
-  document.getElementById('mental-model-template').value = '';
-  document.getElementById('mental-model-id').value = '';
-  document.getElementById('mental-model-name').value = '';
-  document.getElementById('mental-model-description').value = '';
-  document.getElementById('mental-model-principles').value = '';
-  document.getElementById('mental-model-prompt').value = '';
-  document.getElementById('mental-model-keywords').value = '';
-  document.getElementById('mental-model-enabled').checked = true;
-  
+  document.getElementById("mental-model-template").value = "";
+  document.getElementById("mental-model-id").value = "";
+  document.getElementById("mental-model-name").value = "";
+  document.getElementById("mental-model-description").value = "";
+  document.getElementById("mental-model-principles").value = "";
+  document.getElementById("mental-model-prompt").value = "";
+  document.getElementById("mental-model-keywords").value = "";
+  document.getElementById("mental-model-enabled").checked = true;
+
   // Clear all checkboxes
-  document.querySelectorAll('.domain-checkbox').forEach(cb => cb.checked = false);
-  document.querySelectorAll('.page-checkbox').forEach(cb => cb.checked = false);
-  document.querySelectorAll('.persona-checkbox').forEach(cb => cb.checked = false);
-  document.querySelectorAll('.mode-checkbox').forEach(cb => cb.checked = false);
-  
+  document
+    .querySelectorAll(".domain-checkbox")
+    .forEach((cb) => (cb.checked = false));
+  document
+    .querySelectorAll(".page-checkbox")
+    .forEach((cb) => (cb.checked = false));
+  document
+    .querySelectorAll(".persona-checkbox")
+    .forEach((cb) => (cb.checked = false));
+  document
+    .querySelectorAll(".mode-checkbox")
+    .forEach((cb) => (cb.checked = false));
+
   // Enable ID field for new models
-  document.getElementById('mental-model-id').disabled = false;
+  document.getElementById("mental-model-id").disabled = false;
 }
 
 /**
  * Populate modal from model data
  */
 function populateModalFromModel(model) {
-  document.getElementById('mental-model-id').value = model.id;
-  document.getElementById('mental-model-id').disabled = true; // Can't change ID
-  document.getElementById('mental-model-name').value = model.name;
-  document.getElementById('mental-model-description').value = model.description;
-  document.getElementById('mental-model-principles').value = model.principles.join('\n');
-  document.getElementById('mental-model-prompt').value = model.prompt_injection;
-  document.getElementById('mental-model-keywords').value = (model.keywords || []).join(', ');
-  document.getElementById('mental-model-enabled').checked = model.enabled;
-  
+  document.getElementById("mental-model-id").value = model.id;
+  document.getElementById("mental-model-id").disabled = true; // Can't change ID
+  document.getElementById("mental-model-name").value = model.name;
+  document.getElementById("mental-model-description").value = model.description;
+  document.getElementById("mental-model-principles").value =
+    model.principles.join("\n");
+  document.getElementById("mental-model-prompt").value = model.prompt_injection;
+  document.getElementById("mental-model-keywords").value = (
+    model.keywords || []
+  ).join(", ");
+  document.getElementById("mental-model-enabled").checked = model.enabled;
+
   // Set checkboxes
-  document.querySelectorAll('.domain-checkbox').forEach(cb => {
+  document.querySelectorAll(".domain-checkbox").forEach((cb) => {
     cb.checked = model.applies_to && model.applies_to.includes(cb.value);
   });
-  
-  document.querySelectorAll('.page-checkbox').forEach(cb => {
-    cb.checked = model.active_on_pages && model.active_on_pages.includes(cb.value);
+
+  document.querySelectorAll(".page-checkbox").forEach((cb) => {
+    cb.checked =
+      model.active_on_pages && model.active_on_pages.includes(cb.value);
   });
-  
-  document.querySelectorAll('.persona-checkbox').forEach(cb => {
-    cb.checked = model.active_for_personas && model.active_for_personas.includes(cb.value);
+
+  document.querySelectorAll(".persona-checkbox").forEach((cb) => {
+    cb.checked =
+      model.active_for_personas && model.active_for_personas.includes(cb.value);
   });
-  
-  document.querySelectorAll('.mode-checkbox').forEach(cb => {
-    cb.checked = model.active_for_modes && model.active_for_modes.includes(cb.value);
+
+  document.querySelectorAll(".mode-checkbox").forEach((cb) => {
+    cb.checked =
+      model.active_for_modes && model.active_for_modes.includes(cb.value);
   });
 }
 
@@ -10243,25 +11404,30 @@ function populateModalFromModel(model) {
 function applyMentalModelTemplate(templateId) {
   const template = MENTAL_MODEL_TEMPLATES[templateId];
   if (!template) return;
-  
-  document.getElementById('mental-model-name').value = template.name;
-  document.getElementById('mental-model-description').value = template.description;
-  document.getElementById('mental-model-principles').value = template.principles.join('\n');
-  document.getElementById('mental-model-prompt').value = template.prompt_injection;
-  document.getElementById('mental-model-keywords').value = template.keywords.join(', ');
-  
+
+  document.getElementById("mental-model-name").value = template.name;
+  document.getElementById("mental-model-description").value =
+    template.description;
+  document.getElementById("mental-model-principles").value =
+    template.principles.join("\n");
+  document.getElementById("mental-model-prompt").value =
+    template.prompt_injection;
+  document.getElementById("mental-model-keywords").value =
+    template.keywords.join(", ");
+
   // Set checkboxes
-  document.querySelectorAll('.domain-checkbox').forEach(cb => {
+  document.querySelectorAll(".domain-checkbox").forEach((cb) => {
     cb.checked = template.applies_to && template.applies_to.includes(cb.value);
   });
-  
-  document.querySelectorAll('.page-checkbox').forEach(cb => {
-    cb.checked = template.active_on_pages && template.active_on_pages.includes(cb.value);
+
+  document.querySelectorAll(".page-checkbox").forEach((cb) => {
+    cb.checked =
+      template.active_on_pages && template.active_on_pages.includes(cb.value);
   });
-  
+
   // Generate ID from name
-  const id = template.name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-  document.getElementById('mental-model-id').value = id;
+  const id = template.name.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  document.getElementById("mental-model-id").value = id;
 }
 
 /**
@@ -10270,55 +11436,79 @@ function applyMentalModelTemplate(templateId) {
 async function saveMentalModel() {
   try {
     // Gather form data
-    const id = document.getElementById('mental-model-id').value.trim();
-    const name = document.getElementById('mental-model-name').value.trim();
-    const description = document.getElementById('mental-model-description').value.trim();
-    const principlesText = document.getElementById('mental-model-principles').value.trim();
-    const promptInjection = document.getElementById('mental-model-prompt').value.trim();
-    const keywordsText = document.getElementById('mental-model-keywords').value.trim();
-    const enabled = document.getElementById('mental-model-enabled').checked;
-    
+    const id = document.getElementById("mental-model-id").value.trim();
+    const name = document.getElementById("mental-model-name").value.trim();
+    const description = document
+      .getElementById("mental-model-description")
+      .value.trim();
+    const principlesText = document
+      .getElementById("mental-model-principles")
+      .value.trim();
+    const promptInjection = document
+      .getElementById("mental-model-prompt")
+      .value.trim();
+    const keywordsText = document
+      .getElementById("mental-model-keywords")
+      .value.trim();
+    const enabled = document.getElementById("mental-model-enabled").checked;
+
     // Validation
     if (!id) {
-      alert('ID is required');
+      alert("ID is required");
       return;
     }
-    
+
     if (!/^[a-z0-9_]+$/.test(id)) {
-      alert('ID must be lowercase letters, numbers, and underscores only');
+      alert("ID must be lowercase letters, numbers, and underscores only");
       return;
     }
-    
+
     if (!name) {
-      alert('Name is required');
+      alert("Name is required");
       return;
     }
-    
+
     if (!description) {
-      alert('Description is required');
+      alert("Description is required");
       return;
     }
-    
+
     if (!principlesText) {
-      alert('Principles are required');
+      alert("Principles are required");
       return;
     }
-    
+
     if (!promptInjection) {
-      alert('Prompt injection is required');
+      alert("Prompt injection is required");
       return;
     }
-    
+
     // Parse arrays
-    const principles = principlesText.split('\n').filter(p => p.trim()).map(p => p.trim());
-    const keywords = keywordsText ? keywordsText.split(',').map(k => k.trim()).filter(k => k) : [];
-    
+    const principles = principlesText
+      .split("\n")
+      .filter((p) => p.trim())
+      .map((p) => p.trim());
+    const keywords = keywordsText
+      ? keywordsText
+          .split(",")
+          .map((k) => k.trim())
+          .filter((k) => k)
+      : [];
+
     // Gather checkboxes
-    const applies_to = Array.from(document.querySelectorAll('.domain-checkbox:checked')).map(cb => cb.value);
-    const active_on_pages = Array.from(document.querySelectorAll('.page-checkbox:checked')).map(cb => cb.value);
-    const active_for_personas = Array.from(document.querySelectorAll('.persona-checkbox:checked')).map(cb => cb.value);
-    const active_for_modes = Array.from(document.querySelectorAll('.mode-checkbox:checked')).map(cb => cb.value);
-    
+    const applies_to = Array.from(
+      document.querySelectorAll(".domain-checkbox:checked"),
+    ).map((cb) => cb.value);
+    const active_on_pages = Array.from(
+      document.querySelectorAll(".page-checkbox:checked"),
+    ).map((cb) => cb.value);
+    const active_for_personas = Array.from(
+      document.querySelectorAll(".persona-checkbox:checked"),
+    ).map((cb) => cb.value);
+    const active_for_modes = Array.from(
+      document.querySelectorAll(".mode-checkbox:checked"),
+    ).map((cb) => cb.value);
+
     // Build payload
     const payload = {
       id,
@@ -10331,39 +11521,38 @@ async function saveMentalModel() {
       active_for_personas,
       active_for_modes,
       keywords,
-      enabled
+      enabled,
     };
-    
+
     // Determine API endpoint
     let url, method;
     if (editingModelId) {
       // Update existing
       url = `http://127.0.0.1:11436/polly/mental-models/${editingModelId}`;
-      method = 'PUT';
+      method = "PUT";
     } else {
       // Create new
-      url = 'http://127.0.0.1:11436/polly/mental-models/create';
-      method = 'POST';
+      url = "http://127.0.0.1:11436/polly/mental-models/create";
+      method = "POST";
     }
-    
+
     // Send request
     const response = await fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || `HTTP ${response.status}`);
     }
-    
+
     // Success
     closeMentalModelModal();
     await loadMentalModels();
-    
   } catch (error) {
-    console.error('Error saving mental model:', error);
+    console.error("Error saving mental model:", error);
     alert(`Failed to save mental model: ${error.message}`);
   }
 }
@@ -10373,19 +11562,21 @@ async function saveMentalModel() {
  */
 async function toggleMentalModel(modelId) {
   try {
-    const response = await fetch(`http://127.0.0.1:11436/polly/mental-models/${modelId}/toggle`, {
-      method: 'POST'
-    });
-    
+    const response = await fetch(
+      `http://127.0.0.1:11436/polly/mental-models/${modelId}/toggle`,
+      {
+        method: "POST",
+      },
+    );
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    
+
     // Reload models
     await loadMentalModels();
-    
   } catch (error) {
-    console.error('Error toggling mental model:', error);
+    console.error("Error toggling mental model:", error);
     alert(`Failed to toggle mental model: ${error.message}`);
   }
 }
@@ -10394,27 +11585,31 @@ async function toggleMentalModel(modelId) {
  * Delete mental model
  */
 async function deleteMentalModel(modelId) {
-  const model = mentalModels.find(m => m.id === modelId);
+  const model = mentalModels.find((m) => m.id === modelId);
   if (!model) return;
-  
-  if (!confirm(`Delete mental model "${model.name}"?\n\nThis cannot be undone.`)) {
+
+  if (
+    !confirm(`Delete mental model "${model.name}"?\n\nThis cannot be undone.`)
+  ) {
     return;
   }
-  
+
   try {
-    const response = await fetch(`http://127.0.0.1:11436/polly/mental-models/${modelId}`, {
-      method: 'DELETE'
-    });
-    
+    const response = await fetch(
+      `http://127.0.0.1:11436/polly/mental-models/${modelId}`,
+      {
+        method: "DELETE",
+      },
+    );
+
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    
+
     // Reload models
     await loadMentalModels();
-    
   } catch (error) {
-    console.error('Error deleting mental model:', error);
+    console.error("Error deleting mental model:", error);
     alert(`Failed to delete mental model: ${error.message}`);
   }
 }
@@ -10433,11 +11628,11 @@ function getMentalModelsOverride(conversationId) {
   const key = `mm_override_${conversationId}`;
   const stored = localStorage.getItem(key);
   if (!stored) return null;
-  
+
   try {
     return JSON.parse(stored);
   } catch (error) {
-    console.error('Failed to parse mental models override:', error);
+    console.error("Failed to parse mental models override:", error);
     return null;
   }
 }
@@ -10460,35 +11655,40 @@ function setMentalModelsOverride(conversationId, override) {
 async function refreshMentalModelsStats() {
   try {
     // Load all models
-    const response = await fetch('http://127.0.0.1:11436/polly/mental-models/list');
-    if (!response.ok) throw new Error('Failed to fetch models');
-    
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/mental-models/list",
+    );
+    if (!response.ok) throw new Error("Failed to fetch models");
+
     const data = await response.json();
     const models = data.models || [];
-    
+
     // Load active models for current context
-    const activeResponse = await fetch('http://127.0.0.1:11436/polly/mental-models/active');
+    const activeResponse = await fetch(
+      "http://127.0.0.1:11436/polly/mental-models/active",
+    );
     const activeData = await activeResponse.json();
     const activeModels = activeData.active_models || [];
-    
+
     // Update stats display
     const totalCount = models.length;
-    const enabledCount = models.filter(m => m.enabled).length;
+    const enabledCount = models.filter((m) => m.enabled).length;
     const activeCount = activeModels.length;
-    
+
     // Update DOM elements
-    const totalEl = document.getElementById('mental-models-count-display');
-    const enabledEl = document.getElementById('mental-models-enabled-display');
-    const activeEl = document.getElementById('mental-models-active-display');
-    
+    const totalEl = document.getElementById("mental-models-count-display");
+    const enabledEl = document.getElementById("mental-models-enabled-display");
+    const activeEl = document.getElementById("mental-models-active-display");
+
     if (totalEl) totalEl.textContent = totalCount;
     if (enabledEl) enabledEl.textContent = enabledCount;
     if (activeEl) activeEl.textContent = activeCount;
-    
-    console.log(`[Mental Models Stats] Total: ${totalCount}, Enabled: ${enabledCount}, Active: ${activeCount}`);
-    
+
+    console.log(
+      `[Mental Models Stats] Total: ${totalCount}, Enabled: ${enabledCount}, Active: ${activeCount}`,
+    );
   } catch (error) {
-    console.error('Error refreshing mental models stats:', error);
+    console.error("Error refreshing mental models stats:", error);
   }
 }
 
@@ -10497,46 +11697,52 @@ async function refreshMentalModelsStats() {
  */
 async function openMentalModelsOverrideModal(conversationId) {
   currentOverrideConversationId = conversationId;
-  
-  const modal = document.getElementById('mental-models-override-modal');
-  const useDefaultsCheckbox = document.getElementById('override-use-defaults');
-  const modelsList = document.getElementById('override-models-list');
-  const loading = document.getElementById('override-loading');
-  
+
+  const modal = document.getElementById("mental-models-override-modal");
+  const useDefaultsCheckbox = document.getElementById("override-use-defaults");
+  const modelsList = document.getElementById("override-models-list");
+  const loading = document.getElementById("override-loading");
+
   // Show modal
-  modal.classList.remove('hidden');
-  
+  modal.classList.remove("hidden");
+
   // Show loading
-  loading.style.display = 'flex';
-  modelsList.innerHTML = '';
-  
+  loading.style.display = "flex";
+  modelsList.innerHTML = "";
+
   try {
     // Fetch all mental models
-    const response = await fetch('http://127.0.0.1:11436/polly/mental-models/list');
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/mental-models/list",
+    );
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    
+
     const data = await response.json();
     const allModels = data.models || [];
-    
+
     // Get current override
     const override = getMentalModelsOverride(conversationId);
-    
+
     // Set checkbox state
     if (override && override.useDefaults === false) {
       useDefaultsCheckbox.checked = false;
-      modelsList.classList.remove('disabled');
+      modelsList.classList.remove("disabled");
     } else {
       useDefaultsCheckbox.checked = true;
-      modelsList.classList.add('disabled');
+      modelsList.classList.add("disabled");
     }
-    
+
     // Render models list
-    modelsList.innerHTML = allModels.map(model => {
-      const isChecked = override && override.modelIds ? override.modelIds.includes(model.id) : model.enabled;
-      
-      return `
+    modelsList.innerHTML = allModels
+      .map((model) => {
+        const isChecked =
+          override && override.modelIds
+            ? override.modelIds.includes(model.id)
+            : model.enabled;
+
+        return `
         <div class="override-model-item">
           <div class="override-model-info">
             <div class="override-model-name">${model.name}</div>
@@ -10546,26 +11752,26 @@ async function openMentalModelsOverrideModal(conversationId) {
             type="checkbox" 
             class="override-model-checkbox" 
             data-model-id="${model.id}"
-            ${isChecked ? 'checked' : ''}
+            ${isChecked ? "checked" : ""}
           >
         </div>
       `;
-    }).join('');
-    
+      })
+      .join("");
+
     // Hide loading
-    loading.style.display = 'none';
-    
+    loading.style.display = "none";
+
     // Setup use defaults checkbox handler
     useDefaultsCheckbox.onchange = () => {
       if (useDefaultsCheckbox.checked) {
-        modelsList.classList.add('disabled');
+        modelsList.classList.add("disabled");
       } else {
-        modelsList.classList.remove('disabled');
+        modelsList.classList.remove("disabled");
       }
     };
-    
   } catch (error) {
-    console.error('Error loading mental models:', error);
+    console.error("Error loading mental models:", error);
     loading.innerHTML = `<div style="color: var(--danger);">Failed to load mental models: ${error.message}</div>`;
   }
 }
@@ -10574,7 +11780,9 @@ async function openMentalModelsOverrideModal(conversationId) {
  * Close mental models override modal
  */
 function closeMentalModelsOverrideModal() {
-  document.getElementById('mental-models-override-modal').classList.add('hidden');
+  document
+    .getElementById("mental-models-override-modal")
+    .classList.add("hidden");
   currentOverrideConversationId = null;
 }
 
@@ -10583,28 +11791,28 @@ function closeMentalModelsOverrideModal() {
  */
 function saveMentalModelsOverride() {
   if (!currentOverrideConversationId) return;
-  
-  const useDefaultsCheckbox = document.getElementById('override-use-defaults');
-  const checkboxes = document.querySelectorAll('.override-model-checkbox');
-  
+
+  const useDefaultsCheckbox = document.getElementById("override-use-defaults");
+  const checkboxes = document.querySelectorAll(".override-model-checkbox");
+
   if (useDefaultsCheckbox.checked) {
     // Remove override (use defaults)
     setMentalModelsOverride(currentOverrideConversationId, null);
   } else {
     // Save override
     const selectedModelIds = Array.from(checkboxes)
-      .filter(cb => cb.checked)
-      .map(cb => cb.dataset.modelId);
-    
+      .filter((cb) => cb.checked)
+      .map((cb) => cb.dataset.modelId);
+
     setMentalModelsOverride(currentOverrideConversationId, {
       useDefaults: false,
-      modelIds: selectedModelIds
+      modelIds: selectedModelIds,
     });
   }
-  
+
   // Close modal
   closeMentalModelsOverrideModal();
-  
+
   // Refresh conversation list to show indicator
   renderConversationsList();
 }
@@ -10615,8 +11823,8 @@ function saveMentalModelsOverride() {
 
 let domainsConfig = null;
 let editingDomainId = null;
-let selectedIcon = 'folder';
-let selectedColor = '#808080';
+let selectedIcon = "folder";
+let selectedColor = "#808080";
 let domainKeywords = [];
 
 /**
@@ -10624,19 +11832,21 @@ let domainKeywords = [];
  */
 async function loadDomainsConfig() {
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/domains/config');
+    const response = await fetch("http://127.0.0.1:11436/polly/domains/config");
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
+
     domainsConfig = await response.json();
     renderDomainsList();
     updateFolderNumberingToggle();
-    
-    console.log('Loaded domains config:', domainsConfig);
+
+    console.log("Loaded domains config:", domainsConfig);
   } catch (error) {
-    console.error('Failed to load domains config:', error);
-    showDomainsError('Failed to load domains. Make sure the server is running.');
+    console.error("Failed to load domains config:", error);
+    showDomainsError(
+      "Failed to load domains. Make sure the server is running.",
+    );
   }
 }
 
@@ -10644,22 +11854,27 @@ async function loadDomainsConfig() {
  * Render the domains list
  */
 function renderDomainsList() {
-  const listContainer = document.getElementById('domains-list');
-  const countElement = document.querySelector('.domain-count');
-  
+  const listContainer = document.getElementById("domains-list");
+  const countElement = document.querySelector(".domain-count");
+
   if (!domainsConfig || !domainsConfig.domains) {
-    listContainer.innerHTML = '<div class="loading-spinner">No domains found</div>';
+    listContainer.innerHTML =
+      '<div class="loading-spinner">No domains found</div>';
     return;
   }
-  
+
   // Update count
   countElement.textContent = `${domainsConfig.domains.length} domains`;
-  
+
   // Sort by order
-  const sortedDomains = [...domainsConfig.domains].sort((a, b) => a.order - b.order);
-  
+  const sortedDomains = [...domainsConfig.domains].sort(
+    (a, b) => a.order - b.order,
+  );
+
   // Render cards
-  listContainer.innerHTML = sortedDomains.map(domain => `
+  listContainer.innerHTML = sortedDomains
+    .map(
+      (domain) => `
     <div class="domain-card-item" data-domain-id="${domain.id}" draggable="true">
       <div class="domain-card-header">
         <div class="domain-card-title">
@@ -10677,7 +11892,7 @@ function renderDomainsList() {
         </div>
       </div>
       
-      <div class="domain-description">${domain.description || 'No description'}</div>
+      <div class="domain-description">${domain.description || "No description"}</div>
       
       <div class="domain-metadata">
         <div class="domain-metadata-item">
@@ -10696,17 +11911,22 @@ function renderDomainsList() {
       </div>
       
       <div class="domain-keywords-preview">
-        ${domain.autoTagRules.slice(0, 3).map(kw => `<span>${kw}</span>`).join('')}
-        ${domain.autoTagRules.length > 3 ? `<span>+${domain.autoTagRules.length - 3} more</span>` : ''}
+        ${domain.autoTagRules
+          .slice(0, 3)
+          .map((kw) => `<span>${kw}</span>`)
+          .join("")}
+        ${domain.autoTagRules.length > 3 ? `<span>+${domain.autoTagRules.length - 3} more</span>` : ""}
       </div>
     </div>
-  `).join('');
-  
+  `,
+    )
+    .join("");
+
   // Re-initialize Lucide icons
   if (window.lucide) {
     lucide.createIcons();
   }
-  
+
   // Setup drag and drop
   setupDragAndDrop();
 }
@@ -10717,12 +11937,12 @@ function renderDomainsList() {
 function generateWeightDots(weight) {
   const totalDots = 5;
   const filledDots = Math.round(weight * totalDots);
-  let html = '';
-  
+  let html = "";
+
   for (let i = 0; i < totalDots; i++) {
-    html += `<span class="domain-weight-dot ${i < filledDots ? 'filled' : ''}"></span>`;
+    html += `<span class="domain-weight-dot ${i < filledDots ? "filled" : ""}"></span>`;
   }
-  
+
   return html;
 }
 
@@ -10730,7 +11950,7 @@ function generateWeightDots(weight) {
  * Update folder numbering toggle
  */
 function updateFolderNumberingToggle() {
-  const toggle = document.getElementById('folder-numbering-toggle');
+  const toggle = document.getElementById("folder-numbering-toggle");
   if (toggle && domainsConfig) {
     toggle.checked = domainsConfig.folderNumbering;
   }
@@ -10741,51 +11961,55 @@ function updateFolderNumberingToggle() {
  */
 function openDomainEditor(domainId = null) {
   editingDomainId = domainId;
-  const modal = document.getElementById('domain-editor-modal');
-  const title = document.getElementById('domain-editor-title');
-  
+  const modal = document.getElementById("domain-editor-modal");
+  const title = document.getElementById("domain-editor-title");
+
   if (domainId) {
     // Edit existing
-    const domain = domainsConfig.domains.find(d => d.id === domainId);
+    const domain = domainsConfig.domains.find((d) => d.id === domainId);
     if (!domain) {
-      console.error('Domain not found:', domainId);
+      console.error("Domain not found:", domainId);
       return;
     }
-    
-    title.textContent = 'Edit Domain';
-    document.getElementById('domain-name-input').value = domain.name;
-    document.getElementById('domain-description-input').value = domain.description || '';
-    document.getElementById('domain-folder-input').value = domain.folderPath;
-    document.getElementById('domain-weight-slider').value = Math.round(domain.ragWeight * 100);
-    document.getElementById('domain-weight-value').textContent = `${Math.round(domain.ragWeight * 100)}%`;
-    
+
+    title.textContent = "Edit Domain";
+    document.getElementById("domain-name-input").value = domain.name;
+    document.getElementById("domain-description-input").value =
+      domain.description || "";
+    document.getElementById("domain-folder-input").value = domain.folderPath;
+    document.getElementById("domain-weight-slider").value = Math.round(
+      domain.ragWeight * 100,
+    );
+    document.getElementById("domain-weight-value").textContent =
+      `${Math.round(domain.ragWeight * 100)}%`;
+
     selectedIcon = domain.icon;
     selectedColor = domain.color;
     domainKeywords = [...domain.autoTagRules];
-    
+
     updateIconPreview();
     updateColorPreview();
     renderKeywordsTags();
   } else {
     // Create new
-    title.textContent = 'Add New Domain';
-    document.getElementById('domain-name-input').value = '';
-    document.getElementById('domain-description-input').value = '';
-    document.getElementById('domain-folder-input').value = '';
-    document.getElementById('domain-weight-slider').value = 20;
-    document.getElementById('domain-weight-value').textContent = '20%';
-    
-    selectedIcon = 'folder';
-    selectedColor = '#808080';
+    title.textContent = "Add New Domain";
+    document.getElementById("domain-name-input").value = "";
+    document.getElementById("domain-description-input").value = "";
+    document.getElementById("domain-folder-input").value = "";
+    document.getElementById("domain-weight-slider").value = 20;
+    document.getElementById("domain-weight-value").textContent = "20%";
+
+    selectedIcon = "folder";
+    selectedColor = "#808080";
     domainKeywords = [];
-    
+
     updateIconPreview();
     updateColorPreview();
     renderKeywordsTags();
   }
-  
-  modal.classList.remove('hidden');
-  document.getElementById('domain-name-input').focus();
+
+  modal.classList.remove("hidden");
+  document.getElementById("domain-name-input").focus();
 }
 
 /**
@@ -10799,32 +12023,35 @@ function editDomain(domainId) {
  * Delete domain
  */
 async function deleteDomain(domainId) {
-  const domain = domainsConfig.domains.find(d => d.id === domainId);
+  const domain = domainsConfig.domains.find((d) => d.id === domainId);
   if (!domain) return;
-  
+
   if (domainsConfig.domains.length <= 1) {
-    alert('Cannot delete the last domain');
+    alert("Cannot delete the last domain");
     return;
   }
-  
+
   if (!confirm(`Delete domain "${domain.name}"? This cannot be undone.`)) {
     return;
   }
-  
+
   try {
-    const response = await fetch(`http://127.0.0.1:11436/polly/domains/${domainId}`, {
-      method: 'DELETE'
-    });
-    
+    const response = await fetch(
+      `http://127.0.0.1:11436/polly/domains/${domainId}`,
+      {
+        method: "DELETE",
+      },
+    );
+
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to delete domain');
+      throw new Error(error.detail || "Failed to delete domain");
     }
-    
+
     // Reload domains
     await loadDomainsConfig();
   } catch (error) {
-    console.error('Failed to delete domain:', error);
+    console.error("Failed to delete domain:", error);
     alert(`Failed to delete domain: ${error.message}`);
   }
 }
@@ -10833,53 +12060,59 @@ async function deleteDomain(domainId) {
  * Save domain (create or update)
  */
 async function saveDomain() {
-  const nameInput = document.getElementById('domain-name-input');
-  const descriptionInput = document.getElementById('domain-description-input');
-  const folderInput = document.getElementById('domain-folder-input');
-  const weightSlider = document.getElementById('domain-weight-slider');
-  
+  const nameInput = document.getElementById("domain-name-input");
+  const descriptionInput = document.getElementById("domain-description-input");
+  const folderInput = document.getElementById("domain-folder-input");
+  const weightSlider = document.getElementById("domain-weight-slider");
+
   const name = nameInput.value.trim();
   const description = descriptionInput.value.trim();
   const folderPath = folderInput.value.trim();
   const ragWeight = parseInt(weightSlider.value) / 100;
-  
+
   // Validation
   if (!name) {
-    showDomainEditorError('Name is required');
+    showDomainEditorError("Name is required");
     nameInput.focus();
     return;
   }
-  
+
   if (name.length > 30) {
-    showDomainEditorError('Name must be 30 characters or less');
+    showDomainEditorError("Name must be 30 characters or less");
     nameInput.focus();
     return;
   }
-  
+
   if (description.length > 200) {
-    showDomainEditorError('Description must be 200 characters or less');
+    showDomainEditorError("Description must be 200 characters or less");
     descriptionInput.focus();
     return;
   }
-  
+
   // Check for duplicate name (if creating or renaming)
   if (editingDomainId) {
-    const existingDomain = domainsConfig.domains.find(d => d.id === editingDomainId);
+    const existingDomain = domainsConfig.domains.find(
+      (d) => d.id === editingDomainId,
+    );
     if (existingDomain && existingDomain.name !== name) {
-      if (domainsConfig.domains.some(d => d.name === name && d.id !== editingDomainId)) {
-        showDomainEditorError('A domain with this name already exists');
+      if (
+        domainsConfig.domains.some(
+          (d) => d.name === name && d.id !== editingDomainId,
+        )
+      ) {
+        showDomainEditorError("A domain with this name already exists");
         nameInput.focus();
         return;
       }
     }
   } else {
-    if (domainsConfig.domains.some(d => d.name === name)) {
-      showDomainEditorError('A domain with this name already exists');
+    if (domainsConfig.domains.some((d) => d.name === name)) {
+      showDomainEditorError("A domain with this name already exists");
       nameInput.focus();
       return;
     }
   }
-  
+
   try {
     const payload = {
       name,
@@ -10888,40 +12121,43 @@ async function saveDomain() {
       icon: selectedIcon,
       folderPath,
       ragWeight,
-      autoTagRules: domainKeywords
+      autoTagRules: domainKeywords,
     };
-    
+
     let response;
     if (editingDomainId) {
       // Update existing
-      response = await fetch(`http://127.0.0.1:11436/polly/domains/${editingDomainId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      response = await fetch(
+        `http://127.0.0.1:11436/polly/domains/${editingDomainId}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
     } else {
       // Create new
       // Generate ID from name
-      const id = name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      const id = name.toLowerCase().replace(/[^a-z0-9]/g, "-");
       payload.id = id;
-      
-      response = await fetch('http://127.0.0.1:11436/polly/domains', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+
+      response = await fetch("http://127.0.0.1:11436/polly/domains", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
     }
-    
+
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to save domain');
+      throw new Error(error.detail || "Failed to save domain");
     }
-    
+
     // Close modal and reload
     closeDomainEditor();
     await loadDomainsConfig();
   } catch (error) {
-    console.error('Failed to save domain:', error);
+    console.error("Failed to save domain:", error);
     showDomainEditorError(error.message);
   }
 }
@@ -10930,8 +12166,8 @@ async function saveDomain() {
  * Close domain editor modal
  */
 function closeDomainEditor() {
-  const modal = document.getElementById('domain-editor-modal');
-  modal.classList.add('hidden');
+  const modal = document.getElementById("domain-editor-modal");
+  modal.classList.add("hidden");
   editingDomainId = null;
   hideDomainEditorError();
 }
@@ -10940,24 +12176,24 @@ function closeDomainEditor() {
  * Show error in domain editor
  */
 function showDomainEditorError(message) {
-  const errorDiv = document.getElementById('domain-editor-error');
+  const errorDiv = document.getElementById("domain-editor-error");
   errorDiv.textContent = message;
-  errorDiv.classList.remove('hidden');
+  errorDiv.classList.remove("hidden");
 }
 
 /**
  * Hide domain editor error
  */
 function hideDomainEditorError() {
-  const errorDiv = document.getElementById('domain-editor-error');
-  errorDiv.classList.add('hidden');
+  const errorDiv = document.getElementById("domain-editor-error");
+  errorDiv.classList.add("hidden");
 }
 
 /**
  * Show domains error
  */
 function showDomainsError(message) {
-  const listContainer = document.getElementById('domains-list');
+  const listContainer = document.getElementById("domains-list");
   listContainer.innerHTML = `<div class="error-message" style="padding: var(--spacing-md);">${message}</div>`;
 }
 
@@ -10965,9 +12201,9 @@ function showDomainsError(message) {
  * Update icon preview
  */
 function updateIconPreview() {
-  const preview = document.getElementById('domain-icon-preview');
+  const preview = document.getElementById("domain-icon-preview");
   preview.innerHTML = `<i data-lucide="${selectedIcon}" style="width: 20px; height: 20px;"></i>`;
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     lucide.createIcons();
   }
 }
@@ -10976,13 +12212,14 @@ function updateIconPreview() {
  * Update color preview
  */
 function updateColorPreview() {
-  document.getElementById('domain-color-preview').style.background = selectedColor;
-  
+  document.getElementById("domain-color-preview").style.background =
+    selectedColor;
+
   // Update selected state
-  document.querySelectorAll('.color-option').forEach(btn => {
-    btn.classList.remove('selected');
+  document.querySelectorAll(".color-option").forEach((btn) => {
+    btn.classList.remove("selected");
     if (btn.dataset.color === selectedColor) {
-      btn.classList.add('selected');
+      btn.classList.add("selected");
     }
   });
 }
@@ -10991,19 +12228,24 @@ function updateColorPreview() {
  * Render keywords tags
  */
 function renderKeywordsTags() {
-  const container = document.getElementById('domain-keywords-tags');
-  
+  const container = document.getElementById("domain-keywords-tags");
+
   if (domainKeywords.length === 0) {
-    container.innerHTML = '<div style="color: var(--text-muted); font-size: 12px; padding: 8px;">No keywords yet</div>';
+    container.innerHTML =
+      '<div style="color: var(--text-muted); font-size: 12px; padding: 8px;">No keywords yet</div>';
     return;
   }
-  
-  container.innerHTML = domainKeywords.map(keyword => `
+
+  container.innerHTML = domainKeywords
+    .map(
+      (keyword) => `
     <div class="keyword-tag">
       <span>${keyword}</span>
       <button type="button" class="keyword-tag-remove" onclick="removeKeyword('${keyword}')">×</button>
     </div>
-  `).join('');
+  `,
+    )
+    .join("");
 }
 
 /**
@@ -11012,23 +12254,23 @@ function renderKeywordsTags() {
 function addKeyword(keyword) {
   keyword = keyword.trim().toLowerCase();
   if (!keyword) return;
-  
+
   if (domainKeywords.includes(keyword)) {
     return;
   }
-  
+
   domainKeywords.push(keyword);
   renderKeywordsTags();
-  
+
   // Clear input
-  document.getElementById('domain-keywords-input').value = '';
+  document.getElementById("domain-keywords-input").value = "";
 }
 
 /**
  * Remove keyword (exposed globally)
  */
 function removeKeyword(keyword) {
-  domainKeywords = domainKeywords.filter(kw => kw !== keyword);
+  domainKeywords = domainKeywords.filter((kw) => kw !== keyword);
   renderKeywordsTags();
 }
 
@@ -11036,70 +12278,74 @@ function removeKeyword(keyword) {
  * Suggest keywords using AI
  */
 async function suggestDomainKeywords() {
-  const btn = document.getElementById('btn-suggest-keywords');
-  const suggestedContainer = document.getElementById('suggested-keywords');
-  const nameInput = document.getElementById('domain-name-input');
-  const descriptionInput = document.getElementById('domain-description-input');
-  
+  const btn = document.getElementById("btn-suggest-keywords");
+  const suggestedContainer = document.getElementById("suggested-keywords");
+  const nameInput = document.getElementById("domain-name-input");
+  const descriptionInput = document.getElementById("domain-description-input");
+
   const name = nameInput.value.trim();
   if (!name) {
-    alert('Please enter a domain name first');
+    alert("Please enter a domain name first");
     return;
   }
-  
+
   const description = descriptionInput.value.trim();
-  
+
   // Show loading state
-  btn.classList.add('loading');
+  btn.classList.add("loading");
   btn.disabled = true;
-  suggestedContainer.style.display = 'none';
-  suggestedContainer.innerHTML = '';
-  
+  suggestedContainer.style.display = "none";
+  suggestedContainer.innerHTML = "";
+
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/domains/suggest-keywords', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        description,
-        existingKeywords: domainKeywords
-      })
-    });
-    
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/domains/suggest-keywords",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          description,
+          existingKeywords: domainKeywords,
+        }),
+      },
+    );
+
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to suggest keywords');
+      throw new Error(error.detail || "Failed to suggest keywords");
     }
-    
+
     const result = await response.json();
     const suggestions = result.suggestedKeywords || [];
-    
+
     if (suggestions.length === 0) {
-      alert('No keyword suggestions available');
+      alert("No keyword suggestions available");
       return;
     }
-    
+
     // Render suggested keywords as clickable chips
     suggestedContainer.innerHTML = suggestions
-      .map(s => `
+      .map(
+        (s) => `
         <span class="keyword-tag suggested" onclick="acceptSuggestedKeyword('${s.keyword}', this)">
           ${s.keyword}
         </span>
-      `)
-      .join('');
-    
-    suggestedContainer.style.display = 'flex';
-    
+      `,
+      )
+      .join("");
+
+    suggestedContainer.style.display = "flex";
+
     // Log reasoning for debugging
     if (result.reasoning) {
-      console.log('Keyword suggestion reasoning:', result.reasoning);
+      console.log("Keyword suggestion reasoning:", result.reasoning);
     }
-    
   } catch (error) {
-    console.error('Failed to suggest keywords:', error);
+    console.error("Failed to suggest keywords:", error);
     alert(`Failed to suggest keywords: ${error.message}`);
   } finally {
-    btn.classList.remove('loading');
+    btn.classList.remove("loading");
     btn.disabled = false;
   }
 }
@@ -11109,14 +12355,14 @@ async function suggestDomainKeywords() {
  */
 function acceptSuggestedKeyword(keyword, element) {
   addKeyword(keyword);
-  
+
   // Remove the suggestion chip
   element.remove();
-  
+
   // Hide container if no more suggestions
-  const container = document.getElementById('suggested-keywords');
+  const container = document.getElementById("suggested-keywords");
   if (container.children.length === 0) {
-    container.style.display = 'none';
+    container.style.display = "none";
   }
 }
 
@@ -11125,25 +12371,28 @@ function acceptSuggestedKeyword(keyword, element) {
  */
 async function toggleFolderNumbering(enabled) {
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/domains/folder-numbering', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled })
-    });
-    
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/domains/folder-numbering",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      },
+    );
+
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to toggle folder numbering');
+      throw new Error(error.detail || "Failed to toggle folder numbering");
     }
-    
+
     // Reload domains to see updated folder paths
     await loadDomainsConfig();
   } catch (error) {
-    console.error('Failed to toggle folder numbering:', error);
+    console.error("Failed to toggle folder numbering:", error);
     alert(`Failed to update folder numbering: ${error.message}`);
-    
+
     // Reset toggle
-    document.getElementById('folder-numbering-toggle').checked = !enabled;
+    document.getElementById("folder-numbering-toggle").checked = !enabled;
   }
 }
 
@@ -11151,13 +12400,13 @@ async function toggleFolderNumbering(enabled) {
  * Setup drag and drop for reordering
  */
 function setupDragAndDrop() {
-  const cards = document.querySelectorAll('.domain-card-item');
-  
-  cards.forEach(card => {
-    card.addEventListener('dragstart', handleDragStart);
-    card.addEventListener('dragover', handleDragOver);
-    card.addEventListener('drop', handleDrop);
-    card.addEventListener('dragend', handleDragEnd);
+  const cards = document.querySelectorAll(".domain-card-item");
+
+  cards.forEach((card) => {
+    card.addEventListener("dragstart", handleDragStart);
+    card.addEventListener("dragover", handleDragOver);
+    card.addEventListener("drop", handleDrop);
+    card.addEventListener("dragend", handleDragEnd);
   });
 }
 
@@ -11165,16 +12414,16 @@ let draggedElement = null;
 
 function handleDragStart(e) {
   draggedElement = this;
-  this.classList.add('dragging');
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/html', this.innerHTML);
+  this.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/html", this.innerHTML);
 }
 
 function handleDragOver(e) {
   if (e.preventDefault) {
     e.preventDefault();
   }
-  e.dataTransfer.dropEffect = 'move';
+  e.dataTransfer.dropEffect = "move";
   return false;
 }
 
@@ -11182,54 +12431,57 @@ function handleDrop(e) {
   if (e.stopPropagation) {
     e.stopPropagation();
   }
-  
+
   if (draggedElement !== this) {
     // Get all cards
-    const allCards = Array.from(document.querySelectorAll('.domain-card-item'));
+    const allCards = Array.from(document.querySelectorAll(".domain-card-item"));
     const draggedIndex = allCards.indexOf(draggedElement);
     const targetIndex = allCards.indexOf(this);
-    
+
     // Reorder in DOM
     if (draggedIndex < targetIndex) {
       this.parentNode.insertBefore(draggedElement, this.nextSibling);
     } else {
       this.parentNode.insertBefore(draggedElement, this);
     }
-    
+
     // Save new order
     saveDomainsOrder();
   }
-  
+
   return false;
 }
 
 function handleDragEnd(e) {
-  this.classList.remove('dragging');
+  this.classList.remove("dragging");
 }
 
 /**
  * Save domains order after drag and drop
  */
 async function saveDomainsOrder() {
-  const cards = document.querySelectorAll('.domain-card-item');
-  const orderedIds = Array.from(cards).map(card => card.dataset.domainId);
-  
+  const cards = document.querySelectorAll(".domain-card-item");
+  const orderedIds = Array.from(cards).map((card) => card.dataset.domainId);
+
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/domains/reorder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain_ids: orderedIds })
-    });
-    
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/domains/reorder",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain_ids: orderedIds }),
+      },
+    );
+
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Failed to reorder domains');
+      throw new Error(error.detail || "Failed to reorder domains");
     }
-    
+
     // Reload to get updated order
     await loadDomainsConfig();
   } catch (error) {
-    console.error('Failed to save domain order:', error);
+    console.error("Failed to save domain order:", error);
     alert(`Failed to save order: ${error.message}`);
     // Reload to restore correct order
     await loadDomainsConfig();
@@ -11247,38 +12499,44 @@ async function saveDomainsOrder() {
  */
 async function loadDedupSettings() {
   try {
-    const response = await fetch('http://127.0.0.1:11436/deduplication/settings');
+    const response = await fetch(
+      "http://127.0.0.1:11436/deduplication/settings",
+    );
     if (!response.ok) {
-      console.error('Failed to load dedup settings:', response.status);
+      console.error("Failed to load dedup settings:", response.status);
       return;
     }
-    
+
     const data = await response.json();
-    
+
     // Update UI elements
-    const enabledCheckbox = document.getElementById('settings-dedup-enabled');
-    const thresholdSlider = document.getElementById('settings-dedup-threshold');
-    const thresholdValue = document.getElementById('settings-dedup-threshold-value');
-    const maxResultsSelect = document.getElementById('settings-dedup-max-results');
-    
+    const enabledCheckbox = document.getElementById("settings-dedup-enabled");
+    const thresholdSlider = document.getElementById("settings-dedup-threshold");
+    const thresholdValue = document.getElementById(
+      "settings-dedup-threshold-value",
+    );
+    const maxResultsSelect = document.getElementById(
+      "settings-dedup-max-results",
+    );
+
     if (enabledCheckbox) {
       enabledCheckbox.checked = data.enabled !== false;
     }
-    
+
     if (thresholdSlider && thresholdValue) {
       // Convert decimal (0.70) to percentage (70)
       const percentage = Math.round(data.similarity_threshold * 100);
       thresholdSlider.value = percentage;
       thresholdValue.textContent = `${percentage}%`;
     }
-    
+
     if (maxResultsSelect) {
       maxResultsSelect.value = data.max_results || 5;
     }
-    
-    console.log('Loaded dedup settings:', data);
+
+    console.log("Loaded dedup settings:", data);
   } catch (error) {
-    console.error('Error loading dedup settings:', error);
+    console.error("Error loading dedup settings:", error);
   }
 }
 
@@ -11287,39 +12545,42 @@ async function loadDedupSettings() {
  */
 async function saveDedupSettings() {
   try {
-    const enabledEl = document.getElementById('settings-dedup-enabled');
-    const thresholdEl = document.getElementById('settings-dedup-threshold');
-    const maxResultsEl = document.getElementById('settings-dedup-max-results');
-    
+    const enabledEl = document.getElementById("settings-dedup-enabled");
+    const thresholdEl = document.getElementById("settings-dedup-threshold");
+    const maxResultsEl = document.getElementById("settings-dedup-max-results");
+
     if (!enabledEl || !thresholdEl || !maxResultsEl) {
-      console.warn('Dedup settings elements not found, skipping save');
+      console.warn("Dedup settings elements not found, skipping save");
       return true; // Don't fail the overall save
     }
-    
+
     const settings = {
       enabled: enabledEl.checked,
       similarity_threshold: parseInt(thresholdEl.value),
-      max_results: parseInt(maxResultsEl.value)
+      max_results: parseInt(maxResultsEl.value),
     };
-    
-    console.log('Saving dedup settings:', settings);
-    
-    const response = await fetch('http://127.0.0.1:11436/deduplication/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings)
-    });
-    
+
+    console.log("Saving dedup settings:", settings);
+
+    const response = await fetch(
+      "http://127.0.0.1:11436/deduplication/settings",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      },
+    );
+
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Failed to save: ${response.status} - ${errorText}`);
     }
-    
+
     const result = await response.json();
-    console.log('Dedup settings saved successfully:', result);
+    console.log("Dedup settings saved successfully:", result);
     return true;
   } catch (error) {
-    console.error('Error saving dedup settings:', error);
+    console.error("Error saving dedup settings:", error);
     throw error;
   }
 }
@@ -11329,19 +12590,21 @@ async function saveDedupSettings() {
  */
 function setupDedupSettings() {
   // Update threshold value display when slider moves
-  const thresholdSlider = document.getElementById('settings-dedup-threshold');
-  const thresholdValue = document.getElementById('settings-dedup-threshold-value');
-  
+  const thresholdSlider = document.getElementById("settings-dedup-threshold");
+  const thresholdValue = document.getElementById(
+    "settings-dedup-threshold-value",
+  );
+
   if (thresholdSlider && thresholdValue) {
-    thresholdSlider.addEventListener('input', (e) => {
+    thresholdSlider.addEventListener("input", (e) => {
       thresholdValue.textContent = `${e.target.value}%`;
     });
   }
-  
+
   // Load settings when Advanced tab is opened
   const advancedTab = document.querySelector('[data-tab="tab-advanced"]');
   if (advancedTab) {
-    advancedTab.addEventListener('click', () => {
+    advancedTab.addEventListener("click", () => {
       loadDedupSettings();
     });
   }
@@ -11360,48 +12623,49 @@ let migrationPollInterval = null;
  */
 async function loadNotesSource() {
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/notes/source');
+    const response = await fetch("http://127.0.0.1:11436/polly/notes/source");
     if (!response.ok) {
-      console.error('Failed to load notes source:', response.status);
+      console.error("Failed to load notes source:", response.status);
       return;
     }
-    
+
     const data = await response.json();
-    
+
     // Update UI
-    const sourceEl = document.getElementById('notes-current-source');
-    const pathEl = document.getElementById('notes-current-path');
-    
+    const sourceEl = document.getElementById("notes-current-source");
+    const pathEl = document.getElementById("notes-current-path");
+
     if (sourceEl) {
-      sourceEl.textContent = data.active_source === 'obsidian' ? 'Obsidian' : 'Native Polly';
+      sourceEl.textContent =
+        data.active_source === "obsidian" ? "Obsidian" : "Native Polly";
     }
-    
+
     if (pathEl) {
       pathEl.textContent = data.notes_path || data.vault_path;
     }
-    
+
     // Always show migration section - users might want to import Obsidian notes even when using native KB
-    const migrationSection = document.getElementById('migration-section');
+    const migrationSection = document.getElementById("migration-section");
     if (migrationSection) {
-      migrationSection.style.display = 'block';
-      
+      migrationSection.style.display = "block";
+
       // Update the description to be clearer
-      const migrationDesc = migrationSection.querySelector('.form-hint');
-      if (migrationDesc && data.active_source === 'native') {
+      const migrationDesc = migrationSection.querySelector(".form-hint");
+      if (migrationDesc && data.active_source === "native") {
         migrationDesc.innerHTML = `
           <i data-lucide="package" style="width: 14px; height: 14px;"></i>
           Import your Obsidian vault to Polly's native notes. This will merge notes into your existing native notes directory.
         `;
         lucide.createIcons();
       }
-      
+
       // Load and display Obsidian vault path
       loadMigrationVaultPath();
     }
-    
-    console.log('Loaded notes source:', data);
+
+    console.log("Loaded notes source:", data);
   } catch (error) {
-    console.error('Error loading notes source:', error);
+    console.error("Error loading notes source:", error);
   }
 }
 
@@ -11410,30 +12674,30 @@ async function loadNotesSource() {
  */
 async function loadMigrationVaultPath() {
   try {
-    const vaultPathEl = document.getElementById('migration-vault-path');
-    const vaultInfoEl = document.getElementById('migration-vault-info');
-    
+    const vaultPathEl = document.getElementById("migration-vault-path");
+    const vaultInfoEl = document.getElementById("migration-vault-info");
+
     if (!vaultPathEl) return;
-    
+
     // Get Obsidian integration info
-    const response = await fetch('http://127.0.0.1:11436/polly/integrations');
+    const response = await fetch("http://127.0.0.1:11436/polly/integrations");
     const data = await response.json();
-    
+
     const obsidian = data.integrations?.obsidian;
-    
+
     if (obsidian && obsidian.vault_path) {
       vaultPathEl.textContent = obsidian.vault_path;
-      vaultInfoEl.style.display = 'block';
+      vaultInfoEl.style.display = "block";
     } else {
-      vaultPathEl.textContent = 'Obsidian vault not configured';
-      vaultInfoEl.style.borderLeft = '3px solid #ef4444';
-      vaultInfoEl.style.background = 'rgba(239, 68, 68, 0.1)';
+      vaultPathEl.textContent = "Obsidian vault not configured";
+      vaultInfoEl.style.borderLeft = "3px solid #ef4444";
+      vaultInfoEl.style.background = "rgba(239, 68, 68, 0.1)";
     }
   } catch (error) {
-    console.error('Error loading vault path:', error);
-    const vaultPathEl = document.getElementById('migration-vault-path');
+    console.error("Error loading vault path:", error);
+    const vaultPathEl = document.getElementById("migration-vault-path");
     if (vaultPathEl) {
-      vaultPathEl.textContent = 'Error loading vault path';
+      vaultPathEl.textContent = "Error loading vault path";
     }
   }
 }
@@ -11443,70 +12707,84 @@ async function loadMigrationVaultPath() {
  */
 async function startMigration() {
   try {
-    const btn = document.getElementById('btn-start-migration');
+    const btn = document.getElementById("btn-start-migration");
     if (!btn) return;
-    
+
     // Get options
     const options = {
-      copy_attachments: document.getElementById('migration-copy-attachments')?.checked ?? true,
-      preserve_structure: document.getElementById('migration-preserve-structure')?.checked ?? true,
-      skip_canvas: document.getElementById('migration-skip-canvas')?.checked ?? true,
-      switch_source: document.getElementById('migration-switch-source')?.checked ?? true
+      copy_attachments:
+        document.getElementById("migration-copy-attachments")?.checked ?? true,
+      preserve_structure:
+        document.getElementById("migration-preserve-structure")?.checked ??
+        true,
+      skip_canvas:
+        document.getElementById("migration-skip-canvas")?.checked ?? true,
+      switch_source:
+        document.getElementById("migration-switch-source")?.checked ?? true,
     };
-    
+
     // Get Obsidian vault path from integrations
-    const integrationsResponse = await fetch('http://127.0.0.1:11436/polly/integrations');
+    const integrationsResponse = await fetch(
+      "http://127.0.0.1:11436/polly/integrations",
+    );
     const integrationsData = await integrationsResponse.json();
-    
+
     const obsidianIntegration = integrationsData.integrations?.obsidian;
     if (!obsidianIntegration || !obsidianIntegration.vault_path) {
-      showToast('Obsidian vault path not configured. Please configure Obsidian integration first.', 'error');
+      showToast(
+        "Obsidian vault path not configured. Please configure Obsidian integration first.",
+        "error",
+      );
       return;
     }
-    
+
     const vaultPath = obsidianIntegration.vault_path;
-    
-    console.log('Starting migration from:', vaultPath);
-    
+
+    console.log("Starting migration from:", vaultPath);
+
     // Disable button
     btn.disabled = true;
-    btn.innerHTML = '<i data-lucide="loader" style="width: 16px; height: 16px; margin-right: 6px; animation: spin 1s linear infinite;"></i><span>Starting...</span>';
+    btn.innerHTML =
+      '<i data-lucide="loader" style="width: 16px; height: 16px; margin-right: 6px; animation: spin 1s linear infinite;"></i><span>Starting...</span>';
     lucide.createIcons();
-    
+
     // Start migration
-    const response = await fetch('http://127.0.0.1:11436/polly/notes/migrate-from-obsidian', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        vault_path: vaultPath,
-        options: options
-      })
-    });
-    
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/notes/migrate-from-obsidian",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vault_path: vaultPath,
+          options: options,
+        }),
+      },
+    );
+
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`Migration failed: ${error}`);
     }
-    
+
     const data = await response.json();
-    
-    console.log('Migration started:', data);
-    
+
+    console.log("Migration started:", data);
+
     // Show progress UI
     showMigrationProgress(data.migration_id);
-    
+
     // Start polling for progress
     pollMigrationProgress(data.migration_id);
-    
   } catch (error) {
-    console.error('Error starting migration:', error);
-    showToast('Failed to start migration: ' + error.message, 'error');
-    
+    console.error("Error starting migration:", error);
+    showToast("Failed to start migration: " + error.message, "error");
+
     // Re-enable button
-    const btn = document.getElementById('btn-start-migration');
+    const btn = document.getElementById("btn-start-migration");
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = '<i data-lucide="package" style="width: 16px; height: 16px; margin-right: 6px;"></i><span>Start Migration</span>';
+      btn.innerHTML =
+        '<i data-lucide="package" style="width: 16px; height: 16px; margin-right: 6px;"></i><span>Start Migration</span>';
       lucide.createIcons();
     }
   }
@@ -11516,11 +12794,11 @@ async function startMigration() {
  * Show migration progress UI
  */
 function showMigrationProgress(migrationId) {
-  const controlsEl = document.getElementById('migration-controls');
-  const statusEl = document.getElementById('migration-status');
-  
-  if (controlsEl) controlsEl.classList.add('hidden');
-  if (statusEl) statusEl.classList.remove('hidden');
+  const controlsEl = document.getElementById("migration-controls");
+  const statusEl = document.getElementById("migration-status");
+
+  if (controlsEl) controlsEl.classList.add("hidden");
+  if (statusEl) statusEl.classList.remove("hidden");
 }
 
 /**
@@ -11531,34 +12809,36 @@ async function pollMigrationProgress(migrationId) {
   if (migrationPollInterval) {
     clearInterval(migrationPollInterval);
   }
-  
+
   // Poll every second
   migrationPollInterval = setInterval(async () => {
     try {
-      const response = await fetch(`http://127.0.0.1:11436/polly/notes/migrate/${migrationId}/status`);
+      const response = await fetch(
+        `http://127.0.0.1:11436/polly/notes/migrate/${migrationId}/status`,
+      );
       if (!response.ok) {
-        console.error('Failed to get migration status:', response.status);
+        console.error("Failed to get migration status:", response.status);
         return;
       }
-      
+
       const progress = await response.json();
-      
+
       // Update progress UI
       updateMigrationProgress(progress);
-      
+
       // Check if complete
-      if (progress.status === 'completed' || progress.status === 'failed') {
+      if (progress.status === "completed" || progress.status === "failed") {
         clearInterval(migrationPollInterval);
         migrationPollInterval = null;
-        
-        if (progress.status === 'completed') {
+
+        if (progress.status === "completed") {
           showMigrationComplete(progress, migrationId);
         } else {
           showMigrationError(progress);
         }
       }
     } catch (error) {
-      console.error('Error polling migration progress:', error);
+      console.error("Error polling migration progress:", error);
     }
   }, 1000);
 }
@@ -11567,27 +12847,27 @@ async function pollMigrationProgress(migrationId) {
  * Update migration progress UI
  */
 function updateMigrationProgress(progress) {
-  const progressBar = document.getElementById('migration-progress-bar');
-  const progressText = document.getElementById('migration-progress-text');
-  const currentFile = document.getElementById('migration-current-file');
-  const stats = document.getElementById('migration-stats');
-  
+  const progressBar = document.getElementById("migration-progress-bar");
+  const progressText = document.getElementById("migration-progress-text");
+  const currentFile = document.getElementById("migration-current-file");
+  const stats = document.getElementById("migration-stats");
+
   if (progressBar) {
     progressBar.style.width = `${progress.progress_percent}%`;
   }
-  
+
   if (progressText) {
     progressText.textContent = `${progress.progress_percent}% (${progress.files_copied}/${progress.total_files})`;
   }
-  
+
   if (currentFile) {
-    currentFile.textContent = progress.current_file || 'Processing...';
+    currentFile.textContent = progress.current_file || "Processing...";
   }
-  
+
   if (stats) {
     const elapsed = progress.elapsed_seconds;
     const remaining = progress.estimated_remaining;
-    stats.textContent = `Elapsed: ${elapsed}s${remaining ? ` • Remaining: ~${remaining}s` : ''}${progress.files_skipped > 0 ? ` • Skipped: ${progress.files_skipped}` : ''}`;
+    stats.textContent = `Elapsed: ${elapsed}s${remaining ? ` • Remaining: ~${remaining}s` : ""}${progress.files_skipped > 0 ? ` • Skipped: ${progress.files_skipped}` : ""}`;
   }
 }
 
@@ -11595,13 +12875,13 @@ function updateMigrationProgress(progress) {
  * Show migration complete UI
  */
 function showMigrationComplete(progress, migrationId) {
-  const statusEl = document.getElementById('migration-status');
-  const completeEl = document.getElementById('migration-complete');
-  const summaryEl = document.getElementById('migration-summary');
-  
-  if (statusEl) statusEl.classList.add('hidden');
-  if (completeEl) completeEl.classList.remove('hidden');
-  
+  const statusEl = document.getElementById("migration-status");
+  const completeEl = document.getElementById("migration-complete");
+  const summaryEl = document.getElementById("migration-summary");
+
+  if (statusEl) statusEl.classList.add("hidden");
+  if (completeEl) completeEl.classList.remove("hidden");
+
   if (summaryEl) {
     summaryEl.innerHTML = `
       <div style="display: flex; gap: 16px;">
@@ -11609,12 +12889,16 @@ function showMigrationComplete(progress, migrationId) {
           <div style="font-size: 1.5em; font-weight: 600; color: #4ade80;">${progress.files_copied}</div>
           <div>files copied</div>
         </div>
-        ${progress.files_skipped > 0 ? `
+        ${
+          progress.files_skipped > 0
+            ? `
         <div>
           <div style="font-size: 1.5em; font-weight: 600; color: var(--text-secondary);">${progress.files_skipped}</div>
           <div>files skipped</div>
         </div>
-        ` : ''}
+        `
+            : ""
+        }
         <div>
           <div style="font-size: 1.5em; font-weight: 600; color: var(--text-secondary);">${progress.elapsed_seconds}s</div>
           <div>elapsed time</div>
@@ -11622,37 +12906,39 @@ function showMigrationComplete(progress, migrationId) {
       </div>
     `;
   }
-  
+
   // Set up switch button
-  const switchBtn = document.getElementById('btn-switch-to-native');
+  const switchBtn = document.getElementById("btn-switch-to-native");
   if (switchBtn) {
     switchBtn.onclick = () => switchToNativeSource(migrationId);
   }
-  
-  showToast('Migration completed successfully!', 'success');
+
+  showToast("Migration completed successfully!", "success");
 }
 
 /**
  * Show migration error
  */
 function showMigrationError(progress) {
-  const statusEl = document.getElementById('migration-status');
-  const controlsEl = document.getElementById('migration-controls');
-  
-  if (statusEl) statusEl.classList.add('hidden');
-  if (controlsEl) controlsEl.classList.remove('hidden');
-  
-  const errorMsg = progress.errors.length > 0 
-    ? progress.errors.map(e => `${e.file}: ${e.error}`).join('\n')
-    : 'Unknown error occurred';
-  
-  showToast('Migration failed: ' + errorMsg, 'error');
-  
+  const statusEl = document.getElementById("migration-status");
+  const controlsEl = document.getElementById("migration-controls");
+
+  if (statusEl) statusEl.classList.add("hidden");
+  if (controlsEl) controlsEl.classList.remove("hidden");
+
+  const errorMsg =
+    progress.errors.length > 0
+      ? progress.errors.map((e) => `${e.file}: ${e.error}`).join("\n")
+      : "Unknown error occurred";
+
+  showToast("Migration failed: " + errorMsg, "error");
+
   // Re-enable button
-  const btn = document.getElementById('btn-start-migration');
+  const btn = document.getElementById("btn-start-migration");
   if (btn) {
     btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="package" style="width: 16px; height: 16px; margin-right: 6px;"></i><span>Start Migration</span>';
+    btn.innerHTML =
+      '<i data-lucide="package" style="width: 16px; height: 16px; margin-right: 6px;"></i><span>Start Migration</span>';
     lucide.createIcons();
   }
 }
@@ -11662,38 +12948,42 @@ function showMigrationError(progress) {
  */
 async function switchToNativeSource(migrationId) {
   try {
-    const btn = document.getElementById('btn-switch-to-native');
+    const btn = document.getElementById("btn-switch-to-native");
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = '<i data-lucide="loader" style="width: 16px; height: 16px; margin-right: 6px; animation: spin 1s linear infinite;"></i><span>Switching...</span>';
+      btn.innerHTML =
+        '<i data-lucide="loader" style="width: 16px; height: 16px; margin-right: 6px; animation: spin 1s linear infinite;"></i><span>Switching...</span>';
       lucide.createIcons();
     }
-    
-    const response = await fetch(`http://127.0.0.1:11436/polly/notes/migrate/${migrationId}/switch-source`, {
-      method: 'POST'
-    });
-    
+
+    const response = await fetch(
+      `http://127.0.0.1:11436/polly/notes/migrate/${migrationId}/switch-source`,
+      {
+        method: "POST",
+      },
+    );
+
     if (!response.ok) {
-      throw new Error('Failed to switch source');
+      throw new Error("Failed to switch source");
     }
-    
+
     const data = await response.json();
-    
-    showToast('Switched to native notes! Reloading...', 'success');
-    
+
+    showToast("Switched to native notes! Reloading...", "success");
+
     // Reload after 2 seconds
     setTimeout(() => {
       location.reload();
     }, 2000);
-    
   } catch (error) {
-    console.error('Error switching source:', error);
-    showToast('Failed to switch source: ' + error.message, 'error');
-    
-    const btn = document.getElementById('btn-switch-to-native');
+    console.error("Error switching source:", error);
+    showToast("Failed to switch source: " + error.message, "error");
+
+    const btn = document.getElementById("btn-switch-to-native");
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = '<i data-lucide="check" style="width: 16px; height: 16px; margin-right: 6px;"></i><span>Switch to Native Notes</span>';
+      btn.innerHTML =
+        '<i data-lucide="check" style="width: 16px; height: 16px; margin-right: 6px;"></i><span>Switch to Native Notes</span>';
       lucide.createIcons();
     }
   }
@@ -11706,23 +12996,23 @@ function setupMigration() {
   // Load notes source when Notes tab is opened
   const notesTab = document.querySelector('[data-tab="notes"]');
   if (notesTab) {
-    notesTab.addEventListener('click', () => {
+    notesTab.addEventListener("click", () => {
       loadNotesSource();
     });
   }
-  
+
   // Set up start migration button
-  const startBtn = document.getElementById('btn-start-migration');
+  const startBtn = document.getElementById("btn-start-migration");
   if (startBtn) {
-    startBtn.addEventListener('click', startMigration);
+    startBtn.addEventListener("click", startMigration);
   }
-  
+
   // Set up re-index button
-  const reindexBtn = document.getElementById('btn-reindex-notes');
+  const reindexBtn = document.getElementById("btn-reindex-notes");
   if (reindexBtn) {
     reindexBtn.onclick = startReindex;
   }
-  
+
   // Set up knowledge base location handlers
   setupKnowledgeBaseLocation();
 }
@@ -11740,26 +13030,26 @@ async function setupKnowledgeBaseLocation() {
   // Load current location when Notes tab is opened
   const notesTab = document.querySelector('[data-tab="notes"]');
   if (notesTab) {
-    notesTab.addEventListener('click', async () => {
+    notesTab.addEventListener("click", async () => {
       await loadKnowledgeBasePath();
       await loadCloudServices();
     });
   }
-  
+
   // Set up change location button
-  const changeBtn = document.getElementById('btn-change-kb-location');
+  const changeBtn = document.getElementById("btn-change-kb-location");
   if (changeBtn) {
     changeBtn.onclick = openKnowledgeBaseMigrationModal;
   }
-  
+
   // Set up custom path chooser
-  const customPathBtn = document.getElementById('btn-choose-custom-path');
+  const customPathBtn = document.getElementById("btn-choose-custom-path");
   if (customPathBtn) {
     customPathBtn.onclick = chooseCustomKnowledgeBasePath;
   }
-  
+
   // Set up start migration button
-  const startMigrationBtn = document.getElementById('btn-start-kb-migration');
+  const startMigrationBtn = document.getElementById("btn-start-kb-migration");
   if (startMigrationBtn) {
     startMigrationBtn.onclick = startKnowledgeBaseMigration;
   }
@@ -11769,18 +13059,24 @@ async function setupKnowledgeBaseLocation() {
  * Load current knowledge base path
  */
 async function loadKnowledgeBasePath() {
-  const result = await safeFetch('http://127.0.0.1:11436/polly/config/knowledge-base-path', {}, true);
-  
+  const result = await safeFetch(
+    "http://127.0.0.1:11436/polly/config/knowledge-base-path",
+    {},
+    true,
+  );
+
   if (result.ok) {
-    const pathEl = document.getElementById('kb-current-path');
+    const pathEl = document.getElementById("kb-current-path");
     if (pathEl) {
       pathEl.textContent = result.data.path;
-      
+
       // Show suggestion if using default path
       if (result.data.isDefault) {
-        const suggestionsEl = document.getElementById('cloud-services-suggestions');
+        const suggestionsEl = document.getElementById(
+          "cloud-services-suggestions",
+        );
         if (suggestionsEl) {
-          suggestionsEl.classList.remove('hidden');
+          suggestionsEl.classList.remove("hidden");
         }
       }
     }
@@ -11791,16 +13087,22 @@ async function loadKnowledgeBasePath() {
  * Load available cloud services
  */
 async function loadCloudServices() {
-  const result = await safeFetch('http://127.0.0.1:11436/polly/config/cloud-services', {}, true);
-  
+  const result = await safeFetch(
+    "http://127.0.0.1:11436/polly/config/cloud-services",
+    {},
+    true,
+  );
+
   if (result.ok && result.data.services) {
-    const availableServices = result.data.services.filter(s => s.available);
-    
+    const availableServices = result.data.services.filter((s) => s.available);
+
     if (availableServices.length > 0) {
       // Populate quick suggestions list
-      const listEl = document.getElementById('cloud-services-list');
+      const listEl = document.getElementById("cloud-services-list");
       if (listEl) {
-        listEl.innerHTML = availableServices.map(service => `
+        listEl.innerHTML = availableServices
+          .map(
+            (service) => `
           <button class="btn btn-secondary cloud-service-btn" data-path="${service.suggestedPath}" style="text-align: left; justify-content: flex-start;">
             <span style="margin-right: 8px;">${getCloudServiceIcon(service.name)}</span>
             <div style="flex: 1;">
@@ -11809,16 +13111,18 @@ async function loadCloudServices() {
             </div>
             <i data-lucide="arrow-right" style="width: 16px; height: 16px; margin-left: 8px;"></i>
           </button>
-        `).join('');
-        
+        `,
+          )
+          .join("");
+
         // Add click handlers
-        listEl.querySelectorAll('.cloud-service-btn').forEach(btn => {
+        listEl.querySelectorAll(".cloud-service-btn").forEach((btn) => {
           btn.onclick = () => {
-            const path = btn.getAttribute('data-path');
+            const path = btn.getAttribute("data-path");
             selectKnowledgeBasePath(path);
           };
         });
-        
+
         lucide.createIcons();
       }
     }
@@ -11830,51 +13134,57 @@ async function loadCloudServices() {
  */
 function getCloudServiceIcon(serviceName) {
   const icons = {
-    'Dropbox': '📦',
-    'iCloud Drive': '☁️',
-    'Google Drive': '🔷',
-    'OneDrive': '🔷'
+    Dropbox: "📦",
+    "iCloud Drive": "☁️",
+    "Google Drive": "🔷",
+    OneDrive: "🔷",
   };
-  return icons[serviceName] || 'folder';
+  return icons[serviceName] || "folder";
 }
 
 /**
  * Open knowledge base migration modal
  */
 async function openKnowledgeBaseMigrationModal() {
-  const modal = document.getElementById('kb-migration-modal');
+  const modal = document.getElementById("kb-migration-modal");
   if (!modal) return;
-  
+
   // Reset modal state
-  document.getElementById('kb-migration-step-1').classList.remove('hidden');
-  document.getElementById('kb-migration-step-2').classList.add('hidden');
-  document.getElementById('kb-migration-step-3').classList.add('hidden');
-  document.getElementById('kb-selected-path').classList.add('hidden');
-  document.getElementById('kb-migration-preview').classList.add('hidden');
-  document.getElementById('btn-start-kb-migration').disabled = true;
-  
+  document.getElementById("kb-migration-step-1").classList.remove("hidden");
+  document.getElementById("kb-migration-step-2").classList.add("hidden");
+  document.getElementById("kb-migration-step-3").classList.add("hidden");
+  document.getElementById("kb-selected-path").classList.add("hidden");
+  document.getElementById("kb-migration-preview").classList.add("hidden");
+  document.getElementById("btn-start-kb-migration").disabled = true;
+
   // Load cloud services for modal
   await loadCloudServicesForModal();
-  
+
   // Load migration preview
   await loadMigrationPreview();
-  
+
   // Show modal
-  modal.classList.remove('hidden');
+  modal.classList.remove("hidden");
 }
 
 /**
  * Load cloud services for migration modal
  */
 async function loadCloudServicesForModal() {
-  const result = await safeFetch('http://127.0.0.1:11436/polly/config/cloud-services', {}, true);
-  
+  const result = await safeFetch(
+    "http://127.0.0.1:11436/polly/config/cloud-services",
+    {},
+    true,
+  );
+
   if (result.ok && result.data.services) {
-    const availableServices = result.data.services.filter(s => s.available);
-    
-    const listEl = document.getElementById('kb-cloud-services-list');
+    const availableServices = result.data.services.filter((s) => s.available);
+
+    const listEl = document.getElementById("kb-cloud-services-list");
     if (listEl) {
-      listEl.innerHTML = availableServices.map(service => `
+      listEl.innerHTML = availableServices
+        .map(
+          (service) => `
         <button class="btn btn-secondary cloud-service-modal-btn" data-path="${service.suggestedPath}" style="text-align: left; justify-content: flex-start;">
           <span style="margin-right: 8px;">${getCloudServiceIcon(service.name)}</span>
           <div style="flex: 1;">
@@ -11883,26 +13193,28 @@ async function loadCloudServicesForModal() {
           </div>
           <i data-lucide="check-circle" class="service-check hidden" style="width: 20px; height: 20px; margin-left: 8px; color: var(--accent);"></i>
         </button>
-      `).join('');
-      
+      `,
+        )
+        .join("");
+
       // Add click handlers
-      listEl.querySelectorAll('.cloud-service-modal-btn').forEach(btn => {
+      listEl.querySelectorAll(".cloud-service-modal-btn").forEach((btn) => {
         btn.onclick = () => {
-          const path = btn.getAttribute('data-path');
+          const path = btn.getAttribute("data-path");
           selectKnowledgeBasePath(path);
-          
+
           // Update UI to show selection
-          listEl.querySelectorAll('.cloud-service-modal-btn').forEach(b => {
-            b.classList.remove('btn-primary');
-            b.classList.add('btn-secondary');
-            b.querySelector('.service-check').classList.add('hidden');
+          listEl.querySelectorAll(".cloud-service-modal-btn").forEach((b) => {
+            b.classList.remove("btn-primary");
+            b.classList.add("btn-secondary");
+            b.querySelector(".service-check").classList.add("hidden");
           });
-          btn.classList.remove('btn-secondary');
-          btn.classList.add('btn-primary');
-          btn.querySelector('.service-check').classList.remove('hidden');
+          btn.classList.remove("btn-secondary");
+          btn.classList.add("btn-primary");
+          btn.querySelector(".service-check").classList.remove("hidden");
         };
       });
-      
+
       lucide.createIcons();
     }
   }
@@ -11912,21 +13224,27 @@ async function loadCloudServicesForModal() {
  * Load migration preview stats
  */
 async function loadMigrationPreview() {
-  const result = await safeFetch('http://127.0.0.1:11436/polly/config/migration-preview', {}, true);
-  
+  const result = await safeFetch(
+    "http://127.0.0.1:11436/polly/config/migration-preview",
+    {},
+    true,
+  );
+
   if (result.ok && result.data.stats) {
     const stats = result.data.stats;
-    const previewEl = document.getElementById('kb-preview-stats');
-    
+    const previewEl = document.getElementById("kb-preview-stats");
+
     if (previewEl) {
       const formatBytes = (bytes) => {
-        if (bytes === 0) return '0 B';
+        if (bytes === 0) return "0 B";
         const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const sizes = ["B", "KB", "MB", "GB"];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        return (
+          Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i]
+        );
       };
-      
+
       previewEl.innerHTML = `
         <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
           <span><i data-lucide="file-text" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle; margin-right: 4px;"></i>Notes:</span>
@@ -11945,13 +13263,15 @@ async function loadMigrationPreview() {
           <span>${stats.total_files} files (${formatBytes(stats.total_size_bytes)})</span>
         </div>
       `;
-      
+
       // Re-initialize Lucide icons
-      if (typeof lucide !== 'undefined') {
+      if (typeof lucide !== "undefined") {
         lucide.createIcons();
       }
-      
-      document.getElementById('kb-migration-preview').classList.remove('hidden');
+
+      document
+        .getElementById("kb-migration-preview")
+        .classList.remove("hidden");
     }
   }
 }
@@ -11960,13 +13280,13 @@ async function loadMigrationPreview() {
  * Choose custom knowledge base path using Electron dialog
  */
 async function chooseCustomKnowledgeBasePath() {
-  console.log('chooseCustomKnowledgeBasePath called');
-  const result = await PollyBridge.safeCall('selectDirectory');
-  console.log('Directory selection result:', result);
-  
+  console.log("chooseCustomKnowledgeBasePath called");
+  const result = await PollyBridge.safeCall("selectDirectory");
+  console.log("Directory selection result:", result);
+
   // Handle different possible result formats
   let path = null;
-  
+
   if (result) {
     // Format 1: {success: true, path: '...'} (Electron dialog)
     if (result.success && result.path) {
@@ -11977,16 +13297,16 @@ async function chooseCustomKnowledgeBasePath() {
       path = result[0];
     }
     // Format 3: direct string
-    else if (typeof result === 'string') {
+    else if (typeof result === "string") {
       path = result;
     }
   }
-  
+
   if (path) {
-    console.log('Selected path:', path);
+    console.log("Selected path:", path);
     selectKnowledgeBasePath(path);
   } else {
-    console.log('No directory selected or invalid result format');
+    console.log("No directory selected or invalid result format");
   }
 }
 
@@ -11994,26 +13314,26 @@ async function chooseCustomKnowledgeBasePath() {
  * Select a knowledge base path
  */
 function selectKnowledgeBasePath(path) {
-  console.log('selectKnowledgeBasePath called with path:', path);
-  
+  console.log("selectKnowledgeBasePath called with path:", path);
+
   // Update selected path display
-  const selectedPathEl = document.getElementById('kb-selected-path');
+  const selectedPathEl = document.getElementById("kb-selected-path");
   if (selectedPathEl) {
     selectedPathEl.textContent = path;
-    selectedPathEl.classList.remove('hidden');
-    console.log('Updated selected path display');
+    selectedPathEl.classList.remove("hidden");
+    console.log("Updated selected path display");
   } else {
-    console.error('kb-selected-path element not found');
+    console.error("kb-selected-path element not found");
   }
-  
+
   // Enable start migration button
-  const startBtn = document.getElementById('btn-start-kb-migration');
+  const startBtn = document.getElementById("btn-start-kb-migration");
   if (startBtn) {
-    console.log('Found start button, enabling it');
+    console.log("Found start button, enabling it");
     startBtn.disabled = false;
-    startBtn.setAttribute('data-target-path', path);
+    startBtn.setAttribute("data-target-path", path);
   } else {
-    console.error('btn-start-kb-migration button not found');
+    console.error("btn-start-kb-migration button not found");
   }
 }
 
@@ -12021,76 +13341,85 @@ function selectKnowledgeBasePath(path) {
  * Start knowledge base migration
  */
 async function startKnowledgeBaseMigration() {
-  const startBtn = document.getElementById('btn-start-kb-migration');
+  const startBtn = document.getElementById("btn-start-kb-migration");
   if (!startBtn) return;
-  
-  const targetPath = startBtn.getAttribute('data-target-path');
+
+  const targetPath = startBtn.getAttribute("data-target-path");
   if (!targetPath) {
-    showToast('Please select a location first', 'error');
+    showToast("Please select a location first", "error");
     return;
   }
-  
+
   try {
     // Switch to progress view
-    document.getElementById('kb-migration-step-1').classList.add('hidden');
-    document.getElementById('kb-migration-step-2').classList.remove('hidden');
-    
+    document.getElementById("kb-migration-step-1").classList.add("hidden");
+    document.getElementById("kb-migration-step-2").classList.remove("hidden");
+
     // Update status
-    document.getElementById('kb-migration-status-text').textContent = 'Preparing migration...';
-    
+    document.getElementById("kb-migration-status-text").textContent =
+      "Preparing migration...";
+
     // Start migration
-    const result = await safeFetch('http://127.0.0.1:11436/polly/config/migrate-knowledge-base', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        targetPath: targetPath,
-        createBackup: true
-      })
-    });
-    
+    const result = await safeFetch(
+      "http://127.0.0.1:11436/polly/config/migrate-knowledge-base",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetPath: targetPath,
+          createBackup: true,
+        }),
+      },
+    );
+
     if (result.ok) {
       // Update progress
-      document.getElementById('kb-migration-progress-bar').style.width = '100%';
-      document.getElementById('kb-migration-progress-text').textContent = '100%';
-      document.getElementById('kb-migration-status-text').textContent = 'Migration complete!';
-      
+      document.getElementById("kb-migration-progress-bar").style.width = "100%";
+      document.getElementById("kb-migration-progress-text").textContent =
+        "100%";
+      document.getElementById("kb-migration-status-text").textContent =
+        "Migration complete!";
+
       // Show completion step
       setTimeout(() => {
-        document.getElementById('kb-migration-step-2').classList.add('hidden');
-        document.getElementById('kb-migration-step-3').classList.remove('hidden');
-        
+        document.getElementById("kb-migration-step-2").classList.add("hidden");
+        document
+          .getElementById("kb-migration-step-3")
+          .classList.remove("hidden");
+
         // Populate summary
-        const summaryEl = document.getElementById('kb-migration-summary');
+        const summaryEl = document.getElementById("kb-migration-summary");
         if (summaryEl) {
           const formatBytes = (bytes) => {
-            if (bytes === 0) return '0 B';
+            if (bytes === 0) return "0 B";
             const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const sizes = ["B", "KB", "MB", "GB"];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+            return (
+              Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i]
+            );
           };
-          
+
           summaryEl.innerHTML = `
             <div style="margin-bottom: 8px;"><strong>New Location:</strong> ${result.data.targetPath}</div>
             <div style="margin-bottom: 8px;"><strong>Files Moved:</strong> ${result.data.filesMigrated}</div>
             <div style="margin-bottom: 8px;"><strong>Size:</strong> ${formatBytes(result.data.bytesMigrated)}</div>
-            ${result.data.backupPath ? `<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); font-size: 0.9em; color: var(--text-secondary);">Backup created at: ${result.data.backupPath}</div>` : ''}
+            ${result.data.backupPath ? `<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); font-size: 0.9em; color: var(--text-secondary);">Backup created at: ${result.data.backupPath}</div>` : ""}
           `;
         }
-        
+
         lucide.createIcons();
       }, 500);
     } else {
-      showToast(`Migration failed: ${result.error}`, 'error');
-      document.getElementById('kb-migration-step-2').classList.add('hidden');
-      document.getElementById('kb-migration-step-1').classList.remove('hidden');
+      showToast(`Migration failed: ${result.error}`, "error");
+      document.getElementById("kb-migration-step-2").classList.add("hidden");
+      document.getElementById("kb-migration-step-1").classList.remove("hidden");
     }
-    
   } catch (error) {
-    console.error('Migration error:', error);
-    showToast(`Migration failed: ${error.message}`, 'error');
-    document.getElementById('kb-migration-step-2').classList.add('hidden');
-    document.getElementById('kb-migration-step-1').classList.remove('hidden');
+    console.error("Migration error:", error);
+    showToast(`Migration failed: ${error.message}`, "error");
+    document.getElementById("kb-migration-step-2").classList.add("hidden");
+    document.getElementById("kb-migration-step-1").classList.remove("hidden");
   }
 }
 
@@ -12105,80 +13434,87 @@ async function startKnowledgeBaseMigration() {
  */
 async function startReindex() {
   try {
-    const btn = document.getElementById('btn-reindex-notes');
+    const btn = document.getElementById("btn-reindex-notes");
     if (!btn) return;
-    
-    console.log('Starting notes re-indexing...');
-    
+
+    console.log("Starting notes re-indexing...");
+
     // Disable button
     btn.disabled = true;
-    btn.innerHTML = '<i data-lucide="loader" style="width: 16px; height: 16px; margin-right: 6px; animation: spin 1s linear infinite;"></i><span>Starting...</span>';
+    btn.innerHTML =
+      '<i data-lucide="loader" style="width: 16px; height: 16px; margin-right: 6px; animation: spin 1s linear infinite;"></i><span>Starting...</span>';
     lucide.createIcons();
-    
+
     // Hide any previous completion message
-    const completeEl = document.getElementById('reindex-complete');
-    if (completeEl) completeEl.classList.add('hidden');
-    
+    const completeEl = document.getElementById("reindex-complete");
+    if (completeEl) completeEl.classList.add("hidden");
+
     // Show progress UI
-    const statusEl = document.getElementById('reindex-status');
-    if (statusEl) statusEl.classList.remove('hidden');
-    
+    const statusEl = document.getElementById("reindex-status");
+    if (statusEl) statusEl.classList.remove("hidden");
+
     // Reset progress
-    updateReindexProgress({ progress: 0, total: 0, file: 'Initializing...' });
-    
+    updateReindexProgress({ progress: 0, total: 0, file: "Initializing..." });
+
     // Start EventSource for streaming progress
-    const eventSource = new EventSource('http://127.0.0.1:11436/polly/notes/reindex');
-    
+    const eventSource = new EventSource(
+      "http://127.0.0.1:11436/polly/notes/reindex",
+    );
+
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('Reindex progress:', data);
-        
-        if (data.status === 'started') {
-          updateReindexProgress({ progress: 0, total: data.total, file: 'Starting...' });
-        } else if (data.status === 'progress') {
+        console.log("Reindex progress:", data);
+
+        if (data.status === "started") {
+          updateReindexProgress({
+            progress: 0,
+            total: data.total,
+            file: "Starting...",
+          });
+        } else if (data.status === "progress") {
           updateReindexProgress({
             progress: data.progress,
             total: data.total,
             file: data.file,
-            indexed: data.indexed
+            indexed: data.indexed,
           });
-        } else if (data.status === 'file_error') {
+        } else if (data.status === "file_error") {
           console.warn(`Error indexing ${data.file}:`, data.error);
           // Continue showing progress despite file error
           updateReindexProgress({
             progress: data.progress,
             total: data.total,
             file: `Error: ${data.file}`,
-            hasError: true
+            hasError: true,
           });
-        } else if (data.status === 'completed') {
+        } else if (data.status === "completed") {
           eventSource.close();
           showReindexComplete(data);
-        } else if (data.status === 'error') {
+        } else if (data.status === "error") {
           eventSource.close();
           showReindexError(data.error);
         }
       } catch (error) {
-        console.error('Error parsing reindex progress:', error);
+        console.error("Error parsing reindex progress:", error);
       }
     };
-    
+
     eventSource.onerror = (error) => {
-      console.error('EventSource error:', error);
+      console.error("EventSource error:", error);
       eventSource.close();
-      showReindexError('Connection to server lost. Please try again.');
+      showReindexError("Connection to server lost. Please try again.");
     };
-    
   } catch (error) {
-    console.error('Error starting reindex:', error);
-    showToast('Failed to start re-indexing: ' + error.message, 'error');
-    
+    console.error("Error starting reindex:", error);
+    showToast("Failed to start re-indexing: " + error.message, "error");
+
     // Re-enable button
-    const btn = document.getElementById('btn-reindex-notes');
+    const btn = document.getElementById("btn-reindex-notes");
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = '<i data-lucide="refresh-cw" style="width: 16px; height: 16px; margin-right: 6px;"></i><span>Re-index All Notes</span>';
+      btn.innerHTML =
+        '<i data-lucide="refresh-cw" style="width: 16px; height: 16px; margin-right: 6px;"></i><span>Re-index All Notes</span>';
       lucide.createIcons();
     }
   }
@@ -12188,34 +13524,34 @@ async function startReindex() {
  * Update reindex progress UI
  */
 function updateReindexProgress(data) {
-  const progressBar = document.getElementById('reindex-progress-bar');
-  const progressText = document.getElementById('reindex-progress-text');
-  const currentFile = document.getElementById('reindex-current-file');
-  const stats = document.getElementById('reindex-stats');
-  
+  const progressBar = document.getElementById("reindex-progress-bar");
+  const progressText = document.getElementById("reindex-progress-text");
+  const currentFile = document.getElementById("reindex-current-file");
+  const stats = document.getElementById("reindex-stats");
+
   if (!data.total || data.total === 0) {
-    if (progressBar) progressBar.style.width = '0%';
-    if (progressText) progressText.textContent = 'Starting...';
-    if (currentFile) currentFile.textContent = data.file || 'Initializing...';
-    if (stats) stats.textContent = '';
+    if (progressBar) progressBar.style.width = "0%";
+    if (progressText) progressText.textContent = "Starting...";
+    if (currentFile) currentFile.textContent = data.file || "Initializing...";
+    if (stats) stats.textContent = "";
     return;
   }
-  
+
   const percent = Math.round((data.progress / data.total) * 100);
-  
+
   if (progressBar) {
     progressBar.style.width = `${percent}%`;
   }
-  
+
   if (progressText) {
     progressText.textContent = `${percent}% (${data.progress}/${data.total})`;
   }
-  
+
   if (currentFile) {
-    const prefix = data.hasError ? '⚠ ' : '• ';
-    currentFile.textContent = prefix + (data.file || 'Processing...');
+    const prefix = data.hasError ? "⚠ " : "• ";
+    currentFile.textContent = prefix + (data.file || "Processing...");
   }
-  
+
   if (stats && data.indexed !== undefined) {
     stats.textContent = `Indexed: ${data.indexed} files`;
   }
@@ -12225,14 +13561,14 @@ function updateReindexProgress(data) {
  * Show reindex complete UI
  */
 function showReindexComplete(data) {
-  const statusEl = document.getElementById('reindex-status');
-  const completeEl = document.getElementById('reindex-complete');
-  const summaryEl = document.getElementById('reindex-summary');
-  const btn = document.getElementById('btn-reindex-notes');
-  
-  if (statusEl) statusEl.classList.add('hidden');
-  if (completeEl) completeEl.classList.remove('hidden');
-  
+  const statusEl = document.getElementById("reindex-status");
+  const completeEl = document.getElementById("reindex-complete");
+  const summaryEl = document.getElementById("reindex-summary");
+  const btn = document.getElementById("btn-reindex-notes");
+
+  if (statusEl) statusEl.classList.add("hidden");
+  if (completeEl) completeEl.classList.remove("hidden");
+
   if (summaryEl) {
     summaryEl.innerHTML = `
       <div style="display: flex; gap: 16px; margin-top: 8px;">
@@ -12240,12 +13576,16 @@ function showReindexComplete(data) {
           <div style="font-size: 1.3em; font-weight: 600; color: #4ade80;">${data.indexed || data.total}</div>
           <div style="font-size: 0.85em;">notes indexed</div>
         </div>
-        ${data.errors > 0 ? `
+        ${
+          data.errors > 0
+            ? `
         <div>
           <div style="font-size: 1.3em; font-weight: 600; color: #f59e0b;">${data.errors}</div>
           <div style="font-size: 0.85em;">errors</div>
         </div>
-        ` : ''}
+        `
+            : ""
+        }
         <div>
           <div style="font-size: 1.3em; font-weight: 600; color: var(--text-secondary);">${data.duration_seconds}s</div>
           <div style="font-size: 0.85em;">duration</div>
@@ -12253,38 +13593,40 @@ function showReindexComplete(data) {
       </div>
     `;
   }
-  
+
   // Re-enable button
   if (btn) {
     btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="refresh-cw" style="width: 16px; height: 16px; margin-right: 6px;"></i><span>Re-index All Notes</span>';
+    btn.innerHTML =
+      '<i data-lucide="refresh-cw" style="width: 16px; height: 16px; margin-right: 6px;"></i><span>Re-index All Notes</span>';
     lucide.createIcons();
   }
-  
+
   // Reload stats to reflect new indexed count
-  console.log('[Reindex] Complete! Reloading stats...');
+  console.log("[Reindex] Complete! Reloading stats...");
   loadKnowledgeData();
-  
-  showToast('Re-indexing completed successfully!', 'success');
+
+  showToast("Re-indexing completed successfully!", "success");
 }
 
 /**
  * Show reindex error
  */
 function showReindexError(errorMessage) {
-  const statusEl = document.getElementById('reindex-status');
-  const btn = document.getElementById('btn-reindex-notes');
-  
-  if (statusEl) statusEl.classList.add('hidden');
-  
+  const statusEl = document.getElementById("reindex-status");
+  const btn = document.getElementById("btn-reindex-notes");
+
+  if (statusEl) statusEl.classList.add("hidden");
+
   // Re-enable button
   if (btn) {
     btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="refresh-cw" style="width: 16px; height: 16px; margin-right: 6px;"></i><span>Re-index All Notes</span>';
+    btn.innerHTML =
+      '<i data-lucide="refresh-cw" style="width: 16px; height: 16px; margin-right: 6px;"></i><span>Re-index All Notes</span>';
     lucide.createIcons();
   }
-  
-  showToast('Re-indexing failed: ' + errorMessage, 'error');
+
+  showToast("Re-indexing failed: " + errorMessage, "error");
 }
 
 /**
@@ -12299,39 +13641,54 @@ function showReindexError(errorMessage) {
 async function loadCompressionSettings() {
   try {
     const response = await fetch(`${API_URL}/api/settings/compression`);
-    
+
     if (!response.ok) {
-      throw new Error('Failed to load compression settings');
+      throw new Error("Failed to load compression settings");
     }
-    
+
     const data = await response.json();
-    
+
     if (data.success && data.settings) {
       // Update form fields
-      const enabledCheckbox = document.getElementById('compression-enabled');
-      const thresholdInput = document.getElementById('compression-message-threshold');
-      const ageInput = document.getElementById('compression-age-hours');
-      const keepRecentInput = document.getElementById('compression-keep-recent');
-      const showStatsCheckbox = document.getElementById('compression-show-stats');
-      const strategySelect = document.getElementById('compression-strategy');
-      const ragContextEnabled = document.getElementById('compression-rag-context-enabled');
-      const ragContextRatio = document.getElementById('compression-rag-context-ratio');
-      
+      const enabledCheckbox = document.getElementById("compression-enabled");
+      const thresholdInput = document.getElementById(
+        "compression-message-threshold",
+      );
+      const ageInput = document.getElementById("compression-age-hours");
+      const keepRecentInput = document.getElementById(
+        "compression-keep-recent",
+      );
+      const showStatsCheckbox = document.getElementById(
+        "compression-show-stats",
+      );
+      const strategySelect = document.getElementById("compression-strategy");
+      const ragContextEnabled = document.getElementById(
+        "compression-rag-context-enabled",
+      );
+      const ragContextRatio = document.getElementById(
+        "compression-rag-context-ratio",
+      );
+
       if (enabledCheckbox) enabledCheckbox.checked = data.settings.enabled;
-      if (thresholdInput) thresholdInput.value = data.settings.message_threshold;
+      if (thresholdInput)
+        thresholdInput.value = data.settings.message_threshold;
       if (ageInput) ageInput.value = data.settings.age_hours;
       if (keepRecentInput) keepRecentInput.value = data.settings.keep_recent;
-      if (showStatsCheckbox) showStatsCheckbox.checked = data.settings.show_stats;
-      if (strategySelect) strategySelect.value = data.settings.strategy || 'auto';
-      if (ragContextEnabled) ragContextEnabled.checked = data.settings.rag_context_enabled !== false;
-      if (ragContextRatio) ragContextRatio.value = data.settings.rag_context_ratio ?? 0.5;
-      
+      if (showStatsCheckbox)
+        showStatsCheckbox.checked = data.settings.show_stats;
+      if (strategySelect)
+        strategySelect.value = data.settings.strategy || "auto";
+      if (ragContextEnabled)
+        ragContextEnabled.checked = data.settings.rag_context_enabled !== false;
+      if (ragContextRatio)
+        ragContextRatio.value = data.settings.rag_context_ratio ?? 0.5;
+
       // Enable/disable inputs based on enabled checkbox
       updateCompressionInputsState();
     }
   } catch (error) {
-    console.error('Error loading compression settings:', error);
-    showToast('Failed to load compression settings', 'error');
+    console.error("Error loading compression settings:", error);
+    showToast("Failed to load compression settings", "error");
   }
 }
 
@@ -12339,14 +13696,15 @@ async function loadCompressionSettings() {
  * Update compression inputs state based on enabled checkbox
  */
 function updateCompressionInputsState() {
-  const enabled = document.getElementById('compression-enabled')?.checked || false;
-  const options = document.getElementById('compression-options');
-  
+  const enabled =
+    document.getElementById("compression-enabled")?.checked || false;
+  const options = document.getElementById("compression-options");
+
   if (options) {
-    options.style.opacity = enabled ? '1' : '0.5';
-    
-    const inputs = options.querySelectorAll('input, select');
-    inputs.forEach(input => {
+    options.style.opacity = enabled ? "1" : "0.5";
+
+    const inputs = options.querySelectorAll("input, select");
+    inputs.forEach((input) => {
       input.disabled = !enabled;
     });
   }
@@ -12357,39 +13715,52 @@ function updateCompressionInputsState() {
  */
 async function saveCompressionSettings() {
   try {
-    const enabled = document.getElementById('compression-enabled')?.checked || false;
-    const threshold = parseInt(document.getElementById('compression-message-threshold')?.value || '20');
-    const ageHours = parseInt(document.getElementById('compression-age-hours')?.value || '24');
-    const keepRecent = parseInt(document.getElementById('compression-keep-recent')?.value || '10');
-    const showStats = document.getElementById('compression-show-stats')?.checked || false;
-    const strategy = document.getElementById('compression-strategy')?.value || 'auto';
-    const ragContextEnabled = document.getElementById('compression-rag-context-enabled')?.checked !== false;
-    const ragContextRatio = parseFloat(document.getElementById('compression-rag-context-ratio')?.value || '0.5');
-    
+    const enabled =
+      document.getElementById("compression-enabled")?.checked || false;
+    const threshold = parseInt(
+      document.getElementById("compression-message-threshold")?.value || "20",
+    );
+    const ageHours = parseInt(
+      document.getElementById("compression-age-hours")?.value || "24",
+    );
+    const keepRecent = parseInt(
+      document.getElementById("compression-keep-recent")?.value || "10",
+    );
+    const showStats =
+      document.getElementById("compression-show-stats")?.checked || false;
+    const strategy =
+      document.getElementById("compression-strategy")?.value || "auto";
+    const ragContextEnabled =
+      document.getElementById("compression-rag-context-enabled")?.checked !==
+      false;
+    const ragContextRatio = parseFloat(
+      document.getElementById("compression-rag-context-ratio")?.value || "0.5",
+    );
+
     // Validate inputs
     if (threshold < 10 || threshold > 100) {
-      showToast('Message threshold must be between 10 and 100', 'error');
+      showToast("Message threshold must be between 10 and 100", "error");
       return;
     }
-    
+
     if (ageHours < 1 || ageHours > 168) {
-      showToast('Age threshold must be between 1 and 168 hours', 'error');
+      showToast("Age threshold must be between 1 and 168 hours", "error");
       return;
     }
-    
+
     if (keepRecent < 5 || keepRecent > 50) {
-      showToast('Keep recent must be between 5 and 50', 'error');
+      showToast("Keep recent must be between 5 and 50", "error");
       return;
     }
     if (ragContextRatio < 0.1 || ragContextRatio > 1) {
-      showToast('RAG context ratio must be between 0.1 and 1', 'error');
+      showToast("RAG context ratio must be between 0.1 and 1", "error");
       return;
     }
-    
+
     const response = await fetch(`${API_URL}/api/settings/compression`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         enabled,
@@ -12399,10 +13770,10 @@ async function saveCompressionSettings() {
         show_stats: showStats,
         strategy,
         rag_context_enabled: ragContextEnabled,
-        rag_context_ratio: ragContextRatio
-      })
+        rag_context_ratio: ragContextRatio,
+      }),
     });
-    
+
     if (!response.ok) {
       // Try to get error details from response body
       let errorMessage = `Persona request failed: ${response.statusText}`;
@@ -12410,24 +13781,24 @@ async function saveCompressionSettings() {
         const errorData = await response.json();
         if (errorData.detail) {
           errorMessage = `Persona request failed: ${errorData.detail}`;
-          console.error('[Persona] Server error details:', errorData);
+          console.error("[Persona] Server error details:", errorData);
         }
       } catch (e) {
         // Response wasn't JSON, just use status text
       }
       throw new Error(errorMessage);
     }
-    
+
     const data = await response.json();
-    
+
     if (data.success) {
-      showToast('Compression settings saved successfully!', 'success');
+      showToast("Compression settings saved successfully!", "success");
     } else {
-      throw new Error(data.message || 'Unknown error');
+      throw new Error(data.message || "Unknown error");
     }
   } catch (error) {
-    console.error('Error saving compression settings:', error);
-    showToast('Failed to save compression settings: ' + error.message, 'error');
+    console.error("Error saving compression settings:", error);
+    showToast("Failed to save compression settings: " + error.message, "error");
   }
 }
 
@@ -12435,15 +13806,15 @@ async function saveCompressionSettings() {
  * Reset compression settings to defaults
  */
 async function resetCompressionSettings() {
-  if (!confirm('Reset compression settings to defaults?')) {
+  if (!confirm("Reset compression settings to defaults?")) {
     return;
   }
-  
+
   try {
     const response = await fetch(`${API_URL}/api/settings/compression`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         enabled: true,
@@ -12451,22 +13822,25 @@ async function resetCompressionSettings() {
         age_hours: 24,
         keep_recent: 10,
         show_stats: false,
-        strategy: 'auto',
+        strategy: "auto",
         rag_context_enabled: true,
-        rag_context_ratio: 0.5
-      })
+        rag_context_ratio: 0.5,
+      }),
     });
-    
+
     if (!response.ok) {
-      throw new Error('Failed to reset compression settings');
+      throw new Error("Failed to reset compression settings");
     }
-    
+
     // Reload settings
     await loadCompressionSettings();
-    showToast('Compression settings reset to defaults', 'success');
+    showToast("Compression settings reset to defaults", "success");
   } catch (error) {
-    console.error('Error resetting compression settings:', error);
-    showToast('Failed to reset compression settings: ' + error.message, 'error');
+    console.error("Error resetting compression settings:", error);
+    showToast(
+      "Failed to reset compression settings: " + error.message,
+      "error",
+    );
   }
 }
 
@@ -12476,19 +13850,19 @@ async function resetCompressionSettings() {
 async function loadCompressionStats() {
   try {
     const response = await fetch(`${API_URL}/api/settings/compression/stats`);
-    
+
     if (!response.ok) {
-      throw new Error('Failed to load compression stats');
+      throw new Error("Failed to load compression stats");
     }
-    
+
     const data = await response.json();
-    
+
     if (data.success && data.stats) {
       displayCompressionStats(data.stats);
     }
   } catch (error) {
-    console.error('Error loading compression stats:', error);
-    const statsContent = document.getElementById('compression-stats-content');
+    console.error("Error loading compression stats:", error);
+    const statsContent = document.getElementById("compression-stats-content");
     if (statsContent) {
       statsContent.innerHTML = `<p class="form-hint" style="color: var(--text-secondary);">Failed to load statistics</p>`;
     }
@@ -12499,10 +13873,10 @@ async function loadCompressionStats() {
  * Display compression statistics
  */
 function displayCompressionStats(stats) {
-  const statsContent = document.getElementById('compression-stats-content');
-  
+  const statsContent = document.getElementById("compression-stats-content");
+
   if (!statsContent) return;
-  
+
   if (stats.total_conversations === 0) {
     statsContent.innerHTML = `
       <p class="form-hint" style="color: var(--text-secondary);">
@@ -12511,7 +13885,7 @@ function displayCompressionStats(stats) {
     `;
     return;
   }
-  
+
   // Build stats HTML
   let html = `
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
@@ -12536,15 +13910,15 @@ function displayCompressionStats(stats) {
       </div>
     </div>
   `;
-  
+
   // Add recent compressions if available
   if (stats.recent_compressions && stats.recent_compressions.length > 0) {
     html += `
       <h4 style="margin-bottom: 12px; font-size: 14px;">Recent Compressions</h4>
       <div style="background: var(--bg-hover); border-radius: 8px; padding: 12px;">
     `;
-    
-    stats.recent_compressions.forEach(comp => {
+
+    stats.recent_compressions.forEach((comp) => {
       const date = new Date(comp.created_at);
       html += `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-color);">
@@ -12554,10 +13928,10 @@ function displayCompressionStats(stats) {
         </div>
       `;
     });
-    
+
     html += `</div>`;
   }
-  
+
   statsContent.innerHTML = html;
 }
 
@@ -12566,21 +13940,21 @@ function displayCompressionStats(stats) {
  */
 function setupCompressionSettings() {
   // Enable/disable inputs when checkbox changes
-  const enabledCheckbox = document.getElementById('compression-enabled');
+  const enabledCheckbox = document.getElementById("compression-enabled");
   if (enabledCheckbox) {
-    enabledCheckbox.addEventListener('change', updateCompressionInputsState);
+    enabledCheckbox.addEventListener("change", updateCompressionInputsState);
   }
-  
+
   // Save button
-  const saveBtn = document.getElementById('btn-save-compression-settings');
+  const saveBtn = document.getElementById("btn-save-compression-settings");
   if (saveBtn) {
-    saveBtn.addEventListener('click', saveCompressionSettings);
+    saveBtn.addEventListener("click", saveCompressionSettings);
   }
-  
+
   // Reset button
-  const resetBtn = document.getElementById('btn-reset-compression-settings');
+  const resetBtn = document.getElementById("btn-reset-compression-settings");
   if (resetBtn) {
-    resetBtn.addEventListener('click', resetCompressionSettings);
+    resetBtn.addEventListener("click", resetCompressionSettings);
   }
 }
 
@@ -12593,45 +13967,52 @@ function setupCompressionSettings() {
 async function loadMemorySettings() {
   try {
     const response = await fetch(`${API_URL}/api/settings/memory`);
-    if (!response.ok) throw new Error('Failed to load memory settings');
+    if (!response.ok) throw new Error("Failed to load memory settings");
     const data = await response.json();
     if (data.success && data.settings) {
-      const providerSelect = document.getElementById('memory-provider');
-      const mem0Checkbox = document.getElementById('memory-mem0-enabled');
-      if (providerSelect) providerSelect.value = data.settings.provider || 'local';
-      if (mem0Checkbox) mem0Checkbox.checked = data.settings.mem0_enabled === true;
+      const providerSelect = document.getElementById("memory-provider");
+      const mem0Checkbox = document.getElementById("memory-mem0-enabled");
+      if (providerSelect)
+        providerSelect.value = data.settings.provider || "local";
+      if (mem0Checkbox)
+        mem0Checkbox.checked = data.settings.mem0_enabled === true;
     }
   } catch (error) {
-    console.error('Error loading memory settings:', error);
-    showToast('Failed to load memory settings', 'error');
+    console.error("Error loading memory settings:", error);
+    showToast("Failed to load memory settings", "error");
   }
 }
 
 async function saveMemorySettings() {
   try {
-    const provider = document.getElementById('memory-provider')?.value || 'local';
-    const mem0Enabled = document.getElementById('memory-mem0-enabled')?.checked === true;
+    const provider =
+      document.getElementById("memory-provider")?.value || "local";
+    const mem0Enabled =
+      document.getElementById("memory-mem0-enabled")?.checked === true;
     const response = await fetch(`${API_URL}/api/settings/memory`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider, mem0_enabled: mem0Enabled })
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, mem0_enabled: mem0Enabled }),
     });
-    if (!response.ok) throw new Error('Failed to save memory settings');
+    if (!response.ok) throw new Error("Failed to save memory settings");
     const data = await response.json();
     if (data.success) {
-      showToast('Memory settings saved. Changes take effect on next restart.', 'success');
+      showToast(
+        "Memory settings saved. Changes take effect on next restart.",
+        "success",
+      );
     } else {
-      throw new Error(data.message || 'Unknown error');
+      throw new Error(data.message || "Unknown error");
     }
   } catch (error) {
-    console.error('Error saving memory settings:', error);
-    showToast('Failed to save memory settings: ' + error.message, 'error');
+    console.error("Error saving memory settings:", error);
+    showToast("Failed to save memory settings: " + error.message, "error");
   }
 }
 
 function setupMemorySettings() {
-  const saveBtn = document.getElementById('btn-save-memory-settings');
-  if (saveBtn) saveBtn.addEventListener('click', saveMemorySettings);
+  const saveBtn = document.getElementById("btn-save-memory-settings");
+  if (saveBtn) saveBtn.addEventListener("click", saveMemorySettings);
 }
 
 // Make functions globally accessible
@@ -12643,76 +14024,82 @@ window.acceptSuggestedKeyword = acceptSuggestedKeyword;
 /**
  * Setup mental models UI event listeners
  */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener("DOMContentLoaded", () => {
   // Add Model button
-  const addBtn = document.getElementById('btn-add-mental-model');
+  const addBtn = document.getElementById("btn-add-mental-model");
   if (addBtn) {
-    addBtn.addEventListener('click', () => openMentalModelModal());
+    addBtn.addEventListener("click", () => openMentalModelModal());
   }
-  
+
   // Modal close buttons
-  const closeBtn = document.getElementById('mental-model-modal-close');
+  const closeBtn = document.getElementById("mental-model-modal-close");
   if (closeBtn) {
-    closeBtn.addEventListener('click', closeMentalModelModal);
+    closeBtn.addEventListener("click", closeMentalModelModal);
   }
-  
-  const cancelBtn = document.getElementById('mental-model-modal-cancel');
+
+  const cancelBtn = document.getElementById("mental-model-modal-cancel");
   if (cancelBtn) {
-    cancelBtn.addEventListener('click', closeMentalModelModal);
+    cancelBtn.addEventListener("click", closeMentalModelModal);
   }
-  
+
   // Modal save button
-  const saveBtn = document.getElementById('mental-model-modal-save');
+  const saveBtn = document.getElementById("mental-model-modal-save");
   if (saveBtn) {
-    saveBtn.addEventListener('click', saveMentalModel);
+    saveBtn.addEventListener("click", saveMentalModel);
   }
-  
+
   // Template selection
-  const templateSelect = document.getElementById('mental-model-template');
+  const templateSelect = document.getElementById("mental-model-template");
   if (templateSelect) {
-    templateSelect.addEventListener('change', (e) => {
+    templateSelect.addEventListener("change", (e) => {
       if (e.target.value) {
         applyMentalModelTemplate(e.target.value);
       }
     });
   }
-  
+
   // Close modal when clicking outside
-  const modal = document.getElementById('mental-model-modal');
+  const modal = document.getElementById("mental-model-modal");
   if (modal) {
-    modal.addEventListener('click', (e) => {
+    modal.addEventListener("click", (e) => {
       if (e.target === modal) {
         closeMentalModelModal();
       }
     });
   }
-  
+
   // Mental Models Override modal buttons
-  const overrideCloseBtn = document.getElementById('close-mental-models-override-modal');
+  const overrideCloseBtn = document.getElementById(
+    "close-mental-models-override-modal",
+  );
   if (overrideCloseBtn) {
-    overrideCloseBtn.addEventListener('click', closeMentalModelsOverrideModal);
+    overrideCloseBtn.addEventListener("click", closeMentalModelsOverrideModal);
   }
-  
-  const overrideCancelBtn = document.getElementById('cancel-mental-models-override-modal');
+
+  const overrideCancelBtn = document.getElementById(
+    "cancel-mental-models-override-modal",
+  );
   if (overrideCancelBtn) {
-    overrideCancelBtn.addEventListener('click', closeMentalModelsOverrideModal);
+    overrideCancelBtn.addEventListener("click", closeMentalModelsOverrideModal);
   }
-  
-  const overrideSaveBtn = document.getElementById('save-mental-models-override-modal');
+
+  const overrideSaveBtn = document.getElementById(
+    "save-mental-models-override-modal",
+  );
   if (overrideSaveBtn) {
-    overrideSaveBtn.addEventListener('click', saveMentalModelsOverride);
+    overrideSaveBtn.addEventListener("click", saveMentalModelsOverride);
   }
-  
+
   // Close override modal when clicking outside
-  const overrideModal = document.getElementById('mental-models-override-modal');
+  const overrideModal = document.getElementById("mental-models-override-modal");
   if (overrideModal) {
-    overrideModal.addEventListener('click', (e) => {
+    overrideModal.addEventListener("click", (e) => {
       if (e.target === overrideModal) {
         closeMentalModelsOverrideModal();
       }
     });
   }
-  
+
   // ========================================
   // FLOATING CHAT INITIALIZATION
   // ========================================
@@ -12727,80 +14114,85 @@ document.addEventListener('DOMContentLoaded', () => {
  * Initialize floating chat bar
  */
 function initializeFloatingChat() {
-  console.log('[Floating Chat] Initializing...');
-  
+  console.log("[Floating Chat] Initializing...");
+
   // Sync controls with old chat controls
   syncFloatingChatControls();
-  
+
   // Set up event listeners
   setupFloatingChatListeners();
-  
+
   // Set up keyboard shortcuts
   setupFloatingChatShortcuts();
-  
+
   // Set up sidebar resize functionality
   setupSidebarResize();
-  
-  console.log('[Floating Chat] Initialized');
+
+  console.log("[Floating Chat] Initialized");
 }
 
 /**
  * Sync floating chat controls with existing chat controls
  */
 function syncFloatingChatControls() {
-  const floatingModelSelect = document.getElementById('floating-model-select');
-  const floatingPersonaSelect = document.getElementById('floating-persona-select');
-  const floatingModeSelect = document.getElementById('floating-mode-select');
-  const floatingOrchestratorToggle = document.getElementById('floating-orchestrator-toggle');
-  
-  const modelSelect = document.getElementById('model-select');
-  const personaSelect = document.getElementById('persona-select');
-  const modeSelect = document.getElementById('mode-select');
-  const orchestratorToggle = document.getElementById('orchestrator-toggle');
-  
+  const floatingModelSelect = document.getElementById("floating-model-select");
+  const floatingPersonaSelect = document.getElementById(
+    "floating-persona-select",
+  );
+  const floatingModeSelect = document.getElementById("floating-mode-select");
+  const floatingOrchestratorToggle = document.getElementById(
+    "floating-orchestrator-toggle",
+  );
+
+  const modelSelect = document.getElementById("model-select");
+  const personaSelect = document.getElementById("persona-select");
+  const modeSelect = document.getElementById("mode-select");
+  const orchestratorToggle = document.getElementById("orchestrator-toggle");
+
   // Sync model selection
   if (floatingModelSelect && modelSelect) {
     floatingModelSelect.value = modelSelect.value;
-    floatingModelSelect.addEventListener('change', () => {
+    floatingModelSelect.addEventListener("change", () => {
       modelSelect.value = floatingModelSelect.value;
-      modelSelect.dispatchEvent(new Event('change'));
+      modelSelect.dispatchEvent(new Event("change"));
     });
-    modelSelect.addEventListener('change', () => {
+    modelSelect.addEventListener("change", () => {
       floatingModelSelect.value = modelSelect.value;
     });
   }
-  
+
   // Sync persona selection
   if (floatingPersonaSelect && personaSelect) {
     floatingPersonaSelect.value = personaSelect.value;
-    floatingPersonaSelect.addEventListener('change', () => {
+    floatingPersonaSelect.addEventListener("change", () => {
       personaSelect.value = floatingPersonaSelect.value;
-      personaSelect.dispatchEvent(new Event('change'));
-      
+      personaSelect.dispatchEvent(new Event("change"));
+
       // Enable/disable mode selector
       if (floatingPersonaSelect.value) {
         floatingModeSelect.disabled = false;
       } else {
         floatingModeSelect.disabled = true;
-        floatingModeSelect.innerHTML = '<option value="">Select persona first</option>';
+        floatingModeSelect.innerHTML =
+          '<option value="">Select persona first</option>';
       }
     });
-    personaSelect.addEventListener('change', () => {
+    personaSelect.addEventListener("change", () => {
       floatingPersonaSelect.value = personaSelect.value;
     });
   }
-  
+
   // Sync mode selection
   if (floatingModeSelect && modeSelect) {
     floatingModeSelect.disabled = modeSelect.disabled;
     floatingModeSelect.innerHTML = modeSelect.innerHTML;
     floatingModeSelect.value = modeSelect.value;
-    
-    floatingModeSelect.addEventListener('change', () => {
+
+    floatingModeSelect.addEventListener("change", () => {
       modeSelect.value = floatingModeSelect.value;
-      modeSelect.dispatchEvent(new Event('change'));
+      modeSelect.dispatchEvent(new Event("change"));
     });
-    modeSelect.addEventListener('change', () => {
+    modeSelect.addEventListener("change", () => {
       if (!modeSelect.disabled) {
         floatingModeSelect.disabled = false;
         floatingModeSelect.innerHTML = modeSelect.innerHTML;
@@ -12808,23 +14200,24 @@ function syncFloatingChatControls() {
       }
     });
   }
-  
+
   // Sync orchestrator toggle
   if (floatingOrchestratorToggle && orchestratorToggle) {
-    const isActive = orchestratorToggle.getAttribute('aria-checked') === 'true';
-    floatingOrchestratorToggle.setAttribute('aria-checked', isActive);
+    const isActive = orchestratorToggle.getAttribute("aria-checked") === "true";
+    floatingOrchestratorToggle.setAttribute("aria-checked", isActive);
     if (isActive) {
-      floatingOrchestratorToggle.classList.add('active');
+      floatingOrchestratorToggle.classList.add("active");
     }
-    
-    floatingOrchestratorToggle.addEventListener('click', () => {
+
+    floatingOrchestratorToggle.addEventListener("click", () => {
       orchestratorToggle.click();
     });
-    
-    orchestratorToggle.addEventListener('click', () => {
-      const isNowActive = orchestratorToggle.getAttribute('aria-checked') === 'true';
-      floatingOrchestratorToggle.setAttribute('aria-checked', isNowActive);
-      floatingOrchestratorToggle.classList.toggle('active', isNowActive);
+
+    orchestratorToggle.addEventListener("click", () => {
+      const isNowActive =
+        orchestratorToggle.getAttribute("aria-checked") === "true";
+      floatingOrchestratorToggle.setAttribute("aria-checked", isNowActive);
+      floatingOrchestratorToggle.classList.toggle("active", isNowActive);
     });
   }
 }
@@ -12833,82 +14226,88 @@ function syncFloatingChatControls() {
  * Set up floating chat event listeners
  */
 function setupFloatingChatListeners() {
-  const floatingTextarea = document.getElementById('floating-query-input');
-  const floatingSendBtn = document.getElementById('floating-btn-send');
-  
+  const floatingTextarea = document.getElementById("floating-query-input");
+  const floatingSendBtn = document.getElementById("floating-btn-send");
+
   // Auto-resize textarea (addEventListener works fine for input events)
   if (floatingTextarea) {
-    floatingTextarea.addEventListener('input', () => {
-      floatingTextarea.style.height = 'auto';
-      floatingTextarea.style.height = Math.min(floatingTextarea.scrollHeight, 180) + 'px';
+    floatingTextarea.addEventListener("input", () => {
+      floatingTextarea.style.height = "auto";
+      floatingTextarea.style.height =
+        Math.min(floatingTextarea.scrollHeight, 180) + "px";
     });
-    
+
     // Send on Enter (without Shift) (keydown events work fine)
-    floatingTextarea.addEventListener('keydown', async (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+    floatingTextarea.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         await sendFloatingMessage();
       }
     });
   }
-  
+
   // Send button click (use direct assignment for click events)
   if (floatingSendBtn) {
-    floatingSendBtn.onclick = async function(e) {
+    floatingSendBtn.onclick = async function (e) {
       await sendFloatingMessage();
       e.preventDefault();
     };
   }
-  
+
   // Overlay close button
-  const overlayCloseBtn = document.getElementById('chat-overlay-close');
+  const overlayCloseBtn = document.getElementById("chat-overlay-close");
   if (overlayCloseBtn) {
-    overlayCloseBtn.onclick = function(e) {
+    overlayCloseBtn.onclick = function (e) {
       closeChatOverlay();
       e.preventDefault();
     };
   }
-  
+
   // Overlay backdrop click
-  const overlayBackdrop = document.getElementById('chat-overlay-backdrop');
+  const overlayBackdrop = document.getElementById("chat-overlay-backdrop");
   if (overlayBackdrop) {
-    overlayBackdrop.onclick = function(e) {
+    overlayBackdrop.onclick = function (e) {
       if (e.target === overlayBackdrop) {
         closeChatOverlay();
       }
     };
   }
-  
+
   // Split view button (TODO: implement split view)
-  const splitViewBtn = document.getElementById('chat-overlay-split-view');
+  const splitViewBtn = document.getElementById("chat-overlay-split-view");
   if (splitViewBtn) {
-    splitViewBtn.onclick = function(e) {
-      console.log('[Floating Chat] Split view not yet implemented');
+    splitViewBtn.onclick = function (e) {
+      console.log("[Floating Chat] Split view not yet implemented");
       e.preventDefault();
     };
   }
-  
+
   // Expand button (opens full-screen overlay from sidebar)
   // Use setTimeout to ensure DOM is fully ready (same issue as resize handle)
   setTimeout(() => {
-    const expandBtn = document.getElementById('chat-expand-btn');
-    console.log('[Floating Chat] Expand button found:', !!expandBtn, expandBtn);
+    const expandBtn = document.getElementById("chat-expand-btn");
+    console.log("[Floating Chat] Expand button found:", !!expandBtn, expandBtn);
     if (expandBtn) {
-      expandBtn.onclick = function(e) {
-        console.log('[Floating Chat] Expand button clicked!');
-        console.log('[Floating Chat] Current conversation ID:', currentConversationId);
+      expandBtn.onclick = function (e) {
+        console.log("[Floating Chat] Expand button clicked!");
+        console.log(
+          "[Floating Chat] Current conversation ID:",
+          currentConversationId,
+        );
         if (currentConversationId) {
           openChatOverlay(currentConversationId);
         } else {
-          console.log('[Floating Chat] No conversation ID, cannot open overlay');
+          console.log(
+            "[Floating Chat] No conversation ID, cannot open overlay",
+          );
         }
         e.preventDefault();
         e.stopPropagation();
         return false;
       };
-      console.log('[Floating Chat] Expand button onclick handler attached');
+      console.log("[Floating Chat] Expand button onclick handler attached");
     } else {
-      console.error('[Floating Chat] Expand button NOT FOUND!');
+      console.error("[Floating Chat] Expand button NOT FOUND!");
     }
   }, 500);
 }
@@ -12917,29 +14316,31 @@ function setupFloatingChatListeners() {
  * Set up keyboard shortcuts
  */
 function setupFloatingChatShortcuts() {
-  document.addEventListener('keydown', (e) => {
+  document.addEventListener("keydown", (e) => {
     // Check if focus is inside CodeMirror editor (don't interfere with editor shortcuts)
     const activeElement = document.activeElement;
-    const isInEditor = activeElement && (
-      activeElement.classList.contains('cm-content') || 
-      activeElement.closest('.cm-editor')
-    );
-    
+    const isInEditor =
+      activeElement &&
+      (activeElement.classList.contains("cm-content") ||
+        activeElement.closest(".cm-editor"));
+
     // Cmd+K or Ctrl+K to focus chat (unless in editor where it's used for wiki links)
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
       if (!isInEditor) {
         e.preventDefault();
-        const floatingTextarea = document.getElementById('floating-query-input');
+        const floatingTextarea = document.getElementById(
+          "floating-query-input",
+        );
         if (floatingTextarea) {
           floatingTextarea.focus();
         }
       }
     }
-    
+
     // Escape to close overlay
-    if (e.key === 'Escape') {
-      const overlay = document.getElementById('chat-overlay');
-      if (overlay && !overlay.classList.contains('hidden')) {
+    if (e.key === "Escape") {
+      const overlay = document.getElementById("chat-overlay");
+      if (overlay && !overlay.classList.contains("hidden")) {
         closeChatOverlay();
       }
     }
@@ -12950,13 +14351,13 @@ function setupFloatingChatShortcuts() {
  * Send message from floating chat
  */
 async function sendFloatingMessage() {
-  const floatingTextarea = document.getElementById('floating-query-input');
+  const floatingTextarea = document.getElementById("floating-query-input");
   const query = floatingTextarea?.value.trim();
-  
+
   if (!query) return;
-  
-  console.log('[Floating Chat] Sending message:', query);
-  
+
+  console.log("[Floating Chat] Sending message:", query);
+
   // Check for persona intent and handle switch if needed
   await checkAndHandlePersonaSwitch(query, async () => {
     await sendFloatingMessageInternal(query);
@@ -12969,52 +14370,61 @@ async function sendFloatingMessage() {
 async function sendFloatingMessageInternal(query) {
   // Ensure we have a conversation
   if (!currentConversationId) {
-    console.log('[Floating Chat] No conversation, creating new one...');
+    console.log("[Floating Chat] No conversation, creating new one...");
     await createNewConversation();
   }
-  
+
   // Clear input (find it again since this is called from callback)
-  const floatingTextarea = document.getElementById('floating-query-input');
+  const floatingTextarea = document.getElementById("floating-query-input");
   if (floatingTextarea) {
-    floatingTextarea.value = '';
-    floatingTextarea.style.height = 'auto';
+    floatingTextarea.value = "";
+    floatingTextarea.style.height = "auto";
   }
-  
+
   // Add user message to sidebar (NOT overlay)
-  addMessageToUI('user', query);
-  
+  addMessageToUI("user", query);
+
   // Add to conversation in database
-  await addMessageToConversation('user', query);
-  
+  await addMessageToConversation("user", query);
+
   // Show typing indicator in sidebar
   const loadingId = addTypingIndicator();
-  
+
   try {
     // Check if persona is active
-    const personaSelect = document.getElementById('floating-persona-select');
+    const personaSelect = document.getElementById("floating-persona-select");
     const activePersona = personaSelect ? personaSelect.value : null;
-    
+
     // Get conversation history
     const messages = getCurrentConversationMessages();
-    const conversationHistory = messages.slice(0, -1).map(msg => ({
+    const conversationHistory = messages.slice(0, -1).map((msg) => ({
       role: msg.role,
-      content: msg.content
+      content: msg.content,
     }));
-    
-    console.log('[Floating Chat] Sending query with', conversationHistory.length, 'messages of history');
-    
+
+    console.log(
+      "[Floating Chat] Sending query with",
+      conversationHistory.length,
+      "messages of history",
+    );
+
     // Route through persona if active
     if (activePersona) {
-      const result = await sendToPersona(query, conversationHistory, loadingId, false); // false = use sidebar
+      const result = await sendToPersona(
+        query,
+        conversationHistory,
+        loadingId,
+        false,
+      ); // false = use sidebar
       if (result) {
         return; // Persona handled the request
       }
     }
-    
+
     // Get router v2 settings
-    const confidence = sessionStorage.getItem('model-confidence') || 'balanced';
-    const providerOverride = sessionStorage.getItem('model-provider') || null;
-    
+    const confidence = sessionStorage.getItem("model-confidence") || "balanced";
+    const providerOverride = sessionStorage.getItem("model-provider") || null;
+
     // Get mental models override
     const mentalModelsOverride = getMentalModelsOverride(currentConversationId);
     const queryOptions = {
@@ -13022,53 +14432,60 @@ async function sendFloatingMessageInternal(query) {
       conversation_history: conversationHistory,
       page_context: currentView, // Use current view as page context
       confidence: confidence,
-      provider_override: providerOverride
+      provider_override: providerOverride,
     };
-    
+
     // Add mental models override if present
     if (mentalModelsOverride && !mentalModelsOverride.useDefaults) {
       queryOptions.mental_models_override = mentalModelsOverride.modelIds;
     }
-    
+
     const result = await window.polly.query(query, queryOptions);
-    
+
     // Remove loading indicator
     removeMessage(loadingId);
-    
+
     if (result.success) {
       const response = formatResponse(result.result.response);
       let messageContent = response;
-      
+
       // Add router v2 metadata if available
       const metadata = result.result.metadata;
       if (metadata) {
-        const costStr = metadata.cost ? `$${metadata.cost.toFixed(4)}` : '-';
-        const tokensStr = metadata.tokens_in && metadata.tokens_out 
-          ? `${metadata.tokens_in + metadata.tokens_out} tokens` 
-          : '-';
-        const providerStr = metadata.provider || '-';
-        const modelStr = metadata.model || '-';
-        const estimatedStr = metadata.estimated ? ' (estimated)' : '';
-        
+        const costStr = metadata.cost ? `$${metadata.cost.toFixed(4)}` : "-";
+        const tokensStr =
+          metadata.tokens_in && metadata.tokens_out
+            ? `${metadata.tokens_in + metadata.tokens_out} tokens`
+            : "-";
+        const providerStr = metadata.provider || "-";
+        const modelStr = metadata.model || "-";
+        const estimatedStr = metadata.estimated ? " (estimated)" : "";
+
         messageContent += `
           <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #2a2a2a; font-size: 11px; color: #808080; font-family: monospace;">
             ✓ ${providerStr} (${modelStr}) • ${costStr} • ${tokensStr}${estimatedStr}
           </div>
         `;
       }
-      
-      addMessageToUI('assistant', messageContent);
-      await addMessageToConversation('assistant', result.result.response);
-      
+
+      addMessageToUI("assistant", messageContent);
+      await addMessageToConversation("assistant", result.result.response);
+
       // Update conversation list
       renderConversationList();
     } else {
-      addMessageToUI('assistant', `<div class="error">Error: ${result.error}</div>`);
+      addMessageToUI(
+        "assistant",
+        `<div class="error">Error: ${result.error}</div>`,
+      );
     }
   } catch (error) {
-    console.error('[Floating Chat] Error sending message:', error);
+    console.error("[Floating Chat] Error sending message:", error);
     removeMessage(loadingId);
-    addMessageToUI('assistant', `<div class="error">Error: ${error.message}</div>`);
+    addMessageToUI(
+      "assistant",
+      `<div class="error">Error: ${error.message}</div>`,
+    );
   }
 }
 
@@ -13081,9 +14498,9 @@ async function sendFloatingMessageInternal(query) {
  */
 const PERSONA_INTENT_PATTERNS = {
   scribe: {
-    name: 'Scribe',
-    icon: '📝',
-    description: 'Transform conversations into structured notes',
+    name: "Scribe",
+    icon: "📝",
+    description: "Transform conversations into structured notes",
     patterns: [
       /\b(save|make|take|create|write)\s+(a\s+)?(note|notes)\b/i,
       /\bcapture\s+this\b/i,
@@ -13093,13 +14510,13 @@ const PERSONA_INTENT_PATTERNS = {
       /\bremember\s+this\b/i,
       /\blog\s+this\b/i,
       /\brecord\s+this\b/i,
-      /\bdocument\s+(this|our)\b/i
-    ]
+      /\bdocument\s+(this|our)\b/i,
+    ],
   },
   architect: {
-    name: 'Architect',
-    icon: '📐',
-    description: 'Plan and build complex tasks with structured approach',
+    name: "Architect",
+    icon: "📐",
+    description: "Plan and build complex tasks with structured approach",
     patterns: [
       // Content creation patterns (not learning-related)
       /\b(create|generate|build|write)\s+(a\s+)?(note|document|article|guide|tutorial|blog\s+post|essay|report)\s+(about|on|for)\b/i,
@@ -13108,9 +14525,9 @@ const PERSONA_INTENT_PATTERNS = {
       /\bgenerate\s+(content|code|a\s+design)\b/i,
       /\bstructure\s+(a|an|the)\s+(project|codebase|system)\b/i,
       // Avoid learning-related "plan" - exclude learning/teaching contexts
-      /\b(plan|outline)\s+(?!.*\b(learn|teach|study|education|curriculum))/i
-    ]
-  }
+      /\b(plan|outline)\s+(?!.*\b(learn|teach|study|education|curriculum))/i,
+    ],
+  },
 };
 
 /**
@@ -13120,9 +14537,11 @@ const PERSONA_INTENT_PATTERNS = {
  */
 function detectPersonaIntent(query) {
   const lowerQuery = query.toLowerCase();
-  
+
   // Check each persona's patterns
-  for (const [personaSlug, personaData] of Object.entries(PERSONA_INTENT_PATTERNS)) {
+  for (const [personaSlug, personaData] of Object.entries(
+    PERSONA_INTENT_PATTERNS,
+  )) {
     for (const pattern of personaData.patterns) {
       if (pattern.test(query)) {
         console.log(`[Persona Intent] Detected ${personaSlug} intent:`, query);
@@ -13130,7 +14549,7 @@ function detectPersonaIntent(query) {
       }
     }
   }
-  
+
   return null;
 }
 
@@ -13139,9 +14558,11 @@ function detectPersonaIntent(query) {
  * @returns {string|null} - Current persona slug or null
  */
 function getCurrentPersona() {
-  const personaSelect = document.getElementById('persona-select');
-  const floatingPersonaSelect = document.getElementById('floating-persona-select');
-  
+  const personaSelect = document.getElementById("persona-select");
+  const floatingPersonaSelect = document.getElementById(
+    "floating-persona-select",
+  );
+
   // Check both dropdowns, prefer main one
   return personaSelect?.value || floatingPersonaSelect?.value || null;
 }
@@ -13156,7 +14577,7 @@ function getCurrentPersona() {
 function showPersonaSwitchDialog(suggestedPersona, query, onConfirm, onCancel) {
   const personaData = PERSONA_INTENT_PATTERNS[suggestedPersona];
   if (!personaData) return;
-  
+
   // Create dialog overlay
   const dialogHTML = `
     <div id="persona-switch-dialog" class="persona-switch-overlay">
@@ -13189,30 +14610,30 @@ function showPersonaSwitchDialog(suggestedPersona, query, onConfirm, onCancel) {
       </div>
     </div>
   `;
-  
+
   // Add to DOM
-  document.body.insertAdjacentHTML('beforeend', dialogHTML);
-  
+  document.body.insertAdjacentHTML("beforeend", dialogHTML);
+
   // Initialize lucide icons
   if (window.lucide) {
     lucide.createIcons();
   }
-  
+
   // Attach event handlers
-  const dialog = document.getElementById('persona-switch-dialog');
-  const confirmBtn = document.getElementById('persona-switch-confirm');
-  const cancelBtn = document.getElementById('persona-switch-cancel');
-  
+  const dialog = document.getElementById("persona-switch-dialog");
+  const confirmBtn = document.getElementById("persona-switch-confirm");
+  const cancelBtn = document.getElementById("persona-switch-cancel");
+
   confirmBtn.onclick = () => {
     dialog.remove();
     onConfirm();
   };
-  
+
   cancelBtn.onclick = () => {
     dialog.remove();
     onCancel();
   };
-  
+
   // Close on overlay click
   dialog.onclick = (e) => {
     if (e.target === dialog) {
@@ -13220,18 +14641,18 @@ function showPersonaSwitchDialog(suggestedPersona, query, onConfirm, onCancel) {
       onCancel();
     }
   };
-  
+
   // Close on Escape
   const escapeHandler = (e) => {
-    if (e.key === 'Escape') {
+    if (e.key === "Escape") {
       dialog.remove();
       onCancel();
-      document.removeEventListener('keydown', escapeHandler);
+      document.removeEventListener("keydown", escapeHandler);
     }
   };
-  document.addEventListener('keydown', escapeHandler);
-  
-  console.log('[Persona Switch Dialog] Shown for:', suggestedPersona);
+  document.addEventListener("keydown", escapeHandler);
+
+  console.log("[Persona Switch Dialog] Shown for:", suggestedPersona);
 }
 
 /**
@@ -13241,27 +14662,29 @@ function showPersonaSwitchDialog(suggestedPersona, query, onConfirm, onCancel) {
  */
 async function switchToPersona(personaSlug) {
   try {
-    const personaSelect = document.getElementById('persona-select');
-    const floatingPersonaSelect = document.getElementById('floating-persona-select');
-    
+    const personaSelect = document.getElementById("persona-select");
+    const floatingPersonaSelect = document.getElementById(
+      "floating-persona-select",
+    );
+
     if (!personaSelect && !floatingPersonaSelect) return false;
-    
+
     // Update both dropdowns
     if (personaSelect) {
       personaSelect.value = personaSlug;
       // Trigger change event to activate persona
-      const event = new Event('change', { bubbles: true });
+      const event = new Event("change", { bubbles: true });
       personaSelect.dispatchEvent(event);
     }
-    
+
     if (floatingPersonaSelect) {
       floatingPersonaSelect.value = personaSlug;
     }
-    
-    console.log('[Persona Switch] Switched to:', personaSlug);
+
+    console.log("[Persona Switch] Switched to:", personaSlug);
     return true;
   } catch (error) {
-    console.error('[Persona Switch] Error:', error);
+    console.error("[Persona Switch] Error:", error);
     return false;
   }
 }
@@ -13278,39 +14701,43 @@ function canCurrentPersonaHandle(currentPersona, suggestedPersona, query) {
   if (!suggestedPersona || currentPersona === suggestedPersona) {
     return true;
   }
-  
+
   // Professor in curriculum mode can handle learning plans (don't switch to Architect)
-  if (currentPersona === 'professor' && suggestedPersona === 'architect') {
+  if (currentPersona === "professor" && suggestedPersona === "architect") {
     const lowerQuery = query.toLowerCase();
-    
+
     // Check if this is a learning/teaching request
-    const isLearningRequest = 
-      /\b(learning|teaching|study|education|curriculum|lesson)\s+(plan|path|guide|roadmap)\b/i.test(query) ||
+    const isLearningRequest =
+      /\b(learning|teaching|study|education|curriculum|lesson)\s+(plan|path|guide|roadmap)\b/i.test(
+        query,
+      ) ||
       /\b(teach|learn|study|master)\b.*\b(how to|about)\b/i.test(query) ||
       /\bplan\s+to\s+(learn|study|teach)\b/i.test(query);
-    
+
     if (isLearningRequest) {
-      console.log('[Persona Intent] Professor curriculum mode can handle this learning plan');
+      console.log(
+        "[Persona Intent] Professor curriculum mode can handle this learning plan",
+      );
       return true;
     }
   }
-  
+
   // Professor in explain mode can handle content creation about teaching topics
-  if (currentPersona === 'professor' && suggestedPersona === 'architect') {
+  if (currentPersona === "professor" && suggestedPersona === "architect") {
     const lowerQuery = query.toLowerCase();
-    
+
     // Check if this is about explaining or teaching
-    const isTeachingContent = 
+    const isTeachingContent =
       /\b(explain|teach|show|demonstrate)\b/i.test(query) ||
       /\bhow\s+(does|do|to)\b/i.test(query) ||
       /\bwhat\s+is\b/i.test(query);
-    
+
     if (isTeachingContent) {
-      console.log('[Persona Intent] Professor can handle this explanation');
+      console.log("[Persona Intent] Professor can handle this explanation");
       return true;
     }
   }
-  
+
   return false;
 }
 
@@ -13322,15 +14749,20 @@ function canCurrentPersonaHandle(currentPersona, suggestedPersona, query) {
 async function checkAndHandlePersonaSwitch(query, proceedCallback) {
   const currentPersona = getCurrentPersona();
   const suggestedPersona = detectPersonaIntent(query);
-  
+
   // Check if current persona can handle this
   if (canCurrentPersonaHandle(currentPersona, suggestedPersona, query)) {
     proceedCallback();
     return;
   }
-  
-  console.log('[Persona Intent] Current:', currentPersona, '| Suggested:', suggestedPersona);
-  
+
+  console.log(
+    "[Persona Intent] Current:",
+    currentPersona,
+    "| Suggested:",
+    suggestedPersona,
+  );
+
   // Show dialog
   showPersonaSwitchDialog(
     suggestedPersona,
@@ -13350,9 +14782,9 @@ async function checkAndHandlePersonaSwitch(query, proceedCallback) {
     },
     () => {
       // User cancelled, proceed with current persona
-      console.log('[Persona Switch] User chose to keep current persona');
+      console.log("[Persona Switch] User chose to keep current persona");
       proceedCallback();
-    }
+    },
   );
 }
 
@@ -13360,55 +14792,61 @@ async function checkAndHandlePersonaSwitch(query, proceedCallback) {
  * Open chat overlay with conversation
  */
 async function openChatOverlay(conversationId) {
-  const overlay = document.getElementById('chat-overlay');
-  const titleEl = document.getElementById('chat-overlay-conversation-title');
-  const messagesContainer = document.getElementById('chat-overlay-messages');
-  
+  const overlay = document.getElementById("chat-overlay");
+  const titleEl = document.getElementById("chat-overlay-conversation-title");
+  const messagesContainer = document.getElementById("chat-overlay-messages");
+
   if (!overlay) return;
-  
+
   // Load conversation if not current
   if (conversationId !== currentConversationId) {
     await switchToConversation(conversationId);
   }
-  
+
   // Set title
   if (titleEl && currentConversation) {
-    titleEl.textContent = currentConversation.title || 'Conversation';
+    titleEl.textContent = currentConversation.title || "Conversation";
   }
-  
+
   // Clear and render messages
   if (messagesContainer) {
-    messagesContainer.innerHTML = '';
-    
+    messagesContainer.innerHTML = "";
+
     if (currentConversation && currentConversation.messages) {
-      currentConversation.messages.forEach(msg => {
-        if (msg.role !== 'system') {
-          const formattedContent = msg.role === 'assistant' ? formatResponse(msg.content) : msg.content;
+      currentConversation.messages.forEach((msg) => {
+        if (msg.role !== "system") {
+          const formattedContent =
+            msg.role === "assistant"
+              ? formatResponse(msg.content)
+              : msg.content;
           addMessageToOverlay(msg.role, formattedContent);
         }
       });
     }
-    
+
     // Scroll to bottom
     setTimeout(() => {
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }, 50);
   }
-  
+
   // Show overlay
-  overlay.classList.remove('hidden');
-  
-  console.log('[Floating Chat] Overlay opened for conversation:', conversationId);
+  overlay.classList.remove("hidden");
+
+  console.log(
+    "[Floating Chat] Overlay opened for conversation:",
+    conversationId,
+  );
 }
 
 /**
  * Close chat overlay
  */
 function closeChatOverlay() {
-  const overlay = document.getElementById('chat-overlay');
+  const overlay = document.getElementById("chat-overlay");
   if (overlay) {
-    overlay.classList.add('hidden');
-    console.log('[Floating Chat] Overlay closed');
+    overlay.classList.add("hidden");
+    console.log("[Floating Chat] Overlay closed");
   }
 }
 
@@ -13416,13 +14854,14 @@ function closeChatOverlay() {
  * Add message to overlay
  */
 function addMessageToOverlay(role, content) {
-  const messagesContainer = document.getElementById('chat-overlay-messages');
+  const messagesContainer = document.getElementById("chat-overlay-messages");
   if (!messagesContainer) return null;
-  
-  const messageId = 'overlay-msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+
+  const messageId =
+    "overlay-msg-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9);
   const timestamp = new Date();
-  
-  const messageEl = document.createElement('div');
+
+  const messageEl = document.createElement("div");
   messageEl.className = `message ${role}`;
   messageEl.id = messageId;
   messageEl.dataset.timestamp = timestamp.toISOString();
@@ -13432,22 +14871,22 @@ function addMessageToOverlay(role, content) {
     </div>
     <div class="message-timestamp" title="${timestamp.toLocaleString()}">${getRelativeTime(timestamp)}</div>
   `;
-  
+
   messagesContainer.appendChild(messageEl);
-  
+
   // Re-initialize icons if any were added
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     setTimeout(() => lucide.createIcons(), 0);
   }
-  
+
   // Smooth scroll to bottom
   requestAnimationFrame(() => {
     messagesContainer.scrollTo({
       top: messagesContainer.scrollHeight,
-      behavior: 'smooth'
+      behavior: "smooth",
     });
   });
-  
+
   return messageId;
 }
 
@@ -13469,90 +14908,92 @@ function removeMessageFromOverlay(messageId) {
  * Set up sidebar resize functionality
  */
 function setupSidebarResize() {
-  console.log('[Sidebar Resize] Setting up...');
-  
+  console.log("[Sidebar Resize] Setting up...");
+
   // Use setTimeout to ensure DOM is fully ready
   setTimeout(() => {
-    const resizeHandle = document.getElementById('sidebar-resize-handle');
-    const conversationsSection = document.getElementById('chat-conversations-section');
-    const activeChatSection = document.getElementById('chat-active-section');
-    
-    console.log('[Sidebar Resize] Elements found:', {
+    const resizeHandle = document.getElementById("sidebar-resize-handle");
+    const conversationsSection = document.getElementById(
+      "chat-conversations-section",
+    );
+    const activeChatSection = document.getElementById("chat-active-section");
+
+    console.log("[Sidebar Resize] Elements found:", {
       resizeHandle: !!resizeHandle,
       conversationsSection: !!conversationsSection,
-      activeChatSection: !!activeChatSection
+      activeChatSection: !!activeChatSection,
     });
-    
+
     if (!resizeHandle || !conversationsSection || !activeChatSection) {
-      console.error('[Sidebar Resize] Required elements not found!');
+      console.error("[Sidebar Resize] Required elements not found!");
       return;
     }
-    
+
     let isResizing = false;
     let startY = 0;
     let startHeight = 0;
-    
+
     // Load saved height from localStorage
-    const savedHeight = localStorage.getItem('conversations-section-height');
+    const savedHeight = localStorage.getItem("conversations-section-height");
     if (savedHeight) {
-      console.log('[Sidebar Resize] Loading saved height:', savedHeight);
-      conversationsSection.style.maxHeight = savedHeight + 'px';
-      conversationsSection.style.height = savedHeight + 'px';
+      console.log("[Sidebar Resize] Loading saved height:", savedHeight);
+      conversationsSection.style.maxHeight = savedHeight + "px";
+      conversationsSection.style.height = savedHeight + "px";
     }
-    
+
     // Use direct property assignment instead of addEventListener (works better in Electron)
-    resizeHandle.onmousedown = function(e) {
-      console.log('[Sidebar Resize] Mouse down - starting resize');
+    resizeHandle.onmousedown = function (e) {
+      console.log("[Sidebar Resize] Mouse down - starting resize");
       isResizing = true;
       startY = e.clientY;
       startHeight = conversationsSection.offsetHeight;
-      
-      resizeHandle.classList.add('dragging');
-      document.body.style.cursor = 'ns-resize';
-      document.body.style.userSelect = 'none';
-      
+
+      resizeHandle.classList.add("dragging");
+      document.body.style.cursor = "ns-resize";
+      document.body.style.userSelect = "none";
+
       e.preventDefault();
       e.stopPropagation();
       return false;
     };
-    
+
     // Mouse move - perform resize
-    document.onmousemove = function(e) {
+    document.onmousemove = function (e) {
       if (!isResizing) return;
-      
+
       const deltaY = e.clientY - startY;
       const newHeight = startHeight + deltaY;
-      
+
       // Enforce min/max constraints
       const minHeight = 150; // Minimum height for conversations section
       const maxHeight = window.innerHeight - 400; // Leave space for active chat
       const clampedHeight = Math.max(minHeight, Math.min(newHeight, maxHeight));
-      
-      conversationsSection.style.maxHeight = clampedHeight + 'px';
-      conversationsSection.style.height = clampedHeight + 'px';
-      
+
+      conversationsSection.style.maxHeight = clampedHeight + "px";
+      conversationsSection.style.height = clampedHeight + "px";
+
       e.preventDefault();
       return false;
     };
-    
+
     // Mouse up - end resize
-    document.onmouseup = function(e) {
+    document.onmouseup = function (e) {
       if (!isResizing) return;
-      
-      console.log('[Sidebar Resize] Mouse up - ending resize');
+
+      console.log("[Sidebar Resize] Mouse up - ending resize");
       isResizing = false;
-      resizeHandle.classList.remove('dragging');
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      
+      resizeHandle.classList.remove("dragging");
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+
       // Save height to localStorage
       const currentHeight = conversationsSection.offsetHeight;
-      localStorage.setItem('conversations-section-height', currentHeight);
-      
-      console.log('[Sidebar Resize] Saved height:', currentHeight);
+      localStorage.setItem("conversations-section-height", currentHeight);
+
+      console.log("[Sidebar Resize] Saved height:", currentHeight);
     };
-    
-    console.log('[Sidebar Resize] Initialized successfully');
+
+    console.log("[Sidebar Resize] Initialized successfully");
   }, 500); // Wait 500ms to ensure DOM is ready
 }
 
@@ -13562,7 +15003,7 @@ function setupSidebarResize() {
 // TODO: Implement structured input system for quick actions
 // This will be added in Phase 2 after basic floating chat works
 
-console.log('[Floating Chat] Module loaded');
+console.log("[Floating Chat] Module loaded");
 
 // ========================================
 // LEARNING VISUALIZATION TOOLS
@@ -13572,75 +15013,75 @@ console.log('[Floating Chat] Module loaded');
  * Render Mermaid diagram in session content
  */
 async function renderDiagram(data) {
-  console.log('[Learning] Rendering diagram:', data);
-  
-  const sessionContent = document.getElementById('session-content');
-  const learningSession = document.getElementById('learning-session');
-  const learningDashboard = document.getElementById('learning-dashboard');
-  
+  console.log("[Learning] Rendering diagram:", data);
+
+  const sessionContent = document.getElementById("session-content");
+  const learningSession = document.getElementById("learning-session");
+  const learningDashboard = document.getElementById("learning-dashboard");
+
   if (!sessionContent) {
-    console.error('[Learning] Session content area not found');
+    console.error("[Learning] Session content area not found");
     return;
   }
-  
+
   // Switch to session view if not already
-  if (learningSession && learningSession.classList.contains('hidden')) {
-    learningDashboard?.classList.add('hidden');
-    learningSession.classList.remove('hidden');
+  if (learningSession && learningSession.classList.contains("hidden")) {
+    learningDashboard?.classList.add("hidden");
+    learningSession.classList.remove("hidden");
   }
-  
+
   // Update session header
-  const sessionHeader = document.getElementById('session-topic');
+  const sessionHeader = document.getElementById("session-topic");
   if (sessionHeader && data.caption) {
     sessionHeader.textContent = data.caption;
   }
-  
+
   // Create diagram container
   const diagramId = `mermaid-${Date.now()}`;
-  const diagramContainer = document.createElement('div');
-  diagramContainer.className = 'diagram-container';
+  const diagramContainer = document.createElement("div");
+  diagramContainer.className = "diagram-container";
   diagramContainer.innerHTML = `
     <div class="diagram-wrapper" id="${diagramId}">
       ${data.source}
     </div>
-    ${data.caption ? `<div class="diagram-caption">${data.caption}</div>` : ''}
+    ${data.caption ? `<div class="diagram-caption">${data.caption}</div>` : ""}
   `;
-  
+
   // Add to session content
   sessionContent.appendChild(diagramContainer);
-  
+
   // Initialize Mermaid and render
-  if (typeof mermaid !== 'undefined') {
+  if (typeof mermaid !== "undefined") {
     try {
-      mermaid.initialize({ 
+      mermaid.initialize({
         startOnLoad: false,
-        theme: 'dark',
+        theme: "dark",
         themeVariables: {
-          primaryColor: '#00d9ff',
-          primaryTextColor: '#e0e0e0',
-          primaryBorderColor: '#00d9ff',
-          lineColor: '#666',
-          secondaryColor: '#2a2a2a',
-          tertiaryColor: '#1a1a1a',
-          background: '#151515',
-          mainBkg: '#1a1a1a',
-          textColor: '#e0e0e0',
-          fontSize: '14px'
-        }
+          primaryColor: "#00d9ff",
+          primaryTextColor: "#e0e0e0",
+          primaryBorderColor: "#00d9ff",
+          lineColor: "#666",
+          secondaryColor: "#2a2a2a",
+          tertiaryColor: "#1a1a1a",
+          background: "#151515",
+          mainBkg: "#1a1a1a",
+          textColor: "#e0e0e0",
+          fontSize: "14px",
+        },
       });
-      
+
       const element = document.getElementById(diagramId);
       if (element) {
         await mermaid.run({ nodes: [element] });
-        console.log('[Learning] Diagram rendered successfully');
-        
+        console.log("[Learning] Diagram rendered successfully");
+
         // Add interactive controls if enabled
         if (data.interactive) {
           addDiagramControls(diagramContainer);
         }
       }
     } catch (error) {
-      console.error('[Learning] Error rendering diagram:', error);
+      console.error("[Learning] Error rendering diagram:", error);
       diagramContainer.innerHTML = `
         <div class="diagram-error">
           <p>Error rendering diagram</p>
@@ -13649,9 +15090,9 @@ async function renderDiagram(data) {
       `;
     }
   } else {
-    console.error('[Learning] Mermaid library not loaded');
+    console.error("[Learning] Mermaid library not loaded");
   }
-  
+
   // Scroll to bottom
   sessionContent.scrollTop = sessionContent.scrollHeight;
 }
@@ -13660,8 +15101,8 @@ async function renderDiagram(data) {
  * Add zoom/pan controls to diagram
  */
 function addDiagramControls(container) {
-  const controls = document.createElement('div');
-  controls.className = 'diagram-controls';
+  const controls = document.createElement("div");
+  controls.className = "diagram-controls";
   controls.innerHTML = `
     <button class="diagram-btn" data-action="zoom-in" title="Zoom In">
       <i data-lucide="zoom-in" style="width: 14px; height: 14px;"></i>
@@ -13673,32 +15114,32 @@ function addDiagramControls(container) {
       <i data-lucide="maximize-2" style="width: 14px; height: 14px;"></i>
     </button>
   `;
-  
+
   container.prepend(controls);
-  
+
   // Initialize Lucide icons
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     lucide.createIcons();
   }
-  
+
   // Add event listeners
   let scale = 1;
-  const wrapper = container.querySelector('.diagram-wrapper');
-  
-  controls.addEventListener('click', (e) => {
-    const btn = e.target.closest('.diagram-btn');
+  const wrapper = container.querySelector(".diagram-wrapper");
+
+  controls.addEventListener("click", (e) => {
+    const btn = e.target.closest(".diagram-btn");
     if (!btn) return;
-    
+
     const action = btn.dataset.action;
-    
-    if (action === 'zoom-in') {
+
+    if (action === "zoom-in") {
       scale = Math.min(scale + 0.1, 2);
-    } else if (action === 'zoom-out') {
+    } else if (action === "zoom-out") {
       scale = Math.max(scale - 0.1, 0.5);
-    } else if (action === 'reset') {
+    } else if (action === "reset") {
       scale = 1;
     }
-    
+
     if (wrapper) {
       wrapper.style.transform = `scale(${scale})`;
     }
@@ -13709,58 +15150,61 @@ function addDiagramControls(container) {
  * Execute code in sandbox and display results
  */
 async function executeCodeInSandbox(data) {
-  console.log('[Learning] Executing code:', data);
-  
-  const sessionContent = document.getElementById('session-content');
+  console.log("[Learning] Executing code:", data);
+
+  const sessionContent = document.getElementById("session-content");
   if (!sessionContent) {
-    console.error('[Learning] Session content area not found');
+    console.error("[Learning] Session content area not found");
     return;
   }
-  
+
   // Create code execution container
   const execId = `code-exec-${Date.now()}`;
-  const execContainer = document.createElement('div');
-  execContainer.className = 'code-execution-container';
+  const execContainer = document.createElement("div");
+  execContainer.className = "code-execution-container";
   execContainer.id = execId;
-  
+
   // Build HTML
   let html = '<div class="code-exec-header">';
   html += `<span class="code-exec-lang">${data.language}</span>`;
   html += '<div class="code-exec-actions">';
   if (data.editable) {
-    html += '<button class="btn btn-sm btn-secondary" onclick="runCode(\''+execId+'\')">▶ Run</button>';
+    html +=
+      '<button class="btn btn-sm btn-secondary" onclick="runCode(\'' +
+      execId +
+      "')\">▶ Run</button>";
   }
-  html += '</div>';
-  html += '</div>';
-  
+  html += "</div>";
+  html += "</div>";
+
   // Code editor
   html += '<div class="code-editor">';
   html += `<pre><code class="language-${data.language}">${escapeHtml(data.code)}</code></pre>`;
-  html += '</div>';
-  
+  html += "</div>";
+
   // Output area
-  html += '<div class="code-output" id="'+execId+'-output">';
+  html += '<div class="code-output" id="' + execId + '-output">';
   html += '<div class="output-label">Output:</div>';
   html += '<div class="output-content"></div>';
-  html += '</div>';
-  
+  html += "</div>";
+
   // Test results if provided
   if (data.test_cases && data.test_cases.length > 0) {
-    html += '<div class="code-tests" id="'+execId+'-tests"></div>';
+    html += '<div class="code-tests" id="' + execId + '-tests"></div>';
   }
-  
+
   execContainer.innerHTML = html;
   sessionContent.appendChild(execContainer);
-  
+
   // If editable, make code textarea
   if (data.editable) {
-    const codeElement = execContainer.querySelector('.code-editor pre code');
-    const textarea = document.createElement('textarea');
-    textarea.className = 'code-textarea';
+    const codeElement = execContainer.querySelector(".code-editor pre code");
+    const textarea = document.createElement("textarea");
+    textarea.className = "code-textarea";
     textarea.value = data.code;
     textarea.spellcheck = false;
     codeElement.replaceWith(textarea);
-    
+
     // Store test cases on container for later
     execContainer.dataset.testCases = JSON.stringify(data.test_cases || []);
     execContainer.dataset.language = data.language;
@@ -13768,7 +15212,7 @@ async function executeCodeInSandbox(data) {
     // Auto-run if not editable
     await runCodeExecution(execId, data.code, data.language, data.test_cases);
   }
-  
+
   // Scroll to bottom
   sessionContent.scrollTop = sessionContent.scrollHeight;
 }
@@ -13779,12 +15223,12 @@ async function executeCodeInSandbox(data) {
 async function runCode(execId) {
   const container = document.getElementById(execId);
   if (!container) return;
-  
-  const textarea = container.querySelector('.code-textarea');
-  const code = textarea ? textarea.value : '';
-  const language = container.dataset.language || 'python';
-  const testCases = JSON.parse(container.dataset.testCases || '[]');
-  
+
+  const textarea = container.querySelector(".code-textarea");
+  const code = textarea ? textarea.value : "";
+  const language = container.dataset.language || "python";
+  const testCases = JSON.parse(container.dataset.testCases || "[]");
+
   await runCodeExecution(execId, code, language, testCases);
 }
 
@@ -13792,38 +15236,40 @@ async function runCode(execId) {
  * Actually execute code and display results
  */
 async function runCodeExecution(execId, code, language, testCases) {
-  const outputContent = document.querySelector(`#${execId}-output .output-content`);
+  const outputContent = document.querySelector(
+    `#${execId}-output .output-content`,
+  );
   const testsDiv = document.getElementById(`${execId}-tests`);
-  
+
   if (!outputContent) return;
-  
-  outputContent.innerHTML = '<div class="loading-spinner"></div><span>Running...</span>';
-  
+
+  outputContent.innerHTML =
+    '<div class="loading-spinner"></div><span>Running...</span>';
+
   try {
     let result;
-    
-    if (language === 'javascript') {
+
+    if (language === "javascript") {
       // JavaScript sandbox
       result = await runJavaScript(code);
-    } else if (language === 'python') {
+    } else if (language === "python") {
       // Python sandbox (requires Pyodide - we'll add this next)
       result = await runPython(code);
     } else {
       throw new Error(`Unsupported language: ${language}`);
     }
-    
+
     // Display output
     outputContent.innerHTML = `<pre>${escapeHtml(result.output)}</pre>`;
-    
+
     if (result.error) {
       outputContent.innerHTML += `<div class="output-error">${escapeHtml(result.error)}</div>`;
     }
-    
+
     // Run test cases
     if (testsDiv && testCases && testCases.length > 0) {
       await runTestCases(testsDiv, code, language, testCases);
     }
-    
   } catch (error) {
     outputContent.innerHTML = `<div class="output-error">Error: ${escapeHtml(error.message)}</div>`;
   }
@@ -13833,15 +15279,15 @@ async function runCodeExecution(execId, code, language, testCases) {
  * Run JavaScript code in sandbox
  */
 async function runJavaScript(code) {
-  let output = '';
+  let output = "";
   let error = null;
-  
+
   // Capture console.log
   const originalLog = console.log;
   console.log = (...args) => {
-    output += args.map(a => String(a)).join(' ') + '\n';
+    output += args.map((a) => String(a)).join(" ") + "\n";
   };
-  
+
   try {
     // Execute in isolated scope
     const result = eval(code);
@@ -13853,7 +15299,7 @@ async function runJavaScript(code) {
   } finally {
     console.log = originalLog;
   }
-  
+
   return { output, error };
 }
 
@@ -13868,7 +15314,7 @@ async function runPython(code) {
 /**
  * Run Python code in Pyodide sandbox with timeout
  * Phase 23.5: Security Hardening
- * 
+ *
  * @param {string} code - Python code to execute
  * @param {number} timeout - Timeout in seconds (default: 10)
  * @returns {Promise<Object>} Execution result with status, output, error
@@ -13876,34 +15322,36 @@ async function runPython(code) {
 async function runPythonInSandbox(code, timeout = 10) {
   try {
     // Load Pyodide using our loader
-    if (typeof window.PyodideLoader === 'undefined') {
-      throw new Error('PyodideLoader not available. Make sure pyodide-loader.js is loaded.');
+    if (typeof window.PyodideLoader === "undefined") {
+      throw new Error(
+        "PyodideLoader not available. Make sure pyodide-loader.js is loaded.",
+      );
     }
-    
+
     const pyodide = await window.PyodideLoader.loadPyodide();
-    
+
     // Capture stdout and stderr
-    let stdout = '';
-    let stderr = '';
-    
+    let stdout = "";
+    let stderr = "";
+
     pyodide.setStdout({
       batched: (msg) => {
         stdout += msg;
       },
       raw: (charCode) => {
         stdout += String.fromCharCode(charCode);
-      }
+      },
     });
-    
+
     pyodide.setStderr({
       batched: (msg) => {
         stderr += msg;
       },
       raw: (charCode) => {
         stderr += String.fromCharCode(charCode);
-      }
+      },
     });
-    
+
     // Set up timeout
     const startTime = performance.now();
     let timeoutId;
@@ -13912,48 +15360,45 @@ async function runPythonInSandbox(code, timeout = 10) {
         reject(new Error(`Code execution timed out after ${timeout} seconds`));
       }, timeout * 1000);
     });
-    
+
     // Execute code with timeout
     try {
-      await Promise.race([
-        pyodide.runPythonAsync(code),
-        timeoutPromise
-      ]);
-      
+      await Promise.race([pyodide.runPythonAsync(code), timeoutPromise]);
+
       clearTimeout(timeoutId);
       const executionTime = (performance.now() - startTime) / 1000;
-      
+
       return {
-        status: 'success',
-        output: stdout.trim() || '(no output)',
+        status: "success",
+        output: stdout.trim() || "(no output)",
         error: stderr.trim() || null,
-        execution_time: executionTime
+        execution_time: executionTime,
       };
     } catch (execError) {
       clearTimeout(timeoutId);
-      
+
       // Check if it's a timeout
-      if (execError.message && execError.message.includes('timed out')) {
+      if (execError.message && execError.message.includes("timed out")) {
         return {
-          status: 'timeout',
+          status: "timeout",
           error: execError.message,
-          output: stdout.trim() || '',
-          execution_time: timeout
+          output: stdout.trim() || "",
+          execution_time: timeout,
         };
       }
-      
+
       // Regular error
       return {
-        status: 'error',
-        output: stdout.trim() || '',
+        status: "error",
+        output: stdout.trim() || "",
         error: execError.message || String(execError) || stderr.trim(),
-        execution_time: (performance.now() - startTime) / 1000
+        execution_time: (performance.now() - startTime) / 1000,
       };
     }
   } catch (error) {
     return {
-      output: '',
-      error: error.message
+      output: "",
+      error: error.message,
     };
   }
 }
@@ -13963,31 +15408,31 @@ async function runPythonInSandbox(code, timeout = 10) {
  */
 async function runTestCases(testsDiv, code, language, testCases) {
   testsDiv.innerHTML = '<div class="tests-header">Test Results:</div>';
-  
+
   for (const test of testCases) {
-    const testDiv = document.createElement('div');
-    testDiv.className = 'test-case';
-    
+    const testDiv = document.createElement("div");
+    testDiv.className = "test-case";
+
     try {
       // Run test (simplified - real implementation would be more robust)
       let result;
-      if (language === 'javascript') {
+      if (language === "javascript") {
         result = await runJavaScript(test.input);
       }
-      
+
       const passed = result.output.trim() === test.expected;
-      
-      testDiv.className += passed ? ' test-pass' : ' test-fail';
+
+      testDiv.className += passed ? " test-pass" : " test-fail";
       testDiv.innerHTML = `
-        <div class="test-status">${passed ? '✓' : '✗'}</div>
+        <div class="test-status">${passed ? "✓" : "✗"}</div>
         <div class="test-details">
           <div class="test-input">Input: <code>${escapeHtml(test.input)}</code></div>
           <div class="test-expected">Expected: <code>${escapeHtml(test.expected)}</code></div>
-          ${!passed ? `<div class="test-actual">Got: <code>${escapeHtml(result.output.trim())}</code></div>` : ''}
+          ${!passed ? `<div class="test-actual">Got: <code>${escapeHtml(result.output.trim())}</code></div>` : ""}
         </div>
       `;
     } catch (error) {
-      testDiv.className += ' test-fail';
+      testDiv.className += " test-fail";
       testDiv.innerHTML = `
         <div class="test-status">✗</div>
         <div class="test-details">
@@ -13995,7 +15440,7 @@ async function runTestCases(testsDiv, code, language, testCases) {
         </div>
       `;
     }
-    
+
     testsDiv.appendChild(testDiv);
   }
 }
@@ -14004,67 +15449,68 @@ async function runTestCases(testsDiv, code, language, testCases) {
  * Present interactive exercise
  */
 async function presentExercise(data) {
-  console.log('[Learning] Presenting exercise:', data);
-  
-  const sessionContent = document.getElementById('session-content');
+  console.log("[Learning] Presenting exercise:", data);
+
+  const sessionContent = document.getElementById("session-content");
   if (!sessionContent) {
-    console.error('[Learning] Session content area not found');
+    console.error("[Learning] Session content area not found");
     return;
   }
-  
+
   // Switch to session view
-  const learningSession = document.getElementById('learning-session');
-  const learningDashboard = document.getElementById('learning-dashboard');
-  
-  if (learningSession && learningSession.classList.contains('hidden')) {
-    learningDashboard?.classList.add('hidden');
-    learningSession.classList.remove('hidden');
+  const learningSession = document.getElementById("learning-session");
+  const learningDashboard = document.getElementById("learning-dashboard");
+
+  if (learningSession && learningSession.classList.contains("hidden")) {
+    learningDashboard?.classList.add("hidden");
+    learningSession.classList.remove("hidden");
   }
-  
+
   // Update session header
-  const sessionHeader = document.getElementById('session-topic');
+  const sessionHeader = document.getElementById("session-topic");
   if (sessionHeader && data.title) {
     sessionHeader.textContent = data.title;
   }
-  
+
   // Create exercise container
   const exerciseId = `exercise-${Date.now()}`;
-  const exerciseContainer = document.createElement('div');
-  exerciseContainer.className = 'exercise-container';
+  const exerciseContainer = document.createElement("div");
+  exerciseContainer.className = "exercise-container";
   exerciseContainer.id = exerciseId;
-  
+
   let html = '<div class="exercise-header">';
   html += `<h3>${data.title}</h3>`;
-  html += `<span class="exercise-difficulty ${data.difficulty}">${data.difficulty || 'medium'}</span>`;
-  html += '</div>';
-  
+  html += `<span class="exercise-difficulty ${data.difficulty}">${data.difficulty || "medium"}</span>`;
+  html += "</div>";
+
   html += '<div class="exercise-description">';
   html += data.description;
-  html += '</div>';
-  
+  html += "</div>";
+
   // Exercise type specific UI
-  if (data.type === 'code_challenge') {
+  if (data.type === "code_challenge") {
     html += '<div class="exercise-code">';
-    html += '<label>Your Solution:</label>';
-    html += `<textarea class="code-textarea" spellcheck="false">${data.starter_code || ''}</textarea>`;
-    html += '</div>';
-    
+    html += "<label>Your Solution:</label>";
+    html += `<textarea class="code-textarea" spellcheck="false">${data.starter_code || ""}</textarea>`;
+    html += "</div>";
+
     html += '<div class="exercise-actions">';
     html += `<button class="btn btn-primary" onclick="checkExerciseSolution('${exerciseId}')">Check Solution</button>`;
     if (data.hints && data.hints.length > 0) {
       html += `<button class="btn btn-secondary" onclick="showExerciseHint('${exerciseId}', 0)">Show Hint</button>`;
     }
-    html += '</div>';
-    
-    html += '<div class="exercise-feedback" id="'+exerciseId+'-feedback"></div>';
-    
+    html += "</div>";
+
+    html +=
+      '<div class="exercise-feedback" id="' + exerciseId + '-feedback"></div>';
+
     // Store data on container
     exerciseContainer.dataset.exerciseData = JSON.stringify(data);
   }
-  
+
   exerciseContainer.innerHTML = html;
   sessionContent.appendChild(exerciseContainer);
-  
+
   // Scroll to bottom
   sessionContent.scrollTop = sessionContent.scrollHeight;
 }
@@ -14075,49 +15521,53 @@ async function presentExercise(data) {
 async function checkExerciseSolution(exerciseId) {
   const container = document.getElementById(exerciseId);
   if (!container) return;
-  
-  const textarea = container.querySelector('.code-textarea');
-  const userCode = textarea ? textarea.value : '';
-  const data = JSON.parse(container.dataset.exerciseData || '{}');
-  
+
+  const textarea = container.querySelector(".code-textarea");
+  const userCode = textarea ? textarea.value : "";
+  const data = JSON.parse(container.dataset.exerciseData || "{}");
+
   const feedback = document.getElementById(`${exerciseId}-feedback`);
-  feedback.innerHTML = '<div class="loading-spinner"></div><span>Checking...</span>';
-  
+  feedback.innerHTML =
+    '<div class="loading-spinner"></div><span>Checking...</span>';
+
   try {
     // Run test cases
     const results = [];
-    
+
     for (const testCase of data.test_cases || []) {
-      const result = await runJavaScript(userCode + '\n' + testCase.input);
+      const result = await runJavaScript(userCode + "\n" + testCase.input);
       const passed = result.output.trim() === testCase.output;
       results.push({ testCase, result, passed });
     }
-    
-    const allPassed = results.every(r => r.passed);
-    
+
+    const allPassed = results.every((r) => r.passed);
+
     // Display feedback
-    let html = '<div class="feedback-header ' + (allPassed ? 'feedback-success' : 'feedback-error') + '">';
-    html += allPassed ? '✓ All tests passed!' : '✗ Some tests failed';
-    html += '</div>';
-    
+    let html =
+      '<div class="feedback-header ' +
+      (allPassed ? "feedback-success" : "feedback-error") +
+      '">';
+    html += allPassed ? "✓ All tests passed!" : "✗ Some tests failed";
+    html += "</div>";
+
     html += '<div class="feedback-tests">';
     for (const r of results) {
-      html += `<div class="feedback-test ${r.passed ? 'test-pass' : 'test-fail'}">`;
-      html += `<div class="test-status">${r.passed ? '✓' : '✗'}</div>`;
+      html += `<div class="feedback-test ${r.passed ? "test-pass" : "test-fail"}">`;
+      html += `<div class="test-status">${r.passed ? "✓" : "✗"}</div>`;
       html += `<div class="test-info">${r.testCase.input}</div>`;
-      html += '</div>';
+      html += "</div>";
     }
-    html += '</div>';
-    
+    html += "</div>";
+
     if (allPassed) {
-      html += '<div class="feedback-success-message">Great job! You solved it correctly.</div>';
-      
+      html +=
+        '<div class="feedback-success-message">Great job! You solved it correctly.</div>';
+
       // Update mastery in backend
       await updateExerciseMastery(data.exercise_id, true);
     }
-    
+
     feedback.innerHTML = html;
-    
   } catch (error) {
     feedback.innerHTML = `<div class="feedback-error">Error checking solution: ${error.message}</div>`;
   }
@@ -14129,23 +15579,23 @@ async function checkExerciseSolution(exerciseId) {
 function showExerciseHint(exerciseId, hintIndex) {
   const container = document.getElementById(exerciseId);
   if (!container) return;
-  
-  const data = JSON.parse(container.dataset.exerciseData || '{}');
+
+  const data = JSON.parse(container.dataset.exerciseData || "{}");
   const hints = data.hints || [];
-  
+
   if (hintIndex >= hints.length) return;
-  
+
   const feedback = document.getElementById(`${exerciseId}-feedback`);
   const hint = hints[hintIndex];
-  
+
   let html = '<div class="feedback-hint">';
   html += `<strong>Hint ${hintIndex + 1}:</strong> ${hint}`;
-  html += '</div>';
-  
+  html += "</div>";
+
   if (hintIndex + 1 < hints.length) {
     html += `<button class="btn btn-sm btn-secondary" onclick="showExerciseHint('${exerciseId}', ${hintIndex + 1})">Show Next Hint</button>`;
   }
-  
+
   feedback.innerHTML = html;
 }
 
@@ -14155,19 +15605,19 @@ function showExerciseHint(exerciseId, hintIndex) {
 async function updateExerciseMastery(exerciseId, success) {
   try {
     await fetch(`${API_URL}/polly/learning/exercise-result`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         exercise_id: exerciseId,
         success: success,
-        timestamp: new Date().toISOString()
-      })
+        timestamp: new Date().toISOString(),
+      }),
     });
-    
+
     // Reload stats
     await loadLearningStats();
   } catch (error) {
-    console.error('[Learning] Error updating mastery:', error);
+    console.error("[Learning] Error updating mastery:", error);
   }
 }
 
@@ -14175,7 +15625,7 @@ async function updateExerciseMastery(exerciseId, success) {
  * Escape HTML for safe display
  */
 function escapeHtml(text) {
-  const div = document.createElement('div');
+  const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
 }
@@ -14190,20 +15640,20 @@ let learningConversationId = null;
  * Initialize Learning page
  */
 async function initLearningPage() {
-  console.log('[Learning] Initializing Learning page');
-  
+  console.log("[Learning] Initializing Learning page");
+
   // Auto-select Professor persona in chat float
   selectProfessorPersona();
-  
+
   // Load learning stats and dashboard
   await loadLearningStats();
   await loadRecentTopics();
-  
+
   // Setup event listeners
   setupLearningEventListeners();
-  
+
   // Initialize Lucide icons
-  if (typeof lucide !== 'undefined') {
+  if (typeof lucide !== "undefined") {
     lucide.createIcons();
   }
 }
@@ -14213,31 +15663,31 @@ async function initLearningPage() {
  */
 function setupLearningEventListeners() {
   // Refresh stats button
-  const refreshBtn = document.getElementById('btn-refresh-stats');
+  const refreshBtn = document.getElementById("btn-refresh-stats");
   if (refreshBtn) {
-    refreshBtn.addEventListener('click', () => loadLearningStats());
+    refreshBtn.addEventListener("click", () => loadLearningStats());
   }
-  
+
   // Open chat button
-  const openChatBtn = document.getElementById('btn-open-chat');
+  const openChatBtn = document.getElementById("btn-open-chat");
   if (openChatBtn) {
-    openChatBtn.addEventListener('click', () => {
+    openChatBtn.addEventListener("click", () => {
       // Open floating chat
-      const floatingChat = document.getElementById('floating-chat');
-      if (floatingChat && floatingChat.classList.contains('hidden')) {
-        floatingChat.classList.remove('hidden');
-        document.getElementById('floating-query-input')?.focus();
+      const floatingChat = document.getElementById("floating-chat");
+      if (floatingChat && floatingChat.classList.contains("hidden")) {
+        floatingChat.classList.remove("hidden");
+        document.getElementById("floating-query-input")?.focus();
       }
     });
   }
-  
+
   // End session button
-  const endSessionBtn = document.getElementById('btn-end-session');
+  const endSessionBtn = document.getElementById("btn-end-session");
   if (endSessionBtn) {
-    endSessionBtn.addEventListener('click', () => {
+    endSessionBtn.addEventListener("click", () => {
       // Return to dashboard view
-      document.getElementById('learning-dashboard')?.classList.remove('hidden');
-      document.getElementById('learning-session')?.classList.add('hidden');
+      document.getElementById("learning-dashboard")?.classList.remove("hidden");
+      document.getElementById("learning-session")?.classList.add("hidden");
     });
   }
 }
@@ -14247,21 +15697,23 @@ function setupLearningEventListeners() {
  */
 function selectProfessorPersona() {
   // Select Professor in both persona selectors
-  const floatingPersonaSelect = document.getElementById('floating-persona-select');
-  const mainPersonaSelect = document.getElementById('persona-select');
-  
+  const floatingPersonaSelect = document.getElementById(
+    "floating-persona-select",
+  );
+  const mainPersonaSelect = document.getElementById("persona-select");
+
   if (floatingPersonaSelect) {
-    floatingPersonaSelect.value = 'professor';
+    floatingPersonaSelect.value = "professor";
     // Trigger change event to update modes
-    floatingPersonaSelect.dispatchEvent(new Event('change'));
+    floatingPersonaSelect.dispatchEvent(new Event("change"));
   }
-  
+
   if (mainPersonaSelect) {
-    mainPersonaSelect.value = 'professor';
-    mainPersonaSelect.dispatchEvent(new Event('change'));
+    mainPersonaSelect.value = "professor";
+    mainPersonaSelect.dispatchEvent(new Event("change"));
   }
-  
-  console.log('[Learning] Professor persona auto-selected');
+
+  console.log("[Learning] Professor persona auto-selected");
 }
 
 /**
@@ -14270,23 +15722,22 @@ function selectProfessorPersona() {
 async function loadLearningStats() {
   try {
     const response = await fetch(`${API_URL}/polly/learning/stats`);
-    
+
     if (!response.ok) {
-      throw new Error('Failed to load learning stats');
+      throw new Error("Failed to load learning stats");
     }
-    
+
     const stats = await response.json();
-    
+
     // Update UI
     updateLearningStatsUI(stats);
-    
   } catch (error) {
-    console.error('[Learning] Error loading stats:', error);
+    console.error("[Learning] Error loading stats:", error);
     // Show placeholder data
     updateLearningStatsUI({
       total_topics: 0,
       topics_needing_review: 0,
-      by_mastery: {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+      by_mastery: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
     });
   }
 }
@@ -14297,16 +15748,15 @@ async function loadLearningStats() {
 async function loadRecentTopics() {
   try {
     const response = await fetch(`${API_URL}/polly/learning/topics`);
-    
+
     if (!response.ok) {
-      throw new Error('Failed to load topics');
+      throw new Error("Failed to load topics");
     }
-    
+
     const data = await response.json();
     updateTopicsUI(data.topics || []);
-    
   } catch (error) {
-    console.error('[Learning] Error loading topics:', error);
+    console.error("[Learning] Error loading topics:", error);
   }
 }
 
@@ -14314,40 +15764,45 @@ async function loadRecentTopics() {
  * Update topics list UI
  */
 function updateTopicsUI(topics) {
-  const topicsContent = document.getElementById('topics-content');
+  const topicsContent = document.getElementById("topics-content");
   if (!topicsContent) return;
-  
+
   if (topics.length === 0) {
-    topicsContent.innerHTML = '<p class="no-topics">No topics yet. Start learning!</p>';
+    topicsContent.innerHTML =
+      '<p class="no-topics">No topics yet. Start learning!</p>';
     return;
   }
-  
-  topicsContent.innerHTML = topics.map(topic => `
+
+  topicsContent.innerHTML = topics
+    .map(
+      (topic) => `
     <div class="topic-card" data-topic="${topic.title}">
       <div class="topic-header">
         <span class="topic-name">${topic.title}</span>
         <span class="mastery-badge mastery-${topic.mastery_level}">L${topic.mastery_level}</span>
       </div>
       <div class="topic-meta">
-        <span class="topic-domain">${topic.domain || 'General'}</span>
+        <span class="topic-domain">${topic.domain || "General"}</span>
         <span class="topic-updated">${formatDate(topic.last_reviewed)}</span>
       </div>
     </div>
-  `).join('');
+  `,
+    )
+    .join("");
 }
 
 /**
  * Format date for display
  */
 function formatDate(dateString) {
-  if (!dateString) return 'Never';
+  if (!dateString) return "Never";
   const date = new Date(dateString);
   const now = new Date();
   const diffMs = now - date;
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
   if (diffDays < 7) return `${diffDays} days ago`;
   if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
   return `${Math.floor(diffDays / 30)} months ago`;
@@ -14358,48 +15813,48 @@ function formatDate(dateString) {
  */
 function updateLearningStatsUI(stats) {
   // Update total topics
-  const totalEl = document.getElementById('stat-total-topics');
+  const totalEl = document.getElementById("stat-total-topics");
   if (totalEl) {
     totalEl.textContent = stats.total_topics || 0;
   }
-  
+
   // Update review count
-  const reviewEl = document.getElementById('stat-review-count');
+  const reviewEl = document.getElementById("stat-review-count");
   if (reviewEl) {
     reviewEl.textContent = stats.topics_needing_review || 0;
-    
+
     // Show/hide review section
-    const reviewSection = document.getElementById('review-section');
+    const reviewSection = document.getElementById("review-section");
     if (reviewSection) {
       if (stats.topics_needing_review > 0) {
-        reviewSection.style.display = 'block';
+        reviewSection.style.display = "block";
       } else {
-        reviewSection.style.display = 'none';
+        reviewSection.style.display = "none";
       }
     }
   }
-  
+
   // Update mastery breakdown
-  const masteryBarsEl = document.getElementById('mastery-bars');
+  const masteryBarsEl = document.getElementById("mastery-bars");
   if (masteryBarsEl && stats.by_mastery) {
     const masteryLabels = {
-      1: 'Introduced',
-      2: 'Learning',
-      3: 'Understood',
-      4: 'Proficient',
-      5: 'Mastered'
+      1: "Introduced",
+      2: "Learning",
+      3: "Understood",
+      4: "Proficient",
+      5: "Mastered",
     };
-    
+
     const total = stats.total_topics || 1; // Avoid division by zero
-    
-    masteryBarsEl.innerHTML = '';
-    
+
+    masteryBarsEl.innerHTML = "";
+
     for (let level = 1; level <= 5; level++) {
       const count = stats.by_mastery[level] || 0;
       const percentage = total > 0 ? (count / total) * 100 : 0;
-      
-      const barDiv = document.createElement('div');
-      barDiv.className = 'mastery-bar';
+
+      const barDiv = document.createElement("div");
+      barDiv.className = "mastery-bar";
       barDiv.innerHTML = `
         <div class="mastery-bar-label">${masteryLabels[level]}</div>
         <div class="mastery-bar-fill">
@@ -14407,12 +15862,12 @@ function updateLearningStatsUI(stats) {
         </div>
         <div class="mastery-bar-count">${count}</div>
       `;
-      
+
       masteryBarsEl.appendChild(barDiv);
     }
   }
-  
-  console.log('[Learning] Stats updated:', stats);
+
+  console.log("[Learning] Stats updated:", stats);
 }
 
 /**
@@ -14420,13 +15875,13 @@ function updateLearningStatsUI(stats) {
  */
 function showLearningNoteModal(data) {
   const { topic, domain, concepts } = data;
-  
+
   // Create modal HTML if it doesn't exist
-  let modal = document.getElementById('learning-note-modal');
+  let modal = document.getElementById("learning-note-modal");
   if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'learning-note-modal';
-    modal.className = 'modal';
+    modal = document.createElement("div");
+    modal.id = "learning-note-modal";
+    modal.className = "modal";
     modal.innerHTML = `
       <div class="modal-backdrop"></div>
       <div class="modal-content" style="max-width: 600px;">
@@ -14457,7 +15912,7 @@ function showLearningNoteModal(data) {
               <div>
                 <strong>Concepts:</strong> 
                 <span id="learning-note-preview-concepts">
-                  ${concepts.map(c => `<span style="display: inline-block; padding: 2px 8px; background: var(--accent-translucent); color: var(--accent); border-radius: 4px; font-size: 11px; margin-right: 4px;">${c}</span>`).join('')}
+                  ${concepts.map((c) => `<span style="display: inline-block; padding: 2px 8px; background: var(--accent-translucent); color: var(--accent); border-radius: 4px; font-size: 11px; margin-right: 4px;">${c}</span>`).join("")}
                 </span>
               </div>
             </div>
@@ -14480,47 +15935,59 @@ function showLearningNoteModal(data) {
       </div>
     `;
     document.body.appendChild(modal);
-    
+
     // Initialize Lucide icons in modal
-    if (typeof lucide !== 'undefined') {
+    if (typeof lucide !== "undefined") {
       lucide.createIcons();
     }
-    
+
     // Setup event listeners
-    document.getElementById('learning-note-close').addEventListener('click', () => {
-      modal.classList.remove('show');
-      modal.classList.add('hidden');
-    });
-    
-    document.getElementById('learning-note-cancel').addEventListener('click', () => {
-      modal.classList.remove('show');
-      modal.classList.add('hidden');
-    });
-    
-    document.getElementById('learning-note-create').addEventListener('click', async () => {
-      // Call createLearningNote function
-      await createLearningNote(topic, concepts);
-      modal.classList.remove('show');
-      modal.classList.add('hidden');
-    });
-    
+    document
+      .getElementById("learning-note-close")
+      .addEventListener("click", () => {
+        modal.classList.remove("show");
+        modal.classList.add("hidden");
+      });
+
+    document
+      .getElementById("learning-note-cancel")
+      .addEventListener("click", () => {
+        modal.classList.remove("show");
+        modal.classList.add("hidden");
+      });
+
+    document
+      .getElementById("learning-note-create")
+      .addEventListener("click", async () => {
+        // Call createLearningNote function
+        await createLearningNote(topic, concepts);
+        modal.classList.remove("show");
+        modal.classList.add("hidden");
+      });
+
     // Click backdrop to close
-    modal.querySelector('.modal-backdrop').addEventListener('click', () => {
-      modal.classList.remove('show');
-      modal.classList.add('hidden');
+    modal.querySelector(".modal-backdrop").addEventListener("click", () => {
+      modal.classList.remove("show");
+      modal.classList.add("hidden");
     });
   } else {
     // Update existing modal content
-    document.getElementById('learning-note-topic-title').textContent = topic;
-    document.getElementById('learning-note-preview-topic').textContent = topic;
-    document.getElementById('learning-note-preview-domain').textContent = domain;
-    document.getElementById('learning-note-preview-concepts').innerHTML = 
-      concepts.map(c => `<span style="display: inline-block; padding: 2px 8px; background: var(--accent-translucent); color: var(--accent); border-radius: 4px; font-size: 11px; margin-right: 4px;">${c}</span>`).join('');
+    document.getElementById("learning-note-topic-title").textContent = topic;
+    document.getElementById("learning-note-preview-topic").textContent = topic;
+    document.getElementById("learning-note-preview-domain").textContent =
+      domain;
+    document.getElementById("learning-note-preview-concepts").innerHTML =
+      concepts
+        .map(
+          (c) =>
+            `<span style="display: inline-block; padding: 2px 8px; background: var(--accent-translucent); color: var(--accent); border-radius: 4px; font-size: 11px; margin-right: 4px;">${c}</span>`,
+        )
+        .join("");
   }
-  
+
   // Show modal
-  modal.classList.remove('hidden');
-  modal.classList.add('show');
+  modal.classList.remove("hidden");
+  modal.classList.add("show");
 }
 
 /**
@@ -14530,37 +15997,35 @@ async function createLearningNote(topic, concepts) {
   try {
     // Get current conversation ID from chat
     const conversationId = currentConversationId;
-    
+
     const response = await fetch(`${API_URL}/polly/learning/create-note`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         topic,
         concepts: concepts || [],
         conversation_id: conversationId,
-        domain: currentPage || 'general'
-      })
+        domain: currentPage || "general",
+      }),
     });
-    
+
     if (!response.ok) {
-      throw new Error('Failed to create learning note');
+      throw new Error("Failed to create learning note");
     }
-    
+
     const result = await response.json();
-    
-    if (result.status === 'success') {
-      showNotification(`Learning note created: ${result.note_path}`, 'success');
-      
+
+    if (result.status === "success") {
+      showNotification(`Learning note created: ${result.note_path}`, "success");
+
       // Reload stats and topics
       await loadLearningStats();
       await loadRecentTopics();
     }
-    
   } catch (error) {
-    console.error('[Learning] Error creating note:', error);
-    showNotification('Failed to create learning note', 'error');
+    console.error("[Learning] Error creating note:", error);
+    showNotification("Failed to create learning note", "error");
   }
 }
 
 // ==================== End Learning (Phase 22) ====================
-

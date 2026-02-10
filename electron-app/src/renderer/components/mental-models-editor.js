@@ -755,9 +755,5 @@ const MentalModelsEditor = {
   }
 };
 
-// Auto-initialize on DOM ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => MentalModelsEditor.init());
-} else {
-  MentalModelsEditor.init();
-}
+// Initialization is triggered from app.js after the backend server is ready
+// so we avoid connection-refused errors on load.
