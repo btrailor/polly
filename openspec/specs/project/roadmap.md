@@ -78,27 +78,27 @@ Comprehensive audit and remediation of architectural gaps between Polly's core s
 
 | Phase | Name | Priority | Status | Change Folder |
 |-------|------|----------|--------|---------------|
-| A.1 | Unified Pattern Engine | P0 | 📐 Designed | [changes/unified-pattern-engine/](../changes/unified-pattern-engine/) |
-| A.2 | Entity Model Unification | P0 | 📐 Designed | [changes/entity-model-unification/](../changes/entity-model-unification/) |
-| B | Integration Contracts | P1 (after A) | 📐 Designed | [changes/integration-contracts/](../changes/integration-contracts/) |
-| C | Library Extraction | P2 (after B) | 📐 Designed | [changes/library-extraction/](../changes/library-extraction/) |
+| A.1 | Unified Pattern Engine | P0 | ✅ Done | [changes/unified-pattern-engine/](../changes/unified-pattern-engine/) |
+| A.2 | Entity Model Unification | P0 | ✅ Done | [changes/entity-model-unification/](../changes/entity-model-unification/) |
+| B | Integration Contracts | P1 (after A) | ✅ Done | [changes/integration-contracts/](../changes/integration-contracts/) |
+| C | Library Extraction | P2 (after B) | 📋 Next | [changes/library-extraction/](../changes/library-extraction/) |
 
 **Key deliverables:**
 - ✅ Audit complete — 10 integration issues documented
-- 📐 Merge two incompatible `PatternLearner` classes into unified `PatternEngine`
-- 📐 Shared `Entity` model across knowledge graph, pattern engine, Mem0
-- 📐 Knowledge graph restructured from JSON to SQLite with real graph operations
+- ✅ Merge two incompatible `PatternLearner` classes into unified `PatternEngine`
+- ✅ Shared `Entity` model across knowledge graph, pattern engine, Mem0
+- ✅ Knowledge graph restructured from JSON to SQLite with real graph operations
 - 📐 Cross-system protocols: `PatternConsumer`, `EntityProvider`, `PersonaAware`, `ContextContributor`
 - 📐 Persona composition with patterns, entities, and mental models
 - 📐 Routing feedback loop (patterns inform routing, outcomes feed patterns)
 - 📐 Conversation synchronization between Electron and Python
 - 📐 Extract 5 libraries: `polly-routing`, `polly-patterns`, `polly-compression`, `polly-entities`, `polly-personas`
-- 📐 Rename PIL → Compact Format (honest naming)
+- ✅ Rename PIL → Compact Format (honest naming)
 - 📐 Spec reconciliation: status markers on all 30+ specs
 
 Master reference: [changes/architecture-integration-audit/](../changes/architecture-integration-audit/)
 
-**Dependency note:** Phase A (P0) has no dependencies and can start immediately. It should precede Phase 23.5 (Security) since the unified pattern engine and entity model will be the systems that security hardens.
+**Dependency note:** Phase A (P0) is complete. Phase B (Integration Contracts) is next; it builds on the unified pattern engine and entity model. Phase B should precede Phase 23.5 (Security) since the integration contracts will define the systems that security hardens.
 
 ### Cross-Cutting: Code Library & Development Philosophy
 | Component | Status | OpenSpec / Notes |

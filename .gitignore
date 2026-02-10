@@ -92,6 +92,11 @@ MASTER_ROADMAP.md.backup
 MASTER_ROADMAP.md.pre-merge-backup
 PROJECT_ROADMAP.md.backup
 
+# Libs monorepo (editable install artifacts)
+libs/*/dist/
+libs/*/*.egg-info/
+libs/*/*.egg
+
 # Electron
 electron-app/dist/
 electron-app/out/

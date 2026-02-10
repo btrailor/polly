@@ -10,7 +10,7 @@
 
 | # | Task | Est. | Depends | Status |
 |---|------|------|---------|--------|
-| 1 | Create `libs/` directory structure and monorepo setup | 0.5d | — | ⬜ |
+| 1 | Create `libs/` directory structure and monorepo setup | 0.5d | — | ✅ Done |
 | 2 | Extract `polly-routing` | 3d | integration-contracts | ⬜ |
 | 3 | Extract `polly-patterns` | 2d | unified-pattern-engine | ⬜ |
 | 4 | Extract `polly-compression` | 2d | — | ⬜ |
