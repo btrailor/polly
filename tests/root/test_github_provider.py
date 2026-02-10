@@ -10,7 +10,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.providers.github_provider import GitHubModelsAdapter
+from core.providers import GitHubModelsAdapter
 from core.secrets_manager import get_secrets_manager
 
 

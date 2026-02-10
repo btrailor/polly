@@ -465,17 +465,86 @@ class TestConfiguration:
             get_memory_adapter(invalid_config)
 
 
+# ========== Settings API Memory Tests ==========
+
+class TestSettingsMemoryAPI:
+    """Test GET/POST /api/settings/memory (Task 14 step 8)."""
+    
+    def test_get_memory_settings(self):
+        """GET /api/settings/memory returns provider and mem0_enabled."""
+        from fastapi.testclient import TestClient
+        from fastapi import FastAPI
+        from interfaces.settings_api import create_settings_router
+        from unittest.mock import patch, MagicMock
+        
+        app = FastAPI()
+        app.include_router(create_settings_router())
+        mock_config = MagicMock()
+        mock_config._config = {"memory": {"provider": "local", "mem0": {"enabled": False}}}
+        
+        with patch("interfaces.settings_api.get_config", return_value=mock_config):
+            client = TestClient(app)
+            response = client.get("/api/settings/memory")
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("success") is True
+        assert "settings" in data
+        assert "provider" in data["settings"]
+        assert "mem0_enabled" in data["settings"]
+    
+    def test_post_memory_settings(self):
+        """POST /api/settings/memory updates provider/mem0_enabled (with config save mocked)."""
+        from fastapi.testclient import TestClient
+        from fastapi import FastAPI
+        from interfaces.settings_api import create_settings_router
+        from unittest.mock import patch, MagicMock
+        
+        app = FastAPI()
+        app.include_router(create_settings_router())
+        client = TestClient(app)
+        
+        mock_config = MagicMock()
+        mock_config._config = {"memory": {"provider": "local", "mem0": {"enabled": False}}}
+        mock_config.save = MagicMock()
+        
+        with patch("interfaces.settings_api.get_config", return_value=mock_config):
+            response = client.post(
+                "/api/settings/memory",
+                json={"provider": "mem0", "mem0_enabled": True}
+            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("success") is True
+        assert data["settings"]["provider"] == "mem0"
+        assert data["settings"]["mem0_enabled"] is True
+
+
 # ========== Integration Tests ==========
 
 class TestEndToEndIntegration:
-    """End-to-end integration tests."""
+    """End-to-end integration tests (Task 14 step 9)."""
     
     @pytest.mark.asyncio
     async def test_knowledge_to_memory_flow(self):
-        """Test full flow: save note → Mem0 → search."""
-        # This would require full system setup
-        # Placeholder for integration test
-        pass
+        """Test flow: add content to Mem0 (as knowledge writer would) then search."""
+        try:
+            from core.memory.mem0_adapter import Mem0Adapter
+            adapter = Mem0Adapter(TEST_CONFIG)
+        except (ImportError, ValueError, Exception) as e:
+            pytest.skip(f"Mem0 not available or config invalid: {e}")
+        adapter.add_memory(
+            content="Polly knowledge: React hooks should be called at top level.",
+            user_id="default",
+            metadata={"source": "knowledge_writer", "domain": "scrolls"}
+        )
+        results = adapter.search_memory(
+            query="React hooks",
+            user_id="default",
+            limit=5
+        )
+        assert isinstance(results, list)
+        assert len(results) >= 1
+        assert any("hook" in (r.get("memory") or "").lower() for r in results)
     
     @pytest.mark.asyncio
     async def test_pattern_learning_flow(self):
