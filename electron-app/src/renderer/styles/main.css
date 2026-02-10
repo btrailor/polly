@@ -2899,10 +2899,9 @@ body {
 }
 
 .settings-content {
-  flex: 1;
-  overflow-y: auto;
   padding: 32px 40px;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .settings-page-title {

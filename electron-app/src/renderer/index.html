@@ -267,8 +267,8 @@
               </div>
             </div>
           </div>
+        </div> <!-- end view-setup -->
 
-        <!-- Chat View -->
         <!-- Dashboard View -->
         <div class="view" id="view-dashboard">
           <div class="dashboard-container">
@@ -457,68 +457,7 @@
         </div> <!-- end curricula view -->
 
         <div class="view hidden" id="view-settings">
-          <div class="settings-page">
-            <!-- Settings Sidebar -->
-            <aside class="settings-sidebar">
-              <!-- User Account Section -->
-              <div class="settings-account-section">
-                <div class="account-avatar" id="settings-account-avatar">P</div>
-                <div class="account-info">
-                  <div class="account-email" id="settings-account-email">polly@local</div>
-                  <div class="account-plan" id="settings-account-plan">Local Mode</div>
-                </div>
-              </div>
-              
-              <!-- Search Bar -->
-              <div class="settings-search">
-                <input 
-                  type="text" 
-                  id="settings-search-input" 
-                  placeholder="Search settings ⌘F"
-                  autocomplete="off"
-                >
-                <i data-lucide="search" class="search-icon"></i>
-              </div>
-              
-              <!-- Navigation Menu -->
-              <nav class="settings-nav">
-                <button class="settings-nav-item active" data-section="general">
-                  <i data-lucide="settings" class="nav-icon"></i>
-                  <span class="nav-label">General</span>
-                </button>
-                <button class="settings-nav-item" data-section="api-keys">
-                  <i data-lucide="key" class="nav-icon"></i>
-                  <span class="nav-label">API Keys</span>
-                </button>
-                <button class="settings-nav-item" data-section="routing">
-                  <i data-lucide="route" class="nav-icon"></i>
-                  <span class="nav-label">Routing</span>
-                </button>
-                <button class="settings-nav-item" data-section="domains">
-                  <i data-lucide="folder" class="nav-icon"></i>
-                  <span class="nav-label">Domains</span>
-                </button>
-                <button class="settings-nav-item" data-section="integrations">
-                  <i data-lucide="plug" class="nav-icon"></i>
-                  <span class="nav-label">Integrations</span>
-                </button>
-                <button class="settings-nav-item" data-section="notes">
-                  <i data-lucide="file-text" class="nav-icon"></i>
-                  <span class="nav-label">Notes</span>
-                </button>
-                <button class="settings-nav-item" data-section="compression">
-                  <i data-lucide="archive" class="nav-icon"></i>
-                  <span class="nav-label">Compression</span>
-                </button>
-                <button class="settings-nav-item" data-section="ai-features">
-                  <i data-lucide="sparkles" class="nav-icon"></i>
-                  <span class="nav-label">AI Features</span>
-                </button>
-              </nav>
-            </aside>
-            
-            <!-- Settings Content -->
-            <div class="settings-content">
+          <div class="settings-content">
               <!-- Section: General -->
               <div class="settings-section-content" id="settings-section-general">
                 <h2 class="settings-page-title">General</h2>
@@ -733,7 +672,6 @@
                 </div>
               </div>
             </div>
-          </div>
           
           <!-- Legacy tab content (will be migrated) -->
           <div class="settings-tab-content hidden" id="tab-general">
@@ -1699,6 +1637,33 @@
                   </div>
                 </div>
 
+                <h4 style="margin-top: 20px; margin-bottom: 12px;">RAG / Context Compression</h4>
+                <p class="form-hint" style="margin-bottom: 12px;">Strategy for compressing context sent to RAG and long conversations (e.g. LLMLingua for aggressive compression).</p>
+                <div class="form-group">
+                  <label for="compression-strategy">Compression strategy</label>
+                  <select id="compression-strategy">
+                    <option value="auto">Auto (default)</option>
+                    <option value="llmlingua">LLMLingua</option>
+                    <option value="llm_summary">LLM summary</option>
+                  </select>
+                  <p class="form-hint">LLMLingua reduces token count; LLM summary uses model-generated summaries.</p>
+                </div>
+                <div class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="compression-rag-context-enabled">
+                    <span>Enable RAG context compression</span>
+                  </label>
+                  <p class="form-hint">Compress context passed to RAG retrieval when enabled.</p>
+                </div>
+                <div class="form-group">
+                  <label for="compression-rag-context-ratio">
+                    RAG context ratio
+                    <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">(0.1–1.0, lower = more compression)</span>
+                  </label>
+                  <input type="number" id="compression-rag-context-ratio" min="0.1" max="1" step="0.1" value="0.5" placeholder="0.5">
+                  <p class="form-hint">Default: 0.5 (e.g. 2× compression)</p>
+                </div>
+
                 <div class="settings-actions" style="margin-top: 24px;">
                   <button class="btn btn-primary" id="btn-save-compression-settings">Save Compression Settings</button>
                   <button class="btn btn-secondary" id="btn-reset-compression-settings">Reset to Defaults</button>
@@ -1710,6 +1675,32 @@
                 
                 <div id="compression-stats-content" class="compression-stats">
                   <div class="loading-spinner">Loading statistics...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab: Memory -->
+            <div class="settings-tab-content hidden" id="tab-memory">
+              <div class="settings-section">
+                <h3>Memory Provider</h3>
+                <p class="form-hint" style="margin-bottom: 16px;">Choose how Polly stores long-term memory (patterns, knowledge, per-persona context).</p>
+                <div class="form-group">
+                  <label for="memory-provider">Provider</label>
+                  <select id="memory-provider">
+                    <option value="local">Local (file-based)</option>
+                    <option value="mem0">Mem0 (adaptive memory)</option>
+                  </select>
+                  <p class="form-hint">Mem0 uses vector storage for adaptive recall; enable below when using Mem0.</p>
+                </div>
+                <div class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="memory-mem0-enabled">
+                    <span>Enable Mem0</span>
+                  </label>
+                  <p class="form-hint">Opt-in to Mem0 adaptive memory (knowledge, patterns, personas).</p>
+                </div>
+                <div class="settings-actions" style="margin-top: 24px;">
+                  <button class="btn btn-primary" id="btn-save-memory-settings">Save Memory Settings</button>
                 </div>
               </div>
             </div>
@@ -1877,7 +1868,6 @@
               <button class="btn btn-danger" id="btn-reset-setup">reset setup</button>
             </div>
           </div>
-        </div>
 
         <!-- Mental Model Add/Edit Modal -->
         <div id="mental-model-modal" class="modal hidden">
@@ -1993,7 +1983,7 @@
               <button class="btn btn-primary" id="mental-model-modal-save">Save Model</button>
             </div>
           </div>
-        </div>
+        </div> <!-- end mental-model-modal -->
 
         <!-- Code View (Placeholder - will be replaced by VSCode fork) -->
         <div class="view hidden" id="view-code">
@@ -2203,22 +2193,7 @@
                     <option value="professor">Professor</option>
                   </select>
                   <select class="model-selector" id="chat-model-select">
-                    <option value="auto:balanced">Auto (Balanced)</option>
-                    <optgroup label="Fast">
-                      <option value="github:fast">GitHub</option>
-                      <option value="anthropic:fast">Anthropic</option>
-                      <option value="openai:fast">OpenAI</option>
-                    </optgroup>
-                    <optgroup label="Balanced">
-                      <option value="github:balanced">GitHub</option>
-                      <option value="anthropic:balanced">Anthropic</option>
-                      <option value="openai:balanced">OpenAI</option>
-                    </optgroup>
-                    <optgroup label="Thorough">
-                      <option value="github:thorough">GitHub</option>
-                      <option value="anthropic:thorough">Anthropic</option>
-                      <option value="openai:thorough">OpenAI</option>
-                    </optgroup>
+                    <option value="auto:balanced">Polly (Auto) — Balanced</option>
                   </select>
                 </div>
                 <div class="context-pills-container">
@@ -2330,22 +2305,7 @@
           <!-- Hidden controls for backward compatibility (synced with floating chat) -->
           <div style="display: none;">
             <select id="model-select" class="model-selector">
-              <option value="auto:balanced">Auto (Balanced)</option>
-              <optgroup label="Fast">
-                <option value="github:fast">GitHub</option>
-                <option value="anthropic:fast">Anthropic</option>
-                <option value="openai:fast">OpenAI</option>
-              </optgroup>
-              <optgroup label="Balanced">
-                <option value="github:balanced">GitHub</option>
-                <option value="anthropic:balanced">Anthropic</option>
-                <option value="openai:balanced">OpenAI</option>
-              </optgroup>
-              <optgroup label="Thorough">
-                <option value="github:thorough">GitHub</option>
-                <option value="anthropic:thorough">Anthropic</option>
-                <option value="openai:thorough">OpenAI</option>
-              </optgroup>
+              <option value="auto:balanced">Polly (Auto) — Balanced</option>
             </select>
             <select id="persona-select" class="persona-selector">
               <option value="">Default</option>
@@ -2870,22 +2830,7 @@
       <div class="control-group">
         <label class="control-label">Model:</label>
         <select id="floating-model-select" class="model-selector">
-          <option value="auto:balanced">Auto (Balanced)</option>
-          <optgroup label="Fast">
-            <option value="github:fast">GitHub</option>
-            <option value="anthropic:fast">Anthropic</option>
-            <option value="openai:fast">OpenAI</option>
-          </optgroup>
-          <optgroup label="Balanced">
-            <option value="github:balanced">GitHub</option>
-            <option value="anthropic:balanced">Anthropic</option>
-            <option value="openai:balanced">OpenAI</option>
-          </optgroup>
-          <optgroup label="Thorough">
-            <option value="github:thorough">GitHub</option>
-            <option value="anthropic:thorough">Anthropic</option>
-            <option value="openai:thorough">OpenAI</option>
-          </optgroup>
+          <option value="auto:balanced">Polly (Auto) — Balanced</option>
         </select>
       </div>
       

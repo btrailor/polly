@@ -289,7 +289,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (error) {
     console.error('[Init] Error during initialization:', error);
   }
-  
+  // Populate model selector dropdowns (all providers: Anthropic, OpenAI, GitHub, Grok, Perplexity, Gemini, Mistral, OpenRouter)
+  populateModelSelectors();
   // Initialize Lucide icons
   if (typeof lucide !== 'undefined') {
     lucide.createIcons();
@@ -2077,29 +2078,17 @@ function setupEventListeners() {
  * Show a specific view
  */
 function showView(view) {
-  console.log(`[showView] Called with view: ${view}`);
   currentView = view;
   currentPage = view;  // Track page changes for conversation context
 
   // Hide all views
   const allViews = document.querySelectorAll('.view');
-  console.log(`[showView] Found ${allViews.length} views, hiding all`);
   allViews.forEach(v => v.classList.add('hidden'));
   
-  // Show requested view (with error handling)
+  // Show requested view
   const viewElement = document.getElementById(`view-${view}`);
-  console.log(`[showView] View element 'view-${view}':`, !!viewElement);
   if (viewElement) {
     viewElement.classList.remove('hidden');
-    console.log(`[showView] Removed 'hidden' class from view-${view}`);
-    console.log(`[showView] view-${view} classes after:`, viewElement.className);
-    console.log(`[showView] view-${view} display:`, window.getComputedStyle(viewElement).display);
-    console.log(`[showView] view-${view} height:`, viewElement.offsetHeight);
-    console.log(`[showView] view-${view} width:`, viewElement.offsetWidth);
-    console.log(`[showView] view-${view} children:`, viewElement.children.length);
-    if (viewElement.children.length > 0) {
-      console.log(`[showView] First child:`, viewElement.children[0].tagName, viewElement.children[0].className);
-    }
   } else {
     console.error(`[showView] View element not found: view-${view}`);
     return;
@@ -2605,13 +2594,23 @@ function updateLeftSidebar(view) {
           );
           btn.classList.add('active');
           
-          // Switch tab content directly (no horizontal tabs anymore)
+          // Switch legacy tab content
           const tabContents = document.querySelectorAll('.settings-tab-content');
           tabContents.forEach(content => {
             if (content.id === `tab-${tab}`) {
               content.classList.remove('hidden');
             } else {
               content.classList.add('hidden');
+            }
+          });
+          
+          // Also switch new settings section content
+          const sectionContents = document.querySelectorAll('.settings-section-content');
+          sectionContents.forEach(section => {
+            if (section.id === `settings-section-${tab}`) {
+              section.classList.remove('hidden');
+            } else {
+              section.classList.add('hidden');
             }
           });
           
@@ -2636,6 +2635,8 @@ function updateLeftSidebar(view) {
           } else if (tab === 'compression') {
             loadCompressionSettings();
             loadCompressionStats();
+          } else if (tab === 'memory') {
+            loadMemorySettings();
           } else if (tab === 'mental-models') {
             loadMentalModels();
             refreshMentalModelsStats();
@@ -2818,6 +2819,10 @@ function renderSettingsSidebar() {
           <i data-lucide="package" class="nav-icon"></i>
           <span class="nav-label">Compression</span>
         </button>
+        <button class="nav-item settings-nav-item" data-tab="memory" style="width: 100%; justify-content: flex-start;">
+          <i data-lucide="database" class="nav-icon"></i>
+          <span class="nav-label">Memory</span>
+        </button>
         <button class="nav-item settings-nav-item" data-tab="integrations" style="width: 100%; justify-content: flex-start;">
           <i data-lucide="plug" class="nav-icon"></i>
           <span class="nav-label">Integrations</span>
@@ -2930,12 +2935,21 @@ function reattachChatEventListeners() {
     console.log('[Init] Attached floating-mode-select event listener');
   }
   
-  // Model selector
+  // Model selector: populate all three dropdowns (chat, hidden, floating) and wire change
+  populateModelSelectors();
   const modelSelect = document.getElementById('model-select');
   if (modelSelect) {
     modelSelect.addEventListener('change', handleModelChange);
   }
-  
+  const chatModelSelect = document.getElementById('chat-model-select');
+  if (chatModelSelect) {
+    chatModelSelect.addEventListener('change', handleModelChange);
+  }
+  const floatingModelSelect = document.getElementById('floating-model-select');
+  if (floatingModelSelect) {
+    floatingModelSelect.addEventListener('change', handleModelChange);
+  }
+
   // Orchestrator toggle (TODO: implement multi-persona orchestration)
   const orchestratorToggle = document.getElementById('orchestrator-toggle');
   if (orchestratorToggle) {
@@ -3695,6 +3709,60 @@ async function restorePersonaState() {
 }
 
 /**
+ * Model selector: provider list and display names (matches backend + LiteLLM/OpenRouter).
+ */
+const MODEL_PROVIDERS = [
+  { id: 'anthropic', label: 'Anthropic (Claude)' },
+  { id: 'openai', label: 'OpenAI (GPT)' },
+  { id: 'github', label: 'GitHub' },
+  { id: 'grok', label: 'Grok (xAI)' },
+  { id: 'perplexity', label: 'Perplexity' },
+  { id: 'gemini', label: 'Gemini' },
+  { id: 'mistral', label: 'Mistral' },
+  { id: 'openrouter', label: 'OpenRouter' }
+];
+const MODEL_TIERS = [
+  { id: 'fast', label: 'Fast' },
+  { id: 'balanced', label: 'Balanced' },
+  { id: 'thorough', label: 'Thorough' }
+];
+
+/**
+ * Build options HTML for model selector (one source of truth for chat, hidden, floating).
+ */
+function buildModelSelectorOptions() {
+  let html = '<option value="auto:balanced">Polly (Auto) — Balanced</option>';
+  for (const tier of MODEL_TIERS) {
+    html += `<optgroup label="${tier.label}">`;
+    for (const prov of MODEL_PROVIDERS) {
+      html += `<option value="${prov.id}:${tier.id}">${prov.label}</option>`;
+    }
+    html += '</optgroup>';
+  }
+  return html;
+}
+
+/**
+ * Populate all model selector dropdowns with current provider list.
+ * Call on init and when provider status may have changed.
+ */
+function populateModelSelectors() {
+  const optionsHtml = buildModelSelectorOptions();
+  const selectIds = ['chat-model-select', 'model-select', 'floating-model-select'];
+  const confidence = sessionStorage.getItem('model-confidence') || 'balanced';
+  const providerOverride = sessionStorage.getItem('model-provider');
+  const saved = providerOverride ? `${providerOverride}:${confidence}` : `auto:${confidence}`;
+  for (const id of selectIds) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const current = el.value;
+    el.innerHTML = optionsHtml;
+    const hasCurrent = Array.from(el.options).some(o => o.value === current);
+    el.value = hasCurrent ? current : (Array.from(el.options).some(o => o.value === saved) ? saved : 'auto:balanced');
+  }
+}
+
+/**
  * Handle model selector change
  * Parses unified model selector value (e.g., "github:balanced" or "auto:balanced")
  * and stores for use in sendQuery
@@ -3716,6 +3784,12 @@ function handleModelChange(e) {
     sessionStorage.setItem('model-confidence', tier);
     sessionStorage.setItem('model-provider', provider);
     console.log(`[Model] ${provider} provider with ${tier} tier`);
+  }
+  // Keep all three selects in sync
+  const selectIds = ['chat-model-select', 'model-select', 'floating-model-select'];
+  for (const id of selectIds) {
+    const el = document.getElementById(id);
+    if (el && el !== e.target && el.value !== modelValue) el.value = modelValue;
   }
 }
 
@@ -9470,6 +9544,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDedupSettings(); // Phase 21
   setupMigration(); // Phase 16 - Migration UI
   setupCompressionSettings(); // Compression settings UI
+  setupMemorySettings(); // Memory provider settings UI
   
   // Ensure all integration config panels start hidden
   document.querySelectorAll('.integration-config').forEach(panel => {
@@ -12234,12 +12309,18 @@ async function loadCompressionSettings() {
       const ageInput = document.getElementById('compression-age-hours');
       const keepRecentInput = document.getElementById('compression-keep-recent');
       const showStatsCheckbox = document.getElementById('compression-show-stats');
+      const strategySelect = document.getElementById('compression-strategy');
+      const ragContextEnabled = document.getElementById('compression-rag-context-enabled');
+      const ragContextRatio = document.getElementById('compression-rag-context-ratio');
       
       if (enabledCheckbox) enabledCheckbox.checked = data.settings.enabled;
       if (thresholdInput) thresholdInput.value = data.settings.message_threshold;
       if (ageInput) ageInput.value = data.settings.age_hours;
       if (keepRecentInput) keepRecentInput.value = data.settings.keep_recent;
       if (showStatsCheckbox) showStatsCheckbox.checked = data.settings.show_stats;
+      if (strategySelect) strategySelect.value = data.settings.strategy || 'auto';
+      if (ragContextEnabled) ragContextEnabled.checked = data.settings.rag_context_enabled !== false;
+      if (ragContextRatio) ragContextRatio.value = data.settings.rag_context_ratio ?? 0.5;
       
       // Enable/disable inputs based on enabled checkbox
       updateCompressionInputsState();
@@ -12277,6 +12358,9 @@ async function saveCompressionSettings() {
     const ageHours = parseInt(document.getElementById('compression-age-hours')?.value || '24');
     const keepRecent = parseInt(document.getElementById('compression-keep-recent')?.value || '10');
     const showStats = document.getElementById('compression-show-stats')?.checked || false;
+    const strategy = document.getElementById('compression-strategy')?.value || 'auto';
+    const ragContextEnabled = document.getElementById('compression-rag-context-enabled')?.checked !== false;
+    const ragContextRatio = parseFloat(document.getElementById('compression-rag-context-ratio')?.value || '0.5');
     
     // Validate inputs
     if (threshold < 10 || threshold > 100) {
@@ -12293,6 +12377,10 @@ async function saveCompressionSettings() {
       showToast('Keep recent must be between 5 and 50', 'error');
       return;
     }
+    if (ragContextRatio < 0.1 || ragContextRatio > 1) {
+      showToast('RAG context ratio must be between 0.1 and 1', 'error');
+      return;
+    }
     
     const response = await fetch(`${API_URL}/api/settings/compression`, {
       method: 'POST',
@@ -12304,7 +12392,10 @@ async function saveCompressionSettings() {
         message_threshold: threshold,
         age_hours: ageHours,
         keep_recent: keepRecent,
-        show_stats: showStats
+        show_stats: showStats,
+        strategy,
+        rag_context_enabled: ragContextEnabled,
+        rag_context_ratio: ragContextRatio
       })
     });
     
@@ -12355,7 +12446,10 @@ async function resetCompressionSettings() {
         message_threshold: 20,
         age_hours: 24,
         keep_recent: 10,
-        show_stats: false
+        show_stats: false,
+        strategy: 'auto',
+        rag_context_enabled: true,
+        rag_context_ratio: 0.5
       })
     });
     
@@ -12484,6 +12578,56 @@ function setupCompressionSettings() {
   if (resetBtn) {
     resetBtn.addEventListener('click', resetCompressionSettings);
   }
+}
+
+/**
+ * ===========================================
+ * MEMORY SETTINGS
+ * ===========================================
+ */
+
+async function loadMemorySettings() {
+  try {
+    const response = await fetch(`${API_URL}/api/settings/memory`);
+    if (!response.ok) throw new Error('Failed to load memory settings');
+    const data = await response.json();
+    if (data.success && data.settings) {
+      const providerSelect = document.getElementById('memory-provider');
+      const mem0Checkbox = document.getElementById('memory-mem0-enabled');
+      if (providerSelect) providerSelect.value = data.settings.provider || 'local';
+      if (mem0Checkbox) mem0Checkbox.checked = data.settings.mem0_enabled === true;
+    }
+  } catch (error) {
+    console.error('Error loading memory settings:', error);
+    showToast('Failed to load memory settings', 'error');
+  }
+}
+
+async function saveMemorySettings() {
+  try {
+    const provider = document.getElementById('memory-provider')?.value || 'local';
+    const mem0Enabled = document.getElementById('memory-mem0-enabled')?.checked === true;
+    const response = await fetch(`${API_URL}/api/settings/memory`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, mem0_enabled: mem0Enabled })
+    });
+    if (!response.ok) throw new Error('Failed to save memory settings');
+    const data = await response.json();
+    if (data.success) {
+      showToast('Memory settings saved. Changes take effect on next restart.', 'success');
+    } else {
+      throw new Error(data.message || 'Unknown error');
+    }
+  } catch (error) {
+    console.error('Error saving memory settings:', error);
+    showToast('Failed to save memory settings: ' + error.message, 'error');
+  }
+}
+
+function setupMemorySettings() {
+  const saveBtn = document.getElementById('btn-save-memory-settings');
+  if (saveBtn) saveBtn.addEventListener('click', saveMemorySettings);
 }
 
 // Make functions globally accessible
