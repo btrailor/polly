@@ -1,6 +1,31 @@
 # Polly Configuration
 # Enable router_v2 for intelligent multi-provider routing
 
+# Dynamic domain configuration (integration-contracts Task 12)
+# Override keywords/name/description per domain; add custom domains by id.
+# If omitted, domains load from ~/.polly/domains.json or hardcoded defaults.
+# domains:
+#   sigils:
+#     name: "Sigils"
+#     description: "Code & Infrastructure"
+#     color: "#4A90D9"
+#     icon: "code"
+#     keywords: ["docker", "python", "rust", "javascript", "api", "server"]
+#     rag_collections: ["codebase", "github"]
+#     folder_path: "~/notes/sigils"
+#   signals:
+#     name: "Signals"
+#     description: "Audio Programming"
+#     keywords: ["audio", "midi", "synthesis", "supercollider", "norns"]
+#     rag_collections: ["notes"]
+#   # Custom domain (beyond the five):
+#   custom_domain:
+#     name: "My Domain"
+#     description: "Custom domain"
+#     color: "#FF6B6B"
+#     keywords: ["keyword1", "keyword2"]
+#     rag_collections: ["notes"]
+
 routing_v2:
   enabled: true
   use_litellm: false  # Set to true to use unified LiteLLM adapter (replaces 7 individual providers)

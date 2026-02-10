@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from core.domains import DomainType
 from learners.patterns import PatternLearner, _domains_to_strings
-from learners.graph import KnowledgeGraph, _domains_to_strings as graph_domains_to_strings
+from core.entities import EntityStore, EntityExtractor, EntityContextBuilder
 
 def test_domain_conversion():
     """Test that domain conversion works correctly."""
@@ -80,35 +80,39 @@ def test_pattern_learner():
         temp_path.unlink(missing_ok=True)
 
 def test_knowledge_graph():
-    """Test KnowledgeGraph with enum domains."""
-    print("\nTesting KnowledgeGraph with DomainType enums...")
-    
+    """Test EntityStore + EntityExtractor + EntityContextBuilder with enum domains."""
+    print("\nTesting entity system with DomainType enums...")
+
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        temp_path = Path(f.name)
-    
+    with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
+        temp_db = Path(f.name)
+
     try:
-        graph = KnowledgeGraph(temp_path)
-        
-        # Test with enum domains
+        store = EntityStore(temp_db)
+        extractor = EntityExtractor(store)
+        context_builder = EntityContextBuilder(store)
+
+        # Domain names from enums
         domains = [DomainType.SIGILS, DomainType.SIGNALS]
-        entities = graph.extract_entities_from_text("I'm using docker and norns", domains)
-        print(f"✓ extract_entities_from_text with enums: {len(entities)} entities")
-        
-        # Verify entities have string domains
+        domain_names = [d.value for d in domains]
+
+        entities = extractor.extract_and_store(
+            "I'm using docker and norns", "test", "test_1", domain_names
+        )
+        print(f"✓ extract_and_store with domain list: {len(entities)} entities")
+
         for entity in entities:
             print(f"  - {entity.name}: domains={entity.domains}")
             for d in entity.domains:
                 assert isinstance(d, str), f"Expected string domain, got {type(d)}"
-        
-        # Test get_context_for_query
-        context = graph.get_context_for_query("docker norns", domains)
-        print(f"✓ get_context_for_query with enums: {len(context)} chars")
-        
-        print("✅ KnowledgeGraph tests passed!")
+
+        context = context_builder.build_context("docker norns", domain_names)
+        print(f"✓ build_context with domain list: {len(context)} chars")
+
+        print("✅ Entity system tests passed!")
         return True
     finally:
-        temp_path.unlink(missing_ok=True)
+        temp_db.unlink(missing_ok=True)
 
 if __name__ == "__main__":
     try:

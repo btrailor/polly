@@ -2,14 +2,15 @@
 Apollo Domain Engine
 Understands your five domains and routes context appropriately
 
-Now supports user-configurable domains via Phase 1.5 domain_config system.
+Now supports user-configurable domains via Phase 1.5 domain_config system
+and integration-contracts dynamic domain configuration (YAML + custom domains).
 Falls back to hardcoded domains for backward compatibility.
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional, Dict, Set
+from typing import List, Optional, Dict, Set, Tuple, Any
 import re
 
 # Import domain config system
@@ -18,6 +19,68 @@ try:
     DOMAIN_CONFIG_AVAILABLE = True
 except ImportError:
     DOMAIN_CONFIG_AVAILABLE = False
+
+# YAML config
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+
+
+def load_domains_from_yaml(config_path: Optional[Path] = None, config_dict: Optional[Dict[str, Any]] = None) -> Optional[List["DomainConfig"]]:
+    """
+    Load domain definitions from YAML config (integration-contracts Task 12).
+    Either pass config_path to a YAML file, or config_dict with a top-level 'domains' key.
+    Returns None if no config or empty; callers fall back to domain_config JSON or hardcoded.
+    """
+    if config_dict is not None:
+        raw = config_dict.get("domains")
+    elif config_path and config_path.exists() and YAML_AVAILABLE:
+        try:
+            with open(config_path, "r") as f:
+                data = yaml.safe_load(f) or {}
+            raw = data.get("domains")
+        except Exception:
+            return None
+    else:
+        return None
+    if not raw or not isinstance(raw, dict):
+        return None
+    result: List[DomainConfig] = []
+    for domain_id, opts in raw.items():
+        if not isinstance(opts, dict):
+            continue
+        name = opts.get("name") or domain_id.replace("_", " ").title()
+        result.append(
+            DomainConfig(
+                id=domain_id.lower().strip(),
+                name=str(name),
+                description=str(opts.get("description", "")),
+                color=str(opts.get("color", "#4A90D9")),
+                icon=str(opts.get("icon", "📁")),
+                keywords=list(opts.get("keywords", [])) if isinstance(opts.get("keywords"), list) else [],
+                rag_collections=list(opts.get("rag_collections", [])) if isinstance(opts.get("rag_collections"), list) else [],
+                folder_path=opts.get("folder_path"),
+            )
+        )
+    return result if result else None
+
+
+@dataclass
+class DomainConfig:
+    """
+    Domain configuration from YAML (integration-contracts Task 12).
+    Used when loading from config YAML; supports custom domains beyond the five.
+    """
+    id: str
+    name: str
+    description: str
+    color: str = "#4A90D9"
+    icon: str = "📁"
+    keywords: List[str] = field(default_factory=list)
+    rag_collections: List[str] = field(default_factory=list)
+    folder_path: Optional[str] = None
 
 
 class DomainType(Enum):
@@ -39,6 +102,7 @@ class Domain:
     paths: List[Path] = field(default_factory=list)
     patterns: List[str] = field(default_factory=list)
     keywords: List[str] = field(default_factory=list)
+    custom_id: Optional[str] = None  # Set for custom domains (id not in DomainType)
 
     def matches_path(self, path: Path) -> bool:
         """Check if a path belongs to this domain."""
@@ -125,21 +189,37 @@ class DomainEngine:
         )
     }
 
-    def __init__(self, config_domains: Optional[Dict] = None, use_domain_config: bool = True):
+    def __init__(
+        self,
+        config_domains: Optional[Dict] = None,
+        use_domain_config: bool = True,
+        config_dict: Optional[Dict[str, Any]] = None,
+    ):
         """
         Initialize with optional custom domain configuration.
         
         Args:
             config_domains: Legacy config dict (for backward compatibility)
             use_domain_config: If True, load from ~/.polly/domains.json (Phase 1.5)
+            config_dict: Full config dict (e.g. from PollyConfig._config) for YAML domains (Task 12)
         """
         self.domain_config: Optional[DomainsConfig] = None
-        
-        # Phase 1.5: Try to load from domains.json first
+        self._custom_domains: List[Domain] = []  # Custom domain ids beyond the five
+
+        # Integration-contracts Task 12: Try YAML domains first (from config_dict)
+        if config_dict is not None:
+            yaml_domains = load_domains_from_yaml(config_dict=config_dict)
+            if yaml_domains:
+                self.domains, self._custom_domains = self._load_from_domain_config_list(yaml_domains)
+                # Pattern learner integration (Use Case 2)
+                self._pattern_learner = None
+                return
+
+        # Phase 1.5: Try to load from domains.json (includes custom domains from Settings UI)
         if use_domain_config and DOMAIN_CONFIG_AVAILABLE:
             try:
                 self.domain_config = load_domains()
-                self.domains = self._load_from_domain_config(self.domain_config)
+                self.domains, self._custom_domains = self._load_from_domain_config(self.domain_config)
                 return
             except Exception as e:
                 print(f"Warning: Failed to load domains.json: {e}")
@@ -153,50 +233,86 @@ class DomainEngine:
 
     def set_pattern_learner(self, pattern_learner):
         """
-        Attach pattern learner for domain detection enhancement (Use Case 2).
+        Attach pattern engine for domain detection enhancement (Use Case 2).
         
         Args:
-            pattern_learner: PatternLearner instance from learners/patterns.py
+            pattern_learner: PatternEngine instance (or legacy PatternLearner)
         """
         self._pattern_learner = pattern_learner
         import logging
         logger = logging.getLogger(__name__)
-        logger.info("Pattern learner attached to DomainEngine for enhanced detection")
+        logger.info("Pattern engine attached to DomainEngine for enhanced detection")
 
-    def _load_from_domain_config(self, config: DomainsConfig) -> Dict[DomainType, Domain]:
+    def _load_from_domain_config_list(
+        self, config_list: List[DomainConfig]
+    ) -> Tuple[Dict[DomainType, Domain], List[Domain]]:
         """
-        Load domains from Phase 1.5 domain config system.
-        
-        Maps DomainConfig objects to Domain objects for backward compatibility.
+        Load domains from YAML-style DomainConfig list (integration-contracts Task 12).
+        Returns (enum_keyed_domains, custom_domains).
         """
-        domains = {}
-        
+        domains: Dict[DomainType, Domain] = {}
+        custom: List[Domain] = []
+        for dc in config_list:
+            try:
+                domain_type = DomainType(dc.id)
+            except ValueError:
+                domain_type = DomainType.UNKNOWN
+            default_domain = self.DEFAULT_DOMAINS.get(domain_type) if domain_type != DomainType.UNKNOWN else None
+            patterns = list(default_domain.patterns) if default_domain else []
+            d = Domain(
+                type=domain_type,
+                name=dc.name,
+                description=dc.description,
+                paths=[Path(dc.folder_path)] if dc.folder_path else [],
+                patterns=patterns,
+                keywords=list(dc.keywords),
+                custom_id=dc.id if domain_type == DomainType.UNKNOWN else None,
+            )
+            if domain_type != DomainType.UNKNOWN:
+                domains[domain_type] = d
+            else:
+                custom.append(d)
+        # Ensure the five enum domains exist; fill from defaults if missing
+        for dt in DomainType:
+            if dt == DomainType.UNKNOWN:
+                continue
+            if dt not in domains:
+                default = self.DEFAULT_DOMAINS.get(dt)
+                if default:
+                    domains[dt] = default
+        return domains, custom
+
+    def _load_from_domain_config(self, config: DomainsConfig) -> Tuple[Dict[DomainType, Domain], List[Domain]]:
+        """
+        Load domains from Phase 1.5 domain config system (domains.json).
+        Enum ids go into self.domains; other ids are custom domains in _custom_domains (custom-domains feature).
+        """
+        domains: Dict[DomainType, Domain] = {}
+        custom: List[Domain] = []
+
         for domain_cfg in config.domains:
-            # Map domain ID to DomainType enum
             try:
                 domain_type = DomainType(domain_cfg.id)
             except ValueError:
-                # Skip domains that don't map to existing enum values
-                # (This will be resolved when we fully remove the enum)
-                print(f"Warning: Skipping domain '{domain_cfg.name}' - not in DomainType enum")
-                continue
-            
-            # Create Domain object from DomainConfig
-            domains[domain_type] = Domain(
+                # Custom domain: id not in enum (e.g. work, my-domain from Settings UI)
+                domain_type = DomainType.UNKNOWN
+            default_domain = self.DEFAULT_DOMAINS.get(domain_type) if domain_type != DomainType.UNKNOWN else None
+            patterns = list(default_domain.patterns) if default_domain else []
+            d = Domain(
                 type=domain_type,
                 name=domain_cfg.name,
                 description=domain_cfg.description,
-                paths=[],  # Will be populated when notes folder structure is created (Phase 16)
-                patterns=self.DEFAULT_DOMAINS.get(domain_type, Domain(
-                    type=domain_type,
-                    name=domain_cfg.name,
-                    description='',
-                    patterns=[]
-                )).patterns,  # Keep file patterns from defaults for now
-                keywords=domain_cfg.auto_tag_rules
+                paths=[Path(domain_cfg.folder_path)] if domain_cfg.folder_path else [],
+                patterns=patterns,
+                keywords=list(domain_cfg.auto_tag_rules),
+                custom_id=domain_cfg.id if domain_type == DomainType.UNKNOWN else None,
             )
-        
-        return domains
+            if domain_type != DomainType.UNKNOWN:
+                domains[domain_type] = d
+            else:
+                custom.append(d)
+
+        return domains, custom
     
     def _load_domains(self, config_domains: Optional[Dict]) -> Dict[DomainType, Domain]:
         """Load domains from config, falling back to defaults."""
@@ -306,7 +422,7 @@ class DomainEngine:
         expanded_terms = []
         for concept in query_concepts:
             # Get conceptual patterns for this concept
-            related_patterns = self._pattern_learner.get_conceptual_patterns_for_concept(concept)
+            related_patterns = self._pattern_learner.get_conceptual_patterns(concept)
             
             # Add top 2 related concepts per query concept
             for pattern in related_patterns[:2]:
