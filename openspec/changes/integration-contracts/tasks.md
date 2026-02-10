@@ -10,20 +10,20 @@
 
 | # | Task | Est. | Depends | Status |
 |---|------|------|---------|--------|
-| 1 | Create `core/protocols/` package with protocol definitions | 0.5d | — | ⬜ |
-| 2 | Implement ContextContributor across existing systems | 1d | P0 changes | ⬜ |
-| 3 | Implement `_gather_context()` in `core/polly.py` | 0.5d | Task 2 | ⬜ |
-| 4 | Implement persona↔pattern integration | 1.5d | unified-pattern-engine | ⬜ |
-| 5 | Implement persona↔entity integration | 1d | entity-model-unification | ⬜ |
-| 6 | Implement persona↔mental model integration | 0.5d | — | ⬜ |
-| 7 | Implement pattern→router integration | 1.5d | unified-pattern-engine | ⬜ |
-| 8 | Implement router→pattern feedback loop | 1d | Task 7 | ⬜ |
-| 9 | Implement conversation synchronization | 1d | — | ⬜ |
-| 10 | Implement compression→entity integration | 0.5d | entity-model-unification | ⬜ |
-| 11 | Implement mental model effectiveness tracking | 0.5d | — | ⬜ |
-| 12 | Implement dynamic domain configuration | 1.5d | — | ⬜ |
-| 13 | Write integration tests | 1.5d | All above | ⬜ |
-| 14 | Update affected specs | 1d | All above | ⬜ |
+| 1 | Create `core/protocols/` package with protocol definitions | 0.5d | — | ✅ Done |
+| 2 | Implement ContextContributor across existing systems | 1d | P0 changes | ✅ Done |
+| 3 | Implement `_gather_context()` in `core/polly.py` | 0.5d | Task 2 | ✅ Done |
+| 4 | Implement persona↔pattern integration | 1.5d | unified-pattern-engine | ✅ Done |
+| 5 | Implement persona↔entity integration | 1d | entity-model-unification | ✅ Done |
+| 6 | Implement persona↔mental model integration | 0.5d | — | ✅ Done |
+| 7 | Implement pattern→router integration | 1.5d | unified-pattern-engine | ✅ Done |
+| 8 | Implement router→pattern feedback loop | 1d | Task 7 | ✅ Done |
+| 9 | Implement conversation synchronization | 1d | — | ✅ Done |
+| 10 | Implement compression→entity integration | 0.5d | entity-model-unification | ✅ Done |
+| 11 | Implement mental model effectiveness tracking | 0.5d | — | ✅ Done |
+| 12 | Implement dynamic domain configuration | 1.5d | — | ✅ Done |
+| 13 | Write integration tests | 1.5d | All above | ✅ Done |
+| 14 | Update affected specs | 1d | All above | ✅ Done |
 
 ---
 

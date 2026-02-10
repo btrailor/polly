@@ -88,6 +88,9 @@ Old Messages → ConversationCompressor
               Loaded as system message in new context
 ```
 
+### Entity Extraction from Compression (Integration Contracts — Feb 2026)
+After conversation compression, key concepts and focus topics from the compressed output are passed to the entity extractor (`source_type="compression"`). This feeds the knowledge graph with high-signal terms from summarized conversations. Implemented in `Polly._try_compress_conversation()`: `key_concepts` and `focus_topics` from the compression result are sent to `entity_extractor.extract_and_store()`.
+
 ## API
 
 ### CompressionManager

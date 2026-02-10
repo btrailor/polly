@@ -270,6 +270,12 @@ class IntelligentRouterV2:
         # Provider health tracking
         self._provider_failures: Dict[str, int] = {name: 0 for name in self.providers}
         self._provider_last_success: Dict[str, datetime] = {}
+        # Pattern-informed routing (integration-contracts): patterns set via apply_patterns or passed to route()
+        self._routing_patterns: Optional[List[Any]] = None
+
+    def apply_patterns(self, patterns: List[Any], context: Dict[str, Any]) -> None:
+        """Apply ROUTING_OUTCOME patterns for next route() (PatternConsumer protocol)."""
+        self._routing_patterns = list(patterns) if patterns else None
 
     async def validate_providers(self) -> Dict[str, bool]:
         """
@@ -319,6 +325,8 @@ class IntelligentRouterV2:
         Raises:
             AllProvidersFailed: If all providers are unavailable
         """
+        # Use passed patterns or those set by apply_patterns (PatternConsumer)
+        patterns = patterns if patterns is not None else self._routing_patterns
         # Classify complexity
         user_query = self._extract_user_query(messages)
         complexity = self._classify_complexity(user_query, task_type)

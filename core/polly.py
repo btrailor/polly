@@ -17,7 +17,7 @@ import asyncio
 import logging
 
 from .config import PollyConfig, get_config
-from .domains import DomainEngine, DomainType, DOMAIN_PROMPTS
+from .domains import DomainEngine, DOMAIN_PROMPTS
 from .rag import UnifiedRAG
 from .router import IntelligentRouter, UnifiedLLM, RoutingMode, ModelTier
 from .router_v2 import IntelligentRouterV2, ConfidenceLevel
@@ -590,9 +590,8 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         """
         if not self.pattern_engine:
             return []
-        
-        domain_values = [d.value if hasattr(d, 'value') else str(d) for d in detected_domains]
-        return self.pattern_engine.get_patterns_for_prompt(query, domain_values, limit=limit)
+        domain_ids = [d for d in detected_domains if (d or "").strip().lower() not in ("", "unknown")]
+        return self.pattern_engine.get_patterns_for_prompt(query, domain_ids, limit=limit)
     
     def _extract_keywords(self, query: str) -> List[str]:
         """
@@ -748,19 +747,22 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         """Gather context from all ContextContributors, ordered by priority (integration-contracts)."""
         contributors: List[tuple[int, str]] = []
 
-        # Mental models (priority 60) — built via existing method
-        if self.mental_model_manager:
+        # Mental models (priority 60) — ContextContributor
+        if self.mental_model_manager and hasattr(self.mental_model_manager, "build_context"):
             try:
-                mm_ctx = self._build_mental_models_context(
+                mm_kw = dict(kwargs)
+                if "keywords" not in mm_kw:
+                    mm_kw["keywords"] = self._extract_keywords(query)
+                mm_kw["domain"] = kwargs.get("domain") or (domains[0] if domains else None)
+                mm_ctx = self.mental_model_manager.build_context(
                     query=query,
-                    domain=kwargs.get("domain") or (domains[0] if domains else None),
-                    page=kwargs.get("page"),
+                    domains=domains,
                     persona=persona,
-                    persona_mode=mode,
-                    override_model_ids=kwargs.get("override_model_ids"),
+                    mode=mode,
+                    **mm_kw,
                 )
                 if mm_ctx:
-                    contributors.append((60, mm_ctx))
+                    contributors.append((self.mental_model_manager.context_priority, mm_ctx))
             except Exception as e:
                 logger.debug(f"Mental models context failed: {e}")
 
@@ -1117,7 +1119,8 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         
         state = self.persona_manager.activate_persona(persona_name)
         logger.info(f"Activated {persona_name} persona (mode: {state.current_mode})")
-        
+        # Notify pattern engine, entity context, mental models (integration-contracts)
+        self._notify_persona_context(persona_name, state.current_mode or "")
         return state.to_dict()
     
     async def process_with_persona(self, user_message: str, metadata: Optional[Dict] = None) -> Dict:
@@ -1178,7 +1181,9 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         
         state = self.persona_manager.switch_mode(mode)
         logger.info(f"Switched persona to {mode} mode")
-        
+        # Notify persona-aware systems of new mode (integration-contracts)
+        if self.persona_manager.active_persona_name:
+            self._notify_persona_context(self.persona_manager.active_persona_name, mode)
         return state.to_dict()
     
     def deactivate_persona(self):
@@ -1242,21 +1247,24 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             Response text (chunks if streaming)
         """
         logger.info(f"[POLLY QUERY] Starting query: {query[:100]}")
-        
-        # 1. Detect domains
+        # Resolve active persona when not passed (e.g. caller didn't send persona from UI)
+        if persona is None and self.persona_manager and self.persona_manager.is_persona_active():
+            persona = self.persona_manager.get_active_persona_name()
+            persona_mode = persona_mode or self.persona_manager.get_current_mode() or ""
+        else:
+            persona_mode = persona_mode or ""
+
+        # 1. Detect domains (list of domain ids)
         detected_domains = self.domains.detect_domains(query, context)
-        domain_names = [d.value for d in detected_domains if d != DomainType.UNKNOWN]
+        domain_names = [d for d in detected_domains if (d or "").strip().lower() not in ("", "unknown")]
 
         # Notify persona-aware systems (integration-contracts)
         self._notify_persona_context(persona, persona_mode)
         
-        # Get domain scores for better logging and potential future use
         domain_scores = self.domains.detect_domains_with_scores(query, context)
-        logger.info(f"Detected domains: {[(d.value, f'{s:.2f}') for d, s in domain_scores[:3]]}")
+        logger.info(f"Detected domains: {[(d, f'{s:.2f}') for d, s in domain_scores[:3]]}")
         
-        # Use Case 2: Record successful domain detection for pattern learning
-        # (User acceptance tracked implicitly - if they don't correct, it's accepted)
-        if detected_domains and detected_domains != [DomainType.UNKNOWN]:
+        if domain_names:
             self.domains.record_successful_detection(query, detected_domains, user_accepted=True)
 
 
@@ -1524,7 +1532,7 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             # Filter by domain relevance
             rag_results = self.domains.filter_sources_by_domain(
                 [{'filepath': r.chunk.filepath, 'content': r.chunk.content} for r in rag_results_original],
-                detected_domains
+                domain_ids=detected_domains,
             )
             
             # Convert filtered results back to SearchResult objects for formatting
@@ -1598,10 +1606,9 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             logger.info(f"Debug info written to {debug_file}")
 
         # 3. Gather context from all contributors (integration-contracts: ContextContributor)
-        domain_values = [d.value if hasattr(d, "value") else str(d) for d in detected_domains]
         gathered_context = self._gather_context(
             query,
-            domain_values,
+            domain_names,
             persona=persona,
             mode=persona_mode,
             domain=domain_names[0] if domain_names else None,
@@ -1609,6 +1616,29 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             override_model_ids=mental_models_override,
             conversation_id=f"session_{self.session_start.isoformat()}" if self.session_start else None,
         )
+
+        # Track which mental models were activated for effectiveness logging (integration-contracts)
+        if self.mental_model_manager:
+            try:
+                if mental_models_override:
+                    self._last_activated_mental_model_ids = mental_models_override
+                else:
+                    keywords = self._extract_keywords(query)
+                    domain = domain_names[0] if domain_names else None
+                    models = self.mental_model_manager.get_models_for_context(
+                        domain=domain,
+                        page=page,
+                        persona=persona,
+                        persona_mode=persona_mode,
+                        keywords=keywords,
+                        enabled_only=True,
+                    )
+                    self._last_activated_mental_model_ids = [m.id for m in models]
+            except Exception as e:
+                logger.debug(f"Mental model activation tracking failed: {e}")
+                self._last_activated_mental_model_ids = []
+        else:
+            self._last_activated_mental_model_ids = []
 
         # 4. Build augmented prompt
         # Include cross-domain connections in the domain prompt for multi-domain queries
@@ -1873,11 +1903,21 @@ When answering questions, prioritize information from the knowledge base context
         if self.entity_extractor:
             try:
                 source_id = f"session_{self.session_start.isoformat()}"
-                domain_names = [d.value if hasattr(d, 'value') else str(d) for d in detected_domains]
-                self.entity_extractor.extract_and_store(query, "query", source_id, domain_names)
-                self.entity_extractor.extract_and_store(full_response, "response", source_id, domain_names)
+                domain_ids = [d for d in detected_domains if (d or "").strip().lower() not in ("", "unknown")]
+                self.entity_extractor.extract_and_store(query, "query", source_id, domain_ids)
+                self.entity_extractor.extract_and_store(full_response, "response", source_id, domain_ids)
             except Exception as e:
                 logger.debug(f"Entity extraction failed (non-critical): {e}")
+
+        # Mental model effectiveness tracking (integration-contracts)
+        if self.mental_model_manager and getattr(self, "_last_activated_mental_model_ids", None):
+            try:
+                self.mental_model_manager.record_activation(
+                    self._last_activated_mental_model_ids,
+                    signals={"conversation_continued": True},
+                )
+            except Exception as e:
+                logger.debug(f"Mental model effectiveness recording failed: {e}")
 
     async def index(
         self,

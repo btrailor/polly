@@ -135,6 +135,63 @@ class MentalModelManager:
         """Return summary of activation log for tuning (integration-contracts)."""
         return {"entries": len(self._effectiveness_log), "sample": self._effectiveness_log[-10:] if self._effectiveness_log else []}
 
+    # ContextContributor (integration-contracts): priority 60
+    context_priority = 60
+
+    def build_context(
+        self,
+        query: str,
+        domains: List[str],
+        persona: Optional[str] = None,
+        mode: Optional[str] = None,
+        **kwargs: Any,
+    ) -> str:
+        """Build mental models context for system prompt (ContextContributor protocol)."""
+        override_model_ids = kwargs.get("override_model_ids")
+        if override_model_ids is not None:
+            models = []
+            for model_id in override_model_ids:
+                model = self.get_model(model_id)
+                if model:
+                    models.append(model)
+            if not models:
+                return ""
+        else:
+            keywords = kwargs.get("keywords")
+            if keywords is None:
+                keywords = [w for w in query.lower().split() if len(w) > 2][:20]
+            domain = domains[0] if domains else None
+            models = self.get_models_for_context(
+                domain=domain,
+                page=kwargs.get("page"),
+                persona=persona,
+                persona_mode=mode,
+                keywords=keywords,
+                enabled_only=True,
+            )
+        if not models:
+            return ""
+        compressed_models = []
+        for model in models:
+            try:
+                if self.compressor:
+                    compressed = self.compressor.compress(model.to_dict(), type="mental_model")
+                    compressed_models.append(compressed)
+                else:
+                    compressed_models.append(f"{model.name}: {model.prompt_injection[:100]}")
+            except Exception as e:
+                logger.warning(f"Failed to compress mental model {model.id}: {e}")
+        if not compressed_models:
+            return ""
+        parts = [
+            "\n\n## Active Mental Models (Compressed)\n\n",
+            "The following mental models guide your responses:\n\n",
+        ]
+        for compressed in compressed_models:
+            parts.append(f"{compressed}\n\n")
+        parts.append("Apply these frameworks to guide your thinking and responses.\n")
+        return "".join(parts)
+
     def get_models_for_context(
         self,
         domain: Optional[str] = None,

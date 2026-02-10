@@ -6,6 +6,7 @@ Source of truth for retrieval-augmented generation and hybrid local/cloud routin
 
 - **Hybrid search:** Semantic (ChromaDB, nomic-embed-text) + keyword (BM25). Reciprocal Rank Fusion (RRF); title boosting.
 - **Use:** Query expansion (pattern learner, domain detection) → RAG search → optional compression → score/context → routing decision and LLM call.
+- **Pattern-aware retrieval (integration-contracts):** Pattern engine supplies query→chunk and domain→collection patterns. Chunk boosting and collection weighting use learned patterns; router v2 can use ROUTING_OUTCOME patterns to prefer models that performed well for similar tasks.
 - **Config:** Thresholds for "high quality" context; top-k and context size. Metadata tracking, source attribution.
 - **Compression (NEW - Wave 1):** Optional LLMLingua compression of RAG context chunks (2x-10x token reduction). Config: `compression.rag_context.enabled`, `compression.rag_context.ratio`.
 

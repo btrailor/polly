@@ -187,6 +187,16 @@ pattern_learner.record_code_pattern(patterns)
 ```
 Code files are analyzed for structural patterns during RAG indexing. These patterns inform code-aware responses.
 
+## Integration Contracts (Feb 2026)
+
+The pattern engine participates in cross-system contracts defined in `core/protocols/`:
+
+- **ContextContributor** — `PatternEngine.build_context(query, domains, persona, mode)` returns a "Learned Patterns" block for the system prompt; `context_priority = 20`.
+- **PersonaAware** — `set_active_persona(name, mode)` sets attribution for newly learned patterns; `get_patterns_for_prompt()` boosts persona-specific patterns; `get_persona_patterns(persona_name)` returns patterns attributed to that persona.
+- **Pattern→Router** — Router v2 accepts `patterns` (ROUTING_OUTCOME) in `route()` and uses them to boost a preferred model; `apply_patterns(patterns, context)` stores patterns for the next route. Outcomes are recorded via `Polly._record_routing_outcome()` as ROUTING_OUTCOME patterns.
+
+See [integration-contracts design](../../changes/integration-contracts/design.md).
+
 ## UI
 
 ### Patterns Page

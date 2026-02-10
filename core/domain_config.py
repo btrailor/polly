@@ -132,6 +132,10 @@ def load_domains(config_path: Optional[Path] = None) -> DomainsConfig:
     """
     if config_path is None:
         config_path = DOMAINS_CONFIG_PATH
+
+    # Pure user-defined: when file is missing, return empty config (no built-in defaults)
+    if not config_path.exists():
+        return _empty_domains_config()
     
     # If config exists, load it
     if config_path.exists():
@@ -168,10 +172,9 @@ def load_domains(config_path: Optional[Path] = None) -> DomainsConfig:
             
         except Exception as e:
             print(f"Warning: Failed to load domains config: {e}")
-            print("Falling back to hardcoded domains")
+            return _empty_domains_config()
     
-    # Fallback: create from hardcoded domains
-    return _create_default_domains()
+    return _empty_domains_config()
 
 
 def save_domains(config: DomainsConfig, config_path: Optional[Path] = None, create_backup: bool = True) -> None:
@@ -219,11 +222,19 @@ def save_domains(config: DomainsConfig, config_path: Optional[Path] = None, crea
         raise e
 
 
+def _empty_domains_config() -> DomainsConfig:
+    """Return config with no domains (pure user-defined: first run = empty until template applied)."""
+    return DomainsConfig(
+        version="1.0",
+        folder_numbering=False,
+        domains=[],
+        last_modified=datetime.now().isoformat(),
+    )
+
+
 def _create_default_domains() -> DomainsConfig:
     """
-    Create default domains from hardcoded structure.
-    
-    This is the migration path from the old hardcoded system.
+    Create default domains from hardcoded structure (e.g. for apply-template or migration).
     """
     now = datetime.now().isoformat()
     

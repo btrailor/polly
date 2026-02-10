@@ -95,14 +95,13 @@ class DomainType(Enum):
 
 @dataclass
 class Domain:
-    """A single domain configuration."""
-    type: DomainType
+    """A single domain configuration (pure user-defined: identified by id only)."""
+    id: str
     name: str
     description: str
     paths: List[Path] = field(default_factory=list)
     patterns: List[str] = field(default_factory=list)
     keywords: List[str] = field(default_factory=list)
-    custom_id: Optional[str] = None  # Set for custom domains (id not in DomainType)
 
     def matches_path(self, path: Path) -> bool:
         """Check if a path belongs to this domain."""
@@ -127,67 +126,24 @@ class Domain:
         return min(matches / max(len(self.keywords), 1), 1.0)
 
 
+# Optional file patterns per domain id (for template/legacy ids; pure user-defined uses config)
+PATTERNS_BY_ID: Dict[str, List[str]] = {
+    "sigils": ["*.py", "*.rs", "*.go", "*.ts", "*.js", "*.lua", "docker-compose*.yaml", "Dockerfile*", "*.tf"],
+    "signals": ["*.scd", "*.maxpat", "*.pd", "*.faust", "*.lua"],
+    "scrolls": ["*.md", "*.txt", "*.org"],
+    "glyphs": ["*.fig", "*.sketch", "*.ai", "*.psd", "*.svg"],
+    "grids": [],
+}
+
+
 class DomainEngine:
     """
-    Manages domain detection and routing.
-
-    The engine understands context and can:
-    - Detect which domain(s) a query relates to
-    - Filter search results by domain
-    - Generate domain-appropriate system prompts
-    - Track cross-domain connections
+    Manages domain detection and routing (pure user-defined: all domains keyed by string id).
     """
 
-    # Default domain definitions
-    DEFAULT_DOMAINS = {
-        DomainType.SIGILS: Domain(
-            type=DomainType.SIGILS,
-            name="Sigils",
-            description="Code, infrastructure, automation, DevOps",
-            patterns=["*.py", "*.rs", "*.go", "*.ts", "*.js", "*.lua",
-                     "docker-compose*.yaml", "Dockerfile*", "*.tf"],
-            keywords=["code", "docker", "kubernetes", "api", "server", "database",
-                     "python", "rust", "javascript", "automation", "infrastructure",
-                     "deploy", "ci/cd", "git"]
-        ),
-        DomainType.SIGNALS: Domain(
-            type=DomainType.SIGNALS,
-            name="Signals",
-            description="Audio programming, synthesis, DSP, music technology",
-            patterns=["*.scd", "*.maxpat", "*.pd", "*.faust", "*.lua"],
-            keywords=["audio", "midi", "synthesis", "dsp", "norns", "supercollider",
-                     "sound", "music", "oscillator", "filter", "envelope", "sampler",
-                     "sequencer", "modular", "voltage", "cv", "gate", "trigger",
-                     "monome", "eurorack", "instrument", "composition", "generative"]
-        ),
-        DomainType.SCROLLS: Domain(
-            type=DomainType.SCROLLS,
-            name="Scrolls",
-            description="Writing, pedagogy, documentation, essays",
-            patterns=["*.md", "*.txt", "*.org"],
-            keywords=["essay", "pedagogy", "education", "writing", "notes", "journal",
-                     "freire", "popular education", "teaching", "learning", "curriculum",
-                     "documentation", "guide", "tutorial"]
-        ),
-        DomainType.GLYPHS: Domain(
-            type=DomainType.GLYPHS,
-            name="Glyphs",
-            description="Visual work, design, UI/UX",
-            patterns=["*.fig", "*.sketch", "*.ai", "*.psd", "*.svg"],
-            keywords=["design", "visual", "ui", "ux", "color", "typography", "layout",
-                     "interface", "wireframe", "mockup", "prototype", "figma"]
-        ),
-        DomainType.GRIDS: Domain(
-            type=DomainType.GRIDS,
-            name="Grids",
-            description="Systems thinking, mental models, frameworks",
-            patterns=[],  # Content-based, not file-type based
-            keywords=["framework", "mental model", "systems thinking", "infinite game",
-                     "finite game", "constraint", "emergence", "complexity", "feedback",
-                     "polymathic", "cross-domain", "synthesis", "pattern", "archetype",
-                     "meta", "metalearning", "paradigm", "worldview", "philosophy"]
-        )
-    }
+    def _domain_id_list(self) -> List[str]:
+        """Ordered list of domain ids for iteration (e.g. for backward-compat get_domain_colors)."""
+        return list(self._domains_by_id.keys())
 
     def __init__(
         self,
@@ -196,40 +152,33 @@ class DomainEngine:
         config_dict: Optional[Dict[str, Any]] = None,
     ):
         """
-        Initialize with optional custom domain configuration.
-        
-        Args:
-            config_domains: Legacy config dict (for backward compatibility)
-            use_domain_config: If True, load from ~/.polly/domains.json (Phase 1.5)
-            config_dict: Full config dict (e.g. from PollyConfig._config) for YAML domains (Task 12)
+        Initialize with optional domain configuration (pure user-defined: store by string id).
+        When no config: empty. Domains come from domains.json or config YAML only.
         """
         self.domain_config: Optional[DomainsConfig] = None
-        self._custom_domains: List[Domain] = []  # Custom domain ids beyond the five
+        self._domains_by_id: Dict[str, Domain] = {}
+        self._pattern_learner = None
 
-        # Integration-contracts Task 12: Try YAML domains first (from config_dict)
+        # YAML domains first (from config_dict)
         if config_dict is not None:
             yaml_domains = load_domains_from_yaml(config_dict=config_dict)
             if yaml_domains:
-                self.domains, self._custom_domains = self._load_from_domain_config_list(yaml_domains)
-                # Pattern learner integration (Use Case 2)
-                self._pattern_learner = None
+                self._domains_by_id = self._load_from_domain_config_list(yaml_domains)
                 return
 
-        # Phase 1.5: Try to load from domains.json (includes custom domains from Settings UI)
+        # domains.json (Phase 1.5)
         if use_domain_config and DOMAIN_CONFIG_AVAILABLE:
             try:
                 self.domain_config = load_domains()
-                self.domains, self._custom_domains = self._load_from_domain_config(self.domain_config)
+                self._domains_by_id = self._load_from_domain_config(self.domain_config)
                 return
             except Exception as e:
                 print(f"Warning: Failed to load domains.json: {e}")
-                print("Falling back to hardcoded domains")
-        
-        # Fallback: use hardcoded or legacy config
-        self.domains = self._load_domains(config_domains)
-        
-        # Pattern learner integration (Use Case 2)
-        self._pattern_learner = None
+
+        # Legacy config_domains dict (e.g. from Polly config)
+        if config_domains and isinstance(config_domains, dict):
+            self._domains_by_id = self._load_domains(config_domains)
+        # else: leave _domains_by_id empty (no built-in fallback)
 
     def set_pattern_learner(self, pattern_learner):
         """
@@ -243,258 +192,121 @@ class DomainEngine:
         logger = logging.getLogger(__name__)
         logger.info("Pattern engine attached to DomainEngine for enhanced detection")
 
-    def _load_from_domain_config_list(
-        self, config_list: List[DomainConfig]
-    ) -> Tuple[Dict[DomainType, Domain], List[Domain]]:
-        """
-        Load domains from YAML-style DomainConfig list (integration-contracts Task 12).
-        Returns (enum_keyed_domains, custom_domains).
-        """
-        domains: Dict[DomainType, Domain] = {}
-        custom: List[Domain] = []
+    def _load_from_domain_config_list(self, config_list: List[DomainConfig]) -> Dict[str, Domain]:
+        """Load domains from YAML-style DomainConfig list; returns Dict[id, Domain]."""
+        result: Dict[str, Domain] = {}
         for dc in config_list:
-            try:
-                domain_type = DomainType(dc.id)
-            except ValueError:
-                domain_type = DomainType.UNKNOWN
-            default_domain = self.DEFAULT_DOMAINS.get(domain_type) if domain_type != DomainType.UNKNOWN else None
-            patterns = list(default_domain.patterns) if default_domain else []
-            d = Domain(
-                type=domain_type,
+            bid = (dc.id or "").strip().lower()
+            if not bid:
+                continue
+            result[bid] = Domain(
+                id=bid,
                 name=dc.name,
                 description=dc.description,
                 paths=[Path(dc.folder_path)] if dc.folder_path else [],
-                patterns=patterns,
+                patterns=list(PATTERNS_BY_ID.get(bid, [])),
                 keywords=list(dc.keywords),
-                custom_id=dc.id if domain_type == DomainType.UNKNOWN else None,
             )
-            if domain_type != DomainType.UNKNOWN:
-                domains[domain_type] = d
-            else:
-                custom.append(d)
-        # Ensure the five enum domains exist; fill from defaults if missing
-        for dt in DomainType:
-            if dt == DomainType.UNKNOWN:
-                continue
-            if dt not in domains:
-                default = self.DEFAULT_DOMAINS.get(dt)
-                if default:
-                    domains[dt] = default
-        return domains, custom
+        return result
 
-    def _load_from_domain_config(self, config: DomainsConfig) -> Tuple[Dict[DomainType, Domain], List[Domain]]:
-        """
-        Load domains from Phase 1.5 domain config system (domains.json).
-        Enum ids go into self.domains; other ids are custom domains in _custom_domains (custom-domains feature).
-        """
-        domains: Dict[DomainType, Domain] = {}
-        custom: List[Domain] = []
-
+    def _load_from_domain_config(self, config: DomainsConfig) -> Dict[str, Domain]:
+        """Load domains from domains.json; returns Dict[id, Domain]."""
+        result: Dict[str, Domain] = {}
         for domain_cfg in config.domains:
-            try:
-                domain_type = DomainType(domain_cfg.id)
-            except ValueError:
-                # Custom domain: id not in enum (e.g. work, my-domain from Settings UI)
-                domain_type = DomainType.UNKNOWN
-            default_domain = self.DEFAULT_DOMAINS.get(domain_type) if domain_type != DomainType.UNKNOWN else None
-            patterns = list(default_domain.patterns) if default_domain else []
-            d = Domain(
-                type=domain_type,
+            bid = (domain_cfg.id or "").strip().lower()
+            if not bid:
+                continue
+            result[bid] = Domain(
+                id=bid,
                 name=domain_cfg.name,
                 description=domain_cfg.description,
                 paths=[Path(domain_cfg.folder_path)] if domain_cfg.folder_path else [],
-                patterns=patterns,
+                patterns=list(PATTERNS_BY_ID.get(bid, [])),
                 keywords=list(domain_cfg.auto_tag_rules),
-                custom_id=domain_cfg.id if domain_type == DomainType.UNKNOWN else None,
             )
-            if domain_type != DomainType.UNKNOWN:
-                domains[domain_type] = d
-            else:
-                custom.append(d)
-
-        return domains, custom
+        return result
     
-    def _load_domains(self, config_domains: Optional[Dict]) -> Dict[DomainType, Domain]:
-        """Load domains from config, falling back to defaults."""
-        domains = {}
-
-        for domain_type in DomainType:
-            if domain_type == DomainType.UNKNOWN:
+    def _load_domains(self, config_domains: Dict[str, Any]) -> Dict[str, Domain]:
+        """Load domains from legacy config dict keyed by domain id; returns Dict[id, Domain]."""
+        result: Dict[str, Domain] = {}
+        for bid, cfg in (config_domains or {}).items():
+            if not isinstance(cfg, dict):
                 continue
-
-            default = self.DEFAULT_DOMAINS.get(domain_type)
-
-            if config_domains and domain_type.value in config_domains:
-                cfg = config_domains[domain_type.value]
-                domains[domain_type] = Domain(
-                    type=domain_type,
-                    name=cfg.get("name", default.name if default else domain_type.value),
-                    description=cfg.get("description", default.description if default else ""),
-                    paths=[Path(p) for p in cfg.get("paths", [])],
-                    patterns=cfg.get("patterns", default.patterns if default else []),
-                    keywords=cfg.get("keywords", default.keywords if default else [])
-                )
-            elif default:
-                domains[domain_type] = default
-
-        return domains
+            bid = (bid or "").strip().lower()
+            if not bid:
+                continue
+            result[bid] = Domain(
+                id=bid,
+                name=cfg.get("name", bid),
+                description=cfg.get("description", ""),
+                paths=[Path(p) for p in cfg.get("paths", [])],
+                patterns=list(cfg.get("patterns", PATTERNS_BY_ID.get(bid, []))),
+                keywords=list(cfg.get("keywords", [])),
+            )
+        return result
     
-    def _get_pattern_domain_boosts(self, query: str) -> Dict[DomainType, float]:
-        """
-        Calculate domain confidence boosts based on learned patterns (Use Case 2).
-        
-        Uses domain→collection patterns to determine which domains are most likely
-        based on historical query patterns.
-        
-        Args:
-            query: User query
-            
-        Returns:
-            Dict mapping DomainType → boost amount (0-0.25)
-        """
-        boosts: Dict[DomainType, float] = {}
-        
+    def _get_pattern_domain_boosts(self, query: str) -> Dict[str, float]:
+        """Domain confidence boosts from learned patterns (Use Case 2). Returns Dict[domain_id, boost]."""
+        boosts: Dict[str, float] = {}
         if not self._pattern_learner:
             return boosts
-        
-        # Extract query concepts for matching
         query_concepts = set(query.lower().split())
-        
-        # Check domain→collection patterns
         for pattern_id, domain_pattern in self._pattern_learner.domain_priority_patterns.items():
-            domain_name = domain_pattern.domain
-            
-            # Map domain name to DomainType enum
-            domain_type = None
-            for dt in DomainType:
-                if dt.value == domain_name.lower():
-                    domain_type = dt
-                    break
-            
-            if not domain_type:
+            domain_id = (domain_pattern.domain or "").strip().lower()
+            if not domain_id or domain_id not in self._domains_by_id:
                 continue
-            
-            # Calculate boost based on collection weights
-            # Higher weights = this domain frequently uses these collections for queries
             if domain_pattern.collection_weights:
                 avg_weight = sum(domain_pattern.collection_weights.values()) / len(domain_pattern.collection_weights)
-                
-                # Normalize to 0-0.25 range (max 25% boost)
-                # Weights are typically 0-2, so divide by 8 to get 0-0.25
                 boost = min(avg_weight / 8.0, 0.25)
-                
-                # Only apply boost if significant (>5% = 0.05)
                 if boost > 0.05:
-                    boosts[domain_type] = boost
-        
-        # Also check conceptual patterns for concept expansion
-        expanded_boosts = self._get_conceptual_pattern_boosts(query, query_concepts)
-        
-        # Merge conceptual boosts (take max of domain or conceptual boost)
-        for domain_type, concept_boost in expanded_boosts.items():
-            if domain_type in boosts:
-                boosts[domain_type] = max(boosts[domain_type], concept_boost)
-            else:
-                boosts[domain_type] = concept_boost
-        
+                    boosts[domain_id] = max(boosts.get(domain_id, 0), boost)
+        expanded = self._get_conceptual_pattern_boosts(query, query_concepts)
+        for domain_id, concept_boost in expanded.items():
+            boosts[domain_id] = max(boosts.get(domain_id, 0), concept_boost)
         return boosts
     
-    def _get_conceptual_pattern_boosts(self, query: str, query_concepts: Set[str]) -> Dict[DomainType, float]:
-        """
-        Calculate domain boosts based on conceptual pattern expansion (Use Case 2).
-        
-        Expands query terms using learned conceptual patterns, then re-analyzes
-        for domain matches.
-        
-        Args:
-            query: Original query
-            query_concepts: Set of concepts from query
-            
-        Returns:
-            Dict mapping DomainType → boost amount (0-0.25)
-        """
-        boosts: Dict[DomainType, float] = {}
-        
+    def _get_conceptual_pattern_boosts(self, query: str, query_concepts: Set[str]) -> Dict[str, float]:
+        """Conceptual pattern expansion boosts. Returns Dict[domain_id, boost]."""
+        boosts: Dict[str, float] = {}
         if not self._pattern_learner:
             return boosts
-        
-        # Find related concepts from patterns
         expanded_terms = []
         for concept in query_concepts:
-            # Get conceptual patterns for this concept
-            related_patterns = self._pattern_learner.get_conceptual_patterns(concept)
-            
-            # Add top 2 related concepts per query concept
-            for pattern in related_patterns[:2]:
-                concept1 = pattern.metadata.get('concept1', '')
-                concept2 = pattern.metadata.get('concept2', '')
-                
-                # Get the related concept (not the query concept)
+            for pattern in self._pattern_learner.get_conceptual_patterns(concept)[:2]:
+                concept1 = pattern.metadata.get("concept1", "")
+                concept2 = pattern.metadata.get("concept2", "")
                 related = concept2 if concept1 == concept else concept1
                 if related and related not in query_concepts:
                     expanded_terms.append(related)
-        
-        # Limit to top 3 expanded terms
         expanded_terms = expanded_terms[:3]
-        
         if not expanded_terms:
             return boosts
-        
-        # Re-analyze domain keywords with expanded terms
-        expanded_query = f"{query} {' '.join(expanded_terms)}"
-        
-        # Calculate boost for each domain based on keyword matches in expanded query
-        for domain_type, domain in self.domains.items():
-            if domain_type == DomainType.UNKNOWN:
-                continue
-            
-            # Count keyword matches in expanded terms only
-            expanded_lower = ' '.join(expanded_terms).lower()
-            matches = sum(1 for keyword in domain.keywords if keyword.lower() in expanded_lower)
-            
+        expanded_lower = " ".join(expanded_terms).lower()
+        for domain_id, domain in self._domains_by_id.items():
+            matches = sum(1 for kw in domain.keywords if (kw or "").lower() in expanded_lower)
             if matches > 0:
-                # Boost by 0.05 per match, max 0.15
-                boost = min(matches * 0.05, 0.15)
-                boosts[domain_type] = boost
-        
+                boosts[domain_id] = min(matches * 0.05, 0.15)
         return boosts
 
-    def detect_domains(self, query: str, context: Optional[Dict] = None) -> List[DomainType]:
-        """
-        Detect which domain(s) a query relates to.
-
-        Returns list of domains sorted by relevance.
-        """
+    def detect_domains(self, query: str, context: Optional[Dict] = None) -> List[str]:
+        """Detect which domain(s) a query relates to. Returns list of domain ids sorted by relevance."""
         scores = self._score_domains(query, context)
-        
-        # Return domains with non-zero scores, sorted by score
         relevant = [(d, s) for d, s in scores.items() if s > 0]
         relevant.sort(key=lambda x: x[1], reverse=True)
-
         if not relevant:
-            return [DomainType.UNKNOWN]
-
+            return ["unknown"]
         return [d for d, _ in relevant]
-    
-    def detect_domains_with_scores(self, query: str, context: Optional[Dict] = None) -> List[tuple[DomainType, float]]:
-        """
-        Detect which domain(s) a query relates to, returning scores.
 
-        Returns list of (domain, score) tuples sorted by relevance.
-        Useful for understanding primary vs secondary domains.
-        """
+    def detect_domains_with_scores(self, query: str, context: Optional[Dict] = None) -> List[Tuple[str, float]]:
+        """Detect domain(s) with scores. Returns list of (domain_id, score) sorted by relevance."""
         scores = self._score_domains(query, context)
-        
-        # Return domains with non-zero scores, sorted by score
         relevant = [(d, s) for d, s in scores.items() if s > 0]
         relevant.sort(key=lambda x: x[1], reverse=True)
-
         if not relevant:
-            return [(DomainType.UNKNOWN, 0.0)]
-
+            return [("unknown", 0.0)]
         return relevant
-    
-    def record_successful_detection(self, query: str, detected_domains: List[DomainType], user_accepted: bool = True):
+
+    def record_successful_detection(self, query: str, detected_domains: List[str], user_accepted: bool = True):
         """
         Record successful (or unsuccessful) domain detection for pattern learning (Use Case 2).
         
@@ -506,15 +318,10 @@ class DomainEngine:
         if not self._pattern_learner:
             return
         
-        # Convert DomainType enums to strings
-        domain_names = [d.value for d in detected_domains if d != DomainType.UNKNOWN]
-        
+        domain_names = [d for d in detected_domains if (d or "").strip().lower() not in ("", "unknown")]
         if not domain_names:
             return
-        
-        # Record in pattern learner
         for domain_name in domain_names:
-            # Find pattern by matching domain name
             for pattern_id, pattern in self._pattern_learner.domain_priority_patterns.items():
                 if pattern.domain == domain_name:
                     if user_accepted:
@@ -570,20 +377,12 @@ class DomainEngine:
         
         return technologies
     
-    def _boost_domains_by_technology(self, technologies: List[str]) -> Dict[DomainType, float]:
+    def _boost_domains_by_technology(self, technologies: List[str]) -> Dict[str, float]:
         """
         Boost domains whose patterns match mentioned technologies.
-        
-        Universal: Works for ANY domain configuration and ANY technology.
-        Checks if domain's file patterns match the mentioned technology.
-        
-        Args:
-            technologies: List of technology identifiers (e.g., ['python', 'lua'])
-            
-        Returns:
-            Dict mapping DomainType to boost amount (0-0.3)
+        Returns Dict[domain_id, boost] (0-0.3).
         """
-        boosts: Dict[DomainType, float] = {}
+        boosts: Dict[str, float] = {}
         
         if not technologies:
             return boosts
@@ -612,32 +411,21 @@ class DomainEngine:
             'docker': ['dockerfile', 'docker-compose'],
         }
         
-        for domain_type, domain in self.domains.items():
-            if domain_type == DomainType.UNKNOWN:
-                continue
-            
+        for domain_id, domain in self._domains_by_id.items():
             domain_boost = 0.0
             matched_techs = []
-            
             for tech in technologies:
                 extensions = tech_to_extensions.get(tech, [])
-                
-                # Check if any of domain's patterns match this technology
                 for pattern in domain.patterns:
-                    pattern_lower = pattern.lower()
-                    
-                    # Check extensions
+                    pattern_lower = (pattern or "").lower()
                     for ext in extensions:
-                        if ext in pattern_lower or pattern_lower.replace('*', '') == ext:
-                            domain_boost += 0.2  # Boost per matched technology
+                        if ext in pattern_lower or pattern_lower.replace("*", "") == ext:
+                            domain_boost += 0.2
                             matched_techs.append(tech)
                             break
-            
             if domain_boost > 0:
-                # Cap boost at 0.3 total
-                boosts[domain_type] = min(domain_boost, 0.3)
-                logger.info(f"🔧 Technology boost for {domain_type.value}: +{boosts[domain_type]:.2f} (matched: {', '.join(matched_techs)})")
-        
+                boosts[domain_id] = min(domain_boost, 0.3)
+                logger.info(f"🔧 Technology boost for {domain_id}: +{boosts[domain_id]:.2f} (matched: {', '.join(matched_techs)})")
         return boosts
     
     def _detect_query_intent(self, query: str) -> List[str]:
@@ -742,20 +530,9 @@ class DomainEngine:
         
         return intents
     
-    def _boost_domains_by_intent(self, intents: List[str]) -> Dict[DomainType, float]:
-        """
-        Boost domains based on detected user intent.
-        
-        Universal: Maps intent types to domain characteristics.
-        Works for ANY domain configuration by checking domain keywords and descriptions.
-        
-        Args:
-            intents: List of detected intent types
-            
-        Returns:
-            Dict mapping DomainType to boost amount (0-0.25)
-        """
-        boosts: Dict[DomainType, float] = {}
+    def _boost_domains_by_intent(self, intents: List[str]) -> Dict[str, float]:
+        """Boost domains by detected intent. Returns Dict[domain_id, boost] (0-0.25)."""
+        boosts: Dict[str, float] = {}
         
         if not intents:
             return boosts
@@ -773,117 +550,62 @@ class DomainEngine:
             'audio': ['audio', 'synthesis', 'sound', 'music', 'midi'],
         }
         
-        for domain_type, domain in self.domains.items():
-            if domain_type == DomainType.UNKNOWN:
-                continue
-            
+        for domain_id, domain in self._domains_by_id.items():
             domain_boost = 0.0
             matched_intents = []
-            
-            # Check if domain's keywords match any detected intent
-            domain_keywords_lower = [kw.lower() for kw in domain.keywords]
-            domain_desc_lower = domain.description.lower()
-            
+            domain_keywords_lower = [ (kw or "").lower() for kw in domain.keywords ]
+            domain_desc_lower = (domain.description or "").lower()
             for intent in intents:
                 indicators = intent_domain_indicators.get(intent, [])
-                
-                # Check if domain has keywords matching this intent
                 for indicator in indicators:
-                    if (any(indicator in kw for kw in domain_keywords_lower) or 
-                        indicator in domain_desc_lower):
-                        domain_boost += 0.15  # Boost per matched intent
+                    if any(indicator in kw for kw in domain_keywords_lower) or indicator in domain_desc_lower:
+                        domain_boost += 0.15
                         matched_intents.append(intent)
                         break
-            
             if domain_boost > 0:
-                # Cap boost at 0.25 total
-                boosts[domain_type] = min(domain_boost, 0.25)
-                logger.info(f"💡 Intent boost for {domain_type.value}: +{boosts[domain_type]:.2f} (matched: {', '.join(matched_intents)})")
-        
+                boosts[domain_id] = min(domain_boost, 0.25)
+                logger.info(f"💡 Intent boost for {domain_id}: +{boosts[domain_id]:.2f} (matched: {', '.join(matched_intents)})")
         return boosts
     
-    def _score_domains(self, query: str, context: Optional[Dict] = None) -> Dict[DomainType, float]:
-        """
-        Internal method to score all domains for a query.
-        
-        Enhanced with:
-        - Pattern-based confidence boosting (Use Case 2)
-        - Technology pattern matching (Universal cross-domain fix)
-        - Intent-based detection (Universal cross-domain fix)
-        """
-        scores: Dict[DomainType, float] = {}
-
-        for domain_type, domain in self.domains.items():
+    def _score_domains(self, query: str, context: Optional[Dict] = None) -> Dict[str, float]:
+        """Score all domains for a query. Returns Dict[domain_id, score]."""
+        scores: Dict[str, float] = {}
+        for domain_id, domain in self._domains_by_id.items():
             score = domain.matches_content(query)
-
-            # Boost score if context matches
             if context:
                 if "file_path" in context:
                     path = Path(context["file_path"])
                     if domain.matches_path(path) or domain.matches_filename(path.name):
                         score += 0.5
-
                 if "file_content" in context:
                     score += domain.matches_content(context["file_content"]) * 0.3
-
-            scores[domain_type] = score
-
-        # Universal cross-domain fix: Technology pattern matching
-        # Detect technologies mentioned in query and boost domains with matching patterns
+            scores[domain_id] = score
         technologies = self._extract_technologies_from_query(query)
         if technologies:
-            tech_boosts = self._boost_domains_by_technology(technologies)
-            for domain_type, boost in tech_boosts.items():
-                if domain_type in scores:
-                    scores[domain_type] += boost
-
-        # Universal cross-domain fix: Intent-based detection
-        # Detect user intent and boost domains that match that intent
+            for did, boost in self._boost_domains_by_technology(technologies).items():
+                if did in scores:
+                    scores[did] += boost
         intents = self._detect_query_intent(query)
         if intents:
-            intent_boosts = self._boost_domains_by_intent(intents)
-            for domain_type, boost in intent_boosts.items():
-                if domain_type in scores:
-                    scores[domain_type] += boost
-
-        # Use Case 2: Pattern-based confidence boosting
-        # If pattern learner is available, boost scores based on learned patterns
-        if hasattr(self, '_pattern_learner') and self._pattern_learner:
-            pattern_boosts = self._get_pattern_domain_boosts(query)
-            for domain_type, boost in pattern_boosts.items():
-                if domain_type in scores:
-                    original_score = scores[domain_type]
-                    scores[domain_type] += boost
-                    if boost > 0.05:  # Only log significant boosts
-                        import logging
-                        logger = logging.getLogger(__name__)
-                        logger.info(f"Pattern boosted {domain_type.value}: {original_score:.2f} → {scores[domain_type]:.2f} (+{boost:.2f})")
-
+            for did, boost in self._boost_domains_by_intent(intents).items():
+                if did in scores:
+                    scores[did] += boost
+        if getattr(self, "_pattern_learner", None):
+            for did, boost in self._get_pattern_domain_boosts(query).items():
+                if did in scores and boost > 0.05:
+                    scores[did] += boost
         return scores
 
-    def get_domain_prompt(self, domains: List[DomainType], include_cross_domain: bool = False) -> str:
-        """
-        Generate a system prompt section for the detected domains.
-        
-        Args:
-            domains: List of detected domains in priority order
-            include_cross_domain: Whether to include cross-domain connection suggestions
-        """
-        if not domains or domains == [DomainType.UNKNOWN]:
+    def get_domain_prompt(self, domains: List[str], include_cross_domain: bool = False) -> str:
+        """Generate a system prompt section for the detected domains (by id)."""
+        if not domains or set((d or "").strip().lower() for d in domains) <= {""} | {"unknown"}:
             return ""
-
         domain_descriptions = []
-        for domain_type in domains[:3]:  # Top 3 domains
-            # Ensure domain_type is a DomainType enum
-            if isinstance(domain_type, str):
-                try:
-                    domain_type = DomainType(domain_type)
-                except ValueError:
-                    continue
-            elif not isinstance(domain_type, DomainType):
+        for domain_id in domains[:3]:
+            domain_id = (domain_id or "").strip().lower()
+            if not domain_id or domain_id == "unknown":
                 continue
-                
-            domain = self.domains.get(domain_type)
+            domain = self._domains_by_id.get(domain_id)
             if domain:
                 domain_descriptions.append(f"**{domain.name}**: {domain.description}")
 
@@ -907,56 +629,29 @@ Draw on knowledge and patterns specific to these areas when responding."""
     def filter_sources_by_domain(
         self,
         sources: List[Dict],
-        domains: List[DomainType],
+        domain_ids: List[str],
         preserve_secondary: bool = True
     ) -> List[Dict]:
-        """
-        Filter search results to prefer domain-relevant sources.
-        
-        Args:
-            sources: List of source dicts with filepath and content
-            domains: Detected domains in priority order
-            preserve_secondary: If True, keep results from secondary domains (less aggressive filtering)
-        """
-        if not domains or domains == [DomainType.UNKNOWN]:
+        """Filter search results to prefer domain-relevant sources (domain_ids in priority order)."""
+        validated = [d for d in domain_ids if (d or "").strip().lower() and (d or "").strip().lower() != "unknown"]
+        if not validated:
             return sources
-        
-        # Validate and convert domains to DomainType enums
-        validated_domains = []
-        for d in domains:
-            if isinstance(d, DomainType):
-                validated_domains.append(d)
-            elif isinstance(d, str):
-                try:
-                    validated_domains.append(DomainType(d))
-                except ValueError:
-                    continue
-        
-        if not validated_domains:
-            return sources
-
         scored = []
         for source in sources:
             score = 0
             path = Path(source.get("filepath", ""))
             content = source.get("content", "")
-
-            # Weight domains by their position (primary domain gets more weight)
-            for idx, domain_type in enumerate(validated_domains):
-                domain = self.domains.get(domain_type)
+            for idx, domain_id in enumerate(validated):
+                domain = self._domains_by_id.get((domain_id or "").strip().lower())
                 if domain:
-                    # Diminishing weight for secondary domains
                     weight = 1.0 / (idx + 1) if preserve_secondary else (1.0 if idx == 0 else 0.3)
-                    
                     domain_score = 0
                     if domain.matches_path(path):
                         domain_score += 2
                     if domain.matches_filename(path.name):
                         domain_score += 1
                     domain_score += domain.matches_content(content)
-                    
                     score += domain_score * weight
-
             scored.append((source, score))
 
         # Sort by score, but preserve some original ordering for semantic relevance
@@ -964,54 +659,26 @@ Draw on knowledge and patterns specific to these areas when responding."""
         scored.sort(key=lambda x: x[1], reverse=True)
         return [s for s, _ in scored]
 
-    def get_cross_domain_connections(self, domains: List[DomainType]) -> str:
-        """Suggest potential cross-domain connections."""
-        # Ensure all domains are DomainType enums, not strings
-        validated_domains = []
-        for d in domains:
-            if isinstance(d, DomainType):
-                validated_domains.append(d)
-            elif isinstance(d, str):
-                # Try to convert string to DomainType
-                try:
-                    validated_domains.append(DomainType(d))
-                except ValueError:
-                    # Skip invalid domain strings
-                    continue
-            else:
-                # Skip invalid types
-                continue
-        
-        # Comprehensive cross-domain connection mappings
-        connections = {
-            (DomainType.SIGILS, DomainType.SIGNALS):
-                "Code patterns that could enhance audio work, or audio concepts that inform system design",
-            (DomainType.SIGILS, DomainType.SCROLLS):
-                "Documentation patterns, writing about technical concepts, or teaching code through narrative",
-            (DomainType.SIGILS, DomainType.GLYPHS):
-                "UI/UX implementation, design systems in code, or visual debugging tools",
-            (DomainType.SIGILS, DomainType.GRIDS):
-                "Architectural patterns, systems design, or infrastructure as frameworks",
-            (DomainType.SIGNALS, DomainType.SCROLLS):
-                "Writing about sound, audio pedagogy, or documenting musical processes",
-            (DomainType.SIGNALS, DomainType.GLYPHS):
-                "Visual representations of audio, audio-visual synthesis, or interface design for instruments",
-            (DomainType.SIGNALS, DomainType.GRIDS):
-                "Audio as a lens for understanding systems, systems thinking applied to sound design, or compositional frameworks",
-            (DomainType.SCROLLS, DomainType.GLYPHS):
-                "Visual essays, information design for writing, or designed learning experiences",
-            (DomainType.SCROLLS, DomainType.GRIDS):
-                "Writing that explores systems thinking, frameworks for pedagogy, or meta-cognitive documentation",
-            (DomainType.GLYPHS, DomainType.GRIDS):
-                "Design frameworks, visual systems thinking, or interface patterns for complex systems",
-        }
-
-        if len(validated_domains) < 2:
+    def get_cross_domain_connections(self, domain_ids: List[str]) -> str:
+        """Suggest potential cross-domain connections (domain_ids as strings)."""
+        validated = [(d or "").strip().lower() for d in domain_ids if (d or "").strip().lower() and (d or "").strip().lower() != "unknown"]
+        if len(validated) < 2:
             return ""
-
+        connections: Dict[Tuple[str, str], str] = {
+            ("sigils", "signals"): "Code patterns that could enhance audio work, or audio concepts that inform system design",
+            ("sigils", "scrolls"): "Documentation patterns, writing about technical concepts, or teaching code through narrative",
+            ("sigils", "glyphs"): "UI/UX implementation, design systems in code, or visual debugging tools",
+            ("sigils", "grids"): "Architectural patterns, systems design, or infrastructure as frameworks",
+            ("signals", "scrolls"): "Writing about sound, audio pedagogy, or documenting musical processes",
+            ("signals", "glyphs"): "Visual representations of audio, audio-visual synthesis, or interface design for instruments",
+            ("signals", "grids"): "Audio as a lens for understanding systems, systems thinking applied to sound design, or compositional frameworks",
+            ("scrolls", "glyphs"): "Visual essays, information design for writing, or designed learning experiences",
+            ("scrolls", "grids"): "Writing that explores systems thinking, frameworks for pedagogy, or meta-cognitive documentation",
+            ("glyphs", "grids"): "Design frameworks, visual systems thinking, or interface patterns for complex systems",
+        }
         suggestions = []
-        for i, d1 in enumerate(validated_domains):
-            for d2 in validated_domains[i+1:]:
+        for i, d1 in enumerate(validated):
+            for d2 in validated[i + 1 :]:
                 key = (d1, d2) if (d1, d2) in connections else (d2, d1)
                 if key in connections:
                     suggestions.append(connections[key])
@@ -1070,44 +737,40 @@ Draw on knowledge and patterns specific to these areas when responding."""
         return icons
 
 
-# Domain-specific system prompt templates
-DOMAIN_PROMPTS = {
-    DomainType.SIGILS: """
+# Domain-specific system prompt templates (keyed by domain id)
+DOMAIN_PROMPTS: Dict[str, str] = {
+    "sigils": """
 When discussing code and infrastructure:
 - Emphasize clean architecture and maintainability
 - Consider Docker/container patterns when relevant
 - Reference existing code patterns in the knowledge base
 - Suggest automation where appropriate
 """,
-
-    DomainType.SIGNALS: """
+    "signals": """
 When discussing audio programming:
 - Emphasize instruments over tracks (generative over fixed)
 - Consider real-time constraints and performance
 - Reference norns/SuperCollider patterns when relevant
 - Think in terms of constraint-based composition
 """,
-
-    DomainType.SCROLLS: """
+    "scrolls": """
 When discussing writing and pedagogy:
 - Use problem-posing over answer-giving approaches
 - Reference Freire and popular education principles
 - Consider the reader's learning journey
 - Connect ideas across domains when relevant
 """,
-
-    DomainType.GLYPHS: """
+    "glyphs": """
 When discussing visual work:
 - Consider both aesthetic and functional aspects
 - Think about the user's visual journey
 - Reference design principles in the knowledge base
 """,
-
-    DomainType.GRIDS: """
+    "grids": """
 When discussing systems and frameworks:
 - Think in terms of infinite vs finite games
 - Consider emergence and feedback loops
 - Look for patterns that apply across domains
 - Emphasize continuation over completion
-"""
+""",
 }

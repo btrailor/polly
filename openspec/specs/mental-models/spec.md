@@ -2,6 +2,14 @@
 
 Source of truth for the mental models system (Phase 14). Detail: [docs/planning/phases/phase-14/PHASE14_MENTAL_MODELS.md](../../../docs/planning/phases/phase-14/PHASE14_MENTAL_MODELS.md).
 
+## Integration Contracts (Feb 2026)
+
+- **ContextContributor** — `MentalModelManager.build_context(query, domains, persona, mode)` returns the "Active Mental Models (Compressed)" block; `context_priority = 60`.
+- **PersonaAware** — `set_active_persona(name, mode)` is called when the user activates or switches persona; `get_models_for_context()` uses the stored persona when persona/mode are not passed explicitly.
+- **Effectiveness tracking** — `record_activation(model_ids, signals)` logs which models were active and outcome signals (e.g. `conversation_continued`). `get_effectiveness_summary()` returns log summary for tuning. Polly calls `record_activation()` after each query with the list of activated model IDs.
+
+See [integration-contracts design](../../changes/integration-contracts/design.md).
+
 ## Current Behavior
 
 - **Storage:** `~/.polly/mental_models.yaml`. Twelve default models across four tiers (Core Philosophy, Learning, Systems, Communication).

@@ -2,6 +2,18 @@
 
 Source of truth for the agent persona system. Full architecture: [docs/PERSONA_SYSTEM_ARCHITECTURE.md](../../../docs/PERSONA_SYSTEM_ARCHITECTURE.md). API: [docs/PERSONA_API.md](../../../docs/PERSONA_API.md).
 
+## Integration Contracts (Feb 2026)
+
+Personas compose with other systems via shared protocols:
+
+- **Persona↔Pattern** — On activation (`activate_persona`, `switch_mode`), Polly notifies the pattern engine via `set_active_persona(name, mode)`. Learned patterns are attributed to the active persona; `get_patterns_for_prompt()` boosts persona-specific patterns.
+- **Persona↔Entity** — EntityContextBuilder is notified of the active persona; entity context can boost entities that appear in that persona's patterns (persona affinity terms).
+- **Persona↔Mental model** — MentalModelManager receives `set_active_persona`; activation scoring uses the current persona so persona-relevant models are preferred.
+
+When `query()` is called without explicit persona/mode, Polly resolves them from the currently active persona so context and learning stay consistent.
+
+See [integration-contracts design](../../changes/integration-contracts/design.md).
+
 ## Current Personas (Implemented)
 
 - **Architect** — Plan and Build modes; structured planning and execution. Used for note creation and complex tasks.

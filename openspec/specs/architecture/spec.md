@@ -17,6 +17,9 @@ Source of truth for Polly's system architecture. Detailed diagrams and tier brea
 - Personas (Architect, Scribe, Professor) and curriculum/teaching systems live in `core/` and `learners/`.
 - Knowledge quality pipeline: entity extraction → similarity check → connection suggestion → authority update → RAG index.
 
+### Integration Contracts (Feb 2026)
+Cross-system behavior is formalized via `core/protocols/`: **ContextContributor** (mental models, entity context, patterns, compression contribute ordered prompt context), **PersonaAware** (pattern engine, entity context, mental models receive active persona), **PatternConsumer** (router uses ROUTING_OUTCOME patterns and records outcomes). Conversation sync: Electron sends last N messages to `POST /polly/conversation/sync` so Python's buffer matches the active conversation for compression/learning. See [integration-contracts](../../changes/integration-contracts/design.md).
+
 ### Multi-Agent (Swarms)
 - Complex tasks: User → Nexus (task decomposition, agent selection) → Agent execution → Merge → Response.
 - Three-tier routing stack: Nexus (which agents?) → DRM Router (which node?) → Router v2 (which model?).
