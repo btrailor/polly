@@ -1,0 +1,537 @@
+"""
+SQLite-backed entity storage with graph operations.
+
+Replaces JSON-based KnowledgeGraph from learners/graph.py.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import math
+import sqlite3
+from collections import deque
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from .models import Entity, EntityQuery, EntityType, Relationship, RelationshipType
+
+logger = logging.getLogger(__name__)
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS entities (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    aliases TEXT DEFAULT '[]',
+    domains TEXT DEFAULT '[]',
+    tags TEXT DEFAULT '[]',
+    mention_count INTEGER DEFAULT 0,
+    source_count INTEGER DEFAULT 0,
+    authority_score REAL DEFAULT 0.0,
+    last_seen TEXT NOT NULL,
+    created TEXT NOT NULL,
+    metadata TEXT DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
+CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_entities_authority ON entities(authority_score DESC);
+CREATE INDEX IF NOT EXISTS idx_entities_domains ON entities(domains);
+
+CREATE TABLE IF NOT EXISTS relationships (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    relationship_type TEXT NOT NULL,
+    strength REAL DEFAULT 1.0,
+    context TEXT DEFAULT '',
+    bidirectional INTEGER DEFAULT 0,
+    mention_count INTEGER DEFAULT 1,
+    created TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    UNIQUE(source_id, target_id, relationship_type)
+);
+CREATE INDEX IF NOT EXISTS idx_rel_source ON relationships(source_id);
+CREATE INDEX IF NOT EXISTS idx_rel_target ON relationships(target_id);
+CREATE INDEX IF NOT EXISTS idx_rel_type ON relationships(relationship_type);
+
+CREATE TABLE IF NOT EXISTS entity_mentions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_id TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    context TEXT DEFAULT '',
+    created TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mentions_entity ON entity_mentions(entity_id);
+CREATE INDEX IF NOT EXISTS idx_mentions_source ON entity_mentions(source_type, source_id);
+"""
+
+
+def _entity_from_row(row: tuple, cols: List[str]) -> Entity:
+    d = dict(zip(cols, row))
+    d["aliases"] = json.loads(d["aliases"] or "[]")
+    d["domains"] = json.loads(d["domains"] or "[]")
+    d["tags"] = json.loads(d["tags"] or "[]")
+    d["metadata"] = json.loads(d["metadata"] or "{}")
+    for dt in ("last_seen", "created"):
+        try:
+            d[dt] = datetime.fromisoformat(d[dt])
+        except (ValueError, TypeError):
+            d[dt] = datetime.now()
+    try:
+        d["entity_type"] = EntityType(d["entity_type"])
+    except ValueError:
+        d["entity_type"] = EntityType.CONCEPT
+    return Entity(**d)
+
+
+def _entity_to_row(entity: Entity) -> tuple:
+    return (
+        entity.id,
+        entity.name,
+        entity.entity_type.value,
+        entity.description or "",
+        json.dumps(entity.aliases),
+        json.dumps(entity.domains),
+        json.dumps(entity.tags),
+        entity.mention_count,
+        entity.source_count,
+        entity.authority_score,
+        entity.last_seen.isoformat(),
+        entity.created.isoformat(),
+        json.dumps(entity.metadata),
+    )
+
+
+class EntityStore:
+    """SQLite-backed entity storage with graph operations."""
+
+    def __init__(self, db_path: Path):
+        self.db_path = Path(db_path).expanduser()
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._init_db()
+
+    def _conn(self) -> sqlite3.Connection:
+        return sqlite3.connect(self.db_path)
+
+    def _init_db(self) -> None:
+        with self._conn() as conn:
+            for stmt in SCHEMA.strip().split(";"):
+                stmt = stmt.strip()
+                if stmt:
+                    conn.execute(stmt)
+        logger.debug(f"EntityStore initialized at {self.db_path}")
+
+    # === CRUD ===
+
+    def upsert_entity(self, entity: Entity) -> Entity:
+        """Insert or update. If exists, merge and increment mention_count."""
+        with self._conn() as conn:
+            cur = conn.execute(
+                "SELECT id, mention_count, source_count FROM entities WHERE id = ?",
+                (entity.id,),
+            )
+            row = cur.fetchone()
+            if row:
+                eid, mentions, sources = row
+                conn.execute(
+                    """
+                    UPDATE entities SET
+                        name = ?, entity_type = ?, description = ?,
+                        aliases = ?, domains = ?, tags = ?,
+                        mention_count = mention_count + ?,
+                        source_count = source_count + 1,
+                        last_seen = ?, metadata = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        entity.name,
+                        entity.entity_type.value,
+                        entity.description,
+                        json.dumps(entity.aliases),
+                        json.dumps(entity.domains),
+                        json.dumps(entity.tags),
+                        max(0, entity.mention_count),
+                        entity.last_seen.isoformat(),
+                        json.dumps(entity.metadata),
+                        entity.id,
+                    ),
+                )
+                entity.mention_count = mentions + max(1, entity.mention_count)
+                entity.source_count = sources + 1
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO entities (
+                        id, name, entity_type, description, aliases, domains, tags,
+                        mention_count, source_count, authority_score, last_seen, created, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    _entity_to_row(entity),
+                )
+                if entity.mention_count == 0:
+                    entity.mention_count = 1
+                if entity.source_count == 0:
+                    entity.source_count = 1
+            conn.commit()
+        self.recompute_authority(entity.id)
+        return entity
+
+    def upsert_relationship(self, relationship: Relationship) -> Relationship:
+        """Insert or update relationship. If exists, increment mention_count and update strength."""
+        with self._conn() as conn:
+            cur = conn.execute(
+                """
+                SELECT id, mention_count, strength FROM relationships
+                WHERE source_id = ? AND target_id = ? AND relationship_type = ?
+                """,
+                (
+                    relationship.source_id,
+                    relationship.target_id,
+                    relationship.relationship_type.value,
+                ),
+            )
+            row = cur.fetchone()
+            if row:
+                rid, mentions, old_strength = row
+                new_strength = min(1.0, old_strength * 0.9 + relationship.strength * 0.1)
+                conn.execute(
+                    """
+                    UPDATE relationships SET
+                        strength = ?, mention_count = mention_count + ?,
+                        context = COALESCE(NULLIF(?, ''), context), last_seen = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        new_strength,
+                        relationship.mention_count,
+                        relationship.context,
+                        relationship.last_seen.isoformat(),
+                        rid,
+                    ),
+                )
+                relationship.strength = new_strength
+                relationship.mention_count = mentions + relationship.mention_count
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO relationships (
+                        source_id, target_id, relationship_type, strength, context,
+                        bidirectional, mention_count, created, last_seen
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        relationship.source_id,
+                        relationship.target_id,
+                        relationship.relationship_type.value,
+                        relationship.strength,
+                        relationship.context,
+                        1 if relationship.bidirectional else 0,
+                        relationship.mention_count,
+                        relationship.created.isoformat(),
+                        relationship.last_seen.isoformat(),
+                    ),
+                )
+            conn.commit()
+        return relationship
+
+    def get_entity(self, entity_id: str) -> Optional[Entity]:
+        cur = self._conn().execute("SELECT * FROM entities WHERE id = ?", (entity_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        return _entity_from_row(row, cols)
+
+    def get_entity_by_name(self, name: str, entity_type: Optional[EntityType] = None) -> Optional[Entity]:
+        name_lower = name.lower().strip()
+        if entity_type is not None:
+            cur = self._conn().execute(
+                "SELECT * FROM entities WHERE LOWER(name) = ? AND entity_type = ?",
+                (name_lower, entity_type.value),
+            )
+        else:
+            cur = self._conn().execute("SELECT * FROM entities WHERE LOWER(name) = ?", (name_lower,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        cols = [d[0] for d in cur.description]
+        return _entity_from_row(row, cols)
+
+    def delete_entity(self, entity_id: str) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM entity_mentions WHERE entity_id = ?", (entity_id,))
+            conn.execute("DELETE FROM relationships WHERE source_id = ? OR target_id = ?", (entity_id, entity_id))
+            conn.execute("DELETE FROM entities WHERE id = ?", (entity_id,))
+            conn.commit()
+
+    def record_mention(self, entity_id: str, source_type: str, source_id: str, context: str = "") -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO entity_mentions (entity_id, source_type, source_id, context, created) VALUES (?, ?, ?, ?, ?)",
+                (entity_id, source_type, source_id, context, datetime.now().isoformat()),
+            )
+            conn.execute(
+                "UPDATE entities SET mention_count = mention_count + 1, last_seen = ? WHERE id = ?",
+                (datetime.now().isoformat(), entity_id),
+            )
+            conn.commit()
+
+    # === Search ===
+
+    def search(self, query: EntityQuery) -> List[Entity]:
+        params: List[Any] = []
+        clauses: List[str] = ["1=1"]
+
+        if query.text:
+            clauses.append("(LOWER(name) LIKE ? OR LOWER(description) LIKE ?)")
+            t = f"%{query.text.lower()}%"
+            params.extend([t, t])
+        if query.entity_types:
+            placeholders = ",".join("?" * len(query.entity_types))
+            clauses.append(f"entity_type IN ({placeholders})")
+            params.extend([et.value for et in query.entity_types])
+        if query.domains:
+            # domains stored as JSON array; match any of the given domains (OR)
+            domain_conds = " OR ".join("domains LIKE ?" for _ in query.domains)
+            clauses.append(f"({domain_conds})")
+            params.extend(f"%{d}%" for d in query.domains)
+        if query.min_authority > 0:
+            clauses.append("authority_score >= ?")
+            params.append(query.min_authority)
+
+        sql = "SELECT * FROM entities WHERE " + " AND ".join(clauses) + " ORDER BY authority_score DESC LIMIT ?"
+        params.append(query.limit)
+
+        conn = self._conn()
+        cur = conn.execute(sql, params)
+        cols = [d[0] for d in cur.description]
+        return [_entity_from_row(row, cols) for row in cur.fetchall()]
+
+    # === Graph operations ===
+
+    def _get_neighbor_rels(self, entity_id: str) -> List[Tuple[Relationship, str]]:
+        """Get all relationships (out and in) for an entity. Returns (rel, other_id)."""
+        out: List[Tuple[Relationship, str]] = []
+        with self._conn() as conn:
+            for direction, col in (("source_id", "target_id"), ("target_id", "source_id")):
+                cur = conn.execute(
+                    f"""
+                    SELECT source_id, target_id, relationship_type, strength, context, bidirectional, mention_count, created, last_seen
+                    FROM relationships WHERE {direction} = ?
+                    """,
+                    (entity_id,),
+                )
+                for row in cur.fetchall():
+                    rel = Relationship(
+                        source_id=row[0],
+                        target_id=row[1],
+                        relationship_type=RelationshipType(row[2]),
+                        strength=row[3],
+                        context=row[4] or "",
+                        bidirectional=bool(row[5]),
+                        mention_count=row[6],
+                        created=datetime.fromisoformat(row[7]) if row[7] else datetime.now(),
+                        last_seen=datetime.fromisoformat(row[8]) if row[8] else datetime.now(),
+                    )
+                    other = row[1] if direction == "source_id" else row[0]
+                    out.append((rel, other))
+        return out
+
+    def get_related(
+        self,
+        entity_id: str,
+        max_hops: int = 1,
+        min_strength: float = 0.3,
+    ) -> List[Tuple[Entity, Relationship]]:
+        """Get entities related to this one, up to max_hops."""
+        results: List[Tuple[Entity, Relationship]] = []
+        visited: set = {entity_id}
+        frontier: deque = deque([(entity_id, 0)])
+        seen_pairs: set = set()
+
+        while frontier:
+            eid, hop = frontier.popleft()
+            if hop >= max_hops:
+                continue
+            for rel, other_id in self._get_neighbor_rels(eid):
+                if rel.strength < min_strength:
+                    continue
+                if other_id in visited:
+                    continue
+                key = (eid, other_id, rel.relationship_type.value)
+                if key in seen_pairs:
+                    continue
+                seen_pairs.add(key)
+                ent = self.get_entity(other_id)
+                if ent:
+                    results.append((ent, rel))
+                    visited.add(other_id)
+                    frontier.append((other_id, hop + 1))
+
+        return results
+
+    def find_path(
+        self,
+        source_id: str,
+        target_id: str,
+        max_hops: int = 4,
+    ) -> Optional[List[Tuple[Entity, Relationship]]]:
+        """Shortest path between two entities (BFS). Returns list of (Entity, Relationship) from source toward target."""
+        if source_id == target_id:
+            e = self.get_entity(source_id)
+            return [(e, None)] if e else None  # type: ignore
+
+        visited = {source_id}
+        queue: deque = deque([(source_id, [])])
+
+        while queue:
+            current, path = queue.popleft()
+            if len(path) >= max_hops:
+                continue
+            for rel, other_id in self._get_neighbor_rels(current):
+                if other_id in visited:
+                    continue
+                visited.add(other_id)
+                new_path = path + [(other_id, rel)]
+                if other_id == target_id:
+                    out: List[Tuple[Entity, Relationship]] = []
+                    prev_id = source_id
+                    for (eid, r) in new_path:
+                        ent = self.get_entity(eid)
+                        if ent and r:
+                            out.append((ent, r))
+                    return out
+                queue.append((other_id, new_path))
+        return None
+
+    def get_cross_domain_bridges(self, domain_a: str, domain_b: str, limit: int = 10) -> List[Entity]:
+        """Entities that have domains containing both domain_a and domain_b, or that link entities in both."""
+        conn = self._conn()
+        cur = conn.execute(
+            """
+            SELECT * FROM entities
+            WHERE domains LIKE ? AND domains LIKE ?
+            ORDER BY authority_score DESC
+            LIMIT ?
+            """,
+            (f"%{domain_a}%", f"%{domain_b}%", limit),
+        )
+        cols = [d[0] for d in cur.description]
+        return [_entity_from_row(row, cols) for row in cur.fetchall()]
+
+    # === Authority ===
+
+    def recompute_authority(self, entity_id: Optional[str] = None) -> None:
+        """Recompute authority for one entity or all."""
+        conn = self._conn()
+
+        if entity_id:
+            cur = conn.execute(
+                "SELECT MAX(mention_count), MAX(source_count) FROM entities"
+            )
+            row = cur.fetchone()
+            max_mentions = (row[0] or 0) or 1
+            max_sources = (row[1] or 0) or 1
+            cur = conn.execute(
+                "SELECT id, mention_count, source_count, last_seen FROM entities WHERE id = ?",
+                (entity_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return
+            eid, mentions, sources, last_seen = row
+            cur2 = conn.execute(
+                "SELECT COUNT(*) FROM relationships WHERE source_id = ? OR target_id = ?",
+                (eid, eid),
+            )
+            rel_count = cur2.fetchone()[0]
+            cur2 = conn.execute("SELECT MAX(cnt) FROM (SELECT COUNT(*) AS cnt FROM relationships GROUP BY source_id)")
+            max_rel = (cur2.fetchone()[0] or 0) or 1
+            try:
+                ls = datetime.fromisoformat(last_seen) if last_seen else datetime.now()
+            except (ValueError, TypeError):
+                ls = datetime.now()
+            days_ago = (datetime.now() - ls).days
+            recency = max(0.0, 1.0 - days_ago / 90.0)
+            authority = (
+                0.4 * math.log(mentions + 1) / math.log(max_mentions + 1)
+                + 0.3 * math.log(sources + 1) / math.log(max_sources + 1)
+                + 0.2 * (rel_count / max_rel)
+                + 0.1 * recency
+            )
+            conn.execute("UPDATE entities SET authority_score = ? WHERE id = ?", (min(1.0, authority), eid))
+            conn.commit()
+            return
+
+        cur = conn.execute("SELECT MAX(mention_count), MAX(source_count) FROM entities")
+        row = cur.fetchone()
+        max_mentions = (row[0] or 0) or 1
+        max_sources = (row[1] or 0) or 1
+        cur = conn.execute("SELECT MAX(cnt) FROM (SELECT COUNT(*) AS cnt FROM relationships GROUP BY source_id)")
+        max_rel = (cur.fetchone()[0] or 0) or 1
+
+        cur = conn.execute("SELECT id, mention_count, source_count, last_seen FROM entities")
+        now = datetime.now()
+        updates = []
+        for row in cur.fetchall():
+            eid, mentions, sources, last_seen = row
+            cur2 = conn.execute(
+                "SELECT COUNT(*) FROM relationships WHERE source_id = ? OR target_id = ?",
+                (eid, eid),
+            )
+            rel_count = cur2.fetchone()[0]
+            try:
+                ls = datetime.fromisoformat(last_seen) if last_seen else now
+            except (ValueError, TypeError):
+                ls = now
+            days_ago = (now - ls).days
+            recency = max(0.0, 1.0 - days_ago / 90.0)
+            authority = (
+                0.4 * math.log(mentions + 1) / math.log(max_mentions + 1)
+                + 0.3 * math.log(sources + 1) / math.log(max_sources + 1)
+                + 0.2 * (rel_count / max_rel)
+                + 0.1 * recency
+            )
+            updates.append((min(1.0, authority), eid))
+        for score, eid in updates:
+            conn.execute("UPDATE entities SET authority_score = ? WHERE id = ?", (score, eid))
+        conn.commit()
+
+    def recompute_all_authority(self) -> None:
+        self.recompute_authority(None)
+
+    # === Stats ===
+
+    def get_stats(self) -> Dict[str, Any]:
+        with self._conn() as conn:
+            cur = conn.execute("SELECT COUNT(*) FROM entities")
+            entities = cur.fetchone()[0]
+            cur = conn.execute("SELECT COUNT(*) FROM relationships")
+            rels = cur.fetchone()[0]
+            cur = conn.execute(
+                "SELECT entity_type, COUNT(*) FROM entities GROUP BY entity_type"
+            )
+            by_type = dict(cur.fetchall())
+        return {
+            "entities": entities,
+            "relationships": rels,
+            "entity_types": by_type,
+        }
+
+    def get_top_entities(self, limit: int = 20, entity_type: Optional[EntityType] = None) -> List[Entity]:
+        if entity_type is not None:
+            cur = self._conn().execute(
+                "SELECT * FROM entities WHERE entity_type = ? ORDER BY authority_score DESC LIMIT ?",
+                (entity_type.value, limit),
+            )
+        else:
+            cur = self._conn().execute(
+                "SELECT * FROM entities ORDER BY authority_score DESC LIMIT ?",
+                (limit,),
+            )
+        cols = [d[0] for d in cur.description]
+        return [_entity_from_row(row, cols) for row in cur.fetchall()]
