@@ -31,11 +31,18 @@ from pathlib import Path
 from datetime import datetime
 import asyncio
 import json
+import os
 import time
 import logging
 import re
 
 logger = logging.getLogger(__name__)
+
+# Optional: enable debug logs (e.g. iCloud timeouts, file watcher) via POLLY_LOG_LEVEL=DEBUG
+if os.environ.get("POLLY_LOG_LEVEL", "").upper() == "DEBUG":
+    logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger().setLevel(logging.DEBUG)
+    logger.info("POLLY_LOG_LEVEL=DEBUG: debug logging enabled")
 
 # Phase 23.5: Security Hardening
 # Import security policy lazily to avoid startup failures
@@ -1531,7 +1538,8 @@ def create_app(polly_instance=None) -> FastAPI:
             }
         """
         polly = get_polly()
-        
+        if not polly:
+            raise HTTPException(503, "Polly not initialized")
         if not polly.mental_model_manager:
             raise HTTPException(503, "Mental model manager not initialized")
         
@@ -1857,6 +1865,7 @@ def create_app(polly_instance=None) -> FastAPI:
         Request body:
         {
             "user_message": "Create a note about Docker",
+            "persona_name": "professor",   // optional; if provided, activate this persona before processing (keeps UI and server in sync)
             "metadata": {
                 "page": "scrolls",
                 "domain": "scrolls"
@@ -1887,8 +1896,19 @@ def create_app(polly_instance=None) -> FastAPI:
             raise HTTPException(400, "user_message is required")
         
         metadata = request.get("metadata", {})
+        persona_name = request.get("persona_name")
         
         try:
+            # If frontend sends persona_name, ensure that persona is active (handles refresh / programmatic select)
+            if persona_name:
+                try:
+                    await polly.activate_persona(persona_name)
+                except (ValueError, RuntimeError) as e:
+                    logger.warning(f"Could not activate persona {persona_name}: {e}")
+                    raise HTTPException(400, f"Invalid or unavailable persona: {persona_name}")
+            elif not polly.persona_manager or not polly.persona_manager.is_persona_active():
+                raise HTTPException(400, "No persona active. Select a persona or include persona_name in the request.")
+            
             response = await polly.process_with_persona(user_message, metadata)
             
             if not response:
@@ -1962,7 +1982,7 @@ def create_app(polly_instance=None) -> FastAPI:
     async def get_persona_state():
         """
         Get current persona state.
-        
+
         Returns:
             {
                 "active": true,
@@ -1974,7 +1994,8 @@ def create_app(polly_instance=None) -> FastAPI:
             }
         """
         polly = get_polly()
-        
+        if not polly:
+            raise HTTPException(503, "Polly not initialized")
         if not polly.using_router_v2:
             raise HTTPException(503, "Persona system requires Router v2")
         
@@ -3191,9 +3212,17 @@ def create_app(polly_instance=None) -> FastAPI:
                 logger.warning(f"Failed to re-index note after update: {idx_error}")
                 # Don't fail the save if re-indexing fails
             
+            # Return note metadata so UI can update modified time
+            stat = note_path.stat()
+            try:
+                from datetime import timezone
+                modified_iso = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
+            except Exception:
+                modified_iso = datetime.fromtimestamp(stat.st_mtime).isoformat()
             return {
                 "success": True,
-                "message": "Note saved successfully"
+                "message": "Note saved successfully",
+                "note": {"modified": modified_iso}
             }
             
         except HTTPException:
@@ -3290,14 +3319,13 @@ def create_app(polly_instance=None) -> FastAPI:
             "count": 6
         }
         """
+        polly = get_polly()
+        if not polly:
+            raise HTTPException(503, "Polly not initialized")
         try:
             from core.templates import TemplateManager
             
             # Get vault path and templates folder from config
-            polly = get_polly()
-            if not polly:
-                raise HTTPException(503, "Polly not initialized")
-            
             vault_path_str = polly.config.get("obsidian.vault_path")
             if not vault_path_str:
                 logger.warning("Vault path not configured for templates")
