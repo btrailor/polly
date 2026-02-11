@@ -1,75 +1,68 @@
-# Polly Configuration
-# Enable router_v2 for intelligent multi-provider routing
-
-# Dynamic domain configuration (integration-contracts Task 12)
-# Override keywords/name/description per domain; add custom domains by id.
-# If omitted, domains load from ~/.polly/domains.json or hardcoded defaults.
-# domains:
-#   sigils:
-#     name: "Sigils"
-#     description: "Code & Infrastructure"
-#     color: "#4A90D9"
-#     icon: "code"
-#     keywords: ["docker", "python", "rust", "javascript", "api", "server"]
-#     rag_collections: ["codebase", "github"]
-#     folder_path: "~/notes/sigils"
-#   signals:
-#     name: "Signals"
-#     description: "Audio Programming"
-#     keywords: ["audio", "midi", "synthesis", "supercollider", "norns"]
-#     rag_collections: ["notes"]
-#   # Custom domain (beyond the five):
-#   custom_domain:
-#     name: "My Domain"
-#     description: "Custom domain"
-#     color: "#FF6B6B"
-#     keywords: ["keyword1", "keyword2"]
-#     rag_collections: ["notes"]
-
-routing_v2:
-  enabled: true
-  use_litellm: false  # Set to true to use unified LiteLLM adapter (replaces 7 individual providers)
-  budget:
-    database_path: "~/.polly/usage.db"
-    daily_limit: 10.0
-    monthly_limit: 200.0
-
-# Compression configuration
+user:
+  name: User
+knowledge_base:
+  path: /Users/brettgershon/.polly
+models:
+  local:
+    host: http://localhost:11434
+    embedding_model: nomic-embed-text
+    chat_models:
+      fast: llama3.2:3b
+      balanced: llama3.1:7b
+      quality: llama3.1:70b
+    default: balanced
+  cloud:
+    provider: anthropic
+    api_key_env: ANTHROPIC_API_KEY
+    models:
+      default: claude-sonnet-4-20250514
+      quality: claude-opus-4-20250514
+      fast: claude-haiku
+rag:
+  vector_db_path: /Users/brettgershon/.polly/chroma_db
+  chunk_size: 800
+  chunk_overlap: 100
+  n_results: 5
+server:
+  host: 0.0.0.0
+  port: 11436
+router:
+  default_mode: auto
+  allow_override: true
 compression:
-  # Strategy selection: "auto" | "llmlingua" | "llm_summary"
-  # - "auto": LLMLingua for RAG context, LLM summary for conversations
-  # - "llmlingua": Always use LLMLingua (fast, no LLM call)
-  # - "llm_summary": Always use LLM-based summarization
-  strategy: "auto"
-  
-  # RAG context compression
+  enabled: true
+  message_threshold: 20
+  age_hours: 24
+  keep_recent: 10
+  show_stats: false
+  strategy: auto
   rag_context:
     enabled: true
-    ratio: 0.5  # 2x compression (1.0 = no compression, 0.1 = 10x)
-  
-  # Conversation compression (existing feature)
+    ratio: 0.5
   conversation:
-    strategy: "llm_summary"  # Force LLM for conversation compression
-  
-  # LLMLingua configuration
+    strategy: llm_summary
   llmlingua:
-    model: "microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank"
-    device: "cpu"  # or "cuda" if GPU available
-
-# Memory Layer Configuration (Phase 1.5)
-# Adaptive memory with entity extraction and graph-based relationships
+    model: microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank
+    device: cpu
+routing_v2:
+  enabled: true
+  use_litellm: false
+  budget:
+    database_path: /Users/brettgershon/.polly/usage.db
+    daily_limit: 10.0
+    monthly_limit: 200.0
 memory:
-  provider: "local"  # "local" (file-based) | "mem0" (adaptive memory)
-  
-  # Mem0 adaptive memory configuration
+  provider: mem0
   mem0:
-    enabled: false  # Opt-in for safety (set to true to enable)
-    vector_store: "chroma"  # Vector store backend (chroma, qdrant, pinecone)
-    graph_store: null  # Optional: Neo4j config for entity relationships (future)
-    llm: "litellm"  # LLM for entity extraction (uses unified adapter)
-    
-    # Separate collections for different memory types
+    enabled: true
+    vector_store: chroma
+    graph_store: null
+    llm: litellm
     collections:
-      knowledge: "polly_mem0_knowledge"  # Knowledge Writer memories
-      patterns: "polly_mem0_patterns"     # Pattern Learning memories
-      personas: "polly_mem0_personas"     # Per-persona memories
+      knowledge: polly_mem0_knowledge
+      patterns: polly_mem0_patterns
+      personas: polly_mem0_personas
+deduplication:
+  enabled: true
+  similarity_threshold: 0.7
+  max_results: 5
