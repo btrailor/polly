@@ -2227,6 +2227,36 @@
           </div>
         </aside>
 
+        <!-- New Agent Modal -->
+        <div id="new-agent-modal" class="modal hidden" aria-hidden="true">
+          <div class="modal-backdrop" id="new-agent-modal-backdrop"></div>
+          <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+              <h3>New Agent</h3>
+              <button type="button" class="modal-close" id="new-agent-modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+              <div class="form-group" style="margin-bottom: 16px;">
+                <label for="new-agent-persona">Persona</label>
+                <select id="new-agent-persona" class="form-control" style="width: 100%; padding: 8px;">
+                  <option value="">Default</option>
+                  <option value="architect">Architect</option>
+                  <option value="scribe">Scribe</option>
+                  <option value="professor">Professor</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 16px;">
+                <label for="new-agent-display-name">Display name</label>
+                <input type="text" id="new-agent-display-name" class="form-control" placeholder="e.g. Code Helper" style="width: 100%; padding: 8px;" />
+              </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px;">
+              <button type="button" class="btn btn-secondary" id="new-agent-cancel">Cancel</button>
+              <button type="button" class="btn btn-primary" id="new-agent-create">Create</button>
+            </div>
+          </div>
+        </div>
+
       <!-- Legacy Right Sidebar (Conversations - HIDDEN, content migrated to chat panel) -->
       <aside class="right-sidebar legacy-right-sidebar hidden" id="right-sidebar" style="display: none !important;">
         <div class="sidebar-header">
