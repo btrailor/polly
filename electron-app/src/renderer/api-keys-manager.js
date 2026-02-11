@@ -3,10 +3,10 @@
  * Handles API key management UI and interactions with the backend
  */
 
-const SETTINGS_SETTINGS_API_BASE_URL = 'http://127.0.0.1:11436/api/settings';
+const SETTINGS_API_BASE_URL = 'http://127.0.0.1:11436/api/settings';
 
 console.log('[API Keys Manager] Module loaded - version 2.0');
-console.log('[API Keys Manager] SETTINGS_API_BASE_URL:', SETTINGS_SETTINGS_API_BASE_URL);
+console.log('[API Keys Manager] SETTINGS_API_BASE_URL:', SETTINGS_API_BASE_URL);
 
 /**
  * Initialize API Keys tab
@@ -15,7 +15,7 @@ async function initializeAPIKeysTab() {
   console.log('[API Keys Manager] Initializing...');
   
   // Load API keys on tab open
-  const apiKeysTab = document.querySelector('.settings-tab-btn[data-tab="api-keys"]');
+  const apiKeysTab = document.querySelector('[data-tab="api-keys"]');
   console.log('[API Keys Manager] API Keys tab button found:', !!apiKeysTab);
   
   if (apiKeysTab) {
@@ -293,6 +293,7 @@ function showAddAPIKeyModal() {
             <option value="perplexity">Perplexity AI</option>
             <option value="gemini">Google (Gemini)</option>
             <option value="mistral">Mistral AI</option>
+            <option value="openrouter">OpenRouter (100+ models)</option>
           </select>
         </div>
         
@@ -333,6 +334,8 @@ function showAddAPIKeyModal() {
       hintElement.textContent = 'Format: AI... • Get your key at aistudio.google.com/app/apikey';
     } else if (provider === 'mistral') {
       hintElement.textContent = 'Format: ... • Get your key at console.mistral.ai/';
+    } else if (provider === 'openrouter') {
+      hintElement.textContent = 'Format: sk-or-... • Get your key at openrouter.ai/keys (single key for 100+ models)';
     } else {
       hintElement.textContent = '';
     }
@@ -508,21 +511,8 @@ async function saveBudgetSettings() {
     }, 2000);
     
   } catch (error) {
-    console.error('[Budget] Error loading budget:', error);
-    console.error('[Budget] Error type:', error.name);
-    console.error('[Budget] Error message:', error.message);
-    
-    const errorMessage = error.name === 'AbortError' 
-      ? 'Request timed out. Backend endpoint not available.'
-      : `${error.message}`;
-    
-    statusContainer.innerHTML = `
-      <div style="color: var(--error); text-align: center; padding: 20px;">
-        <p>Failed to load budget status</p>
-        <p style="font-size: 12px; margin-top: 8px;">${errorMessage}</p>
-        <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">Endpoint: ${SETTINGS_API_BASE_URL}/budget</p>
-      </div>
-    `;
+    console.error('[Budget] Error saving budget:', error);
+    alert(`Failed to save budget: ${error.message}`);
   }
 }
 
@@ -537,7 +527,8 @@ function getProviderIcon(provider) {
     grok: '<i data-lucide="bot" style="width: 16px; height: 16px;"></i>',
     perplexity: '<i data-lucide="search" style="width: 16px; height: 16px;"></i>',
     gemini: '<i data-lucide="gem" style="width: 16px; height: 16px;"></i>',
-    mistral: '<i data-lucide="wind" style="width: 16px; height: 16px;"></i>'
+    mistral: '<i data-lucide="wind" style="width: 16px; height: 16px;"></i>',
+    openrouter: '<i data-lucide="route" style="width: 16px; height: 16px;"></i>'
   };
   return icons[provider] || '<i data-lucide="key" style="width: 16px; height: 16px;"></i>';
 }
@@ -553,7 +544,8 @@ function formatProviderName(provider) {
     grok: 'xAI (Grok)',
     perplexity: 'Perplexity AI',
     gemini: 'Google (Gemini)',
-    mistral: 'Mistral AI'
+    mistral: 'Mistral AI',
+    openrouter: 'OpenRouter'
   };
   return names[provider] || provider;
 }

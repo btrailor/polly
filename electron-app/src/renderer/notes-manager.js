@@ -23,6 +23,8 @@ class NotesManager {
     this.saveTimeout = null;
     this.autoSaveDelay = 2000; // 2 seconds
     this.hasUnsavedChanges = false;
+    /** Content last successfully saved (normalized). Used so we only save when content actually changed. */
+    this.lastSavedContent = null;
     
     // Quick switcher state
     this.quickSwitcherSelectedIndex = 0;
@@ -230,6 +232,7 @@ class NotesManager {
       // Update editor
       if (this.editor) {
         this.editor.setValue(content);
+        this.lastSavedContent = this._normalizeContentForCompare(content);
         
         // Restore scroll and cursor position or reset to top
         if (preserveScroll && savedScrollPosition) {
@@ -2469,6 +2472,14 @@ ${processedContent}
     // TODO: Track recent notes
   }
 
+  /**
+   * Normalize content for change detection (line endings only; no trim to avoid losing intentional changes).
+   */
+  _normalizeContentForCompare(content) {
+    if (content == null) return '';
+    return String(content).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  }
+
   onEditorChange() {
     // Mark as unsaved and trigger debounced auto-save
     this.hasUnsavedChanges = true;
@@ -2501,6 +2512,15 @@ ${processedContent}
     }
     
     const content = this.editor.getValue();
+    const normalized = this._normalizeContentForCompare(content);
+    
+    // Change detection: skip save when content is unchanged (avoids redundant PUTs and reloads)
+    if (this.lastSavedContent !== null && normalized === this.lastSavedContent) {
+      this.hasUnsavedChanges = false;
+      this.updateSaveStatus('saved');
+      setTimeout(() => { if (this.saveStatus === 'saved') this.updateSaveStatus(null); }, 1500);
+      return;
+    }
     
     // Update status to saving
     this.updateSaveStatus('saving');
@@ -2523,13 +2543,16 @@ ${processedContent}
       }
       
       const result = await response.json();
-      console.log('[Notes] Note saved:', result.note);
+      console.log('[Notes] Note saved:', result.note ?? result);
       
-      // Update current note metadata
-      this.currentNote.modified = result.note.modified;
+      // Update current note metadata if server returned it
+      if (result.note && result.note.modified != null && this.currentNote) {
+        this.currentNote.modified = result.note.modified;
+      }
       
-      // Mark as saved
+      // Mark as saved and remember content so we don't re-save unchanged
       this.hasUnsavedChanges = false;
+      this.lastSavedContent = this._normalizeContentForCompare(content);
       this.updateSaveStatus('saved');
       
       // Set flag to prevent reload from our own save
