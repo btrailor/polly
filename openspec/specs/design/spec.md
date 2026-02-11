@@ -28,7 +28,7 @@ Polly is a personal AI that grows with you—starting simple, becoming powerful,
 11. **Progressive autonomy** — Agent swarms start with tight user oversight. As trust builds, users loosen control. Intervention points at every agent boundary; transparency in execution.
 12. **Operational aesthetics** — Aesthetic choices are not decorative. They alter decision-making in measurable ways. The Aesthetic Theme Engine embodies this: themes derived from artist practices change how personas think, not just how the UI looks. See [themes spec](../themes/spec.md).
 13. **Domain permeability** — Theme choices in one domain ripple into all others. A visual aesthetic decision affects writing voice, code style, and systems thinking. The five domains (Sights, Sigils, Signals, Scrolls, Glyphs) are interconnected through shared aesthetic constitution.
-14. **Constitutional epistemology** — Foundation, not filter. Polly's analytical commitments (material analysis over essentialism, cui bono, scapegoat suspicion) are hardcoded and non-negotiable. They shape *how* Polly thinks, not what topics are available. The user never gets lectured; they get deeper analysis. Antifascism as consistently better thinking, not as content moderation. See [ethics spec](../ethics/spec.md).
+14. **Constitutional epistemology** — Foundation, not filter. Polly's analytical commitments (material analysis over essentialism, cui bono, scapegoat suspicion) are hardcoded and non-negotiable. They shape _how_ Polly thinks, not what topics are available. The user never gets lectured; they get deeper analysis. Antifascism as consistently better thinking, not as content moderation. See [ethics spec](../ethics/spec.md).
 
 (See DESIGN_PHILOSOPHY for historical context: growth-oriented design, open plugin future, etc.)
 
@@ -37,6 +37,7 @@ Polly is a personal AI that grows with you—starting simple, becoming powerful,
 Polly's design philosophy is operationalized through an artist-derived Aesthetic Theme Engine. Each theme is derived from a specific artist's practice and philosophy (Casey Reas, Tyler Hobbs, Julian House, Karel Martens, Experimental Jetset, Bridget Riley, Anni Albers). Themes are not skins — they are epistemological stances encoding compositional logic, color philosophy, relationship to material, tolerance for ambiguity, and orientation toward emergence versus control.
 
 Key properties:
+
 - **Artist fidelity:** Each theme recognizable to someone familiar with the source artist's work.
 - **Composability:** Users mix elements from multiple themes for hybrid configurations.
 - **Infinite game orientation:** Themes support continuation and exploration, not completion.
@@ -48,16 +49,17 @@ See [themes spec](../themes/spec.md) for full theme definitions and composabilit
 
 The technical counterpart to the aesthetic theme system. Where themes position aesthetics, the development philosophy positions **technical decisions** along configurable spectrums:
 
-| Spectrum | What It Asks |
-|----------|-------------|
-| Open ↔ Constrained | How much flexibility vs. how many opinions? |
-| Friendly ↔ Powerful | Progressive disclosure vs. full capability surface? |
-| Convention ↔ Configuration | Rails-like vs. Express-like? |
-| Local ↔ Cloud | Data sovereignty vs. collaboration? |
-| Build ↔ Buy | Custom vs. integrate existing? |
-| MVP ↔ Architecture | Ship fast vs. design properly? |
+| Spectrum                   | What It Asks                                        |
+| -------------------------- | --------------------------------------------------- |
+| Open ↔ Constrained         | How much flexibility vs. how many opinions?         |
+| Friendly ↔ Powerful        | Progressive disclosure vs. full capability surface? |
+| Convention ↔ Configuration | Rails-like vs. Express-like?                        |
+| Local ↔ Cloud              | Data sovereignty vs. collaboration?                 |
+| Build ↔ Buy                | Custom vs. integrate existing?                      |
+| MVP ↔ Architecture         | Ship fast vs. design properly?                      |
 
 Key properties:
+
 - **Guided process:** Polly walks the user through a three-phase conversation (Frame, Position, Generate) rather than presenting checkboxes.
 - **Thinking exercise:** The conversation clarifies priorities; the document is a byproduct.
 - **Living document:** Not write-once. Polly prompts for review at configurable intervals.

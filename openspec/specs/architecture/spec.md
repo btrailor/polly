@@ -177,6 +177,13 @@ Planned in same change: Provider Management UI, "Polly" mode in UI, Query Decomp
 
 ---
 
+## Architecture Map (Narrative + Graphical)
+
+- **[docs/ARCHITECTURE_MAP.md](../../../docs/ARCHITECTURE_MAP.md)** — Narrative map of critical tools, features they serve, query hot path, integration contracts, and Mermaid diagrams.
+- **[docs/architecture-tools-features-map.svg](../../../docs/architecture-tools-features-map.svg)** — Graphical map: tools ↔ features and data stores.
+
+---
+
 ## Reference
 
 - [archive/root-docs/MASTER_ROADMAP.md](../../../archive/root-docs/MASTER_ROADMAP.md) — Architecture summary, status

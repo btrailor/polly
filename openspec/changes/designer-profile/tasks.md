@@ -7,11 +7,11 @@
 
 ## Priority Summary
 
-| Priority | What | Rationale |
-|----------|------|-----------|
-| **Phase 1: Foundation** | Design system format, Lucide rules, p5.js-svg proof of concept | Establishes the artifact format and proves the generation pipeline |
-| **Phase 2: Integration** | Designer↔Programmer handoff, feature images, Affinity export | Connects generation to real workflows |
-| **Phase 3: Intelligence** | Consistency checking, generative variation, cross-project coherence | Adds design-aware behavior |
+| Priority                  | What                                                                | Rationale                                                          |
+| ------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **Phase 1: Foundation**   | Design system format, Lucide rules, p5.js-svg proof of concept      | Establishes the artifact format and proves the generation pipeline |
+| **Phase 2: Integration**  | Designer↔Programmer handoff, feature images, Affinity export        | Connects generation to real workflows                              |
+| **Phase 3: Intelligence** | Consistency checking, generative variation, cross-project coherence | Adds design-aware behavior                                         |
 
 ---
 
@@ -22,6 +22,7 @@
 **Files:** `core/design/__init__.py`, `core/design/models.py`, `core/design/system_manager.py`
 
 **Steps:**
+
 1. [ ] Create `core/design/` package
 2. [ ] Define dataclasses: `DesignSystem`, `DesignConstraints`, `GeneratedAsset`, `AssetType`
 3. [ ] Implement `DesignSystemManager`:
@@ -44,6 +45,7 @@
 **Files:** `core/design/lucide_rules.py`
 
 **Steps:**
+
 1. [ ] Encode Lucide design guidelines as enforceable constraint set:
    - 24x24 viewBox validation
    - No transforms, filters, fills rule
@@ -66,6 +68,7 @@
 **Files:** `core/design/engine.py`, `core/design/svg_optimizer.py`
 
 **Steps:**
+
 1. [ ] Set up p5.js-svg execution environment:
    - p5.js 1.6.0 + zenozeng/p5.js-svg as build-step dependencies
    - Node.js headless execution (p5.js sketch → SVG DOM → string output)
@@ -94,6 +97,7 @@
 **Files:** `core/design/constraint_resolver.py`
 
 **Steps:**
+
 1. [ ] Implement `ConstraintResolver`:
    - Read active theme's `designer.*` behavior properties from theme manager
    - Read project's `system.yml` design tokens
@@ -117,6 +121,7 @@
 **Files:** `interfaces/design_api.py`, `interfaces/server.py` (register routes)
 
 **Steps:**
+
 1. [ ] Create `interfaces/design_api.py` with endpoints:
    - `POST /api/design/generate/icon` — generate icon
    - `POST /api/design/generate/pattern` — generate pattern
@@ -141,6 +146,7 @@
 **Files:** `core/personas/implementations/designer.py` (extend), persona skills
 
 **Steps:**
+
 1. [ ] Expand Designer persona with Generate mode:
    - Register `generate` capabilities: icon, pattern, feature_image, data_viz, micro_element
    - Generate mode uses `DesignEngine` for asset creation
@@ -169,6 +175,7 @@
 **Files:** `core/design/system_manager.py` (extend)
 
 **Steps:**
+
 1. [ ] Design token export formats:
    - CSS custom properties from `system.yml`
    - Tailwind config from `system.yml`
@@ -190,6 +197,7 @@
 **Files:** `core/design/engine.py` (extend), publishing integration
 
 **Steps:**
+
 1. [ ] Implement `generate_feature_image()` for Ghost CMS dimensions:
    - Default: 1200x630 (OpenGraph standard)
    - Accept topic, mood, palette constraints
@@ -211,6 +219,7 @@
 **Files:** `core/design/system_manager.py` (extend)
 
 **Steps:**
+
 1. [ ] SVG export with Affinity Designer compatibility:
    - Clean SVG that Affinity can import without artifacts
    - Lucide Affinity template format when generating icons
@@ -230,6 +239,7 @@
 **Files:** `core/design/engine.py` (extend)
 
 **Steps:**
+
 1. [ ] Implement `check_consistency(asset, system)`:
    - Color validation: all colors in SVG exist in `system.yml` palette (or `currentColor`)
    - Stroke validation: stroke width, linecap, linejoin match system defaults
@@ -248,6 +258,7 @@
 **Files:** `core/design/engine.py` (extend)
 
 **Steps:**
+
 1. [ ] `generate_variations(asset, count=5)` — produce N variations of an asset within constraints
    - Same constraints, different seeds
    - User picks favorite or requests more
@@ -264,6 +275,7 @@
 **Files:** `core/code_library/manager.py` (extend), `core/design/engine.py` (extend)
 
 **Steps:**
+
 1. [ ] Auto-register generated assets as library modules when pattern/component is reusable:
    - Design components → `_polly/library/components/`
    - Generator scripts → `_polly/library/workflows/`
@@ -285,6 +297,7 @@
 **Files:** `electron-app/src/renderer/` (new design components)
 
 **Steps:**
+
 1. [ ] Design panel accessible when Designer persona is active:
    - Asset gallery (grid of SVG thumbnails)
    - Generate panel (description input, constraint controls, theme preset selector)
@@ -338,11 +351,11 @@ External Dependencies:
 
 ## Effort Estimate
 
-| Phase | Effort | Can Parallel With |
-|-------|--------|-------------------|
-| Phase 1 | 2–3 weeks | Code Library Wave 1 |
-| Phase 2 | 2–3 weeks | — |
-| Phase 3 | 1–2 weeks | — |
-| **Total** | **5–8 weeks** | |
+| Phase     | Effort        | Can Parallel With   |
+| --------- | ------------- | ------------------- |
+| Phase 1   | 2–3 weeks     | Code Library Wave 1 |
+| Phase 2   | 2–3 weeks     | —                   |
+| Phase 3   | 1–2 weeks     | —                   |
+| **Total** | **5–8 weeks** |                     |
 
 Phase 1 can run in parallel with Code Library development since they share no file dependencies.

@@ -36,13 +36,13 @@ Optionally: refine in external tool
 
 ### Asset Types
 
-| Type | Description | Constraints | Use Case |
-|------|-------------|-------------|----------|
-| **Custom icons** | Lucide-compatible vector icons | 24x24 viewBox, stroke-based, 2px, round caps | Navigation, UI, branded icons |
-| **Pattern tiles** | Repeating SVG patterns | Tileable, configurable density | Backgrounds, textures, dividers |
-| **Feature images** | Generative compositions | Configurable dimensions, palette, mood | Blog posts (POSE → Ghost CMS), social |
-| **Data visualizations** | Charts, diagrams | Match project design system tokens | Reports, dashboards, explanations |
-| **UI micro-elements** | Spinners, dividers, decorations | Match project chrome and spacing | Interface polish |
+| Type                    | Description                     | Constraints                                  | Use Case                              |
+| ----------------------- | ------------------------------- | -------------------------------------------- | ------------------------------------- |
+| **Custom icons**        | Lucide-compatible vector icons  | 24x24 viewBox, stroke-based, 2px, round caps | Navigation, UI, branded icons         |
+| **Pattern tiles**       | Repeating SVG patterns          | Tileable, configurable density               | Backgrounds, textures, dividers       |
+| **Feature images**      | Generative compositions         | Configurable dimensions, palette, mood       | Blog posts (POSE → Ghost CMS), social |
+| **Data visualizations** | Charts, diagrams                | Match project design system tokens           | Reports, dashboards, explanations     |
+| **UI micro-elements**   | Spinners, dividers, decorations | Match project chrome and spacing             | Interface polish                      |
 
 ### Lucide Icon Generation Rules
 
@@ -52,16 +52,16 @@ Lucide's guidelines are precise and enforceable programmatically:
 # Encoded as constraint set for p5.js generator
 icon_constraints:
   viewBox: "0 0 24 24"
-  transforms: none          # No SVG transforms
-  filters: none             # No SVG filters
-  fills: none               # No explicit fills
-  explicit_strokes: none    # Stroke attributes on root <svg> only
+  transforms: none # No SVG transforms
+  filters: none # No SVG filters
+  fills: none # No explicit fills
+  explicit_strokes: none # Stroke attributes on root <svg> only
   stroke_linecap: round
   stroke_linejoin: round
-  stroke_width: 2           # Default, configurable
+  stroke_width: 2 # Default, configurable
   grid_alignment: preferred # Snap to 24x24 grid where possible
-  naming: lower-kebab-case  # Describe depiction, not use case
-  visual_weight: balanced   # Blur test: should match reference icons
+  naming: lower-kebab-case # Describe depiction, not use case
+  visual_weight: balanced # Blur test: should match reference icons
 ```
 
 ### p5.js-svg Technical Details
@@ -75,12 +75,12 @@ icon_constraints:
 
 The Aesthetic Theme Engine's `designer.*` behavior properties directly constrain the p5.js generation pipeline. This is the key integration: the theme doesn't just set prompt defaults — it controls the generative engine.
 
-| Theme Property | Generator Effect |
-|----------------|-----------------|
-| `designer.default_composition` | Composition algorithm: `instruction-based` → rule-set, `flow-field` → organic curves, `found-ephemera` → collage, `overprint-layered` → transparency layers, `material-aware` → production artifacts, `systematic-variation` → parameter study, `grid-emergent` → strict grid |
-| `designer.color_logic` | Color selection: `structural` → monochrome for legibility, `probabilistic-weighted` → weighted random from palette, `hauntological` → desaturated/shifted, `overprint-mixing` → multiply blend primaries, `restrained` → max 4 colors, `perceptual-juxtaposition` → optical interaction, `material-derived` → earth tones |
-| `designer.turbulence` | Noise/randomness: 0.0 → zero deviation, 1.0 → maximum chaos. Maps directly to p5.js `noise()` and random seed parameters. |
-| `designer.material_awareness` | Production artifact inclusion: `none` → clean digital, `high` → print/scan effects, `maximum` → crop marks/registration/fold lines |
+| Theme Property                 | Generator Effect                                                                                                                                                                                                                                                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `designer.default_composition` | Composition algorithm: `instruction-based` → rule-set, `flow-field` → organic curves, `found-ephemera` → collage, `overprint-layered` → transparency layers, `material-aware` → production artifacts, `systematic-variation` → parameter study, `grid-emergent` → strict grid                                             |
+| `designer.color_logic`         | Color selection: `structural` → monochrome for legibility, `probabilistic-weighted` → weighted random from palette, `hauntological` → desaturated/shifted, `overprint-mixing` → multiply blend primaries, `restrained` → max 4 colors, `perceptual-juxtaposition` → optical interaction, `material-derived` → earth tones |
+| `designer.turbulence`          | Noise/randomness: 0.0 → zero deviation, 1.0 → maximum chaos. Maps directly to p5.js `noise()` and random seed parameters.                                                                                                                                                                                                 |
+| `designer.material_awareness`  | Production artifact inclusion: `none` → clean digital, `high` → print/scan effects, `maximum` → crop marks/registration/fold lines                                                                                                                                                                                        |
 
 **Example — Same icon request, different themes:**
 
@@ -122,7 +122,7 @@ project/
 name: polly-ui
 version: 1.0
 updated: 2026-02-09
-theme_source: reas          # Active Polly theme that influenced this system
+theme_source: reas # Active Polly theme that influenced this system
 
 colors:
   primary: "#1a1a2e"
@@ -152,7 +152,7 @@ icons:
   strokeWidth: 2
   strokeLinecap: round
   strokeLinejoin: round
-  source: lucide            # Base set, extended with custom icons
+  source: lucide # Base set, extended with custom icons
 
 breakpoints:
   sm: 640px
@@ -162,8 +162,8 @@ breakpoints:
 
 chrome:
   borderRadius: 8px
-  shadowStyle: subtle       # none, subtle, dramatic
-  dividerStyle: line        # line, pattern, stripe
+  shadowStyle: subtle # none, subtle, dramatic
+  dividerStyle: line # line, pattern, stripe
 ```
 
 ### Icon Registry Schema (`icons/registry.json`)
@@ -192,13 +192,13 @@ chrome:
 
 ### Expanded Mode Table
 
-| Mode | Original Scope | Expanded With |
-|------|---------------|---------------|
-| **Vision** | Mood boards, design briefs, aesthetic guidance | Theme-informed design direction. Cross-domain awareness (Signals needs, Scrolls feature images, Sigils UI). |
-| **Mockup** | UI mockup descriptions, wireframe specs | Sitemap → wireframe thinking (Relume-inspired). Component selection from design system. |
-| **Critic** | Accessibility audit, consistency check, UX heuristics | **Design system consistency checking.** "This component doesn't match your `system.yml`." Compare generated assets against active design tokens. |
-| **System** | Design tokens, component library docs, style guide | **Full design system management.** Create, update, and maintain `_design/` directory. Generate `system.yml` from theme. Manage icon registry. |
-| **Generate** | *(NEW)* | **p5.js generative asset creation.** Icon sets, pattern tiles, feature images, data viz, UI micro-elements. Constraint-driven: define rules, generate within them. |
+| Mode         | Original Scope                                        | Expanded With                                                                                                                                                      |
+| ------------ | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Vision**   | Mood boards, design briefs, aesthetic guidance        | Theme-informed design direction. Cross-domain awareness (Signals needs, Scrolls feature images, Sigils UI).                                                        |
+| **Mockup**   | UI mockup descriptions, wireframe specs               | Sitemap → wireframe thinking (Relume-inspired). Component selection from design system.                                                                            |
+| **Critic**   | Accessibility audit, consistency check, UX heuristics | **Design system consistency checking.** "This component doesn't match your `system.yml`." Compare generated assets against active design tokens.                   |
+| **System**   | Design tokens, component library docs, style guide    | **Full design system management.** Create, update, and maintain `_design/` directory. Generate `system.yml` from theme. Manage icon registry.                      |
+| **Generate** | _(NEW)_                                               | **p5.js generative asset creation.** Icon sets, pattern tiles, feature images, data viz, UI micro-elements. Constraint-driven: define rules, generate within them. |
 
 ### Generate Mode Details
 
@@ -209,7 +209,7 @@ class DesignerGenerateMode:
     Constraint-driven generative design using p5.js-svg.
     Theme behavior layer properties constrain the generator.
     """
-    
+
     capabilities = [
         "icon_generation",        # Lucide-compatible custom icons
         "pattern_generation",     # Repeating SVG tiles
@@ -217,7 +217,7 @@ class DesignerGenerateMode:
         "data_visualization",     # Charts matching design system
         "micro_element",          # Spinners, dividers, decorations
     ]
-    
+
     def generate(self, request, constraints, theme_behavior, design_system):
         """
         1. Parse request (what asset, what for)
@@ -232,12 +232,12 @@ class DesignerGenerateMode:
 
 ### Persona ↔ Design System Relationships
 
-| Persona | Design System Role |
-|---------|-------------------|
-| **Designer** | Creates and maintains the system. Generates assets that conform to it. Flags inconsistencies via Critic mode. |
-| **Programmer** | References `system.yml` when implementing UI. Uses design tokens rather than hardcoded values. Pulls from `icons/` directory. |
-| **Architect** | Considers design system implications in technical decisions. "If we use Tailwind, the spacing scale maps directly to our design tokens." |
-| **Scribe** | Publishes content that respects the design system. Feature images follow palette. Typography matches blog theme. |
+| Persona        | Design System Role                                                                                                                       |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Designer**   | Creates and maintains the system. Generates assets that conform to it. Flags inconsistencies via Critic mode.                            |
+| **Programmer** | References `system.yml` when implementing UI. Uses design tokens rather than hardcoded values. Pulls from `icons/` directory.            |
+| **Architect**  | Considers design system implications in technical decisions. "If we use Tailwind, the spacing scale maps directly to our design tokens." |
+| **Scribe**     | Publishes content that respects the design system. Feature images follow palette. Typography matches blog theme.                         |
 
 ---
 
@@ -458,24 +458,25 @@ class DesignSystemManager:
 
 ## Part 8: REST API
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/design/generate/icon` | Generate icon with constraints |
-| `POST` | `/api/design/generate/pattern` | Generate pattern tile |
-| `POST` | `/api/design/generate/feature-image` | Generate feature image |
-| `POST` | `/api/design/generate/data-viz` | Generate data visualization |
-| `GET` | `/api/design/system` | Get current project design system |
-| `POST` | `/api/design/system` | Create new design system |
-| `PUT` | `/api/design/system` | Update design system |
-| `GET` | `/api/design/icons` | List icons in registry |
-| `POST` | `/api/design/check` | Run consistency check |
-| `POST` | `/api/design/optimize` | SVGO optimize an SVG |
+| Method | Endpoint                             | Description                       |
+| ------ | ------------------------------------ | --------------------------------- |
+| `POST` | `/api/design/generate/icon`          | Generate icon with constraints    |
+| `POST` | `/api/design/generate/pattern`       | Generate pattern tile             |
+| `POST` | `/api/design/generate/feature-image` | Generate feature image            |
+| `POST` | `/api/design/generate/data-viz`      | Generate data visualization       |
+| `GET`  | `/api/design/system`                 | Get current project design system |
+| `POST` | `/api/design/system`                 | Create new design system          |
+| `PUT`  | `/api/design/system`                 | Update design system              |
+| `GET`  | `/api/design/icons`                  | List icons in registry            |
+| `POST` | `/api/design/check`                  | Run consistency check             |
+| `POST` | `/api/design/optimize`               | SVGO optimize an SVG              |
 
 ## Part 9: Frontend Impact
 
 ### Design Studio Page (within Designer persona context)
 
 When Designer persona is active, the main workspace includes:
+
 - **Asset gallery:** Grid of generated icons, patterns, images with thumbnails
 - **Generator panel:** Define constraints, preview, generate, iterate
 - **Design system viewer:** Visual rendering of `system.yml` tokens (color swatches, type specimens, spacing scale)
@@ -483,14 +484,14 @@ When Designer persona is active, the main workspace includes:
 
 ### Slash Commands
 
-| Command | Description |
-|---------|-------------|
-| `/design icon <description>` | Generate a Lucide-compatible icon |
-| `/design pattern <type>` | Generate a pattern tile |
-| `/design image <topic>` | Generate a feature image |
-| `/design system init` | Create design system for current project |
-| `/design system check` | Run consistency check |
-| `/design system show` | Display current design tokens |
+| Command                      | Description                              |
+| ---------------------------- | ---------------------------------------- |
+| `/design icon <description>` | Generate a Lucide-compatible icon        |
+| `/design pattern <type>`     | Generate a pattern tile                  |
+| `/design image <topic>`      | Generate a feature image                 |
+| `/design system init`        | Create design system for current project |
+| `/design system check`       | Run consistency check                    |
+| `/design system show`        | Display current design tokens            |
 
 ---
 

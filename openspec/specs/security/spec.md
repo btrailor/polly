@@ -7,24 +7,31 @@ Source of truth for security behavior. Current + planned (Phase 23.5): [docs/SEC
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Secrets (Keychain, env), API keys | ✅ Implemented | Phase 5 |
-| Code execution (subprocess, timeout) | ✅ Implemented | Phase 23; not sandboxed |
-| Capability Broker, Pyodide sandbox | 💭 Vision | Phase 23.5 not started |
-| Package allowlist, content sanitization | 💭 Vision | Phase 23.5 |
+| Code execution (Pyodide sandbox) | ✅ Implemented | Phase 23.5; client-side Pyodide, server validates |
+| Capability Broker | ✅ Implemented | core/capability_broker.py; api_gateway, shell_executor |
+| Pyodide sandbox | ✅ Implemented | core/sandbox.py; electron pyodide-loader/worker |
+| Package allowlist + approval workflow | ✅ Implemented | core/package_detector.py, approved_packages.yaml, package-approval-dialog.js |
+| CORS from security policy | ✅ Implemented | server.py loads security_policy.get_cors_config() |
+| Audit logging | ✅ Implemented | core/audit_logger.py, ~/.polly/audit.db |
+| Content sanitization (prompt injection, PII) | 📐 Config only | security_policy.yaml; no content_sanitizer.py / pii_filter.py |
+| API key context managers / cleanup | 📐 Config only | security_policy api_keys section; not verified in providers |
 | Agent Swarms execution context brokering | 💭 Vision | Phase 24c |
 | DRM Ed25519 PKI | 💭 Vision | Phase 36d |
 
 ## Current
 
 - **Secrets:** API keys in Keychain (Phase 5); env fallback. Multiple providers.
-- **Code execution (Phase 23):** Curriculum exercises run via subprocess (Python). Timeout; stdout/stderr capture. **Not yet sandboxed** — Phase 23.5 will replace with Pyodide.
+- **Code execution (Phase 23.5):** Curriculum exercises run in Pyodide sandbox (Electron renderer). Server validates; no subprocess for untrusted code.
 
-## Planned (Phase 23.5)
+## Phase 23.5 (Substantially Complete)
 
-- **Capability Broker:** LLM requests capabilities; no direct access. Extended by Agent Swarms to broker execution contexts (see below).
-- **Pyodide sandbox:** Replace subprocess; WebAssembly Python; no network/filesystem; timeout and memory limits.
-- **Package allowlist:** Pre-approved packages in `config/approved_packages.yaml`; approval workflow for unknown; Context7 trust scores.
-- **Content sanitization:** Prompt-injection detection; PII detection (warn-only).
-- **API key hardening:** Context managers; clear after use. Config: `config/security_policy.yaml`.
+- **Capability Broker:** ✅ Implemented. All high-risk operations route through broker; audit logging to ~/.polly/audit.db.
+- **Pyodide sandbox:** ✅ Implemented. Code runs in Electron renderer (Pyodide); server validates; no subprocess for untrusted code.
+- **Package allowlist:** ✅ Implemented. `config/approved_packages.yaml`; package_detector; approval dialog; Context7 trust scores in UI.
+- **Content sanitization:** 📐 Config only (scan_for_prompt_injection, pii_detection in security_policy). Optional for personal mode; content_sanitizer.py / pii_filter.py not implemented.
+- **API key hardening:** 📐 Config (use_secure_context_manager, auto_cleanup_memory). Provider-level implementation not verified.
+- **CORS:** ✅ Loaded from `config/security_policy.yaml`.
+- **Analysis:** See [PHASE23.5_ANALYSIS.md](../../../docs/planning/phases/phase-23.5/PHASE23.5_ANALYSIS.md).
 
 ## Agent Swarms Security (Planned)
 

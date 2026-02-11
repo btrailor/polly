@@ -21,6 +21,7 @@ A comprehensive expansion of the Designer persona from abstract modes (Vision/Mo
 ### The Relume Lesson
 
 Relume (the most relevant model for AI-assisted design) demonstrates the right abstraction level:
+
 - **Component library as design substrate** — 1000+ components organized by section type within a design system. AI composes by selecting and arranging internally-consistent components.
 - **Sitemap → wireframe → design pipeline** — Each stage is editable before proceeding. Genuine workflow acceleration, not "generate a website."
 - **Style Guide Builder** — System first, components second. The right order of operations.
@@ -30,13 +31,13 @@ Relume (the most relevant model for AI-assisted design) demonstrates the right a
 
 Relume optimizes for speed-to-client-site (agencies, freelancers). Polly's Designer serves a different purpose:
 
-| Relume | Polly |
-|--------|-------|
-| Template-driven (pick from 1000 components) | **Constraint-driven** (define rules, generate within them) |
-| Layout composition only | **Generative assets** — icons, patterns, textures, feature images |
-| No knowledge of user's other work | **Cross-domain awareness** — Signals (audio viz), Scrolls (blog images), Sigils (UI) |
-| Cloud export (Webflow, Figma) | **Local-first** SVG generation, any-tool compatible |
-| No aesthetic philosophy | **Theme-constrained** — Fidenza theme produces different icons than Jetset theme |
+| Relume                                      | Polly                                                                                |
+| ------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Template-driven (pick from 1000 components) | **Constraint-driven** (define rules, generate within them)                           |
+| Layout composition only                     | **Generative assets** — icons, patterns, textures, feature images                    |
+| No knowledge of user's other work           | **Cross-domain awareness** — Signals (audio viz), Scrolls (blog images), Sigils (UI) |
+| Cloud export (Webflow, Figma)               | **Local-first** SVG generation, any-tool compatible                                  |
+| No aesthetic philosophy                     | **Theme-constrained** — Fidenza theme produces different icons than Jetset theme     |
 
 ### Why Now
 
@@ -48,6 +49,7 @@ Relume optimizes for speed-to-client-site (agencies, freelancers). Polly's Desig
 ## Scope
 
 ### In Scope
+
 - p5.js SVG generation pipeline (need → constraints → sketch → SVG → optimize)
 - Lucide-compatible icon generation (24x24, stroke-based, grid-aligned)
 - Per-project design system directory structure and `system.yml` schema
@@ -60,6 +62,7 @@ Relume optimizes for speed-to-client-site (agencies, freelancers). Polly's Desig
 - Affinity Designer export compatibility
 
 ### Out of Scope (for now)
+
 - Full Figma API integration (mentioned in existing spec as future)
 - Raster output (PNG, JPEG) — SVG only for now
 - Interactive design assets (p5.js runtime in app)
@@ -68,15 +71,15 @@ Relume optimizes for speed-to-client-site (agencies, freelancers). Polly's Desig
 
 ## Impact on Existing Systems
 
-| System | Impact |
-|--------|--------|
-| **Themes** | Behavior layer properties gain concrete meaning: they constrain the p5.js generator. `designer.turbulence: 0.6` now means something measurable in generated output. |
-| **Personas (Designer)** | Modes expanded with generative capabilities. System mode gains design system management. New Generate mode for p5.js pipeline. |
-| **Code Library** | Three new module types: design components, generator scripts, design system templates. Designer becomes a library producer alongside Programmer. |
-| **Publishing** | Feature image generation via p5.js for Ghost CMS posts. POSE pipeline gains a visual asset step. |
-| **Design spec** | Per-project design systems formalized. Design tokens as first-class artifacts. |
-| **Architecture** | New subsystem: Design Engine (`core/design/`). p5.js-svg as build dependency. |
-| **Patterns** | Design patterns recognized and tracked alongside code patterns. |
+| System                  | Impact                                                                                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Themes**              | Behavior layer properties gain concrete meaning: they constrain the p5.js generator. `designer.turbulence: 0.6` now means something measurable in generated output. |
+| **Personas (Designer)** | Modes expanded with generative capabilities. System mode gains design system management. New Generate mode for p5.js pipeline.                                      |
+| **Code Library**        | Three new module types: design components, generator scripts, design system templates. Designer becomes a library producer alongside Programmer.                    |
+| **Publishing**          | Feature image generation via p5.js for Ghost CMS posts. POSE pipeline gains a visual asset step.                                                                    |
+| **Design spec**         | Per-project design systems formalized. Design tokens as first-class artifacts.                                                                                      |
+| **Architecture**        | New subsystem: Design Engine (`core/design/`). p5.js-svg as build dependency.                                                                                       |
+| **Patterns**            | Design patterns recognized and tracked alongside code patterns.                                                                                                     |
 
 ## Relationship to Existing Specs
 

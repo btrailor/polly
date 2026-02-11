@@ -18,44 +18,44 @@ Core tensions in app development. Each exists on a continuum (0–100), not a bi
 
 ### 1. Open Tool ↔ Constraint-Based
 
-| Left (0) | Right (100) |
-|-----------|-------------|
+| Left (0)                                        | Right (100)                                       |
+| ----------------------------------------------- | ------------------------------------------------- |
 | Maximum flexibility, user configures everything | Opinionated defaults, fewer choices, clearer path |
 
 **Connection:** Bogost — constraints create meaning. But which constraints, and for whom?
 
 ### 2. User-Friendly ↔ Powerful
 
-| Left (0) | Right (100) |
-|-----------|-------------|
+| Left (0)                                   | Right (100)                                     |
+| ------------------------------------------ | ----------------------------------------------- |
 | Low learning curve, progressive disclosure | Full capability surface, assumes competent user |
 
 Not always opposed — the best tools are both. But early in development, you often must choose where to invest.
 
 ### 3. Convention ↔ Configuration
 
-| Left (0) | Right (100) |
-|-----------|-------------|
+| Left (0)                          | Right (100)                                  |
+| --------------------------------- | -------------------------------------------- |
 | "Do it this way" (Rails, Next.js) | "Set it up however you want" (Express, Vite) |
 
 ### 4. Local-First ↔ Cloud-Native
 
-| Left (0) | Right (100) |
-|-----------|-------------|
+| Left (0)                                      | Right (100)                |
+| --------------------------------------------- | -------------------------- |
 | Data sovereignty, offline capability, privacy | Collaboration, sync, scale |
 
 ### 5. Build ↔ Buy (Integrate)
 
-| Left (0) | Right (100) |
-|-----------|-------------|
+| Left (0)                            | Right (100)                                   |
+| ----------------------------------- | --------------------------------------------- |
 | Custom implementation, full control | Use existing tools/services, faster to market |
 
 **Connection:** Graeber — what is meaningful work vs. what is just reinventing?
 
 ### 6. MVP ↔ Architecture-First
 
-| Left (0) | Right (100) |
-|-----------|-------------|
+| Left (0)                              | Right (100)                              |
+| ------------------------------------- | ---------------------------------------- |
 | Ship something, learn from real usage | Design the system properly, avoid rework |
 
 **Connection:** Reverse engineering tension — start from the outcome (architecture-first thinking) but need working systems fast (MVP).
@@ -88,6 +88,7 @@ Custom phases can also be added: a game developer might add a "Player Experience
 ### Phase 1: Project Framing (Architect persona leads)
 
 Polly asks structured questions:
+
 - What is this project? (description, scope)
 - Who is it for? (audience, their technical level)
 - What's the deployment target? (local, web, mobile, embedded)
@@ -130,27 +131,30 @@ review_cadence: monthly
 
 ## Positioning
 
-| Spectrum | Position | Rationale |
-|----------|----------|-----------|
-| Open ↔ Constrained | 70% Open | Users need extensibility, but sensible defaults matter |
-| Friendly ↔ Powerful | Start friendly, reveal power | Progressive disclosure pattern |
-| Convention ↔ Config | Convention with escape hatches | Opinionated defaults, configurable for power users |
-| Local ↔ Cloud | Local-first, cloud-optional | Core value: data sovereignty |
-| Build ↔ Buy | Build core, integrate periphery | Own the RAG engine, use existing UI frameworks |
-| MVP ↔ Architecture | Architecture-informed MVP | Design first, but ship early iterations |
+| Spectrum            | Position                        | Rationale                                              |
+| ------------------- | ------------------------------- | ------------------------------------------------------ |
+| Open ↔ Constrained  | 70% Open                        | Users need extensibility, but sensible defaults matter |
+| Friendly ↔ Powerful | Start friendly, reveal power    | Progressive disclosure pattern                         |
+| Convention ↔ Config | Convention with escape hatches  | Opinionated defaults, configurable for power users     |
+| Local ↔ Cloud       | Local-first, cloud-optional     | Core value: data sovereignty                           |
+| Build ↔ Buy         | Build core, integrate periphery | Own the RAG engine, use existing UI frameworks         |
+| MVP ↔ Architecture  | Architecture-informed MVP       | Design first, but ship early iterations                |
 
 ## Non-Negotiables
+
 - Edge-native: computation happens locally by default
 - Privacy-respecting: user data never leaves device without consent
 - Extensible: persona system must be open to user-created personas
 
 ## Technical Commitments
+
 - TypeScript for core application
 - SQLite + vector extensions for local storage
 - Agent Skills format for extensibility
 - Progressive web app for cross-platform
 
 ## Design Principles
+
 - Instruments over tracks (ongoing capability, not finished products)
 - Constraint as generative (each persona's limitations create focus)
 - Documentation as thinking (not just record-keeping)
@@ -174,6 +178,7 @@ System prompt = [
 ```
 
 **Priority hierarchy** (lowest to highest):
+
 1. Persona base behavior
 2. Active theme behavior
 3. Project philosophy context
@@ -197,6 +202,7 @@ Configurable: monthly, milestone-based, or manual. At review time, Polly prompts
 ### Drift Detection (Future)
 
 Continuous comparison of code patterns (from pattern learning) against philosophy positions:
+
 - Code structure analysis shows increasing abstraction → compare against "convention ↔ configuration" position
 - Dependency graph analysis shows many external packages → compare against "build ↔ buy" position
 - "Your code diverged from your philosophy" notifications
@@ -205,12 +211,12 @@ Continuous comparison of code patterns (from pattern learning) against philosoph
 
 ## Slash Commands
 
-| Command | Description | Persona |
-|---------|-------------|---------|
-| `/philosophy init` | Start guided configuration for new project | Architect |
-| `/philosophy review` | Revisit current project philosophy | Architect |
-| `/philosophy check` | Compare current code against stated philosophy | Architect |
-| `/philosophy spectrum <name>` | Deep-dive into a specific spectrum | Architect |
+| Command                       | Description                                    | Persona   |
+| ----------------------------- | ---------------------------------------------- | --------- |
+| `/philosophy init`            | Start guided configuration for new project     | Architect |
+| `/philosophy review`          | Revisit current project philosophy             | Architect |
+| `/philosophy check`           | Compare current code against stated philosophy | Architect |
+| `/philosophy spectrum <name>` | Deep-dive into a specific spectrum             | Architect |
 
 ---
 
@@ -240,14 +246,14 @@ review_prompt = manager.suggest_review(philosophy, project_metrics)
 
 ### REST API
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/philosophy/spectrums` | List spectrum definitions |
-| `POST` | `/api/philosophy/spectrums` | Add custom spectrum |
-| `POST` | `/api/philosophy/init` | Start guided process |
-| `GET` | `/api/philosophy/current` | Get current philosophy |
-| `PUT` | `/api/philosophy/current` | Update philosophy |
-| `POST` | `/api/philosophy/check` | Alignment check |
+| Method | Endpoint                    | Description               |
+| ------ | --------------------------- | ------------------------- |
+| `GET`  | `/api/philosophy/spectrums` | List spectrum definitions |
+| `POST` | `/api/philosophy/spectrums` | Add custom spectrum       |
+| `POST` | `/api/philosophy/init`      | Start guided process      |
+| `GET`  | `/api/philosophy/current`   | Get current philosophy    |
+| `PUT`  | `/api/philosophy/current`   | Update philosophy         |
+| `POST` | `/api/philosophy/check`     | Alignment check           |
 
 ---
 
@@ -277,27 +283,27 @@ philosophy:
 
 ## Implementation Files
 
-| File | Purpose |
-|------|---------|
-| `core/philosophy/__init__.py` | Package |
-| `core/philosophy/models.py` | DevelopmentPhilosophy, SpectrumPosition |
-| `core/philosophy/manager.py` | PhilosophyManager |
-| `core/philosophy/guided_process.py` | Three-phase guided conversation |
-| `interfaces/philosophy_api.py` | REST endpoints |
-| `config/philosophy_spectrums.yaml` | Default spectrum definitions |
+| File                                | Purpose                                 |
+| ----------------------------------- | --------------------------------------- |
+| `core/philosophy/__init__.py`       | Package                                 |
+| `core/philosophy/models.py`         | DevelopmentPhilosophy, SpectrumPosition |
+| `core/philosophy/manager.py`        | PhilosophyManager                       |
+| `core/philosophy/guided_process.py` | Three-phase guided conversation         |
+| `interfaces/philosophy_api.py`      | REST endpoints                          |
+| `config/philosophy_spectrums.yaml`  | Default spectrum definitions            |
 
 ---
 
 ## Relationship to Other Systems
 
-| System | Integration |
-|--------|-------------|
-| **Design spec** | Philosophy is the technical counterpart to aesthetic philosophy. Design principles inform default spectrum positions. |
-| **Themes** | Theme = aesthetic positioning. Philosophy = technical positioning. Both inject context into persona prompts. |
-| **Personas** | Philosophy context injected into all persona system prompts. Architect leads guided process. |
-| **Patterns** | Code patterns analyzed for alignment checks. Drift detection uses pattern data. |
+| System           | Integration                                                                                                             |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Design spec**  | Philosophy is the technical counterpart to aesthetic philosophy. Design principles inform default spectrum positions.   |
+| **Themes**       | Theme = aesthetic positioning. Philosophy = technical positioning. Both inject context into persona prompts.            |
+| **Personas**     | Philosophy context injected into all persona system prompts. Architect leads guided process.                            |
+| **Patterns**     | Code patterns analyzed for alignment checks. Drift detection uses pattern data.                                         |
 | **Code Library** | Library conventions influenced by philosophy (e.g., "convention-heavy" philosophy → stricter library module standards). |
-| **Onboarding** | Philosophy init could be part of project onboarding flow. |
+| **Onboarding**   | Philosophy init could be part of project onboarding flow.                                                               |
 
 ---
 

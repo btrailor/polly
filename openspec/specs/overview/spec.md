@@ -34,6 +34,7 @@ This spec is the OpenSpec source of truth for current system behavior. Project t
 Current behavior is specified by domain in `openspec/specs/`:
 
 ### Core Systems
+
 - **project** — [status](../project/status.md), [roadmap](../project/roadmap.md)
 - **architecture** — Stack, backend/frontend, data flow
 - **design** — Design philosophy and principles
@@ -43,6 +44,7 @@ Current behavior is specified by domain in `openspec/specs/`:
 - **security** — Current and planned (Phase 23.5)
 
 ### Intelligence
+
 - **rag** — RAG, hybrid search, routing, autonomy metrics
 - **personas** — Architect, Scribe, Professor (+ planned: Programmer, Librarian, Designer with generative p5.js pipeline, Administrator)
 - **agent-swarms** — Configurable multi-agent workflows, Nexus coordination, execution contexts
@@ -54,6 +56,7 @@ Current behavior is specified by domain in `openspec/specs/`:
 - **dev-philosophy** — Development philosophy configuration, guided spectrum positioning, persona integration
 
 ### Knowledge Management
+
 - **notes** — Native notes, TOC, templates, knowledge writing from chat
 - **knowledge-graph** — Entity extraction, graph structure, authority scoring, anti-slop, unified retrieval, visualization
 - **library** — BookLore ebook management, EPUB/PDF parsing, library RAG, highlight-to-note pipeline
@@ -63,14 +66,17 @@ Current behavior is specified by domain in `openspec/specs/`:
 - **analytics** — Knowledge patterns, quality metrics, reflective features
 
 ### Learning
+
 - **curriculum** — Curriculum learning system
 - **teaching** — Teaching mode, learning tracker
 - **onboarding** — First-run wizard, progressive feature revelation, adaptive tutorials
 
 ### Communication
+
 - **communication** — Email intelligence, calendar features, progressive communication autonomy
 
 ### Infrastructure
+
 - **drm** — Distributed Reasoning Mesh (peer-to-peer, Cloudflare Tunnels, Meshtastic resilience)
 - **mobile** — Mobile companion app (capture + chat)
 - **integrations** — GitHub, Context7, Obsidian, Ghost CMS, etc.

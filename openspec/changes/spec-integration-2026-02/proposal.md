@@ -28,17 +28,17 @@ Polly's core intelligence (RAG, routing, personas, domains) is ~82% complete. Th
 
 Several concepts appear in multiple specs and should be implemented as shared infrastructure:
 
-| Shared System | Used By |
-|---|---|
-| **Maturity tracking** (30-Ideas/20-Active/10-Archive) | Captures, Notes, Canvases |
-| **Entity extraction + graph** | Notes, Canvases, Captures, RAG, Search, Agent context |
-| **Review workflows** | Garden maintenance, Canvas gaps, Capture triage |
-| **Connection metrics / authority** | RAG ranking, Note quality, Canvas validation |
-| **Version control / provenance** | Notes, AI content, Canvas iterations |
-| **Smart summarization layers** | Conversations, Weekly/monthly digests, Canvas auto-fill |
-| **Agent capability declarations** | Personas, Custom agents, Nexus routing, DRM task assignment |
-| **Execution context brokering** | Agent Swarms, Capability Broker, Integrations |
-| **Workflow templates** | Agent Swarms, Publishing pipeline, Capture processing |
+| Shared System                                         | Used By                                                     |
+| ----------------------------------------------------- | ----------------------------------------------------------- |
+| **Maturity tracking** (30-Ideas/20-Active/10-Archive) | Captures, Notes, Canvases                                   |
+| **Entity extraction + graph**                         | Notes, Canvases, Captures, RAG, Search, Agent context       |
+| **Review workflows**                                  | Garden maintenance, Canvas gaps, Capture triage             |
+| **Connection metrics / authority**                    | RAG ranking, Note quality, Canvas validation                |
+| **Version control / provenance**                      | Notes, AI content, Canvas iterations                        |
+| **Smart summarization layers**                        | Conversations, Weekly/monthly digests, Canvas auto-fill     |
+| **Agent capability declarations**                     | Personas, Custom agents, Nexus routing, DRM task assignment |
+| **Execution context brokering**                       | Agent Swarms, Capability Broker, Integrations               |
+| **Workflow templates**                                | Agent Swarms, Publishing pipeline, Capture processing       |
 
 ## Approach
 

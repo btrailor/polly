@@ -10,7 +10,7 @@
 | Tier | Name | Progress | Notes |
 |------|------|----------|--------|
 | **0** | Foundation & UI | ✅ 100% | Phases 0.5, 1, 3, 4, 5 |
-| **1** | Core Intelligence | ~82% | 15+ phases done; 23.5, 16c, 22, 12a/12b remaining |
+| **1** | Core Intelligence | ~85% | 15+ phases done; 23.5 ✅; 16c, 22 frontend, 12a/12b remaining |
 | **2** | Packaging & Permissions | 📋 Not started | Phase 9, signing, UI polish |
 | **3** | Knowledge Platform | 📋 Not started | Knowledge graph, capture, maturity lifecycle, canvas, publishing |
 | **4** | Polish & Autonomy | 📋 Not started | Phase 18 onboarding, Phase 19 data autonomy, analytics |
@@ -47,7 +47,7 @@ Tier docs: [docs/planning/tiers/](../../../docs/planning/tiers/).
 | 21 | Knowledge Base Deduplication | ✅ | Being absorbed into Knowledge Quality Pipeline |
 | 22 | Teaching Mode | 🔄 ~75% | Backend done; frontend includes Learning page center area redesign + meta-pedagogy. [changes/learning-and-administrator-profiles/](../changes/learning-and-administrator-profiles/) |
 | 23 | Curriculum Learning System | ✅ | All 6 sub-phases |
-| **23.5** | **Security Hardening** | 📋 Next | Use [openspec/changes/](../changes/) when starting |
+| **23.5** | **Security Hardening** | ✅ Substantially complete | Capability Broker, Pyodide sandbox, allowlist, CORS, audit. Analysis: [phase-23.5/PHASE23.5_ANALYSIS.md](../../../docs/planning/phases/phase-23.5/PHASE23.5_ANALYSIS.md) |
 | 12a | Knowledge Graph Basic | 📋 | Extended scope — see Tier 3 |
 | 12b | Knowledge Graph Advanced | 📋 | After 12a |
 
@@ -128,9 +128,9 @@ Specs: [code-library](../code-library/spec.md), [dev-philosophy](../dev-philosop
 |-------|------|--------|-------------------|
 | 9 | macOS Permissions | 📋 | |
 | 17 | Code Workspace (Monaco) | 📋 | [changes/phase-17-monaco-code-workspace/](../changes/phase-17-monaco-code-workspace/) |
-| 24a | Agent Swarms: Nexus Foundation | 📋 | [agent-swarms](../agent-swarms/spec.md); Blocked by 23.5 |
+| 24a | Agent Swarms: Nexus Foundation | 📋 | [agent-swarms](../agent-swarms/spec.md); 23.5 complete — unblocked |
 | 24b | Agent Swarms: Multi-Agent Workflows | 📋 | [agent-swarms](../agent-swarms/spec.md); After 24a |
-| 24c | Agent Swarms: Execution Contexts | 📋 | [agent-swarms](../agent-swarms/spec.md); After 24a, 23.5 |
+| 24c | Agent Swarms: Execution Contexts | 📋 | [agent-swarms](../agent-swarms/spec.md); After 24a |
 | 24d | Agent Swarms: Template UI + Progressive Disclosure | 📋 | [agent-swarms](../agent-swarms/spec.md); After 24b |
 | 24e | Agent Swarms: Advanced Features | 📋 | [agent-swarms](../agent-swarms/spec.md); After 24d, DRM optional |
 

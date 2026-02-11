@@ -12,6 +12,7 @@ Source of truth for Polly's user interface: design system, layout, and pages. De
 ## Pages
 
 ### Current
+
 - **Home** — Dashboard / entry.
 - **Chat** — Per-page conversations; floating chat bar; context-aware persona switching.
 - **Notes** — Native notes browser, file tree, editor, TOC, templates (see [notes](../notes/spec.md)).
@@ -21,6 +22,7 @@ Source of truth for Polly's user interface: design system, layout, and pages. De
 - **Settings** — API keys, domains, routing, mental models, integrations, security.
 
 ### Planned
+
 - **Canvas** — BAD Canvas project planning with zone editor, focus mode, gap view. See [canvas spec](../canvas/spec.md).
 - **Analytics** — Knowledge patterns, quality metrics, domain distribution, capture frequency, reflective features. See [analytics spec](../analytics/spec.md).
 - **Swarms** — Workflow template browser, swarm execution view, agent configuration. See [agent-swarms spec](../agent-swarms/spec.md).
@@ -47,15 +49,19 @@ See [themes spec](../themes/spec.md) for full seven-theme definitions and compos
 ### Planned UI Enhancements
 
 #### Augmented Writing Panel
+
 Right panel in Notes view showing related notes during composition. Entity-based matching in real-time. See [knowledge-graph spec](../knowledge-graph/spec.md).
 
 #### Maturity Indicators
+
 Visual maturity stage (30-Ideas / 20-Active / 10-Archive) on notes, captures, and canvases. Stage transition via drag-and-drop or context menu. See [capture spec](../capture/spec.md).
 
 #### Review Workflow Views
+
 Triage, daily, weekly, domain-specific, and cross-domain review modes as filtered views in the UI. See [capture spec](../capture/spec.md).
 
 #### Visualization Features
+
 - Domain distribution chart (pie/bar)
 - Maturity stage flow diagram (Sankey)
 - Capture frequency heatmap (calendar)
@@ -63,9 +69,11 @@ Triage, daily, weekly, domain-specific, and cross-domain review modes as filtere
 - Project progress indicators
 
 #### Connection Metrics in Notes
+
 Display inbound/outbound connection counts on notes. Hub/isolated/bridge indicators. See [knowledge-graph spec](../knowledge-graph/spec.md).
 
 #### Agent Swarms UI
+
 - **Swarm Execution View:** Live streaming of agent outputs, progress indicators per agent in workflow, intervention points (pause, redirect, take over), cost/time tracking.
 - **Template Browser:** Domain-suggested templates, usage stats, ratings. Fork and modify templates.
 - **Agent Configuration (Level 3):** Structured form for defining custom agents — capabilities, schemas, execution contexts, constraints, domain affinity.

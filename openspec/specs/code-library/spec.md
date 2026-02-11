@@ -45,12 +45,12 @@ _polly/
 
 ### Module Categories
 
-| Category | What | Examples |
-|----------|------|---------|
-| **patterns** | Abstract code patterns, language-agnostic | State machine, pub-sub, retry-with-backoff, form validation |
-| **components** | Concrete reusable components | Plugin scaffolds, API clients, UI grids, auth middleware |
-| **prompts** | Reusable prompt templates | Code review, architecture decision, refactor plan |
-| **workflows** | Multi-step processes | Project setup, deployment, migration pipelines |
+| Category       | What                                      | Examples                                                    |
+| -------------- | ----------------------------------------- | ----------------------------------------------------------- |
+| **patterns**   | Abstract code patterns, language-agnostic | State machine, pub-sub, retry-with-backoff, form validation |
+| **components** | Concrete reusable components              | Plugin scaffolds, API clients, UI grids, auth middleware    |
+| **prompts**    | Reusable prompt templates                 | Code review, architecture decision, refactor plan           |
+| **workflows**  | Multi-step processes                      | Project setup, deployment, migration pipelines              |
 
 ---
 
@@ -115,6 +115,7 @@ See `references/patterns.md` for pattern variations.
 ### Progressive Disclosure
 
 Following the Agent Skills spec, module loading is progressive:
+
 1. **Metadata** (~100 bytes): Name, description from frontmatter — loaded for registry browsing
 2. **Instructions** (~2–5K tokens): Full SKILL.md content — loaded when module is activated
 3. **Scripts/References** (on demand): Executable code and detailed docs — loaded when applied
@@ -159,6 +160,7 @@ Or, more autonomously (when `auto_extract` is enabled): Polly extracts silently 
 ### 2. Abstraction Extraction
 
 Polly doesn't copy-paste. She:
+
 - Strips project-specific details (hardcoded paths, API keys, project names)
 - Parameterizes configuration (constants become config parameters)
 - Writes the SKILL.md with usage context (when to use, when not to)
@@ -168,6 +170,7 @@ Polly doesn't copy-paste. She:
 ### 3. Registry Maintenance
 
 `registry.yml` tracks:
+
 - All modules with metadata
 - Usage frequency (explore vs. exploit signal)
 - Provenance (which project spawned this module)
@@ -177,6 +180,7 @@ Polly doesn't copy-paste. She:
 ### 4. Progressive Refinement
 
 Each time a module is used, Polly can:
+
 - Improve the implementation based on new edge cases
 - Expand language support
 - Update the SKILL.md with better documentation
@@ -234,18 +238,18 @@ Implemented as a library module itself (`_polly/library/prompts/code-review/`). 
 
 Library operations are routed to cost-appropriate models:
 
-| Operation | Model Tier | Rationale |
-|-----------|-----------|-----------|
-| Pattern extraction from code | Free/Budget | Mostly mechanical |
-| Code formatting and linting | Free/Budget | Rule-based |
-| Template instantiation | Free/Budget | Parameter substitution |
-| Registry indexing | Free/Budget | Metadata operations |
-| AI Slop review (rule checks) | Free/Budget | Against known rules |
-| Documentation generation | Free/Budget | Structured output |
-| Novel abstraction design | Frontier | Creative decisions |
-| Cross-domain pattern recognition | Frontier | Broad understanding |
-| Complex code review | Frontier | Nuanced understanding |
-| User-facing explanations | Frontier | Quality matters |
+| Operation                        | Model Tier  | Rationale              |
+| -------------------------------- | ----------- | ---------------------- |
+| Pattern extraction from code     | Free/Budget | Mostly mechanical      |
+| Code formatting and linting      | Free/Budget | Rule-based             |
+| Template instantiation           | Free/Budget | Parameter substitution |
+| Registry indexing                | Free/Budget | Metadata operations    |
+| AI Slop review (rule checks)     | Free/Budget | Against known rules    |
+| Documentation generation         | Free/Budget | Structured output      |
+| Novel abstraction design         | Frontier    | Creative decisions     |
+| Cross-domain pattern recognition | Frontier    | Broad understanding    |
+| Complex code review              | Frontier    | Nuanced understanding  |
+| User-facing explanations         | Frontier    | Quality matters        |
 
 **Key insight from Kilo Code:** Free models handle 50%+ of coding tasks competently. Reserve expensive models for genuinely hard problems.
 
@@ -305,15 +309,15 @@ See [personas spec — Designer](../personas/spec.md) and the [designer-profile 
 
 ## Persona Integration
 
-| Persona | Library Role |
-|---------|-------------|
-| **Programmer** | Primary code producer + consumer. Extracts patterns during coding, applies modules in new projects. Runs scripts directly. |
-| **Designer** | Design producer + consumer. Generates design components, icon generator scripts, and design system templates as library modules. Accesses `components/` for UI patterns. |
-| **Architect** | Reviews library for architectural patterns. Uses `prompts/architecture-decision/`. Suggests composing existing modules. |
-| **Librarian** | Indexes and retrieves modules. Handles RAG layer. "I need retry logic" → `patterns/retry-with-backoff/`. |
-| **Scribe** | Documents library additions. Creates changelogs. |
-| **Professor** | Uses modules as teaching examples. |
-| **Administrator** | Library health: stale modules, unused modules, dependency audit. |
+| Persona           | Library Role                                                                                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Programmer**    | Primary code producer + consumer. Extracts patterns during coding, applies modules in new projects. Runs scripts directly.                                               |
+| **Designer**      | Design producer + consumer. Generates design components, icon generator scripts, and design system templates as library modules. Accesses `components/` for UI patterns. |
+| **Architect**     | Reviews library for architectural patterns. Uses `prompts/architecture-decision/`. Suggests composing existing modules.                                                  |
+| **Librarian**     | Indexes and retrieves modules. Handles RAG layer. "I need retry logic" → `patterns/retry-with-backoff/`.                                                                 |
+| **Scribe**        | Documents library additions. Creates changelogs.                                                                                                                         |
+| **Professor**     | Uses modules as teaching examples.                                                                                                                                       |
+| **Administrator** | Library health: stale modules, unused modules, dependency audit.                                                                                                         |
 
 ---
 
@@ -335,13 +339,13 @@ Metadata per chunk: module name, category, languages, domain, tags, confidence.
 
 ## Slash Commands
 
-| Command | Description | Persona |
-|---------|-------------|---------|
-| `/library search <query>` | RAG search across all modules | Librarian |
-| `/library extract` | Extract current code into a new module | Programmer |
-| `/library apply <module>` | Instantiate a module in current project | Programmer |
-| `/library review` | Run AI Slop review on current file/selection | Programmer |
-| `/library stats` | Usage statistics, most/least used modules | Administrator |
+| Command                   | Description                                  | Persona       |
+| ------------------------- | -------------------------------------------- | ------------- |
+| `/library search <query>` | RAG search across all modules                | Librarian     |
+| `/library extract`        | Extract current code into a new module       | Programmer    |
+| `/library apply <module>` | Instantiate a module in current project      | Programmer    |
+| `/library review`         | Run AI Slop review on current file/selection | Programmer    |
+| `/library stats`          | Usage statistics, most/least used modules    | Administrator |
 
 ---
 
@@ -379,18 +383,18 @@ review = manager.review_code(code, context)
 
 ### REST API
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/library/modules` | List modules (filterable) |
-| `GET` | `/api/library/modules/<name>` | Module detail |
-| `POST` | `/api/library/modules` | Create module |
-| `PUT` | `/api/library/modules/<name>` | Update module |
-| `DELETE` | `/api/library/modules/<name>` | Delete module |
-| `POST` | `/api/library/search` | Search library (RAG) |
-| `POST` | `/api/library/extract` | Extract module from code |
-| `POST` | `/api/library/apply/<name>` | Apply module to project |
-| `POST` | `/api/library/review` | AI Slop review |
-| `GET` | `/api/library/stats` | Statistics |
+| Method   | Endpoint                      | Description               |
+| -------- | ----------------------------- | ------------------------- |
+| `GET`    | `/api/library/modules`        | List modules (filterable) |
+| `GET`    | `/api/library/modules/<name>` | Module detail             |
+| `POST`   | `/api/library/modules`        | Create module             |
+| `PUT`    | `/api/library/modules/<name>` | Update module             |
+| `DELETE` | `/api/library/modules/<name>` | Delete module             |
+| `POST`   | `/api/library/search`         | Search library (RAG)      |
+| `POST`   | `/api/library/extract`        | Extract module from code  |
+| `POST`   | `/api/library/apply/<name>`   | Apply module to project   |
+| `POST`   | `/api/library/review`         | AI Slop review            |
+| `GET`    | `/api/library/stats`          | Statistics                |
 
 ---
 
@@ -399,6 +403,7 @@ review = manager.review_code(code, context)
 ### Library Page
 
 New page in ribbon navigation:
+
 - **Module browser:** Grid/list view by category. Search bar. Module cards with name, description, languages, usage count, confidence badge.
 - **Module detail:** Rendered SKILL.md, scripts listing, usage history, "Apply to project" button.
 - **Stats sidebar:** Total modules by category, most/least used, recently added.
@@ -435,33 +440,33 @@ The Code Library design draws from and is compatible with:
 
 ## Relationship to Other Systems
 
-| System | Integration |
-|--------|-------------|
-| **Patterns** (Phase 13a) | High-confidence code patterns promoted to library modules. New `library_usage` pattern type. |
-| **Personas** | Each persona has defined library role (producer, consumer, reviewer, indexer, documenter). |
-| **RAG** | `code-library` ChromaDB collection. Semantic search for `/library search`. |
-| **Agent Swarms** | Nexus can invoke library modules. Library extraction as swarm workflow. |
-| **BookLore** | Separate system. BookLore = reading material. Code Library = reusable code. Both under `_polly/` but distinct. |
-| **LiteLLM routing** | Library operations pass `task_type` for cost-appropriate model selection. |
-| **Phase 17 (Monaco)** | Full extract/apply UX requires code workspace. Library is useful before Phase 17 via chat. |
-| **Phase 25 (Programmer)** | Primary library persona. Library format designed for Programmer workflows. |
-| **Phase 28 (Open Polly Tools)** | Library modules are the unit of sharing in the plugin ecosystem. |
+| System                          | Integration                                                                                                    |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Patterns** (Phase 13a)        | High-confidence code patterns promoted to library modules. New `library_usage` pattern type.                   |
+| **Personas**                    | Each persona has defined library role (producer, consumer, reviewer, indexer, documenter).                     |
+| **RAG**                         | `code-library` ChromaDB collection. Semantic search for `/library search`.                                     |
+| **Agent Swarms**                | Nexus can invoke library modules. Library extraction as swarm workflow.                                        |
+| **BookLore**                    | Separate system. BookLore = reading material. Code Library = reusable code. Both under `_polly/` but distinct. |
+| **LiteLLM routing**             | Library operations pass `task_type` for cost-appropriate model selection.                                      |
+| **Phase 17 (Monaco)**           | Full extract/apply UX requires code workspace. Library is useful before Phase 17 via chat.                     |
+| **Phase 25 (Programmer)**       | Primary library persona. Library format designed for Programmer workflows.                                     |
+| **Phase 28 (Open Polly Tools)** | Library modules are the unit of sharing in the plugin ecosystem.                                               |
 
 ---
 
 ## Implementation Files
 
-| File | Purpose |
-|------|---------|
-| `core/code_library/__init__.py` | Package |
-| `core/code_library/models.py` | LibraryModule, ExtractionCandidate, etc. |
-| `core/code_library/manager.py` | CodeLibraryManager |
-| `core/code_library/extractor.py` | Pattern recognition and extraction |
-| `core/code_library/reviewer.py` | AI Slop review |
-| `core/code_library/registry.py` | Registry I/O (YAML) |
-| `interfaces/library_api.py` | REST endpoints |
-| `_polly/library/registry.yml` | Module registry |
-| `_polly/library/prompts/code-review/SKILL.md` | Bootstrap review skill |
+| File                                          | Purpose                                  |
+| --------------------------------------------- | ---------------------------------------- |
+| `core/code_library/__init__.py`               | Package                                  |
+| `core/code_library/models.py`                 | LibraryModule, ExtractionCandidate, etc. |
+| `core/code_library/manager.py`                | CodeLibraryManager                       |
+| `core/code_library/extractor.py`              | Pattern recognition and extraction       |
+| `core/code_library/reviewer.py`               | AI Slop review                           |
+| `core/code_library/registry.py`               | Registry I/O (YAML)                      |
+| `interfaces/library_api.py`                   | REST endpoints                           |
+| `_polly/library/registry.yml`                 | Module registry                          |
+| `_polly/library/prompts/code-review/SKILL.md` | Bootstrap review skill                   |
 
 ---
 

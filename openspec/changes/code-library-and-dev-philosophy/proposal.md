@@ -17,12 +17,14 @@ Two interconnected systems:
 ## Why
 
 ### Code Library
+
 - Polly already has a pattern learning system (Phase 13a) that recognizes recurring structures. The Code Library gives those patterns a **concrete, reusable form** — not just metadata about what happened, but executable modules that can be instantiated in new projects.
 - The "instruments over tracks" philosophy means Polly should build ongoing capabilities, not one-off solutions. The library is the instrument Polly plays across projects.
 - The Agent Skills format is becoming a cross-platform standard (Claude Code, Codex, Kilo Code, VS Code Copilot). Adopting it means Polly's library modules are portable.
 - Multi-model cost optimization: free/budget models handle 50%+ of library operations (extraction, formatting, indexing), reserving frontier models for genuinely hard problems.
 
 ### Development Philosophy
+
 - Every project involves implicit decisions about constraint, power, locality, and velocity. Polly should make these explicit rather than imposing hidden defaults.
 - The guided process is itself a thinking exercise — the conversation clarifies the user's priorities.
 - The philosophy document becomes project-level context for all personas, ensuring consistent behavior.
@@ -38,6 +40,7 @@ Two interconnected systems:
 ## Scope
 
 ### In Scope
+
 - Library directory structure and registry format (`_polly/library/`, `registry.yml`)
 - SKILL.md module format (Agent Skills compatible)
 - Four module categories: patterns, components, prompts, workflows
@@ -51,6 +54,7 @@ Two interconnected systems:
 - Multi-model routing configuration for library operations
 
 ### Out of Scope (for now)
+
 - Library sharing/export between users (Tier 5 — needs DRM)
 - Pre-built philosophy templates for common project types
 - Automated spectrum drift detection
@@ -59,16 +63,16 @@ Two interconnected systems:
 
 ## Impact on Existing Systems
 
-| System | Impact |
-|--------|--------|
-| **Patterns** (Phase 13a) | Patterns that reach high confidence can be promoted to library modules. New pattern type: `library_usage` tracks which modules are applied where. |
-| **Personas** | Each persona gets a defined relationship to the library (producer, consumer, reviewer, indexer, documenter). Philosophy document injected into persona system prompts. |
-| **RAG** | Library modules indexed in a `code-library` ChromaDB collection. Library search via RAG for `/library search`. |
-| **Design spec** | Expanded with development philosophy as the technical counterpart to aesthetic philosophy. |
-| **Architecture** | New subsystem: Code Library (`_polly/library/`). New component: Philosophy Configuration. |
-| **Skill system** | Library modules ARE skills. The existing persona skill system (`core/personas/skills/`) and the library converge on the same SKILL.md format. |
-| **Agent Swarms** | Nexus can invoke library modules as capabilities. Library extraction could be a swarm workflow. |
-| **Config** | New config sections: `library` (paths, auto-extract settings) and `philosophy` (active spectrums, review cadence). |
+| System                   | Impact                                                                                                                                                                 |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Patterns** (Phase 13a) | Patterns that reach high confidence can be promoted to library modules. New pattern type: `library_usage` tracks which modules are applied where.                      |
+| **Personas**             | Each persona gets a defined relationship to the library (producer, consumer, reviewer, indexer, documenter). Philosophy document injected into persona system prompts. |
+| **RAG**                  | Library modules indexed in a `code-library` ChromaDB collection. Library search via RAG for `/library search`.                                                         |
+| **Design spec**          | Expanded with development philosophy as the technical counterpart to aesthetic philosophy.                                                                             |
+| **Architecture**         | New subsystem: Code Library (`_polly/library/`). New component: Philosophy Configuration.                                                                              |
+| **Skill system**         | Library modules ARE skills. The existing persona skill system (`core/personas/skills/`) and the library converge on the same SKILL.md format.                          |
+| **Agent Swarms**         | Nexus can invoke library modules as capabilities. Library extraction could be a swarm workflow.                                                                        |
+| **Config**               | New config sections: `library` (paths, auto-extract settings) and `philosophy` (active spectrums, review cadence).                                                     |
 
 ## Relationship to Existing Specs
 

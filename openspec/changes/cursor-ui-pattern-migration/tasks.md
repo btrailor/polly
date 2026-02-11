@@ -129,12 +129,12 @@ Tasks are ordered so layout foundation is built first, then components, then int
 ### Task 4.2: Implement Chat Tabs
 **Files:** `electron-app/src/renderer/app.js`, `electron-app/src/renderer/styles/main.css`
 
-- [ ] Create chat tab system (multiple chats per agent)
-- [ ] Add tab creation (new chat button)
-- [ ] Add tab switching
-- [ ] Add tab closing
-- [ ] Persist active tabs per agent (sessionStorage)
-- [ ] Style tabs (Cursor-like appearance)
+- [x] Create chat tab system (multiple chats per agent)
+- [x] Add tab creation (new chat button)
+- [x] Add tab switching
+- [x] Add tab closing
+- [x] Persist active tabs per agent (sessionStorage)
+- [x] Style tabs (Cursor-like appearance)
 
 **Estimated time:** 4-5 hours
 
@@ -180,32 +180,32 @@ Tasks are ordered so layout foundation is built first, then components, then int
 ### Task 5.1: Create Agents Sidebar Structure
 **Files:** `electron-app/src/renderer/index.html`, `electron-app/src/renderer/styles/main.css`
 
-- [ ] Create agents sidebar container (right edge)
-- [ ] Add "New Agent" button
-- [ ] Add agents list container
-- [ ] Add collapse/expand functionality
-- [ ] Style agents sidebar
+- [x] Create agents sidebar container (right edge)
+- [x] Add "New Agent" button
+- [x] Add agents list container
+- [x] Add collapse/expand functionality
+- [x] Style agents sidebar
 
 **Estimated time:** 2-3 hours
 
 ### Task 5.2: Implement Agent Selection
 **Files:** `electron-app/src/renderer/app.js`
 
-- [ ] Create agent list rendering
-- [ ] Implement agent switching (updates chat panel)
-- [ ] Add active agent highlighting
-- [ ] Persist active agent (sessionStorage)
-- [ ] Load agent's chats when switching
+- [x] Create agent list rendering
+- [x] Implement agent switching (updates chat panel)
+- [x] Add active agent highlighting
+- [x] Persist active agent (sessionStorage)
+- [x] Load agent's chats when switching
 
 **Estimated time:** 3-4 hours
 
 ### Task 5.3: Integrate Agents with Chat System
 **Files:** `electron-app/src/renderer/app.js`
 
-- [ ] Connect agents to chat tabs
-- [ ] Ensure each agent has independent chat tabs
-- [ ] Ensure agent state persists across sessions
-- [ ] Test agent switching and chat isolation
+- [x] Connect agents to chat tabs
+- [x] Ensure each agent has independent chat tabs
+- [x] Ensure agent state persists across sessions
+- [x] Test agent switching and chat isolation
 
 **Estimated time:** 2-3 hours
 

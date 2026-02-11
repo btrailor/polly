@@ -12,8 +12,8 @@
 |---|---|
 | **Overall** | ~82% Tier 1 complete, production-ready |
 | **Completed** | 15.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22 ~75%, 23) |
-| **Current priority** | Phase 23.5 (Security Hardening) — CRITICAL before Phase 24 |
-| **Next recommended** | Phase 23.5 then Phase 22 frontend (Teaching Mode) |
+| **Current priority** | Phase 22 frontend (Teaching Mode) or Phase 24 (Agent Swarms) |
+| **Next recommended** | Phase 22 frontend (~1–2 days) or Core Framework #15–#16 (Provider UI, "Polly" mode) |
 | **Spec integration** | Feb 2026 — Knowledge management, DRM, BAD Canvas, knowledge quality specs integrated into OpenSpec |
 
 ---
@@ -26,12 +26,10 @@
 - **Completed:** Knowledge Writer (`core/knowledge_writer.py`), Autonomy Metrics (`core/autonomy_metrics.py`), Incremental RAG indexing, Scribe standalone enrich, AI Features config + settings UI, save-message frontend component, settings API endpoints
 - **Next:** Provider Registry, "Polly" mode, OpenRouter adapter, Query Decomposition → Split Routing → Synthesis pipeline
 
-### Phase 23.5: Security Hardening 🔐
-- **Status:** Planning complete, ready for implementation
-- **Why:** Phase 23 added code execution (unsandboxed); Phase 24+ will add more risk. Harden now.
-- **Scope:** Capability Broker, Pyodide sandbox, package allowlist, Context7 trust, content sanitization, API key hardening
-- **Effort:** 2–3 weeks
-- **OpenSpec:** When started, use [openspec/changes/](../changes/) (e.g. `phase-23.5-security-hardening/`) with proposal, design, tasks.
+### Phase 23.5: Security Hardening 🔐 ✅
+- **Status:** Substantially complete (Feb 2026 analysis). Implemented: Capability Broker, Pyodide sandbox, package allowlist + approval dialog, CORS from security policy, audit logging. Config only: content sanitization (prompt injection/PII), API key context managers.
+- **Analysis:** [docs/planning/phases/phase-23.5/PHASE23.5_ANALYSIS.md](../../../docs/planning/phases/phase-23.5/PHASE23.5_ANALYSIS.md)
+- **Unlocked:** Phase 22 frontend, Phase 24 (Agent Swarms), Phase 27, 28, etc. can proceed.
 
 ### Spec Integration (Feb 2026) 📋
 - **Status:** Specs integrated into OpenSpec. Implementation not started.

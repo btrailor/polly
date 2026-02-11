@@ -58,18 +58,18 @@
 
 ### Existing System Extensions
 
-| System | Extension |
-|---|---|
-| **RAG** | Entity-graph retrieval as third strategy; authority scoring in RRF |
-| **Notes** | Maturity lifecycle metadata; augmented writing sidebar; version history |
-| **Domains** | Cross-domain visualization; capture routing rules; domain intersection tracking |
-| **Personas** | Architect: canvas-aware Plan mode. Scribe: publishing mode. Professor: domain onboarding curriculum |
-| **Dedup (Phase 21)** | Absorbed into Knowledge Quality Pipeline — becomes one step alongside entity extraction, connection suggestion, authority update |
-| **Personas (Phase 11)** | Personas wrapped as agents with formal capability declarations. Modes become standalone agent capabilities. Nexus replaces planned Orchestrator toggle |
-| **Security (Phase 23.5)** | Capability Broker extended to broker agent execution contexts (scoped access to GitHub, Obsidian, Ghost CMS, filesystem, etc.) |
-| **Integrations** | Ghost CMS, automation hooks (webhooks, Shortcuts), email ingestion |
-| **UI** | Canvas page, analytics page, capture view, augmented writing panel, visualization views |
-| **Security** | DRM Ed25519 PKI token system (replaces mTLS plan), mesh membership + task JWT, execution context brokering for Agent Swarms |
+| System                    | Extension                                                                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **RAG**                   | Entity-graph retrieval as third strategy; authority scoring in RRF                                                                                     |
+| **Notes**                 | Maturity lifecycle metadata; augmented writing sidebar; version history                                                                                |
+| **Domains**               | Cross-domain visualization; capture routing rules; domain intersection tracking                                                                        |
+| **Personas**              | Architect: canvas-aware Plan mode. Scribe: publishing mode. Professor: domain onboarding curriculum                                                    |
+| **Dedup (Phase 21)**      | Absorbed into Knowledge Quality Pipeline — becomes one step alongside entity extraction, connection suggestion, authority update                       |
+| **Personas (Phase 11)**   | Personas wrapped as agents with formal capability declarations. Modes become standalone agent capabilities. Nexus replaces planned Orchestrator toggle |
+| **Security (Phase 23.5)** | Capability Broker extended to broker agent execution contexts (scoped access to GitHub, Obsidian, Ghost CMS, filesystem, etc.)                         |
+| **Integrations**          | Ghost CMS, automation hooks (webhooks, Shortcuts), email ingestion                                                                                     |
+| **UI**                    | Canvas page, analytics page, capture view, augmented writing panel, visualization views                                                                |
+| **Security**              | DRM Ed25519 PKI token system (replaces mTLS plan), mesh membership + task JWT, execution context brokering for Agent Swarms                            |
 
 ### Data Storage Additions
 

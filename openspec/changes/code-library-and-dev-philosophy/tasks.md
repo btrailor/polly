@@ -7,11 +7,11 @@
 
 ## Priority Summary
 
-| Priority | What | Rationale |
-|----------|------|-----------|
-| **High leverage (build first)** | Library registry + module format, pattern extraction workflow, philosophy guided process | Foundation for everything else; the thinking exercise produces better projects |
-| **Medium leverage (build second)** | Multi-model routing for library, AI Slop review skill, slash command system | Optimization and UX layer |
-| **Lower leverage (build later)** | Library sharing, philosophy templates, automated drift detection | Network effects and polish |
+| Priority                           | What                                                                                     | Rationale                                                                      |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **High leverage (build first)**    | Library registry + module format, pattern extraction workflow, philosophy guided process | Foundation for everything else; the thinking exercise produces better projects |
+| **Medium leverage (build second)** | Multi-model routing for library, AI Slop review skill, slash command system              | Optimization and UX layer                                                      |
+| **Lower leverage (build later)**   | Library sharing, philosophy templates, automated drift detection                         | Network effects and polish                                                     |
 
 ---
 
@@ -22,6 +22,7 @@
 **Files:** `core/code_library/__init__.py`, `core/code_library/models.py`, `core/code_library/registry.py`
 
 **Steps:**
+
 1. [ ] Create `core/code_library/` package
 2. [ ] Define `LibraryModule`, `ExtractionCandidate`, `LibrarySearchResult`, `ModuleCategory` dataclasses in `models.py`
 3. [ ] Implement `RegistryIO` class in `registry.py`:
@@ -43,6 +44,7 @@
 **Depends on:** Task 1
 
 **Steps:**
+
 1. [ ] Implement `CodeLibraryManager.__init__()` — load registry, validate library path
 2. [ ] Implement CRUD operations:
    - `list_modules()` with filters (category, domain, language, tags)
@@ -70,6 +72,7 @@
 **Depends on:** Task 2
 
 **Steps:**
+
 1. [ ] Create `code-library` ChromaDB collection in RAG initialization
 2. [ ] Index modules: embed SKILL.md content + script summaries into `code-library` collection with metadata (name, category, languages, domain, tags)
 3. [ ] Implement `search()` method in `CodeLibraryManager`:
@@ -89,6 +92,7 @@
 **Depends on:** Tasks 2, 3
 
 **Steps:**
+
 1. [ ] Create `interfaces/library_api.py` with endpoints:
    - `GET /api/library/modules` — list with filters
    - `GET /api/library/modules/<name>` — detail
@@ -113,6 +117,7 @@
 **Depends on:** Task 2
 
 **Steps:**
+
 1. [ ] Implement `LibraryExtractor` class:
    - `suggest_extractions(code, file_path)` — Analyze code for reuse patterns
    - `extract_module(candidate)` — Transform code into library module
@@ -138,6 +143,7 @@
 **Depends on:** Task 5
 
 **Steps:**
+
 1. [ ] Add `library_usage` pattern type to PatternLearner
 2. [ ] Add promotion check in PatternLearner:
    - When a code pattern's confidence exceeds threshold (default 0.8), flag as library candidate
@@ -161,6 +167,7 @@
 **Depends on:** Task 2
 
 **Steps:**
+
 1. [ ] Implement `CodeReviewer` class:
    - `review(code, context)` → structured review result
    - Check categories: unnecessary abstraction, boilerplate bloat, inconsistent patterns, missing error handling, over-commenting, dependency creep
@@ -184,6 +191,7 @@
 **Depends on:** Task 2
 
 **Steps:**
+
 1. [ ] Implement `apply_module()`:
    - Read module scripts and templates
    - Adapt to target project conventions (indentation, naming, language variant)
@@ -208,6 +216,7 @@
 **Depends on:** None (parallel with Waves 1–2)
 
 **Steps:**
+
 1. [ ] Create `core/philosophy/` package
 2. [ ] Define `SpectrumPosition`, `DevelopmentPhilosophy` dataclasses
 3. [ ] Create `config/philosophy_spectrums.yaml` with 6 default spectrums:
@@ -230,6 +239,7 @@
 **Depends on:** Task 9
 
 **Steps:**
+
 1. [ ] Implement `PhilosophyManager`:
    - `get_spectrums()`, `add_spectrum()`
    - `init_philosophy()` — from guided process responses
@@ -253,6 +263,7 @@
 **Depends on:** Task 10
 
 **Steps:**
+
 1. [ ] Add philosophy context injection to persona system prompt builder
    - Position after theme context, before skills
    - Render spectrum positions and non-negotiables as natural language
@@ -271,6 +282,7 @@
 **Depends on:** Tasks 10, 11
 
 **Steps:**
+
 1. [ ] Create `interfaces/philosophy_api.py` with endpoints:
    - `GET /api/philosophy/spectrums` — list spectrums
    - `POST /api/philosophy/spectrums` — add custom spectrum
@@ -294,6 +306,7 @@
 **Depends on:** Tasks 4, 12
 
 **Steps:**
+
 1. [ ] Create `core/commands/` package
 2. [ ] Implement `SlashCommandRegistry`:
    - `register()` — register command with handler, persona, description, args
@@ -317,6 +330,7 @@
 **Depends on:** Task 4
 
 **Steps:**
+
 1. [ ] Add Library page to ribbon navigation (new icon)
 2. [ ] Implement module browser:
    - Grid/list view toggle
@@ -345,6 +359,7 @@
 **Depends on:** Task 12
 
 **Steps:**
+
 1. [ ] Add Philosophy section to Settings (or standalone page accessible from settings)
 2. [ ] Implement guided flow UI:
    - Phase 1: Project framing form (description, audience, target, horizon)
@@ -367,6 +382,7 @@
 **Depends on:** Task 13
 
 **Steps:**
+
 1. [ ] Detect `/` prefix in chat input
 2. [ ] Show autocomplete dropdown with available commands
 3. [ ] Display command results:
@@ -389,6 +405,7 @@
 **Depends on:** LiteLLM adapter (Task #12 in core-framework-refinement)
 
 **Steps:**
+
 1. [ ] Define task types for library operations (extraction, formatting, indexing, review, abstraction_design, documentation)
 2. [ ] Add model routing config to `config.yaml` → `model_routing.library_operations`
 3. [ ] Wire library operations to use appropriate model tier via LiteLLM
@@ -405,6 +422,7 @@
 **Depends on:** Tasks 5, 6
 
 **Steps:**
+
 1. [ ] When a module is used (`apply_module()`):
    - Track edge cases encountered
    - Offer to update implementation based on new usage context
@@ -424,21 +442,25 @@
 ## Future Waves (Lower Leverage — Build Later)
 
 ### Task 19: Library Sharing & Export (Tier 5)
+
 - Export modules as standalone Agent Skills directories
 - Import modules from external sources
 - DRM integration for sharing across mesh
 - Not blocked — can proceed independently when needed
 
 ### Task 20: Philosophy Templates
+
 - Pre-built philosophies for common project types (SaaS, CLI tool, personal project, game, library)
 - User can start from template and customize
 
 ### Task 21: Automated Spectrum Drift Detection
+
 - Continuous comparison of code patterns against philosophy
 - "Your code diverged from your philosophy" notifications
 - Requires pattern learning integration + code analysis pipeline
 
 ### Task 22: Library Module Versioning
+
 - Semantic versioning for modules
 - Changelog tracking per module
 - Rollback capability
@@ -479,13 +501,13 @@ External Dependencies:
 
 ## Effort Estimate
 
-| Wave | Effort | Can Parallel With |
-|------|--------|-------------------|
-| Wave 1 | 1–2 weeks | Wave 3 |
-| Wave 2 | 1–2 weeks | — |
-| Wave 3 | 1 week | Wave 1 |
-| Wave 4 | 1–2 weeks | — |
-| Wave 5 | 1 week | — |
-| **Total** | **4–7 weeks** | |
+| Wave      | Effort        | Can Parallel With |
+| --------- | ------------- | ----------------- |
+| Wave 1    | 1–2 weeks     | Wave 3            |
+| Wave 2    | 1–2 weeks     | —                 |
+| Wave 3    | 1 week        | Wave 1            |
+| Wave 4    | 1–2 weeks     | —                 |
+| Wave 5    | 1 week        | —                 |
+| **Total** | **4–7 weeks** |                   |
 
 Waves 1 and 3 can run in parallel, bringing effective timeline to **3–6 weeks** for core functionality.

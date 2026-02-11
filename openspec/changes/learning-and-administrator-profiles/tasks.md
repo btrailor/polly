@@ -12,6 +12,7 @@
 **Files:** `electron-app/src/renderer/` (Learning page components)
 
 **Steps:**
+
 1. [ ] Define four center-area states: Active Session, Curriculum View, Practice Space, Review
 2. [ ] Move analytics from center to collapsible Review tab/panel
 3. [ ] Implement state switching logic:
@@ -33,6 +34,7 @@
 **Files:** `core/pedagogy/coaching_templates.py`, `core/personas/manager.py` (modify)
 
 **Steps:**
+
 1. [ ] Create one-time introduction messages for each persona (Professor, Programmer, Architect, Designer, Scribe, Librarian, Administrator)
 2. [ ] Track delivery in `user_journey.features_revealed` (e.g., `persona_intro_professor`)
 3. [ ] Deliver on first interaction with each persona — single natural message, not tutorial wall
@@ -50,6 +52,7 @@
 **Files:** `core/pedagogy/__init__.py`, `core/pedagogy/models.py`, `core/pedagogy/prompt_coach.py`
 
 **Steps:**
+
 1. [ ] Create `core/pedagogy/` package
 2. [ ] Define models: `CompetencyLevel`, `PromptingSkill`, `PersonaCompetency`, `CoachingDecision`
 3. [ ] Implement pattern detection:
@@ -70,6 +73,7 @@
 **Files:** `core/pedagogy/competency_tracker.py`
 
 **Steps:**
+
 1. [ ] Implement competency profile I/O:
    - Load/save `_polly/user/prompting-competency.yml`
    - Initialize with empty profile on first run
@@ -97,6 +101,7 @@
 **Files:** `core/pedagogy/coaching_templates.py`, `core/personas/manager.py` (modify), `interfaces/server.py` (modify)
 
 **Steps:**
+
 1. [ ] Create coaching message templates for each persona (5 personas × 3-5 skills each)
 2. [ ] Wire PromptCoach into the request processing pipeline:
    - Before routing to persona: `coach.analyze(message, active_persona)`
@@ -115,6 +120,7 @@
 **Files:** `interfaces/pedagogy_api.py`, `interfaces/server.py` (register)
 
 **Steps:**
+
 1. [ ] Create endpoints:
    - `GET /api/pedagogy/competency` — full profile
    - `GET /api/pedagogy/competency/<persona>` — per-persona
@@ -134,6 +140,7 @@
 **Files:** `core/personas/implementations/administrator.py` (extend), persona definitions
 
 **Steps:**
+
 1. [ ] Add communication-specific modes to Administrator:
    - Triage: sequential email processing
    - Compose: voice-matched draft generation
@@ -152,6 +159,7 @@
 **Files:** `core/communication/triage.py`
 
 **Steps:**
+
 1. [ ] Implement email triage workflow:
    - Priority sorting (urgent → important → informational → noise)
    - Split processing: group by type (team, newsletters, notifications)
@@ -176,6 +184,7 @@
 **Files:** `core/communication/composer.py`
 
 **Steps:**
+
 1. [ ] Implement voice-matched draft generation:
    - Analyze user's sent emails to build style profile (tone, length, greeting patterns, signature)
    - Generate drafts that match style
@@ -195,6 +204,7 @@
 **Files:** `core/communication/scheduler.py`, `core/communication/reminders.py`
 
 **Steps:**
+
 1. [ ] Implement calendar intelligence:
    - Find open slots given constraints (duration, participants, date range)
    - Conflict detection
@@ -215,6 +225,7 @@
 **Files:** `core/commands/communication_commands.py`, `core/commands/registry.py` (extend)
 
 **Steps:**
+
 1. [ ] Register communication slash commands:
    - `/mail triage`, `/mail next`, `/mail reply`, `/mail snooze`, `/mail archive`
    - `/mail summary`, `/mail compose`, `/mail schedule`, `/mail follow-up`
@@ -231,6 +242,7 @@
 **Files:** `interfaces/communication_api.py`, `interfaces/server.py` (register)
 
 **Steps:**
+
 1. [ ] Create endpoints:
    - `GET /api/mail/triage` — prioritized queue
    - `POST /api/mail/triage/<id>/action` — act on email
@@ -252,6 +264,7 @@
 **Files:** `electron-app/src/renderer/` (Learning page)
 
 **Steps:**
+
 1. [ ] Implement center area state switching (Active Session / Curriculum View / Review)
 2. [ ] Review tab: relocate analytics widgets
 3. [ ] Curriculum View: navigable topic map (future: integrates with knowledge graph viz)
@@ -267,6 +280,7 @@
 **Files:** `electron-app/src/renderer/` (Communication view)
 
 **Steps:**
+
 1. [ ] Triage view: email cards with quick-action buttons, priority badges
 2. [ ] Compose view: distraction-free draft editor
 3. [ ] Schedule view: calendar visualization with available slots highlighted
@@ -311,12 +325,12 @@ External Dependencies:
 
 ## Effort Estimate
 
-| Wave | Effort | Can Parallel With |
-|------|--------|-------------------|
-| Wave 1 | 1 week | Wave 3 |
-| Wave 2 | 1–2 weeks | Wave 3 |
-| Wave 3 | 2–3 weeks | Waves 1–2 |
-| Wave 4 | 1 week | — |
-| **Total** | **4–6 weeks** | |
+| Wave      | Effort        | Can Parallel With |
+| --------- | ------------- | ----------------- |
+| Wave 1    | 1 week        | Wave 3            |
+| Wave 2    | 1–2 weeks     | Wave 3            |
+| Wave 3    | 2–3 weeks     | Waves 1–2         |
+| Wave 4    | 1 week        | —                 |
+| **Total** | **4–6 weeks** |                   |
 
 Waves 1–2 (Learning) and Wave 3 (Administrator) can run in parallel, bringing effective timeline to **3–5 weeks**.

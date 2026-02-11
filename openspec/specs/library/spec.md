@@ -176,6 +176,7 @@ Every library chunk in ChromaDB carries:
 ```
 
 This metadata enables:
+
 - "What does Deleuze say about X?" → filter by author
 - "In chapter 3 of A Thousand Plateaus..." → filter by book + chapter
 - "Show me all philosophy passages about desire" → filter by domain + keyword
@@ -196,12 +197,12 @@ ChromaDB Collections:
 
 ### Retrieval Modes
 
-| Mode | Behavior | When Used |
-|---|---|---|
-| **Notes-only** | Search `notes` collection only | Default for most queries |
-| **Notes + Library** | Search both, merge with library weight 0.3 | When domain suggests books are relevant |
-| **Library-only** | Search `library` collection only | Explicit: "Search my library for..." |
-| **Full Knowledge Base** | All collections, domain-weighted | Explicit: "Search everything about..." |
+| Mode                    | Behavior                                   | When Used                               |
+| ----------------------- | ------------------------------------------ | --------------------------------------- |
+| **Notes-only**          | Search `notes` collection only             | Default for most queries                |
+| **Notes + Library**     | Search both, merge with library weight 0.3 | When domain suggests books are relevant |
+| **Library-only**        | Search `library` collection only           | Explicit: "Search my library for..."    |
+| **Full Knowledge Base** | All collections, domain-weighted           | Explicit: "Search everything about..."  |
 
 ### Smart Routing for Library Inclusion
 
@@ -210,30 +211,31 @@ Rather than always searching the library (expensive, risks drowning notes), Poll
 ```python
 def should_include_library(query: str, domain: str, entities: list) -> bool:
     """Decide whether to search library for this query."""
-    
+
     # Explicit library request
     if "library" in query.lower() or "book" in query.lower():
         return True
-    
+
     # Domain-based: philosophical, theoretical, academic queries
     if domain in library_heavy_domains:  # User-configurable
         return True
-    
+
     # Entity-based: query mentions an author or book title in the graph
     for entity in entities:
         if entity.type in ('author', 'book'):
             return True
-    
+
     # Citation pattern: "What did X say about Y?"
     if citation_pattern_detected(query):
         return True
-    
+
     return False  # Default: don't search library
 ```
 
 ### Authority Scoring for Library Content
 
 Library content participates in the knowledge graph's authority scoring:
+
 - **Books** get authority from how many user notes reference their concepts.
 - **Highlights** get authority from being explicitly marked by the user.
 - **Book concepts** that also appear in the user's notes get boosted authority (the user has engaged with this idea).
@@ -266,13 +268,14 @@ User note "My Rhizome Thinking" → entity: "Rhizome" (type: concept)
 Auto-generated edges:
   "Rhizome" → cited_in → "A Thousand Plateaus"
   "My Rhizome Thinking" → references → "Rhizome"
-  
+
 Graph enables: "Your note on rhizome thinking relates to Chapter 1 of A Thousand Plateaus"
 ```
 
 ### Highlight-to-Note Pipeline
 
 When users create highlights:
+
 1. Highlight stored in `book_highlights` table.
 2. Entity extraction runs on highlight text.
 3. If user annotates the highlight, annotation becomes a capture linked to the highlight.
@@ -300,24 +303,29 @@ The entity graph enables queries that span books and notes:
 ## UI
 
 ### Library Page
+
 New page in ribbon navigation:
+
 - **Book browser:** Grid/list view with covers, filter by domain/author/tag.
 - **Book detail:** Metadata, chapter list, highlights, related notes (via graph).
 - **Import:** Drag-and-drop EPUB/PDF/MOBI. Batch import from folder.
 - **Reading view (optional):** Basic in-app reader with highlight/annotation capability.
 
 ### Library in Search
+
 - Library results appear in global search with source attribution ("From: A Thousand Plateaus, Ch. 3, p. 45").
 - Toggle: "Include library in search" (persistent setting per session or global).
 - Library-specific search: "Search library: desire and becoming"
 
 ### Library in Augmented Writing
+
 - During note composition, related library passages surface alongside related notes in the right panel.
 - Clicking a library result inserts a block quote with citation.
 
 ## Implementation Phases
 
 ### Phase 25a: Book Management (1–2 weeks)
+
 - EPUB parsing pipeline (unzip, metadata, content extraction, chunking)
 - PDF parsing (text extraction, structure detection)
 - SQLite metadata tables (books, chapters)
@@ -325,6 +333,7 @@ New page in ribbon navigation:
 - Basic book browser UI
 
 ### Phase 25b: Library RAG (1–2 weeks)
+
 - Separate ChromaDB `library` collection
 - Embed and index book chunks with full metadata
 - BM25 index for library
@@ -333,6 +342,7 @@ New page in ribbon navigation:
 - Library search API
 
 ### Phase 25c: Knowledge Graph Integration (1–2 weeks)
+
 - Book-level and chapter-level entity extraction
 - Concept bridging between books and notes
 - Authority scoring for library content
@@ -340,12 +350,14 @@ New page in ribbon navigation:
 - Garden maintenance: "Books you've read but never referenced"
 
 ### Phase 25d: Highlights & Annotations (1 week)
+
 - Highlight storage and management
 - Highlight-to-note export with citations
 - E-reader highlight import (Kindle Clippings, Supernote)
 - Highlight entity extraction and graph integration
 
 ### Phase 25e: E-Reader Sync (1 week, future)
+
 - Supernote upload/sync
 - Remarkable Cloud integration
 - Reading progress tracking
@@ -353,6 +365,7 @@ New page in ribbon navigation:
 ## Performance Considerations
 
 ### Scale
+
 - **Target:** 100–500 books (personal library scale).
 - **Chunks per book:** ~200–500 (average 80,000 words, 512-token chunks).
 - **Total library chunks:** 20,000–250,000.
@@ -360,6 +373,7 @@ New page in ribbon navigation:
 - **BM25 index:** Rebuilt incrementally per book. Sub-second for library-scale.
 
 ### Indexing Time
+
 - **EPUB parsing:** 1–5 seconds per book.
 - **Embedding:** 30–120 seconds per book (depends on model, GPU).
 - **Entity extraction:** 5–30 seconds per book (LLM call for key concepts, bulk extraction).
@@ -367,24 +381,25 @@ New page in ribbon navigation:
 - **Batch import:** Queue system for importing entire library. DRM-distributable to NAS.
 
 ### Retrieval Latency
+
 - **Library-only search:** Same as notes search (~100–500ms).
 - **Combined search:** Two parallel collection queries + merge (~200–700ms).
 - **Graph-enhanced:** +50–100ms for entity graph traversal.
 
 ## Relationship to Existing Systems
 
-| System | Integration |
-|---|---|
-| **RAG** | Separate `library` collection; unified retrieval with source-type weighting |
-| **Knowledge graph** | Books, authors, concepts as entities; concept bridging to notes |
-| **Notes** | Highlight-to-note export; cross-reference via graph |
-| **Domains** | Books assigned to domains; domain influences library retrieval weight |
-| **Capture** | Annotations on books become captures |
-| **Maturity lifecycle** | Books track reading status (Ideas/Active/Archive) |
-| **Augmented writing** | Library passages surface during note composition |
-| **DRM** | Book indexing distributable to NAS node (compute-heavy) |
-| **Compression** | LLMLingua compression on library chunks before LLM context injection |
-| **Scribe** | Scribe assists with highlight synthesis and book note creation |
+| System                 | Integration                                                                 |
+| ---------------------- | --------------------------------------------------------------------------- |
+| **RAG**                | Separate `library` collection; unified retrieval with source-type weighting |
+| **Knowledge graph**    | Books, authors, concepts as entities; concept bridging to notes             |
+| **Notes**              | Highlight-to-note export; cross-reference via graph                         |
+| **Domains**            | Books assigned to domains; domain influences library retrieval weight       |
+| **Capture**            | Annotations on books become captures                                        |
+| **Maturity lifecycle** | Books track reading status (Ideas/Active/Archive)                           |
+| **Augmented writing**  | Library passages surface during note composition                            |
+| **DRM**                | Book indexing distributable to NAS node (compute-heavy)                     |
+| **Compression**        | LLMLingua compression on library chunks before LLM context injection        |
+| **Scribe**             | Scribe assists with highlight synthesis and book note creation              |
 
 ## Reference
 

@@ -8,19 +8,19 @@
 
 ## Task Overview
 
-| # | Task | Est. | Depends | Status |
-|---|------|------|---------|--------|
-| 1 | Create `libs/` directory structure and monorepo setup | 0.5d | — | ✅ Done |
-| 2 | Extract `polly-routing` | 3d | integration-contracts | ⬜ |
-| 3 | Extract `polly-patterns` | 2d | unified-pattern-engine | ⬜ |
-| 4 | Extract `polly-compression` | 2d | — | ⬜ |
-| 5 | Extract `polly-entities` | 3d | entity-model-unification | ⬜ |
-| 6 | Extract `polly-personas` | 4d | All above | ⬜ |
-| 7 | Update `core/polly.py` imports | 1d | Tasks 2–6 | ⬜ |
-| 8 | Update all other consumers | 1d | Task 7 | ⬜ |
-| 9 | Verify full test suite passes | 1d | Task 8 | ⬜ |
-| 10 | Write library READMEs | 1d | Tasks 2–6 | ⬜ |
-| 11 | Update architecture spec | 0.5d | All above | ⬜ |
+| #   | Task                                                  | Est. | Depends                  | Status          |
+| --- | ----------------------------------------------------- | ---- | ------------------------ | --------------- |
+| 1   | Create `libs/` directory structure and monorepo setup | 0.5d | —                        | ✅ Done         |
+| 2   | Extract `polly-routing`                               | 3d   | integration-contracts    | ✅ Done         |
+| 3   | Extract `polly-patterns`                              | 2d   | unified-pattern-engine   | ⬜              |
+| 4   | Extract `polly-compression`                           | 2d   | —                        | ⬜              |
+| 5   | Extract `polly-entities`                              | 3d   | entity-model-unification | ⬜              |
+| 6   | Extract `polly-personas`                              | 4d   | All above                | ⬜              |
+| 7   | Update `core/polly.py` imports                        | 1d   | Tasks 2–6                | 🔄 Routing done |
+| 8   | Update all other consumers                            | 1d   | Task 7                   | 🔄 Routing done |
+| 9   | Verify full test suite passes                         | 1d   | Task 8                   | ⬜              |
+| 10  | Write library READMEs                                 | 1d   | Tasks 2–6                | ⬜              |
+| 11  | Update architecture spec                              | 0.5d | All above                | ⬜              |
 
 ---
 
@@ -41,6 +41,7 @@
 ### 2. Extract `polly-routing`
 
 **Steps:**
+
 1. Create `libs/polly-routing/polly_routing/` package
 2. Move `core/router_v2.py` → `polly_routing/router.py`
    - Remove Polly-specific config parsing
@@ -59,9 +60,12 @@
 
 **Note:** `core/router.py` (v1) gets archived — not extracted. Its functionality was superseded by v2.
 
+**Incorporation (done for polly-routing):** App installs the lib via `requirements.txt` (`-e libs/polly-routing`). Run `pip install -r requirements.txt` from project root, or `./scripts/install_libs.sh`. Missing lib triggers a clear error at first use. See main README and `libs/README.md`.
+
 ### 3. Extract `polly-patterns`
 
 **Steps:**
+
 1. Create `libs/polly-patterns/polly_patterns/` package
 2. Move `core/patterns/` → `polly_patterns/` (after unified-pattern-engine)
    - `models.py`, `engine.py`, `extractor.py`, `scorer.py`
@@ -76,6 +80,7 @@
 ### 4. Extract `polly-compression`
 
 **Steps:**
+
 1. Create `libs/polly-compression/polly_compression/` package
 2. Move `core/compression/` → `polly_compression/`
    - `manager.py`, `compressor.py`, `llmlingua_strategy.py`
@@ -88,6 +93,7 @@
 ### 5. Extract `polly-entities`
 
 **Steps:**
+
 1. Create `libs/polly-entities/polly_entities/` package
 2. Move `core/entities/` → `polly_entities/` (after entity-model-unification)
    - `models.py`, `store.py`, `extractor.py`, `context.py`
@@ -99,6 +105,7 @@
 ### 6. Extract `polly-personas`
 
 **Steps:**
+
 1. Create `libs/polly-personas/polly_personas/` package
 2. Move `core/personas/base.py` → `polly_personas/base.py`
 3. Move `core/personas/manager.py` → `polly_personas/manager.py`
@@ -121,6 +128,7 @@
 ### 7. Update `core/polly.py` imports
 
 After all libraries extracted, do a single pass through `core/polly.py`:
+
 - Replace all `from core.X import Y` with `from polly_X import Y` for extracted modules
 - Verify initialization chain works with library imports
 - Run full test suite
@@ -128,6 +136,7 @@ After all libraries extracted, do a single pass through `core/polly.py`:
 ### 8. Update all other consumers
 
 Files that import from extracted modules:
+
 - `interfaces/server.py` — imports Pattern, PersonaManager, etc.
 - `interfaces/settings_api.py` — imports config-related types
 - `interfaces/memory_api.py` — imports Mem0Adapter
@@ -145,6 +154,7 @@ Files that import from extracted modules:
 ### 10. Write library READMEs
 
 Each library gets a README with:
+
 - What it does (1 paragraph)
 - Installation instructions
 - Quick usage example
@@ -154,6 +164,7 @@ Each library gets a README with:
 ### 11. Update architecture spec
 
 Update `openspec/specs/architecture/spec.md`:
+
 - Document monorepo library structure
 - Update component diagram to show library boundaries
 - Document dependency graph between libraries

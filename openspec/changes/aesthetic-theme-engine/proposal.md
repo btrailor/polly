@@ -15,6 +15,7 @@ Implementing an artist-derived aesthetic theme system that operates on two level
 2. **Deep-level behavioral configuration** — Each theme configures persona defaults (compositional logic, color philosophy, documentation style, voice, emergence tolerance). Switching themes changes how Polly's AI personas think and make decisions, not just how the UI looks.
 
 Seven initial themes derived from the Affinity Suite Techniques Catalogue:
+
 - **Reas** (Casey Reas) — Systems create emergence
 - **Fidenza** (Tyler Hobbs) — Probabilistic systems with controlled chaos
 - **Ghost Box** (Julian House) — Memory over reference, hauntological aesthetic
@@ -40,10 +41,10 @@ The Affinity Suite Techniques Catalogue (38 techniques, 12 artists) provides the
 
 ## Shared Infrastructure
 
-| Component | Used By |
-|---|---|
-| Theme JSON schema + registry | All themes, hybrid composition |
-| CSS custom property mapping | Electron renderer, all UI components |
-| Persona behavior adapter | All personas, all themes |
-| Composition engine | Hybrid themes, conflict resolution |
-| Cross-domain ripple | Persona switching, agent swarms |
+| Component                    | Used By                              |
+| ---------------------------- | ------------------------------------ |
+| Theme JSON schema + registry | All themes, hybrid composition       |
+| CSS custom property mapping  | Electron renderer, all UI components |
+| Persona behavior adapter     | All personas, all themes             |
+| Composition engine           | Hybrid themes, conflict resolution   |
+| Cross-domain ripple          | Persona switching, agent swarms      |

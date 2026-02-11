@@ -24,17 +24,18 @@
 
 ### Existing System Extensions
 
-| System | Extension |
-|---|---|
-| **Personas** | `BasePersona` gains `apply_theme_behavior(theme)` method. Theme behavior layer injected into system prompt construction as weighted defaults. Priority: user instruction > task requirements > theme > persona base. |
-| **UI / CSS** | Current hardcoded CSS variables replaced with theme-driven custom properties. Existing Obsidian-inspired aesthetic becomes a base that themes modify. |
-| **Settings** | New "Themes" section: theme browser with cards, live preview, composition matrix for hybrids, import/export. |
-| **Config** | `config/config.yaml` gains `theme` section with `active_theme`, `custom_themes_dir`, and `theme_defaults`. |
-| **Agent Swarms** | Theme behavior layer propagates through Nexus to agents. Theme metadata included in agent execution context. |
+| System           | Extension                                                                                                                                                                                                            |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Personas**     | `BasePersona` gains `apply_theme_behavior(theme)` method. Theme behavior layer injected into system prompt construction as weighted defaults. Priority: user instruction > task requirements > theme > persona base. |
+| **UI / CSS**     | Current hardcoded CSS variables replaced with theme-driven custom properties. Existing Obsidian-inspired aesthetic becomes a base that themes modify.                                                                |
+| **Settings**     | New "Themes" section: theme browser with cards, live preview, composition matrix for hybrids, import/export.                                                                                                         |
+| **Config**       | `config/config.yaml` gains `theme` section with `active_theme`, `custom_themes_dir`, and `theme_defaults`.                                                                                                           |
+| **Agent Swarms** | Theme behavior layer propagates through Nexus to agents. Theme metadata included in agent execution context.                                                                                                         |
 
 ### Backend Implementation
 
 **Theme loading flow:**
+
 1. On startup, `ThemeRegistry` scans `~/.polly/themes/` for valid theme JSON files
 2. Active theme loaded from user config (`config.yaml` or electron-store)
 3. `ThemeLoader` resolves full theme object (base theme + user overrides)
@@ -42,6 +43,7 @@
 5. Persona system prompt construction includes theme behavior as context section
 
 **Persona integration:**
+
 ```
 System prompt = [
   base_persona_prompt,
@@ -57,6 +59,7 @@ The theme behavior context is a structured addition to the system prompt, not a 
 > Aesthetic context (Ghost Box): Your voice tends toward the allusive and indirect. Work from impression rather than direct reference. Written structure follows found-document logic. When organizing, favor archival filing patterns.
 
 **Theme switching:**
+
 - API endpoint `POST /themes/switch` updates active theme
 - Server broadcasts theme change to connected clients via existing WebSocket
 - Frontend receives new theme, regenerates CSS custom properties
@@ -69,14 +72,14 @@ Each presentation layer property maps to one or more CSS custom properties:
 
 ```css
 /* Generated from theme.presentation.palette */
---polly-bg: #F8F6F3;
---polly-primary: #2D2D2D;
---polly-accent: #3A6B9F;
+--polly-bg: #f8f6f3;
+--polly-primary: #2d2d2d;
+--polly-accent: #3a6b9f;
 --polly-surface: ...;
 
 /* Generated from theme.presentation.typography */
---polly-font-body: 'Fira Code', monospace;
---polly-font-heading: 'Fira Code', monospace;
+--polly-font-body: "Fira Code", monospace;
+--polly-font-heading: "Fira Code", monospace;
 --polly-tracking: -0.01em;
 
 /* Generated from theme.presentation.spacing */
@@ -89,6 +92,7 @@ Each presentation layer property maps to one or more CSS custom properties:
 ```
 
 **Theme switcher UI:**
+
 - Card grid in Settings showing theme name, artist, core principle, palette preview
 - Click to preview (applies temporarily), confirm to switch
 - Composition tab: drag properties between themes to build hybrid
@@ -96,24 +100,24 @@ Each presentation layer property maps to one or more CSS custom properties:
 
 ### Data Storage
 
-| Location | Content |
-|---|---|
-| `~/.polly/themes/*.json` | Theme definition files (built-in + custom) |
-| `~/.polly/themes/custom/` | User-composed hybrid themes |
+| Location                        | Content                                                  |
+| ------------------------------- | -------------------------------------------------------- |
+| `~/.polly/themes/*.json`        | Theme definition files (built-in + custom)               |
+| `~/.polly/themes/custom/`       | User-composed hybrid themes                              |
 | `~/.polly/themes/manifest.json` | Registry: available themes, active theme, schema version |
-| `config/config.yaml` → `theme` | Active theme name, custom dir path, defaults |
+| `config/config.yaml` → `theme`  | Active theme name, custom dir path, defaults             |
 
 ### API Endpoints
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `GET /themes/list` | GET | All available themes with metadata |
-| `GET /themes/active` | GET | Current resolved theme (base + overrides) |
-| `POST /themes/switch` | POST | Switch active theme by name |
-| `POST /themes/compose` | POST | Create hybrid from source themes |
-| `GET /themes/export/:name` | GET | Export theme as standalone JSON |
-| `POST /themes/import` | POST | Import theme from JSON, validate schema |
-| `GET /themes/preview/:name` | GET | Theme presentation properties only (for UI preview) |
+| Endpoint                    | Method | Description                                         |
+| --------------------------- | ------ | --------------------------------------------------- |
+| `GET /themes/list`          | GET    | All available themes with metadata                  |
+| `GET /themes/active`        | GET    | Current resolved theme (base + overrides)           |
+| `POST /themes/switch`       | POST   | Switch active theme by name                         |
+| `POST /themes/compose`      | POST   | Create hybrid from source themes                    |
+| `GET /themes/export/:name`  | GET    | Export theme as standalone JSON                     |
+| `POST /themes/import`       | POST   | Import theme from JSON, validate schema             |
+| `GET /themes/preview/:name` | GET    | Theme presentation properties only (for UI preview) |
 
 ### Dependency Order
 

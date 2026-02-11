@@ -27,14 +27,14 @@ The capture system handles how knowledge enters Polly — from quick text to voi
 
 Every capture includes:
 
-| Field | Source |
-|---|---|
-| Timestamp | Automatic |
-| Source type | voice, text, image, link, code |
-| Domain tags | Multiple allowed; auto-suggested + user-confirmed |
-| Maturity stage | Default: 30-Ideas |
-| Related project/context | Optional user tagging |
-| Location | Optional (mobile companion) |
+| Field                   | Source                                            |
+| ----------------------- | ------------------------------------------------- |
+| Timestamp               | Automatic                                         |
+| Source type             | voice, text, image, link, code                    |
+| Domain tags             | Multiple allowed; auto-suggested + user-confirmed |
+| Maturity stage          | Default: 30-Ideas                                 |
+| Related project/context | Optional user tagging                             |
+| Location                | Optional (mobile companion)                       |
 
 ## Organization: PARA-Inspired Structure
 
@@ -49,11 +49,11 @@ Layered on top of existing vault/notes storage as metadata and views, not restru
 
 Shared system used by captures, notes, and canvases:
 
-| Stage | Meaning | Visual |
-|---|---|---|
-| **30-Ideas** | Initial captures, unexplored seeds | Seed icon, muted style |
-| **20-Active** | Work in progress, current engagement | Active indicator, full style |
-| **10-Archive** | Completed or suspended work | Archive icon, dimmed |
+| Stage          | Meaning                              | Visual                       |
+| -------------- | ------------------------------------ | ---------------------------- |
+| **30-Ideas**   | Initial captures, unexplored seeds   | Seed icon, muted style       |
+| **20-Active**  | Work in progress, current engagement | Active indicator, full style |
+| **10-Archive** | Completed or suspended work          | Archive icon, dimmed         |
 
 - **Transitions:** Manual (drag-and-drop, menu) or prompted (review workflows suggest promotions).
 - **Storage:** Frontmatter metadata in note files + SQLite index for querying.
@@ -64,13 +64,13 @@ Shared system used by captures, notes, and canvases:
 
 Structured modes for processing knowledge (integrates with garden maintenance from [knowledge-graph spec](../knowledge-graph/spec.md)):
 
-| Mode | Frequency | Purpose |
-|---|---|---|
-| **Triage** | As needed | Quick domain/stage assignment for new captures |
-| **Daily review** | Daily | Process recent captures into projects |
-| **Weekly review** | Weekly | Maturity stage progression + garden maintenance |
-| **Domain-specific** | As needed | Filter by single domain for focused work |
-| **Cross-domain** | As needed | Explore connections between domains |
+| Mode                | Frequency | Purpose                                         |
+| ------------------- | --------- | ----------------------------------------------- |
+| **Triage**          | As needed | Quick domain/stage assignment for new captures  |
+| **Daily review**    | Daily     | Process recent captures into projects           |
+| **Weekly review**   | Weekly    | Maturity stage progression + garden maintenance |
+| **Domain-specific** | As needed | Filter by single domain for focused work        |
+| **Cross-domain**    | As needed | Explore connections between domains             |
 
 - Review modes are views/filters in the UI, not separate pages.
 - Weekly review includes garden maintenance prompts (isolated notes, merge suggestions) from knowledge quality system.
@@ -95,38 +95,42 @@ Extends existing domain tags with richer taxonomy:
 ## Implementation Phases
 
 ### Capture Foundation (2–3 weeks)
+
 - Capture data model and API (extends `/polly/notes/create`)
 - Maturity lifecycle metadata on notes
 - Quick text + URL capture with metadata
 - Triage review mode
 
 ### Smart Routing + Input (2–3 weeks)
+
 - Domain auto-detection on captures
 - Custom keyword triggers
 - Code snippet capture with language detection
 - Daily/weekly review workflow UI
 
 ### Voice + Image (3–4 weeks)
+
 - Voice-to-text integration (transcription service)
 - Image capture with OCR
 - Mobile companion capture submission (via DRM or REST)
 
 ### Reference + Analytics (2 weeks)
+
 - URL archival (content preservation)
 - Tag analytics and hierarchy
 - Capture pattern insights
 
 ## Relationship to Existing Systems
 
-| System | Integration |
-|---|---|
-| **Notes** | Captures become notes with extended metadata (maturity, source type) |
-| **Knowledge writing** | Existing chat-to-KB writing becomes one capture path |
-| **RAG** | Captures indexed incrementally (existing `index_single_document()`) |
-| **Domains** | Smart routing uses domain system for classification |
-| **Knowledge graph** | Captures run through entity extraction pipeline on save |
-| **Canvas** | Captures can link to active canvases as source material |
-| **Mobile** | Mobile companion submits captures to desktop |
+| System                | Integration                                                          |
+| --------------------- | -------------------------------------------------------------------- |
+| **Notes**             | Captures become notes with extended metadata (maturity, source type) |
+| **Knowledge writing** | Existing chat-to-KB writing becomes one capture path                 |
+| **RAG**               | Captures indexed incrementally (existing `index_single_document()`)  |
+| **Domains**           | Smart routing uses domain system for classification                  |
+| **Knowledge graph**   | Captures run through entity extraction pipeline on save              |
+| **Canvas**            | Captures can link to active canvases as source material              |
+| **Mobile**            | Mobile companion submits captures to desktop                         |
 
 ## Reference
 

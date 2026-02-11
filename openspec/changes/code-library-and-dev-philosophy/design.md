@@ -189,7 +189,7 @@ class LibrarySearchResult:
 
 class CodeLibraryManager:
     """Manages Polly's reusable code library."""
-    
+
     def __init__(self, config, library_path: str, rag=None):
         """
         Args:
@@ -197,58 +197,58 @@ class CodeLibraryManager:
             library_path: Path to _polly/library/
             rag: Optional RAG instance for semantic search
         """
-    
+
     # --- Registry ---
     def load_registry(self) -> dict:
         """Load registry.yml into memory."""
-    
+
     def save_registry(self) -> None:
         """Persist registry.yml to disk."""
-    
+
     # --- Module CRUD ---
     def list_modules(self, category: str = None, domain: str = None,
                      language: str = None, tags: list[str] = None) -> list[LibraryModule]:
         """List modules with optional filters."""
-    
+
     def get_module(self, name: str) -> LibraryModule:
         """Get a single module by name."""
-    
+
     def create_module(self, module: LibraryModule, skill_md: str,
                       scripts: dict[str, str] = None,
                       references: dict[str, str] = None) -> LibraryModule:
         """Create a new module directory with SKILL.md and optional files."""
-    
+
     def update_module(self, name: str, updates: dict) -> LibraryModule:
         """Update module metadata and/or content."""
-    
+
     def delete_module(self, name: str) -> bool:
         """Remove a module from the library."""
-    
+
     # --- Search ---
     def search(self, query: str, limit: int = 10) -> list[LibrarySearchResult]:
         """Search library modules. Uses RAG semantic search + tag/name matching."""
-    
+
     # --- Usage Tracking ---
     def record_usage(self, name: str, project: str = None) -> None:
         """Record that a module was used. Increments times_used, updates last_used."""
-    
+
     def get_stats(self) -> dict:
         """Library statistics: total modules, by category, most/least used, etc."""
-    
+
     # --- Extraction ---
     def extract_module(self, candidate: ExtractionCandidate) -> LibraryModule:
         """Extract a reusable module from code. Strips project-specific details,
         parameterizes configuration, writes SKILL.md."""
-    
+
     def suggest_extractions(self, code: str, file_path: str) -> list[ExtractionCandidate]:
         """Analyze code for abstraction opportunities. Returns candidates."""
-    
+
     # --- Application ---
     def apply_module(self, name: str, target_path: str,
                      config: dict = None) -> str:
         """Instantiate a module in the current project.
         Adapts template to project conventions, records usage."""
-    
+
     # --- Review ---
     def review_code(self, code: str, context: str = "") -> dict:
         """AI Slop review pass. Checks for unnecessary abstraction, boilerplate,
@@ -272,18 +272,18 @@ The review skill itself improves over time as it learns the user's style prefere
 
 Library operations are routed to cost-appropriate models:
 
-| Operation | Model Tier | Rationale |
-|-----------|-----------|-----------|
-| Pattern extraction from code | Free/Budget | Mostly mechanical analysis |
-| Code formatting and linting | Free/Budget | Rule-based, low complexity |
-| Template instantiation | Free/Budget | Parameter substitution |
-| Registry indexing | Free/Budget | Metadata operations |
-| AI Slop review (rule checks) | Free/Budget | Checking against known rules |
-| Documentation generation | Free/Budget | Structured output from code |
-| Novel abstraction design | Frontier | Creative architectural decisions |
-| Cross-domain pattern recognition | Frontier | Requires broad understanding |
-| Complex code review | Frontier | Nuanced understanding needed |
-| User-facing explanations | Frontier | Quality matters for teaching |
+| Operation                        | Model Tier  | Rationale                        |
+| -------------------------------- | ----------- | -------------------------------- |
+| Pattern extraction from code     | Free/Budget | Mostly mechanical analysis       |
+| Code formatting and linting      | Free/Budget | Rule-based, low complexity       |
+| Template instantiation           | Free/Budget | Parameter substitution           |
+| Registry indexing                | Free/Budget | Metadata operations              |
+| AI Slop review (rule checks)     | Free/Budget | Checking against known rules     |
+| Documentation generation         | Free/Budget | Structured output from code      |
+| Novel abstraction design         | Frontier    | Creative architectural decisions |
+| Cross-domain pattern recognition | Frontier    | Requires broad understanding     |
+| Complex code review              | Frontier    | Nuanced understanding needed     |
+| User-facing explanations         | Frontier    | Quality matters for teaching     |
 
 Integration with existing LiteLLM adapter: Library operations pass a `task_type` to the router, which uses the routing table to select the appropriate model tier.
 
@@ -352,15 +352,15 @@ results = rag.search(
 
 ### Persona ↔ Library Relationships
 
-| Persona | Library Role | Details |
-|---------|-------------|---------|
-| **Programmer** | Primary producer + consumer | Extracts patterns during coding, applies modules in new projects. Runs scripts directly. |
-| **Architect** | Reviewer + strategist | Reviews library for architectural patterns. Uses `prompts/architecture-decision/`. Suggests composing existing modules over writing from scratch. |
-| **Designer** | Component consumer | Accesses `components/` for UI patterns (Tailwind grids, card layouts). Could contribute generative assets. |
-| **Librarian** | Indexer + retriever | Handles RAG layer connecting natural language queries to library entries. Organizes, tags, suggests connections. |
-| **Scribe** | Documenter | Documents library additions in session notes. Creates changelogs for the library itself. |
-| **Professor** | Teacher | Uses library modules as teaching examples. "Here's how retry-with-backoff works..." |
-| **Administrator** | Maintainer | Library health: stale modules, unused modules, dependency audit. |
+| Persona           | Library Role                | Details                                                                                                                                           |
+| ----------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Programmer**    | Primary producer + consumer | Extracts patterns during coding, applies modules in new projects. Runs scripts directly.                                                          |
+| **Architect**     | Reviewer + strategist       | Reviews library for architectural patterns. Uses `prompts/architecture-decision/`. Suggests composing existing modules over writing from scratch. |
+| **Designer**      | Component consumer          | Accesses `components/` for UI patterns (Tailwind grids, card layouts). Could contribute generative assets.                                        |
+| **Librarian**     | Indexer + retriever         | Handles RAG layer connecting natural language queries to library entries. Organizes, tags, suggests connections.                                  |
+| **Scribe**        | Documenter                  | Documents library additions in session notes. Creates changelogs for the library itself.                                                          |
+| **Professor**     | Teacher                     | Uses library modules as teaching examples. "Here's how retry-with-backoff works..."                                                               |
+| **Administrator** | Maintainer                  | Library health: stale modules, unused modules, dependency audit.                                                                                  |
 
 ---
 
@@ -455,6 +455,7 @@ spectrums:
 #### Phase 1: Project Framing (Architect persona leads)
 
 Polly asks structured questions:
+
 - What is this project? (description, scope)
 - Who is it for? (audience, technical level)
 - What's the deployment target? (local, web, mobile, embedded)
@@ -480,11 +481,12 @@ project: polly
 created: 2026-02-09
 author: brett
 last_reviewed: 2026-02-09
-review_cadence: monthly  # or milestone-based
+review_cadence: monthly # or milestone-based
 ---
 ```
 
 Followed by markdown sections:
+
 - **Positioning** — Table of spectrum positions with rationale
 - **Non-Negotiables** — Hard constraints that don't bend
 - **Technical Commitments** — Stack, formats, storage
@@ -506,6 +508,7 @@ System prompt = [
 ```
 
 Priority hierarchy (lowest to highest):
+
 1. Persona base behavior
 2. Active theme behavior
 3. Project philosophy context
@@ -529,8 +532,8 @@ class SpectrumPosition:
     spectrum_id: str
     position: int               # 0–100 (0 = full left, 100 = full right)
     rationale: str
-    
-@dataclass  
+
+@dataclass
 class DevelopmentPhilosophy:
     """A project's development philosophy configuration."""
     project: str
@@ -551,33 +554,33 @@ class DevelopmentPhilosophy:
 
 class PhilosophyManager:
     """Manages development philosophy configuration."""
-    
+
     def __init__(self, config, spectrums_path: str = None):
         """Load spectrum definitions from config."""
-    
+
     def get_spectrums(self) -> list[dict]:
         """Return all available spectrum definitions."""
-    
+
     def add_spectrum(self, spectrum: dict) -> None:
         """Add a custom spectrum definition."""
-    
+
     def init_philosophy(self, project: str, responses: dict) -> DevelopmentPhilosophy:
         """Create a new philosophy from guided process responses."""
-    
+
     def load_philosophy(self, path: str) -> DevelopmentPhilosophy:
         """Load an existing development-philosophy.md."""
-    
+
     def save_philosophy(self, philosophy: DevelopmentPhilosophy, path: str) -> None:
         """Save philosophy to markdown file."""
-    
+
     def get_philosophy_context(self, philosophy: DevelopmentPhilosophy) -> str:
         """Generate persona system prompt context from philosophy."""
-    
-    def check_alignment(self, philosophy: DevelopmentPhilosophy, 
+
+    def check_alignment(self, philosophy: DevelopmentPhilosophy,
                          code_analysis: dict) -> dict:
         """Compare current code patterns against stated philosophy.
         Returns alignment report with suggestions."""
-    
+
     def suggest_review(self, philosophy: DevelopmentPhilosophy,
                         project_metrics: dict) -> Optional[str]:
         """Check if it's time for a philosophy review. Returns prompt or None."""
@@ -589,30 +592,30 @@ class PhilosophyManager:
 
 ### Library Commands
 
-| Command | Description | Persona |
-|---------|-------------|---------|
-| `/library search <query>` | RAG search across all modules | Librarian |
-| `/library extract` | Extract current code into a new module | Programmer |
-| `/library apply <module>` | Instantiate a module in current project | Programmer |
-| `/library review` | Run AI Slop review on current file/selection | Programmer |
-| `/library stats` | Usage statistics, most/least used modules | Administrator |
+| Command                   | Description                                  | Persona       |
+| ------------------------- | -------------------------------------------- | ------------- |
+| `/library search <query>` | RAG search across all modules                | Librarian     |
+| `/library extract`        | Extract current code into a new module       | Programmer    |
+| `/library apply <module>` | Instantiate a module in current project      | Programmer    |
+| `/library review`         | Run AI Slop review on current file/selection | Programmer    |
+| `/library stats`          | Usage statistics, most/least used modules    | Administrator |
 
 ### Philosophy Commands
 
-| Command | Description | Persona |
-|---------|-------------|---------|
-| `/philosophy init` | Start guided configuration for new project | Architect |
-| `/philosophy review` | Revisit current project philosophy | Architect |
-| `/philosophy check` | Compare current code against stated philosophy | Architect |
-| `/philosophy spectrum <name>` | Deep-dive into a specific spectrum | Architect |
+| Command                       | Description                                    | Persona   |
+| ----------------------------- | ---------------------------------------------- | --------- |
+| `/philosophy init`            | Start guided configuration for new project     | Architect |
+| `/philosophy review`          | Revisit current project philosophy             | Architect |
+| `/philosophy check`           | Compare current code against stated philosophy | Architect |
+| `/philosophy spectrum <name>` | Deep-dive into a specific spectrum             | Architect |
 
 ### Meta Commands
 
-| Command | Description | Persona |
-|---------|-------------|---------|
-| `/model status` | Show current model routing table | Administrator |
-| `/model route <task> <model>` | Override routing for a specific task | Administrator |
-| `/cost report` | Token usage and cost breakdown by model tier | Administrator |
+| Command                       | Description                                  | Persona       |
+| ----------------------------- | -------------------------------------------- | ------------- |
+| `/model status`               | Show current model routing table             | Administrator |
+| `/model route <task> <model>` | Override routing for a specific task         | Administrator |
+| `/cost report`                | Token usage and cost breakdown by model tier | Administrator |
 
 ### Slash Command Backend
 
@@ -621,14 +624,14 @@ class PhilosophyManager:
 
 class SlashCommandRegistry:
     """Registry for all slash commands across library, philosophy, and meta."""
-    
+
     def register(self, command: str, handler: callable, persona: str = None,
                  description: str = "", args: list[str] = None) -> None:
         """Register a slash command."""
-    
+
     def execute(self, command_str: str, context: dict) -> dict:
         """Parse and execute a slash command. Returns result dict."""
-    
+
     def list_commands(self, category: str = None) -> list[dict]:
         """List available commands, optionally filtered by category."""
 ```
@@ -639,36 +642,36 @@ class SlashCommandRegistry:
 
 ### Library
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/library/modules` | List modules (filterable) |
-| `GET` | `/api/library/modules/<name>` | Get module detail |
-| `POST` | `/api/library/modules` | Create a module |
-| `PUT` | `/api/library/modules/<name>` | Update a module |
-| `DELETE` | `/api/library/modules/<name>` | Delete a module |
-| `POST` | `/api/library/search` | Search library (RAG) |
-| `POST` | `/api/library/extract` | Extract module from code |
-| `POST` | `/api/library/apply/<name>` | Apply module to project |
-| `POST` | `/api/library/review` | AI Slop review |
-| `GET` | `/api/library/stats` | Library statistics |
+| Method   | Endpoint                      | Description               |
+| -------- | ----------------------------- | ------------------------- |
+| `GET`    | `/api/library/modules`        | List modules (filterable) |
+| `GET`    | `/api/library/modules/<name>` | Get module detail         |
+| `POST`   | `/api/library/modules`        | Create a module           |
+| `PUT`    | `/api/library/modules/<name>` | Update a module           |
+| `DELETE` | `/api/library/modules/<name>` | Delete a module           |
+| `POST`   | `/api/library/search`         | Search library (RAG)      |
+| `POST`   | `/api/library/extract`        | Extract module from code  |
+| `POST`   | `/api/library/apply/<name>`   | Apply module to project   |
+| `POST`   | `/api/library/review`         | AI Slop review            |
+| `GET`    | `/api/library/stats`          | Library statistics        |
 
 ### Philosophy
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/philosophy/spectrums` | List spectrum definitions |
-| `POST` | `/api/philosophy/spectrums` | Add custom spectrum |
-| `POST` | `/api/philosophy/init` | Start guided process |
-| `GET` | `/api/philosophy/current` | Get current project philosophy |
-| `PUT` | `/api/philosophy/current` | Update philosophy |
-| `POST` | `/api/philosophy/check` | Run alignment check |
+| Method | Endpoint                    | Description                    |
+| ------ | --------------------------- | ------------------------------ |
+| `GET`  | `/api/philosophy/spectrums` | List spectrum definitions      |
+| `POST` | `/api/philosophy/spectrums` | Add custom spectrum            |
+| `POST` | `/api/philosophy/init`      | Start guided process           |
+| `GET`  | `/api/philosophy/current`   | Get current project philosophy |
+| `PUT`  | `/api/philosophy/current`   | Update philosophy              |
+| `POST` | `/api/philosophy/check`     | Run alignment check            |
 
 ### Commands
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
+| Method | Endpoint                | Description             |
+| ------ | ----------------------- | ----------------------- |
 | `POST` | `/api/commands/execute` | Execute a slash command |
-| `GET` | `/api/commands/list` | List available commands |
+| `GET`  | `/api/commands/list`    | List available commands |
 
 ---
 
@@ -700,21 +703,21 @@ class SlashCommandRegistry:
 
 library:
   enabled: true
-  path: "_polly/library"           # Relative to knowledge base
-  auto_extract: false              # Auto-suggest extractions during coding
-  auto_extract_confidence: 0.8    # Minimum pattern confidence for suggestion
-  review_on_extract: true          # Run AI Slop review on new modules
-  rag_collection: "code-library"   # ChromaDB collection name
+  path: "_polly/library" # Relative to knowledge base
+  auto_extract: false # Auto-suggest extractions during coding
+  auto_extract_confidence: 0.8 # Minimum pattern confidence for suggestion
+  review_on_extract: true # Run AI Slop review on new modules
+  rag_collection: "code-library" # ChromaDB collection name
 
 philosophy:
   enabled: true
   spectrums_path: "config/philosophy_spectrums.yaml"
   review_cadence: "monthly"
-  inject_into_prompts: true        # Add philosophy context to persona prompts
+  inject_into_prompts: true # Add philosophy context to persona prompts
 
 model_routing:
   library_operations:
-    extraction: "free"             # Model tier for pattern extraction
+    extraction: "free" # Model tier for pattern extraction
     formatting: "free"
     indexing: "free"
     review_basic: "free"

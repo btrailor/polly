@@ -7,6 +7,15 @@ Source of truth for native notes, TOC, and templates (Phases 16, 16e). Detail: [
 - **Storage:** Vault (e.g. Obsidian-compatible or `~/.polly/notes/`). File tree, create/edit/rename/delete.
 - **Editor:** Monaco-style markdown; view/edit modes. Wiki-links `[[Note Name]]` with navigation and auto-update on rename.
 - **Features:** Backlinks panel, tags, quick switcher (Cmd+O), drag-and-drop organization, auto-save. Domain-based folder organization; RAG indexing with file watcher.
+
+### Auto-save and change detection
+
+- **Trigger:** Content changes in the editor (CodeMirror 6 or fallback) schedule a debounced save after a short idle delay (default 2s).
+- **Change detection:** Before performing the save, the client compares the current editor content to the last successfully saved content (normalized for comparison). If they are equal, no PUT is sent: the timeout is cleared, the UI is updated to "Saved", and the operation ends. This avoids redundant writes when the user types then undoes, or when content is unchanged for other reasons.
+- **Normalization:** For comparison only, line endings are normalized (`\r\n` and `\r` → `\n`). No trimming of trailing newlines, so changes to line endings are still treated as real changes.
+- **State:** `lastSavedContent` is set when a note is opened (from the loaded file content) and after each successful save. It is not trimmed or otherwise altered beyond line-ending normalization.
+- **Implementation:** `electron-app/src/renderer/notes-manager.js` — `lastSavedContent`, `_normalizeContentForCompare()`, and the early-return in `saveCurrentNote()` when content is unchanged.
+
 - **Deduplication (Phase 21):** Similar-notes warning on create; append/link/create-anyway workflows. Being absorbed into broader Knowledge Quality Pipeline — see [knowledge-graph spec](../knowledge-graph/spec.md).
 
 ## TOC & Templates (Phase 16e)
@@ -32,18 +41,23 @@ Source of truth for native notes, TOC, and templates (Phases 16, 16e). Detail: [
 ## Planned Extensions
 
 ### Maturity Lifecycle
+
 Notes gain maturity metadata (30-Ideas / 20-Active / 10-Archive) stored as frontmatter + SQLite index. Shared system with captures and canvases. See [capture spec](../capture/spec.md).
 
 ### Entity Extraction on Save
+
 All note saves (new and edited) run through the Knowledge Quality Pipeline: entity extraction → similarity check → connection suggestion → authority update. See [knowledge-graph spec](../knowledge-graph/spec.md).
 
 ### Augmented Writing
+
 During composition, sidebar shows related notes based on entity overlap in real-time. Prevents duplicates and encourages linking at the moment of creation.
 
 ### Version History
+
 Edit history for all notes. Rollback to previous versions. Compare side-by-side. AI-generated content tracked with provenance metadata.
 
 ### Knowledge Cards
+
 Structured note archetypes with required fields. A "conversation summary" card: date, participants, key decisions, extracted concepts. An "idea seed" card: core claim, supporting evidence, open questions. Templates enforce signal over noise.
 
 ## Reference

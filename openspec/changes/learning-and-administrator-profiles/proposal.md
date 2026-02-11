@@ -31,11 +31,13 @@ Two persona profiles that define how Polly teaches the user and how Polly manage
 ## Why
 
 ### Learning Profile
+
 - The current Learning page centers analytics over learning. This communicates the wrong priorities. The fix is small (move analytics to a tab) but the philosophy matters: the active learning surface — the conversation with Professor — should be center stage.
 - The meta-pedagogy system makes Polly's progressive independence concrete. Instead of abstract "over time Polly gets better," specific prompt coaching teaches transferable thinking skills: articulating goals, specifying constraints, recognizing what kind of help you need.
 - This connects to the onboarding spec's "tutorials fade as user demonstrates competence" principle. Competency tracking provides the mechanism.
 
 ### Administrator Profile
+
 - The communication spec already defines Phase 20a–20c (email intelligence, calendar, progressive autonomy). The Administrator Profile adds concrete UX design informed by what Superhuman gets right: keyboard-driven flow, sequential processing, temporal controls, voice-matched drafts.
 - The Administrator has four defined modes (Configure, Monitor, Maintain, Automate) in the personas spec but they're generic. This spec replaces them with communication-specific modes (Schedule, Compose, Triage, Remind) when the Administrator is operating in communication context.
 - Cross-persona integration: Scribe captures action items from emails, Architect gets informed of technical emails, Publisher uses Compose for newsletters, Librarian indexes reference-worthy threads.
@@ -49,6 +51,7 @@ Two persona profiles that define how Polly teaches the user and how Polly manage
 ## Scope
 
 ### In Scope
+
 - Learning page center area redesign (4 states: active session, curriculum view, practice space, review)
 - Prompt injector system (pattern detection, coaching, competency tracking)
 - Per-persona competency profile (`prompting-competency.yml`)
@@ -60,6 +63,7 @@ Two persona profiles that define how Polly teaches the user and how Polly manage
 - Superhuman-style flow-based processing
 
 ### Out of Scope (for now)
+
 - Full email client replacement
 - IMAP/Gmail API implementation (that's Phase 20a)
 - EventKit calendar access (that's Phase 20b, requires Phase 9)
@@ -68,17 +72,17 @@ Two persona profiles that define how Polly teaches the user and how Polly manage
 
 ## Impact on Existing Systems
 
-| System | Impact |
-|--------|--------|
-| **Teaching** | Learning page redesigned. Meta-pedagogy layer added. |
-| **Onboarding** | Competency tracking mechanism added. Persona introductions defined. Progressive fade formalized. |
-| **Personas (Professor)** | Professor context-aware: provides coaching moments. Learning center area states defined. |
+| System                       | Impact                                                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Teaching**                 | Learning page redesigned. Meta-pedagogy layer added.                                                                                        |
+| **Onboarding**               | Competency tracking mechanism added. Persona introductions defined. Progressive fade formalized.                                            |
+| **Personas (Professor)**     | Professor context-aware: provides coaching moments. Learning center area states defined.                                                    |
 | **Personas (Administrator)** | Modes expanded from generic (Configure/Monitor/Maintain/Automate) to include communication-specific modes (Schedule/Compose/Triage/Remind). |
-| **Communication** | UX design added for Phase 20a–20b. Superhuman-informed triage and composition workflows. |
-| **UI** | Learning page redesigned. Analytics repositioned. Communication triage view defined. |
-| **Analytics** | Analytics page relationship clarified: analytics serve reflection, not center-stage display. Learning analytics move to Review tab. |
-| **Patterns** | Prompting competency tracked as a new pattern type. |
-| **Design** | "Banking vs. problem-posing" principle articulated for learning UI decisions. |
+| **Communication**            | UX design added for Phase 20a–20b. Superhuman-informed triage and composition workflows.                                                    |
+| **UI**                       | Learning page redesigned. Analytics repositioned. Communication triage view defined.                                                        |
+| **Analytics**                | Analytics page relationship clarified: analytics serve reflection, not center-stage display. Learning analytics move to Review tab.         |
+| **Patterns**                 | Prompting competency tracked as a new pattern type.                                                                                         |
+| **Design**                   | "Banking vs. problem-posing" principle articulated for learning UI decisions.                                                               |
 
 ## Reference
 

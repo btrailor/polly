@@ -13,12 +13,12 @@ The current Learning page puts analytics front-and-center. This is a banking mod
 
 #### Four Center-Area States
 
-| State | What | When Active |
-|-------|------|-------------|
-| **Active Session** | Full-width conversation with Professor in current mode (Explain, Socratic, Curriculum, Quiz). Minimal chrome. The learning interaction IS the UI. | Default when a learning session is in progress. |
-| **Curriculum View** | Current learning path as a navigable map. Not a flat list — shows position, upcoming topics, and how they connect. Knowledge graph filtered through a pedagogical lens. | Default when no session active but curriculum exists. |
-| **Practice Space** | Embedded workspace for domains that involve doing. Professor observes and coaches. Code editor, markdown drafting, or (future) p5.js/SuperCollider scratch pad. | When user is in a practice-oriented domain and learning mode. |
-| **Review Mode** | Where analytics live. Pulled intentionally, not imposed. Shows: study history, competency progression, spaced repetition schedule, knowledge gaps. | When user navigates to Review tab. |
+| State               | What                                                                                                                                                                    | When Active                                                   |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| **Active Session**  | Full-width conversation with Professor in current mode (Explain, Socratic, Curriculum, Quiz). Minimal chrome. The learning interaction IS the UI.                       | Default when a learning session is in progress.               |
+| **Curriculum View** | Current learning path as a navigable map. Not a flat list — shows position, upcoming topics, and how they connect. Knowledge graph filtered through a pedagogical lens. | Default when no session active but curriculum exists.         |
+| **Practice Space**  | Embedded workspace for domains that involve doing. Professor observes and coaches. Code editor, markdown drafting, or (future) p5.js/SuperCollider scratch pad.         | When user is in a practice-oriented domain and learning mode. |
+| **Review Mode**     | Where analytics live. Pulled intentionally, not imposed. Shows: study history, competency progression, spaced repetition schedule, knowledge gaps.                      | When user navigates to Review tab.                            |
 
 **Default:** Active Session (if session in progress) → Curriculum View (if curriculum exists) → empty state with "Start learning" prompt.
 
@@ -49,14 +49,14 @@ User message → Pattern Detection → Coaching Decision → Response
 
 Runs on incoming user message before routing. Detects:
 
-| Pattern | Description | Example |
-|---------|-------------|---------|
-| **Vague request** | No specificity, missing context | "explain Docker" |
-| **Missing error context** | Code question without error message or expected behavior | "fix this code" |
-| **Missing constraints** | Design request without style/size/context | "make a nice icon" |
-| **Wrong persona** | Request better suited for a different persona | Asking Programmer for what Architect should handle |
-| **Outcome-missing** | No goal stated | "tell me about databases" |
-| **Depth-unspecified** | No indication of expertise level | "how does React work" |
+| Pattern                   | Description                                              | Example                                            |
+| ------------------------- | -------------------------------------------------------- | -------------------------------------------------- |
+| **Vague request**         | No specificity, missing context                          | "explain Docker"                                   |
+| **Missing error context** | Code question without error message or expected behavior | "fix this code"                                    |
+| **Missing constraints**   | Design request without style/size/context                | "make a nice icon"                                 |
+| **Wrong persona**         | Request better suited for a different persona            | Asking Programmer for what Architect should handle |
+| **Outcome-missing**       | No goal stated                                           | "tell me about databases"                          |
+| **Depth-unspecified**     | No indication of expertise level                         | "how does React work"                              |
 
 Implementation: Lightweight classifier (rule-based initially, LLM-augmented later). Runs in <50ms.
 
@@ -65,18 +65,23 @@ Implementation: Lightweight classifier (rule-based initially, LLM-augmented late
 One or two sentences max. Framed as "better results" not "you did it wrong."
 
 **Professor:**
+
 > "I notice you asked me to 'explain Docker.' I can do that, but you'll get more useful results if you tell me what you're trying to accomplish with Docker. Are you setting up a new container, debugging a networking issue, or understanding the concept from scratch?"
 
 **Programmer:**
+
 > "You asked me to 'fix this code.' I'll take a look, but for faster debugging, try including: what you expected to happen, what actually happened, and any error messages."
 
 **Architect:**
+
 > "You asked for 'a database schema.' Before I design one, it helps to know: what are the main entities? What queries will be most common? What's the scale — dozens of records or millions?"
 
 **Designer:**
+
 > "You asked for 'a nice icon.' Design works best with constraints. What style — outlined or filled? What size — 16px, 24px, 48px? What's the context — navigation, feature illustration, decorative?"
 
 **Scribe:**
+
 > "You asked me to 'write something about X.' I'll get started, but the draft will be sharper if you tell me: who's the audience? What's the format — blog post, documentation, social thread? What's the key point you want to make?"
 
 #### 3. Competency Tracking
@@ -96,7 +101,7 @@ professor:
     times_coached: 1
 programmer:
   including-error-messages:
-    level: 3         # Competent — no longer coached
+    level: 3 # Competent — no longer coached
     last_coached: null
     times_coached: 3
   specifying-language-version:
@@ -105,7 +110,7 @@ programmer:
     times_coached: 1
 designer:
   providing-constraints:
-    level: 0         # Not yet encountered
+    level: 0 # Not yet encountered
     last_coached: null
     times_coached: 0
 architect:
@@ -117,13 +122,13 @@ architect:
 
 **Levels:**
 
-| Level | Name | Behavior |
-|-------|------|----------|
-| 0 | Not encountered | No coaching yet — waiting for first trigger |
-| 1 | Introduced | First coaching delivered |
-| 2 | Reminded | Second coaching — briefer this time |
-| 3 | Competent | No longer coached on this skill |
-| 4 | Expert | User's corrections improve Polly's defaults |
+| Level | Name            | Behavior                                    |
+| ----- | --------------- | ------------------------------------------- |
+| 0     | Not encountered | No coaching yet — waiting for first trigger |
+| 1     | Introduced      | First coaching delivered                    |
+| 2     | Reminded        | Second coaching — briefer this time         |
+| 3     | Competent       | No longer coached on this skill             |
+| 4     | Expert          | User's corrections improve Polly's defaults |
 
 **Progression:** Competency increases when user demonstrates the skill in subsequent interactions (e.g., next time they include error messages without prompting → level up). Detected by the same pattern system running in reverse: "user provided constraints unprompted" → increment level.
 
@@ -139,6 +144,7 @@ New user → Full explanation (show routing, explain persona selection)
 ```
 
 Concretely:
+
 1. **First interaction with a persona:** One-message orientation. Natural, not tutorial-wall.
 2. **First few interactions:** Coaching injectors active. Brief contextual suggestions.
 3. **After competency established:** Injectors silent. Polly infers intent.
@@ -248,12 +254,12 @@ Speed is a feature. Every design decision prioritizes reducing the time between 
 
 The Administrator persona gains four communication-specific modes alongside its existing system modes:
 
-| Mode | Description | Superhuman Parallel |
-|------|-------------|-------------------|
-| **Triage** | Sequential, flow-based email processing. Priority-sorted queue. For each: Reply, Delegate, Defer, Archive, Flag. Split processing by email type (team, newsletters, notifications). | Split Inbox + Flow processing |
-| **Compose** | Voice-matched draft generation. Context injection from knowledge base. Template system for recurring patterns. Distraction-free writing. | AI Compose + Instant Reply |
-| **Schedule** | Calendar awareness. Find open slots, propose meeting times, detect conflicts. Energy-aware scheduling from user profile. | Calendar integration |
-| **Remind** | Follow-up tracking. Deadline awareness from emails + calendar. Snooze with context. Proactive surfacing. | Snooze + Remind Me |
+| Mode         | Description                                                                                                                                                                         | Superhuman Parallel           |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| **Triage**   | Sequential, flow-based email processing. Priority-sorted queue. For each: Reply, Delegate, Defer, Archive, Flag. Split processing by email type (team, newsletters, notifications). | Split Inbox + Flow processing |
+| **Compose**  | Voice-matched draft generation. Context injection from knowledge base. Template system for recurring patterns. Distraction-free writing.                                            | AI Compose + Instant Reply    |
+| **Schedule** | Calendar awareness. Find open slots, propose meeting times, detect conflicts. Energy-aware scheduling from user profile.                                                            | Calendar integration          |
+| **Remind**   | Follow-up tracking. Deadline awareness from emails + calendar. Snooze with context. Proactive surfacing.                                                                            | Snooze + Remind Me            |
 
 **Relationship to existing modes:** Configure/Monitor/Maintain/Automate remain as system administration modes. The four communication modes activate when the Administrator is operating on email/calendar context. Mode selection is automatic based on user intent.
 
@@ -284,6 +290,7 @@ Batch complete → next batch or done
 #### AI Prioritization
 
 Learns from user's response patterns:
+
 - Which senders always get immediate replies?
 - Which email types always get archived without reading?
 - Which subjects correlate with urgency?
@@ -331,12 +338,12 @@ Conversational calendar interface:
 
 ### Cross-Persona Integration
 
-| Persona | Mail Integration |
-|---------|-----------------|
-| **Scribe** | Captures action items from emails, creates notes from email threads |
-| **Architect** | Gets informed of technical emails that might inform system design |
-| **Publisher** | Uses Compose mode for newsletter drafts destined for Ghost CMS |
-| **Librarian** | Indexes email threads that contain reference-worthy information |
+| Persona       | Mail Integration                                                                      |
+| ------------- | ------------------------------------------------------------------------------------- |
+| **Scribe**    | Captures action items from emails, creates notes from email threads                   |
+| **Architect** | Gets informed of technical emails that might inform system design                     |
+| **Publisher** | Uses Compose mode for newsletter drafts destined for Ghost CMS                        |
+| **Librarian** | Indexes email threads that contain reference-worthy information                       |
 | **Professor** | Surfaces learning-relevant emails (conference announcements, reading recommendations) |
 
 ---
@@ -345,33 +352,33 @@ Conversational calendar interface:
 
 ### Pedagogy
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/pedagogy/competency` | Get full competency profile |
-| `GET` | `/api/pedagogy/competency/<persona>` | Get persona-specific competency |
-| `POST` | `/api/pedagogy/coaching/analyze` | Analyze a message for coaching opportunity |
-| `POST` | `/api/pedagogy/coaching/delivered` | Record coaching was shown |
-| `POST` | `/api/pedagogy/coaching/gained` | Record competency gain |
-| `GET` | `/api/pedagogy/stats` | Coaching statistics |
+| Method | Endpoint                             | Description                                |
+| ------ | ------------------------------------ | ------------------------------------------ |
+| `GET`  | `/api/pedagogy/competency`           | Get full competency profile                |
+| `GET`  | `/api/pedagogy/competency/<persona>` | Get persona-specific competency            |
+| `POST` | `/api/pedagogy/coaching/analyze`     | Analyze a message for coaching opportunity |
+| `POST` | `/api/pedagogy/coaching/delivered`   | Record coaching was shown                  |
+| `POST` | `/api/pedagogy/coaching/gained`      | Record competency gain                     |
+| `GET`  | `/api/pedagogy/stats`                | Coaching statistics                        |
 
 ### Learning Center
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/learning/state` | Current center area state |
-| `POST` | `/api/learning/state` | Switch center area state |
-| `GET` | `/api/learning/session` | Active learning session details |
+| Method | Endpoint                | Description                     |
+| ------ | ----------------------- | ------------------------------- |
+| `GET`  | `/api/learning/state`   | Current center area state       |
+| `POST` | `/api/learning/state`   | Switch center area state        |
+| `GET`  | `/api/learning/session` | Active learning session details |
 
 ### Administrator Communication
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/mail/triage` | Get prioritized email queue |
+| Method | Endpoint                       | Description                             |
+| ------ | ------------------------------ | --------------------------------------- |
+| `GET`  | `/api/mail/triage`             | Get prioritized email queue             |
 | `POST` | `/api/mail/triage/<id>/action` | Act on email (reply/defer/archive/flag) |
-| `POST` | `/api/mail/compose` | Generate draft |
-| `POST` | `/api/mail/schedule` | Find available meeting times |
-| `GET` | `/api/mail/reminders` | Pending follow-ups and deadlines |
-| `POST` | `/api/mail/snooze` | Snooze email with context |
+| `POST` | `/api/mail/compose`            | Generate draft                          |
+| `POST` | `/api/mail/schedule`           | Find available meeting times            |
+| `GET`  | `/api/mail/reminders`          | Pending follow-ups and deadlines        |
+| `POST` | `/api/mail/snooze`             | Snooze email with context               |
 
 ---
 
@@ -405,12 +412,12 @@ interfaces/
 pedagogy:
   enabled: true
   coaching_enabled: true
-  min_coaching_interval_hours: 24  # Don't coach same skill more than once per day
-  auto_level_up: true              # Automatically detect competency gains
+  min_coaching_interval_hours: 24 # Don't coach same skill more than once per day
+  auto_level_up: true # Automatically detect competency gains
   competency_path: "_polly/user/prompting-competency.yml"
 
 communication:
-  email_provider: null             # "gmail", "outlook", "imap" — set during onboarding
+  email_provider: null # "gmail", "outlook", "imap" — set during onboarding
   triage_batch_size: 10
   voice_matching_enabled: true
   energy_aware_scheduling: true
