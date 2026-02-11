@@ -21,10 +21,11 @@ The CSS and JavaScript have been updated, but you need to force-reload to see th
 2. **Open DevTools** (they should open automatically in dev mode, or press `Cmd+Option+I`)
 
 3. **Clear localStorage** - In the DevTools Console tab, paste this and press Enter:
+
    ```javascript
-   localStorage.removeItem('sidebar-left-collapsed');
-   localStorage.removeItem('sidebar-right-collapsed');
-   console.log('Storage cleared!');
+   localStorage.removeItem("sidebar-left-collapsed");
+   localStorage.removeItem("sidebar-right-collapsed");
+   console.log("Storage cleared!");
    ```
 
 4. **Hard Reload** - In DevTools, right-click the reload button and select "Empty Cache and Hard Reload"
@@ -32,14 +33,15 @@ The CSS and JavaScript have been updated, but you need to force-reload to see th
    - OR in Console type: `location.reload(true)`
 
 5. **If that doesn't work**, quit and restart:
+
    ```bash
    # Kill all Electron processes
    ps aux | grep -i electron | grep -v grep | awk '{print $2}' | xargs kill -9
-   
+
    # Clear Electron cache
    rm -rf ~/Library/Application\ Support/polly/Cache
    rm -rf ~/Library/Application\ Support/polly/GPUCache
-   
+
    # Restart
    cd /Users/brettgershon/polly/electron-app
    npm start
@@ -48,6 +50,7 @@ The CSS and JavaScript have been updated, but you need to force-reload to see th
 ## What Should Change:
 
 ### Visual Changes:
+
 - **Titlebar height:** 38px → 40px (traffic lights centered)
 - **Toggle buttons:** 38×38px → 24×24px (small, subtle)
 - **Button icons:** 16×16px → 14×14px
@@ -55,18 +58,20 @@ The CSS and JavaScript have been updated, but you need to force-reload to see th
 - **Hover color:** Brighter → Softer (#b4b4b4)
 
 ### Functional Changes:
+
 - Left sidebar should toggle on/off with both:
   - Titlebar button (top left)
   - Sidebar header button
   - Keyboard: `Cmd+B`
 - Right sidebar should toggle with:
   - Titlebar button (top right)
-  - Sidebar header button  
+  - Sidebar header button
   - Keyboard: `Cmd+/`
 
 ## Debugging:
 
 If left sidebar still won't close, check Console for these debug messages:
+
 ```
 [DEBUG] toggleLeftSidebar called
 [DEBUG] threeColumnLayout exists: true

@@ -34,6 +34,7 @@
           "interfaces/**/*",
           "indexers/**/*",
           "config/**/*",
+          "libs/**/*",
           "requirements.txt",
           "__main__.py"
         ]
