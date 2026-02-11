@@ -58,6 +58,9 @@ class PollyConfig:
             "age_hours": 24,               # Or after 24 hours
             "keep_recent": 10,             # Keep last 10 messages uncompressed
             "show_stats": False            # Hide compression stats by default
+        },
+        "routing_v2": {
+            "enabled": True,               # Multi-provider intelligent routing (recommended)
         }
     }
 
