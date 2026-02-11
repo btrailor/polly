@@ -24,10 +24,24 @@ from datetime import datetime
 from pathlib import Path
 
 from ..base import AgentPersona, PersonaContext, PersonaResponse, PersonaAction
-from core.router_v2 import TaskType, ConfidenceLevel
+from core.router_v2 import TaskType, ConfidenceLevel, AllProvidersFailed
 from core.package_detector import get_package_detector, PackageReference
 
 logger = logging.getLogger(__name__)
+
+
+def _format_router_error(e: Exception) -> str:
+    """Turn router/policy errors into a user-visible message with provider failure details."""
+    if isinstance(e, AllProvidersFailed):
+        details = getattr(e, "failures", None) or []
+        detail_str = "; ".join(f"{p} ({m}): {r}" for (p, m, r) in details) if details else str(e)
+        logger.error("All providers failed: %s", detail_str)
+        return (
+            "I couldn't reach any AI provider. "
+            "This usually means API keys are missing or invalid, or the service is unavailable. "
+            f"Details: {detail_str}"
+        )
+    return str(e)
 
 
 class ProfessorPersona(AgentPersona):
@@ -181,15 +195,15 @@ class ProfessorPersona(AgentPersona):
                         interactive=True
                     ))
                 
-                # Enhance LLM prompt with skill content
+                # Enhance LLM prompt with skill content (applied to messages below)
                 skill_context = f"\n\nSKILL PACKAGE AVAILABLE:\n{skill_data['skill_md'][:1000]}..."
-                context.message += skill_context
         
         # Build messages for LLM
         messages = self._build_messages(context, include_history=True)
         
-        # Add instruction about available visualizations
+        # Add skill context and visualization instruction to last message when we have skill data
         if skill_data:
+            messages[-1]['content'] += skill_context
             messages[-1]['content'] += (
                 f"\n\nYou have access to {len(skill_data['diagrams'])} diagrams "
                 f"and {len(skill_data['exercises'])} exercises for this topic. "
@@ -206,9 +220,9 @@ class ProfessorPersona(AgentPersona):
                 temperature=0.7
             )
         except Exception as e:
-            logger.error(f"Router failed in explain mode: {e}")
+            logger.exception("Router failed in explain mode")
             return PersonaResponse(
-                content=f"Sorry, I encountered an error while preparing the explanation: {str(e)}",
+                content=f"Sorry, I encountered an error while preparing the explanation: {_format_router_error(e)}",
                 mode="explain",
                 actions=[],
                 metadata={"error": str(e)}
@@ -231,7 +245,7 @@ class ProfessorPersona(AgentPersona):
                 "topic": topic,
                 "has_skill_package": skill_data is not None,
                 "model_used": response.model,
-                "tokens": response.usage.get("total_tokens", 0) if response.usage else 0
+                "tokens": getattr(response, "total_tokens", None) or (getattr(response, "tokens_in", 0) + getattr(response, "tokens_out", 0))
             }
         )
     
@@ -288,9 +302,9 @@ class ProfessorPersona(AgentPersona):
                 temperature=0.7
             )
         except Exception as e:
-            logger.error(f"Router failed in socratic mode: {e}")
+            logger.exception("Router failed in socratic mode")
             return PersonaResponse(
-                content=f"Sorry, I encountered an error during our dialogue: {str(e)}",
+                content=f"Sorry, I encountered an error during our dialogue: {_format_router_error(e)}",
                 mode="socratic",
                 actions=[],
                 metadata={"error": str(e)}
@@ -316,7 +330,7 @@ class ProfessorPersona(AgentPersona):
                 "topic": topic,
                 "estimated_mastery": mastery_level,
                 "model_used": response.model,
-                "tokens": response.usage.get("total_tokens", 0) if response.usage else 0
+                "tokens": getattr(response, "total_tokens", None) or (getattr(response, "tokens_in", 0) + getattr(response, "tokens_out", 0))
             }
         )
     
@@ -393,9 +407,9 @@ class ProfessorPersona(AgentPersona):
                 temperature=0.7
             )
         except Exception as e:
-            logger.error(f"Router failed in curriculum mode: {e}")
+            logger.exception("Router failed in curriculum mode")
             return PersonaResponse(
-                content=f"Sorry, I encountered an error while designing the curriculum: {str(e)}",
+                content=f"Sorry, I encountered an error while designing the curriculum: {_format_router_error(e)}",
                 mode="curriculum",
                 actions=[],
                 metadata={"error": str(e)}
@@ -418,7 +432,7 @@ class ProfessorPersona(AgentPersona):
             metadata={
                 "related_notes_found": len(related_notes),
                 "model_used": response.model,
-                "tokens": response.usage.get("total_tokens", 0) if response.usage else 0
+                "tokens": getattr(response, "total_tokens", None) or (getattr(response, "tokens_in", 0) + getattr(response, "tokens_out", 0))
             }
         )
     
@@ -457,9 +471,9 @@ class ProfessorPersona(AgentPersona):
                 temperature=0.7
             )
         except Exception as e:
-            logger.error(f"Router failed in quiz mode: {e}")
+            logger.exception("Router failed in quiz mode")
             return PersonaResponse(
-                content=f"Sorry, I encountered an error during the quiz: {str(e)}",
+                content=f"Sorry, I encountered an error during the quiz: {_format_router_error(e)}",
                 mode="quiz",
                 actions=[],
                 metadata={"error": str(e)}
@@ -471,7 +485,7 @@ class ProfessorPersona(AgentPersona):
             actions=[],
             metadata={
                 "model_used": response.model,
-                "tokens": response.usage.get("total_tokens", 0) if response.usage else 0
+                "tokens": getattr(response, "total_tokens", None) or (getattr(response, "tokens_in", 0) + getattr(response, "tokens_out", 0))
             }
         )
     
@@ -732,9 +746,9 @@ Make it comprehensive, progressive, and practical. Include 15-25 total sections 
                 # Continue with original text
             
         except Exception as e:
-            logger.error(f"Failed to generate curriculum outline: {e}")
+            logger.exception("Failed to generate curriculum outline")
             return PersonaResponse(
-                content=f"Sorry, I encountered an error while generating the curriculum: {str(e)}",
+                content=f"Sorry, I encountered an error while generating the curriculum: {_format_router_error(e)}",
                 mode="curriculum",
                 actions=[],
                 metadata={"error": str(e)}
