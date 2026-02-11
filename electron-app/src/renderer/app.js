@@ -22,6 +22,11 @@ let conversations = []; // List of all conversations
 let categories = []; // Available categories
 let needsMigration = false; // Flag for old data migration
 
+// Agent Management State (agents = personas + custom; each agent has conversations)
+const AGENTS_STORAGE_KEY = "polly-agents";
+let agents = []; // { id, persona_name, display_name, icon, created_at }
+let currentAgentId = "default"; // Currently active agent
+
 // UI State Management (for smooth reloads)
 let preservedUIState = {
   conversationId: null,
@@ -453,37 +458,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Start polling Polly initialization status
   startPollyStatusPolling();
-
-  // DEBUG: Check chat input visibility
-  console.log("=== Chat Input Debug ===");
-  const queryInput = document.getElementById("query-input");
-  const chatInputContainer = document.querySelector(".chat-input-container");
-  const rightSidebar = document.querySelector(".right-sidebar");
-  const layout = document.querySelector(".three-column-layout");
-
-  console.log("query-input element:", queryInput);
-  console.log("chat-input-container:", chatInputContainer);
-  console.log("right-sidebar:", rightSidebar);
-  console.log("layout classes:", layout?.classList.toString());
-
-  if (queryInput) {
-    const styles = window.getComputedStyle(queryInput);
-    console.log("query-input display:", styles.display);
-    console.log("query-input visibility:", styles.visibility);
-    console.log("query-input opacity:", styles.opacity);
-    console.log(
-      "query-input parent display:",
-      window.getComputedStyle(queryInput.parentElement).display,
-    );
-  }
-
-  if (rightSidebar) {
-    const styles = window.getComputedStyle(rightSidebar);
-    console.log("right-sidebar display:", styles.display);
-    console.log("right-sidebar opacity:", styles.opacity);
-    console.log("right-sidebar transform:", styles.transform);
-  }
-  console.log("======================");
 });
 
 /**
@@ -491,30 +465,6 @@ document.addEventListener("DOMContentLoaded", async () => {
  */
 const initialize = withErrorBoundary(async function () {
   console.log("[Init] Waiting for Polly IPC bridge...");
-
-  // DEBUG: Check if DOM elements exist
-  console.log("[Init DEBUG] Checking DOM elements...");
-  const centerContent = document.querySelector(".center-content");
-  const rightSidebar = document.querySelector(".right-sidebar");
-  const leftSidebar = document.querySelector(".left-sidebar");
-  console.log(
-    "[Init DEBUG] center-content exists:",
-    !!centerContent,
-    "visible:",
-    centerContent ? window.getComputedStyle(centerContent).display : "N/A",
-  );
-  console.log(
-    "[Init DEBUG] right-sidebar exists:",
-    !!rightSidebar,
-    "visible:",
-    rightSidebar ? window.getComputedStyle(rightSidebar).display : "N/A",
-  );
-  console.log(
-    "[Init DEBUG] left-sidebar exists:",
-    !!leftSidebar,
-    "visible:",
-    leftSidebar ? window.getComputedStyle(leftSidebar).display : "N/A",
-  );
 
   const bridgeReady = await PollyBridge.waitForReady();
 
@@ -666,6 +616,111 @@ const initialize = withErrorBoundary(async function () {
 }, "initialize");
 
 // ============================================
+// Agent Management Functions
+// ============================================
+
+const DEFAULT_AGENTS = [
+  { id: "default", persona_name: "", display_name: "Default", icon: "message-square", created_at: 0 },
+  { id: "architect", persona_name: "architect", display_name: "Architect", icon: "layout", created_at: 0 },
+  { id: "scribe", persona_name: "scribe", display_name: "Scribe", icon: "pen-line", created_at: 0 },
+  { id: "professor", persona_name: "professor", display_name: "Professor", icon: "graduation-cap", created_at: 0 },
+];
+
+function saveAgents() {
+  try {
+    localStorage.setItem(AGENTS_STORAGE_KEY, JSON.stringify(agents));
+    sessionStorage.setItem("polly-current-agent-id", currentAgentId);
+  } catch (e) {
+    console.error("Failed to save agents:", e);
+  }
+}
+
+function loadAgents() {
+  try {
+    const raw = localStorage.getItem(AGENTS_STORAGE_KEY);
+    if (raw) {
+      agents = JSON.parse(raw);
+      if (!Array.isArray(agents) || agents.length === 0) agents = [...DEFAULT_AGENTS];
+    } else {
+      agents = [...DEFAULT_AGENTS];
+      saveAgents();
+    }
+    const savedId = sessionStorage.getItem("polly-current-agent-id");
+    if (savedId && agents.some((a) => a.id === savedId)) currentAgentId = savedId;
+  } catch (e) {
+    console.error("Failed to load agents:", e);
+    agents = [...DEFAULT_AGENTS];
+  }
+}
+
+function initializeAgents() {
+  loadAgents();
+  saveAgents();
+}
+
+function createAgent(personaName, displayName) {
+  const id = "agent-" + Date.now();
+  const agent = {
+    id,
+    persona_name: personaName || "",
+    display_name: displayName || personaName || "New Agent",
+    icon: personaName === "architect" ? "layout" : personaName === "scribe" ? "pen-line" : personaName === "professor" ? "graduation-cap" : "message-square",
+    created_at: Date.now(),
+  };
+  agents.push(agent);
+  saveAgents();
+  return agent;
+}
+
+function deleteAgent(agentId) {
+  if (agentId === "default" || ["architect", "scribe", "professor"].includes(agentId)) return;
+  agents = agents.filter((a) => a.id !== agentId);
+  if (currentAgentId === agentId) currentAgentId = "default";
+  saveAgents();
+}
+
+function getAgentById(agentId) {
+  return agents.find((a) => a.id === agentId) || DEFAULT_AGENTS[0];
+}
+
+async function getAgentConversations(agentId) {
+  const list = await window.polly.conversationList({ agent_id: agentId || "default" });
+  return list || [];
+}
+
+async function switchToAgent(agentId) {
+  currentAgentId = agentId || "default";
+  saveAgents();
+  const agent = getAgentById(agentId);
+  if (agent && agent.persona_name) {
+    try {
+      await fetch(API_URL + "/persona/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ persona_name: agent.persona_name }),
+      });
+    } catch (e) {
+      console.warn("Persona activate failed:", e);
+    }
+  }
+  const convos = await getAgentConversations(agentId);
+  conversations = convos;
+  if (typeof renderConversationList === "function") renderConversationList();
+  if (typeof renderAgentsSidebar === "function") renderAgentsSidebar();
+  if (typeof renderChatTabs === "function") renderChatTabs();
+  if (conversations.length > 0) {
+    await switchToConversation(conversations[0].id);
+  } else {
+    currentConversationId = null;
+    currentConversation = null;
+    clearChat();
+    await createNewConversation();
+  }
+  const personaSelect = document.getElementById("chat-persona-select");
+  if (personaSelect && agent) personaSelect.value = agent.persona_name || "";
+}
+
+// ============================================
 // Conversation Management Functions
 // ============================================
 
@@ -674,6 +729,8 @@ const initialize = withErrorBoundary(async function () {
  */
 async function initializeConversations() {
   try {
+    initializeAgents();
+
     // Check ConversationManager status
     const status = await window.polly.conversationManagerStatus();
     console.log("ConversationManager status:", status);
@@ -693,8 +750,10 @@ async function initializeConversations() {
       localStorage.removeItem("conversationHistory");
     }
 
-    // Load all conversations
-    conversations = await window.polly.conversationList();
+    // Load conversations for current agent only
+    conversations = await window.polly.conversationList({
+      agent_id: (currentAgentId != null && currentAgentId !== "") ? currentAgentId : "default",
+    });
 
     // Determine which conversation to load
     let targetConversationId = null;
@@ -726,8 +785,10 @@ async function initializeConversations() {
       await switchToConversation(targetConversationId, { restoreScroll: true });
     }
 
-    // Render the conversation list
+    // Render the conversation list and agents sidebar
     renderConversationList();
+    if (typeof renderAgentsSidebar === "function") renderAgentsSidebar();
+    if (typeof renderChatTabs === "function") renderChatTabs();
 
     console.log("Conversations initialized:", conversations.length);
   } catch (error) {
@@ -735,32 +796,6 @@ async function initializeConversations() {
     // Create a fallback conversation
     await createNewConversation();
     renderConversationList();
-  }
-}
-
-/**
- * Create a new conversation
- */
-async function createNewConversation(
-  title = "New Conversation",
-  categoryId = "uncategorized",
-) {
-  try {
-    const conversation = await window.polly.conversationCreate({
-      title,
-      category_id: categoryId,
-    });
-
-    // Add to list
-    conversations.unshift(conversation);
-
-    // Switch to it
-    await switchToConversation(conversation.id);
-
-    return conversation;
-  } catch (error) {
-    console.error("Failed to create conversation:", error);
-    throw error;
   }
 }
 
@@ -789,7 +824,7 @@ async function switchToConversation(conversationId, options = {}) {
 
     // Only clear and re-render if switching to a different conversation
     // or if there are no messages in the UI
-    const container = document.getElementById("chat-messages");
+    const container = getChatMessagesContainer();
     const hasMessagesInUI = container && container.children.length > 0;
 
     if (!isSameConversation || !hasMessagesInUI) {
@@ -815,10 +850,12 @@ async function switchToConversation(conversationId, options = {}) {
       }, 100); // Small delay to ensure DOM is ready
     }
 
-    // Update conversation list to show active state
+    // Update conversation list and agents sidebar to show active state
     renderConversationList(
       document.getElementById("conversations-search-input")?.value || "",
     );
+    if (typeof renderAgentsSidebar === "function") renderAgentsSidebar();
+    if (typeof renderChatTabs === "function") renderChatTabs();
 
     // Update active chat title and page indicator in sidebar
     const activeChatTitle = document.getElementById("active-chat-title");
@@ -846,7 +883,7 @@ async function switchToConversation(conversationId, options = {}) {
  * Clear chat messages from UI
  */
 function clearChat() {
-  const container = document.getElementById("chat-messages");
+  const container = getChatMessagesContainer();
   if (container) {
     container.innerHTML = "";
   }
@@ -923,7 +960,7 @@ async function addMessageToConversation(role, content) {
  * Save UI state to localStorage for smooth reloads
  */
 function saveUIState() {
-  const container = document.getElementById("chat-messages");
+  const container = getChatMessagesContainer();
   const state = {
     conversationId: currentConversationId,
     scrollPosition: container ? container.scrollTop : 0,
@@ -1017,13 +1054,17 @@ async function createNewConversation(options = {}) {
   try {
     const conversation = await window.polly.conversationCreate({
       title: "New conversation",
-      page_context: options.page_context || currentPage, // Pass current page as context
-      category_id: null,
+      page_context: options.page_context || currentPage,
+      category_id: options.category_id || "uncategorized",
+      agent_id: options.agent_id || currentAgentId,
     });
 
     conversations.unshift(conversation);
 
-    // Switch to the new conversation
+    if (typeof renderConversationList === "function") renderConversationList();
+    if (typeof renderAgentsSidebar === "function") renderAgentsSidebar();
+    if (typeof renderChatTabs === "function") renderChatTabs();
+
     await switchToConversation(conversation.id);
 
     return conversation;
@@ -1230,6 +1271,189 @@ function renderConversationList(searchQuery = "") {
   // Re-initialize icons
   if (typeof lucide !== "undefined") {
     setTimeout(() => lucide.createIcons(), 0);
+  }
+}
+
+/**
+ * Render the agents sidebar: agent list with nested conversations for current agent
+ */
+function renderAgentsSidebar() {
+  const listEl = document.getElementById("agents-list");
+  if (!listEl) return;
+
+  const currentAgent = getAgentById(currentAgentId);
+
+  listEl.innerHTML = agents
+    .map((agent) => {
+      const isActive = agent.id === currentAgentId;
+      const icon = agent.icon || "message-square";
+      const convs =
+        isActive && Array.isArray(conversations)
+          ? conversations
+          : [];
+      const convsHtml =
+        isActive && convs.length > 0
+          ? `<div class="agent-conversations">
+               ${convs
+                 .map(
+                   (c) =>
+                     `<div class="agent-conversation-item ${
+                       c.id === currentConversationId ? "active" : ""
+                     }" data-conversation-id="${c.id}" title="${(c.title || "").replace(/"/g, "&quot;")}">
+                    <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i>
+                    <span class="agent-conversation-title">${escapeHtml((c.title || "New conversation").slice(0, 24))}${(c.title || "").length > 24 ? "…" : ""}</span>
+                    <button type="button" class="agent-conversation-menu-btn" aria-label="Conversation options" data-conversation-id="${c.id}"><i data-lucide="more-vertical" style="width: 14px; height: 14px;"></i></button>
+                  </div>`
+                 )
+                 .join("")}
+             </div>`
+          : "";
+      return `
+        <div class="agent-item ${isActive ? "active" : ""}" data-agent-id="${escapeHtml(agent.id)}">
+          <div class="agent-row">
+            <i data-lucide="${icon}" class="agent-icon" style="width: 16px; height: 16px;"></i>
+            <span class="agent-name">${escapeHtml(agent.display_name)}</span>
+          </div>
+          ${convsHtml}
+        </div>
+      `;
+    })
+    .join("");
+
+  listEl.querySelectorAll(".agent-item").forEach((item) => {
+    const agentId = item.dataset.agentId;
+    if (!agentId) return;
+    const agentRow = item.querySelector(".agent-row");
+    if (agentRow) {
+      agentRow.addEventListener("click", () => switchToAgent(agentId));
+    }
+  });
+
+  listEl.querySelectorAll(".agent-conversation-item").forEach((item) => {
+    const convId = item.dataset.conversationId;
+    if (!convId) return;
+    item.addEventListener("click", (e) => {
+      if (e.target.closest(".agent-conversation-menu-btn")) return;
+      e.stopPropagation();
+      switchToConversation(convId);
+    });
+  });
+
+  listEl.querySelectorAll(".agent-conversation-menu-btn").forEach((btn) => {
+    const convId = btn.dataset.conversationId;
+    if (!convId) return;
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = btn.getBoundingClientRect();
+      showConversationContextMenu(convId, rect.right, rect.bottom);
+    });
+  });
+
+  if (typeof lucide !== "undefined") {
+    setTimeout(() => lucide.createIcons(), 0);
+  }
+}
+
+/**
+ * Render chat tabs for the current agent's conversations
+ */
+function renderChatTabs() {
+  const container = document.getElementById("chat-tabs");
+  if (!container) return;
+
+  const maxTabs = 12;
+  const convos = (conversations || []).slice(0, maxTabs);
+
+  container.innerHTML =
+    convos
+      .map((c) => {
+        const title = (c.title || "New conversation").slice(0, 20) + ((c.title || "").length > 20 ? "…" : "");
+        const isActive = c.id === currentConversationId;
+        return `
+        <button type="button" class="chat-tab ${isActive ? "active" : ""}" data-conversation-id="${escapeHtml(c.id)}" title="${escapeHtml(c.title || "New conversation")}">
+          <span class="chat-tab-label">${escapeHtml(title)}</span>
+          <button type="button" class="tab-close" aria-label="Close" data-conversation-id="${escapeHtml(c.id)}"><i data-lucide="x" style="width: 12px; height: 12px;"></i></button>
+        </button>
+      `;
+      })
+      .join("") +
+    `<button type="button" class="chat-tab-new" aria-label="New conversation"><i data-lucide="plus" style="width: 14px; height: 14px;"></i></button>`;
+
+  container.querySelectorAll(".chat-tab").forEach((tab) => {
+    const convId = tab.dataset.conversationId;
+    if (!convId) return;
+    tab.addEventListener("click", (e) => {
+      if (!e.target.closest(".tab-close")) switchToConversation(convId);
+    });
+    const closeBtn = tab.querySelector(".tab-close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const idx = conversations.findIndex((c) => c.id === convId);
+        if (conversations.length > 1 && idx >= 0) {
+          const next = idx > 0 ? conversations[idx - 1] : conversations[idx + 1];
+          if (next) switchToConversation(next.id);
+        }
+      });
+    }
+  });
+
+  const newTabBtn = container.querySelector(".chat-tab-new");
+  if (newTabBtn) {
+    newTabBtn.addEventListener("click", () => createNewConversation());
+  }
+
+  if (typeof lucide !== "undefined") {
+    setTimeout(() => lucide.createIcons(), 0);
+  }
+}
+
+function escapeHtml(str) {
+  if (typeof str !== "string") return "";
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/**
+ * Open the new-agent dialog (modal).
+ */
+function openNewAgentDialog() {
+  const modal = document.getElementById("new-agent-modal");
+  if (!modal) return;
+  const personaSelect = document.getElementById("new-agent-persona");
+  const displayNameInput = document.getElementById("new-agent-display-name");
+  if (displayNameInput) displayNameInput.value = "";
+  if (personaSelect) personaSelect.value = "";
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  if (displayNameInput) displayNameInput.focus();
+}
+
+/**
+ * Create agent from the new-agent modal form and switch to it.
+ */
+function submitNewAgentFromDialog() {
+  const personaSelect = document.getElementById("new-agent-persona");
+  const displayNameInput = document.getElementById("new-agent-display-name");
+  const persona = personaSelect ? personaSelect.value : "";
+  const displayName = (displayNameInput && displayNameInput.value.trim()) || (persona ? persona.charAt(0).toUpperCase() + persona.slice(1) : "New Agent");
+  const agent = createAgent(persona, displayName);
+  saveAgents();
+  closeNewAgentDialog();
+  renderAgentsSidebar();
+  switchToAgent(agent.id);
+}
+
+/**
+ * Close the new-agent modal (called from modal cancel/backdrop)
+ */
+function closeNewAgentDialog() {
+  const modal = document.getElementById("new-agent-modal");
+  if (modal) {
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
   }
 }
 
@@ -1530,6 +1754,8 @@ async function renameConversation(conversationId) {
       }
 
       renderConversationList();
+      if (typeof renderAgentsSidebar === "function") renderAgentsSidebar();
+      if (typeof renderChatTabs === "function") renderChatTabs();
       modal.classList.add("hidden");
     } catch (error) {
       console.error("Failed to rename conversation:", error);
@@ -1645,7 +1871,9 @@ async function changeConversationCategory(conversationId) {
         }
 
         // Reload conversations to refresh grouping
-        conversations = await window.polly.conversationList();
+        conversations = await window.polly.conversationList({
+          agent_id: (currentAgentId != null && currentAgentId !== "") ? currentAgentId : "default",
+        });
         renderConversationList();
 
         // Close modal
@@ -1702,6 +1930,8 @@ async function deleteConversation(conversationId) {
   }
 
   renderConversationList();
+  if (typeof renderAgentsSidebar === "function") renderAgentsSidebar();
+  if (typeof renderChatTabs === "function") renderChatTabs();
 }
 
 /**
@@ -2000,12 +2230,14 @@ function setupEventListeners() {
     showView("chat");
   });
 
-  // Chat - Send
+  // Chat - Send (main chat panel + legacy)
+  const chatSendBtn = document.getElementById("chat-send");
+  if (chatSendBtn) {
+    chatSendBtn.addEventListener("click", sendQuery);
+  }
   const sendBtn = document.getElementById("btn-send");
   if (sendBtn) {
     sendBtn.addEventListener("click", sendQuery);
-  } else {
-    console.warn("Send button not found (may not be on chat view)");
   }
 
   // Chat - Save to Obsidian
@@ -2032,7 +2264,33 @@ function setupEventListeners() {
     newChatBtnSidebar.addEventListener("click", async () => {
       await createNewConversation();
       renderConversationList();
+      if (typeof renderAgentsSidebar === "function") renderAgentsSidebar();
+      if (typeof renderChatTabs === "function") renderChatTabs();
     });
+  }
+
+  // Agents sidebar - New Agent button
+  const newAgentBtn = document.getElementById("new-agent-btn");
+  if (newAgentBtn) {
+    newAgentBtn.addEventListener("click", () => openNewAgentDialog());
+  }
+
+  // New Agent modal
+  const newAgentModalClose = document.getElementById("new-agent-modal-close");
+  if (newAgentModalClose) {
+    newAgentModalClose.addEventListener("click", closeNewAgentDialog);
+  }
+  const newAgentCancel = document.getElementById("new-agent-cancel");
+  if (newAgentCancel) {
+    newAgentCancel.addEventListener("click", closeNewAgentDialog);
+  }
+  const newAgentModalBackdrop = document.getElementById("new-agent-modal-backdrop");
+  if (newAgentModalBackdrop) {
+    newAgentModalBackdrop.addEventListener("click", closeNewAgentDialog);
+  }
+  const newAgentCreate = document.getElementById("new-agent-create");
+  if (newAgentCreate) {
+    newAgentCreate.addEventListener("click", () => submitNewAgentFromDialog());
   }
 
   // Legacy button support (if it still exists)
@@ -2107,7 +2365,16 @@ function setupEventListeners() {
       });
     });
 
-  // Query input - Enter to send
+  // Query input - Enter to send (main chat panel + legacy)
+  const chatInput = document.getElementById("chat-input");
+  if (chatInput) {
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendQuery();
+      }
+    });
+  }
   const queryInput = document.getElementById("query-input");
   if (queryInput) {
     queryInput.addEventListener("keydown", (e) => {
@@ -2116,8 +2383,6 @@ function setupEventListeners() {
         sendQuery();
       }
     });
-  } else {
-    console.warn("Query input not found (may not be on chat view)");
   }
 
   // Global keyboard shortcuts
@@ -2142,8 +2407,9 @@ function setupEventListeners() {
       e.preventDefault();
       await createNewConversation();
       renderConversationList();
+      const chatInput = document.getElementById("chat-input");
       const queryInput = document.getElementById("query-input");
-      if (queryInput) queryInput.focus();
+      (chatInput || queryInput)?.focus();
     }
 
     // Cmd/Ctrl+B: Toggle sidebar
@@ -2162,22 +2428,32 @@ function setupEventListeners() {
     // /: Focus query input (like Slack/Discord)
     if (e.key === "/" && currentView === "chat") {
       e.preventDefault();
+      const chatInput = document.getElementById("chat-input");
       const queryInput = document.getElementById("query-input");
-      if (queryInput) queryInput.focus();
+      (chatInput || queryInput)?.focus();
     }
   });
 
-  // Auto-resize textarea
-  document.getElementById("query-input").addEventListener("input", function () {
+  // Auto-resize textareas (main chat panel + legacy)
+  const resizeHandler = function () {
     this.style.height = "auto";
     this.style.height = Math.min(this.scrollHeight, 150) + "px";
-  });
+  };
+  const chatInputEl = document.getElementById("chat-input");
+  if (chatInputEl) chatInputEl.addEventListener("input", resizeHandler);
+  const queryInputEl = document.getElementById("query-input");
+  if (queryInputEl) queryInputEl.addEventListener("input", resizeHandler);
 
   // Quick actions
   document.querySelectorAll(".quick-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document.getElementById("query-input").value = btn.dataset.query;
-      sendQuery();
+      const chatInput = document.getElementById("chat-input");
+      const queryInput = document.getElementById("query-input");
+      const input = chatInput || queryInput;
+      if (input) {
+        input.value = btn.dataset.query;
+        sendQuery();
+      }
     });
   });
 
@@ -2319,7 +2595,11 @@ function setupEventListeners() {
     patternTimeFilter.addEventListener("change", filterPatterns);
   }
 
-  // Persona Controls (Phase 16c)
+  // Persona Controls (Phase 16c) - chat panel + legacy
+  const chatPersonaSelect = document.getElementById("chat-persona-select");
+  if (chatPersonaSelect) {
+    chatPersonaSelect.addEventListener("change", handlePersonaChange);
+  }
   const personaSelect = document.getElementById("persona-select");
   if (personaSelect) {
     personaSelect.addEventListener("change", handlePersonaChange);
@@ -2330,7 +2610,11 @@ function setupEventListeners() {
     modeSelect.addEventListener("change", handleModeChange);
   }
 
-  // Model Selector (Phase 16c)
+  // Model Selector (Phase 16c) - chat panel + legacy
+  const chatModelSelect = document.getElementById("chat-model-select");
+  if (chatModelSelect) {
+    chatModelSelect.addEventListener("change", handleModelChange);
+  }
   const modelSelect = document.getElementById("model-select");
   if (modelSelect) {
     modelSelect.addEventListener("change", handleModelChange);
@@ -3216,18 +3500,31 @@ function reattachChatEventListeners() {
     newChatBtnSidebar.addEventListener("click", async () => {
       await createNewConversation();
       renderConversationList();
+      if (typeof renderAgentsSidebar === "function") renderAgentsSidebar();
+      if (typeof renderChatTabs === "function") renderChatTabs();
     });
   }
 
-  // Send button
+  // Send button (main chat panel + legacy)
+  const chatSendBtn = document.getElementById("chat-send");
+  if (chatSendBtn) {
+    chatSendBtn.addEventListener("click", () => sendQuery());
+  }
   const sendBtn = document.getElementById("btn-send");
   if (sendBtn) {
-    sendBtn.addEventListener("click", () => {
-      sendQuery();
-    });
+    sendBtn.addEventListener("click", () => sendQuery());
   }
 
-  // Query input Enter key
+  // Query input Enter key (main chat panel + legacy)
+  const chatInput = document.getElementById("chat-input");
+  if (chatInput) {
+    chatInput.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        await sendQuery();
+      }
+    });
+  }
   const queryInput = document.getElementById("query-input");
   if (queryInput) {
     queryInput.addEventListener("keydown", async (e) => {
@@ -3279,7 +3576,12 @@ function reattachChatEventListeners() {
     });
   }
 
-  // Persona controls (main sidebar)
+  // Persona controls (main chat panel + legacy sidebar)
+  const chatPersonaSelect = document.getElementById("chat-persona-select");
+  if (chatPersonaSelect) {
+    chatPersonaSelect.addEventListener("change", handlePersonaChange);
+    console.log("[Init] Attached chat-persona-select event listener");
+  }
   const personaSelect = document.getElementById("persona-select");
   if (personaSelect) {
     personaSelect.addEventListener("change", handlePersonaChange);
@@ -4335,14 +4637,16 @@ function handleModelChange(e) {
 /**
  * Send query to active persona
  * Returns true if persona handled the request, false otherwise
+ * @param {string} [personaName] - Current persona from dropdown; sent so server can activate if needed
  */
-async function sendToPersona(query, conversationHistory, loadingId) {
+async function sendToPersona(query, conversationHistory, loadingId, personaName) {
   try {
     const response = await fetch("http://127.0.0.1:11436/persona/process", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         user_message: query,
+        persona_name: personaName || undefined,
         metadata: {
           page: currentPage,
           conversation_history: conversationHistory,
@@ -4351,7 +4655,21 @@ async function sendToPersona(query, conversationHistory, loadingId) {
     });
 
     if (!response.ok) {
-      throw new Error(`Persona request failed: ${response.statusText}`);
+      let errDetail = response.statusText;
+      try {
+        const body = await response.text();
+        if (body) {
+          try {
+            const parsed = JSON.parse(body);
+            if (parsed.detail) errDetail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+            else errDetail = body.slice(0, 200);
+          } catch (_) {
+            errDetail = body.slice(0, 200);
+          }
+        }
+      } catch (_) {}
+      console.error("[Persona] Server error:", response.status, errDetail);
+      throw new Error(`Persona request failed: ${errDetail}`);
     }
 
     const data = await response.json();
@@ -7622,7 +7940,9 @@ async function regenerateCurriculum() {
  * Send query
  */
 async function sendQuery() {
-  const input = document.getElementById("query-input");
+  const chatInput = document.getElementById("chat-input");
+  const queryInput = document.getElementById("query-input");
+  const input = chatInput || queryInput;
   const query = input?.value.trim();
 
   if (!query) return;
@@ -7645,11 +7965,14 @@ async function sendQueryInternal(query) {
     await createNewConversation();
   }
 
-  // Clear input
-  const input = document.getElementById("query-input");
-  if (input) {
-    input.value = "";
-    input.style.height = "auto";
+  // Clear input (main chat panel + legacy)
+  const chatInput = document.getElementById("chat-input");
+  const queryInput = document.getElementById("query-input");
+  for (const input of [chatInput, queryInput]) {
+    if (input) {
+      input.value = "";
+      input.style.height = "auto";
+    }
   }
 
   // Add user message to UI
@@ -7662,9 +7985,10 @@ async function sendQueryInternal(query) {
   const loadingId = addTypingIndicator();
 
   try {
-    // Check if persona is active (Phase 16c)
+    // Check if persona is active (Phase 16c) - use visible selector first
+    const chatPersonaSelect = document.getElementById("chat-persona-select");
     const personaSelect = document.getElementById("persona-select");
-    const activePersona = personaSelect ? personaSelect.value : null;
+    const activePersona = (chatPersonaSelect || personaSelect)?.value || null;
 
     // Get conversation history (excluding the message we just added - it will be included in the query)
     const messages = getCurrentConversationMessages();
@@ -7683,7 +8007,7 @@ async function sendQueryInternal(query) {
 
     // Route through persona if active
     if (activePersona) {
-      const result = await sendToPersona(query, conversationHistory, loadingId);
+      const result = await sendToPersona(query, conversationHistory, loadingId, activePersona);
       if (result) {
         return; // Persona handled the request
       }
@@ -7764,10 +8088,20 @@ async function sendQueryInternal(query) {
 }
 
 /**
+ * Get the visible chat messages container (main chat panel takes precedence)
+ */
+function getChatMessagesContainer() {
+  return (
+    document.getElementById("chat-messages-main") ||
+    document.getElementById("chat-messages")
+  );
+}
+
+/**
  * Add message to UI
  */
 function addMessageToUI(role, content) {
-  const container = document.getElementById("chat-messages");
+  const container = getChatMessagesContainer();
   const id = `msg-${Date.now()}`;
   const timestamp = new Date();
 
@@ -7803,7 +8137,7 @@ function addMessageToUI(role, content) {
  * Add typing indicator (better than generic loading spinner)
  */
 function addTypingIndicator() {
-  const container = document.getElementById("chat-messages");
+  const container = getChatMessagesContainer();
   const id = `typing-${Date.now()}`;
 
   const div = document.createElement("div");
@@ -14472,8 +14806,8 @@ async function sendFloatingMessageInternal(query) {
         query,
         conversationHistory,
         loadingId,
-        false,
-      ); // false = use sidebar
+        activePersona,
+      );
       if (result) {
         return; // Persona handled the request
       }
