@@ -206,7 +206,12 @@ async function syncConversationToBackend(messages, conversationId = null) {
     body: JSON.stringify(payload),
   }, true);
   if (!result.ok && !result.isConnectionError) {
-    console.warn("[ConversationSync] Backend sync failed:", result.error);
+    const is503 = (result.error || "").includes("503");
+    if (is503) {
+      console.warn("[ConversationSync] Backend not ready yet (503); will retry on next action.");
+    } else {
+      console.warn("[ConversationSync] Backend sync failed:", result.error);
+    }
   }
 }
 
@@ -239,6 +244,7 @@ const API_HEALTH_URL = "http://127.0.0.1:11436/health";
 function waitForServerReady(options = {}) {
   const timeoutMs = options.timeoutMs ?? 30000;
   const intervalMs = options.intervalMs ?? 500;
+  const initialDelayMs = options.initialDelayMs ?? 1500;
   const start = Date.now();
   return new Promise((resolve) => {
     const tryOnce = () => {
@@ -254,6 +260,51 @@ function waitForServerReady(options = {}) {
 
       function schedule() {
         if (Date.now() - start >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+        setTimeout(tryOnce, intervalMs);
+      }
+    };
+    // Brief delay before first check so server has time to bind (reduces connection-refused spam)
+    setTimeout(tryOnce, initialDelayMs);
+  });
+}
+
+const POLLY_STATUS_URL = "http://127.0.0.1:11436/polly/status";
+
+/**
+ * Wait for Polly core to be initialized (not just server process).
+ * Polls /polly/status until status === "ready" or timeout. Call after waitForServerReady()
+ * so that conversation sync, persona state, mental models, etc. don't get 503.
+ * @param {{ timeoutMs?: number, intervalMs?: number }} options
+ * @returns {Promise<boolean>} true if Polly is ready, false on timeout or error
+ */
+function waitForPollyReady(options = {}) {
+  const timeoutMs = options.timeoutMs ?? 120000;
+  const intervalMs = options.intervalMs ?? 500;
+  const start = Date.now();
+  return new Promise((resolve) => {
+    const tryOnce = () => {
+      fetch(POLLY_STATUS_URL, { method: "GET" })
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (data && data.status === "ready") {
+            resolve(true);
+            return;
+          }
+          if (data && data.status === "error") {
+            console.warn("[Init] Polly initialization failed:", data.error);
+            resolve(false);
+            return;
+          }
+          schedule();
+        })
+        .catch(() => schedule());
+
+      function schedule() {
+        if (Date.now() - start >= timeoutMs) {
+          console.warn("[Init] Polly ready check timed out");
           resolve(false);
           return;
         }
@@ -486,6 +537,14 @@ const initialize = withErrorBoundary(async function () {
     const serverReady = await waitForServerReady();
     if (serverReady) {
       console.log("[Init] Backend server ready");
+      // Wait for Polly core to be initialized so sync/persona/mental-models don't get 503
+      console.log("[Init] Waiting for Polly to be ready...");
+      const pollyReady = await waitForPollyReady();
+      if (pollyReady) {
+        console.log("[Init] Polly ready");
+      } else {
+        console.warn("[Init] Polly not ready within timeout; continuing anyway (will retry on use)");
+      }
     } else {
       console.warn("[Init] Backend server not ready within timeout; continuing anyway");
     }
@@ -9225,25 +9284,14 @@ function formatTimeAgo(timestamp) {
 
 // Restore integration status from stored credentials
 async function restoreIntegrationStatus() {
-  // Wait for server to be ready
-  let serverReady = false;
-  for (let i = 0; i < 10; i++) {
-    try {
-      const status = await window.polly.getServerStatus();
-      if (status.running) {
-        serverReady = true;
-        break;
-      }
-    } catch (e) {
-      // Server not ready yet
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-
+  // Wait for HTTP server to be reachable (not just process running)
+  const serverReady = await waitForServerReady({ timeoutMs: 15000, intervalMs: 500 });
   if (!serverReady) {
     console.warn("Server not ready, skipping integration restore");
     return;
   }
+  // Brief delay so Polly has a chance to finish init (reduces 503s)
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // Check GitHub connection
   const githubToken = await window.polly.getCredential("github_token");
@@ -9263,15 +9311,16 @@ async function restoreIntegrationStatus() {
         console.log("Backend connection result:", backendResult);
 
         if (backendResult && !backendResult.success) {
-          console.error("Failed to connect backend:", backendResult.error);
-          // Show warning in UI but don't block
-          console.warn(
-            'GitHub UI connected but backend connection failed. Click "sync now" to retry.',
-          );
+          // 503 / connection issues often mean Polly still initializing
+          console.warn("Backend connection:", backendResult.error || "not ready yet. Click \"sync now\" to retry.");
         }
       } catch (error) {
-        console.error("Backend connection error:", error);
-        console.warn("Will retry connection on first sync.");
+        const isRefused = (error.message || "").includes("ECONNREFUSED") || (error.message || "").includes("Failed to fetch");
+        if (isRefused) {
+          console.warn("Backend not ready yet; click \"sync now\" to retry.");
+        } else {
+          console.error("Backend connection error:", error);
+        }
       }
     }
   }
@@ -9314,7 +9363,7 @@ async function restoreIntegrationStatus() {
         console.log("Context7 backend reconnect result:", result);
 
         if (result && !result.success) {
-          console.error("Failed to connect Context7 backend:", result.error);
+          console.warn("Context7 backend:", result.error || "not ready yet");
           updateIntegrationCard("context7", {
             authenticated: false,
             statusText: "connection failed",
@@ -9323,7 +9372,12 @@ async function restoreIntegrationStatus() {
           console.log("Context7 backend reconnected successfully");
         }
       } catch (error) {
-        console.error("Context7 backend connection error:", error);
+        const isRefused = (error.message || "").includes("ECONNREFUSED") || (error.message || "").includes("Failed to fetch");
+        if (isRefused) {
+          console.warn("Context7: backend not ready yet.");
+        } else {
+          console.error("Context7 backend connection error:", error);
+        }
         updateIntegrationCard("context7", {
           authenticated: false,
           statusText: "connection error",
@@ -9339,6 +9393,10 @@ async function restoreIntegrationStatus() {
   // Check Obsidian connection - it should auto-connect on server startup
   try {
     const response = await fetch("http://127.0.0.1:11436/polly/integrations");
+    if (!response.ok && response.status === 503) {
+      console.warn("Integrations endpoint returned 503 (Polly still initializing).");
+      return;
+    }
     const result = await response.json();
 
     if (result.integrations && result.integrations.obsidian) {
