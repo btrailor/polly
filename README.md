@@ -3,6 +3,7 @@
 ## A prototype for an AI assistant that deeply understands you
 
 Polly is an edge-first AI system designed to:
+
 - **Understand your domains**: Query your Obsidian vault, codebases, and filesystem
 - **Learn your patterns**: Build a personal knowledge graph from your work
 - **Adapt to your thinking**: Apply your personal mental models to every response
@@ -72,8 +73,7 @@ The app will guide you through setup with a visual wizard.
 ### Option 2: Command Line
 
 ```bash
-# 1. Install dependencies
-cd polly-prototype
+# 1. From the project root, install dependencies (includes internal libs)
 pip install -r requirements.txt
 
 # 2. Configure your paths
@@ -90,23 +90,31 @@ python -m polly serve
 polly "What patterns do I use for MIDI handling?"
 ```
 
+**Internal libraries:** The app uses packages under `libs/` (e.g. `polly-routing`). They are installed in editable mode by `pip install -r requirements.txt` when run from the project root. To install or update only the libs: `./scripts/install_libs.sh` or `pip install -e libs/polly-routing` (and others as they are added).
+
 ## What Makes Polly Different
 
 ### 1. Personal Mental Models 🧠
+
 Polly learns your thinking frameworks and applies them automatically:
+
 - **12 default models** including Infinite Games, Systems Thinking, Socratic Method
 - **Create custom models** with templates
 - **Context-aware activation** based on what you're working on
 - **Per-conversation override** for fine control
 
 ### 2. Domain-Aware Intelligence
+
 Not just file patterns—deep understanding of five creative and technical domains:
+
 - **Sigils** (code), **Signals** (audio), **Scrolls** (writing), **Glyphs** (design), **Grids** (systems)
 
 ### 3. Pattern Learning
+
 Automatically learns from your work patterns and reuses them in future queries.
 
 ### 4. True Data Autonomy
+
 - All data stored locally in `~/.polly/`
 - You own your knowledge graph
 - No platform lock-in
@@ -116,21 +124,24 @@ Automatically learns from your work patterns and reuses them in future queries.
 
 Polly understands your five domains:
 
-| Domain | Focus | File Patterns |
-|--------|-------|---------------|
-| **Sigils** | Code, infrastructure, automation | `.py`, `.rs`, `.go`, `docker-compose.yaml` |
-| **Signals** | Audio programming, synthesis | `.scd`, `.lua`, `norns/`, `supercollider/` |
-| **Scrolls** | Writing, pedagogy, documentation | `.md`, `vault/`, `essays/` |
-| **Glyphs** | Visual work, design | `.fig`, `.sketch`, `design/` |
-| **Grids** | Systems thinking, frameworks | `frameworks/`, `models/`, tagged notes |
+| Domain      | Focus                            | File Patterns                              |
+| ----------- | -------------------------------- | ------------------------------------------ |
+| **Sigils**  | Code, infrastructure, automation | `.py`, `.rs`, `.go`, `docker-compose.yaml` |
+| **Signals** | Audio programming, synthesis     | `.scd`, `.lua`, `norns/`, `supercollider/` |
+| **Scrolls** | Writing, pedagogy, documentation | `.md`, `vault/`, `essays/`                 |
+| **Glyphs**  | Visual work, design              | `.fig`, `.sketch`, `design/`               |
+| **Grids**   | Systems thinking, frameworks     | `frameworks/`, `models/`, tagged notes     |
 
 ## Components
 
 ### 1. Unified RAG System (`core/rag.py`)
+
 Multi-source semantic search across your entire knowledge base.
 
 ### 2. Mental Models System (`core/mental_models.py`)
+
 Your personal thinking frameworks guide every response:
+
 - 12 default models (Infinite Games, Systems Thinking, Socratic Method, etc.)
 - Custom model creation with templates
 - Three-tier context activation (domain, page, persona)
@@ -138,15 +149,19 @@ Your personal thinking frameworks guide every response:
 - PIL compression for efficiency
 
 ### 3. Pattern Learner (`learners/patterns.py`)
+
 Discovers and tracks recurring patterns in your work over time.
 
 ### 4. Domain Engine (`core/domains.py`)
+
 Understands context and routes queries to relevant sources.
 
 ### 5. Intelligent Router (`core/router.py`)
+
 Seamlessly pivots between local (Ollama) and cloud (Anthropic/OpenAI) models.
 
 ### 6. Personal Knowledge Graph (`core/graph.py`)
+
 Builds connections between concepts, files, and patterns.
 
 ## Electron App Features
@@ -160,6 +175,7 @@ Builds connections between concepts, files, and patterns.
 ## Future Hardware
 
 When Apple Neural Engine becomes more accessible, or dedicated AI hardware arrives:
+
 - On-device embedding generation
 - Local fine-tuned models
 - Real-time pattern detection
