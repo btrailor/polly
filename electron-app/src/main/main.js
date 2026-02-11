@@ -3,50 +3,59 @@
  * Handles window management, Python backend, and system integration
  */
 
-const { app, BrowserWindow, BrowserView, ipcMain, Menu, Tray, shell, dialog } = require('electron');
-const path = require('path');
-const os = require('os');
-const { spawn, exec } = require('child_process');
-const fs = require('fs');
-const Store = require('electron-store');
-const keytar = require('keytar');
-const ConversationManager = require('./conversation-manager');
+const {
+  app,
+  BrowserWindow,
+  BrowserView,
+  ipcMain,
+  Menu,
+  Tray,
+  shell,
+  dialog,
+} = require("electron");
+const path = require("path");
+const os = require("os");
+const { spawn, exec } = require("child_process");
+const fs = require("fs");
+const Store = require("electron-store");
+const keytar = require("keytar");
+const ConversationManager = require("./conversation-manager");
 
 // Fix PATH for macOS GUI apps
 try {
-  require('fix-path')();
+  require("fix-path")();
 } catch (e) {
-  console.log('fix-path not available');
+  console.log("fix-path not available");
 }
 
 // Handle EPIPE errors gracefully (broken pipe from child processes)
-process.on('uncaughtException', (error) => {
-  if (error.code === 'EPIPE' || error.errno === -32) {
+process.on("uncaughtException", (error) => {
+  if (error.code === "EPIPE" || error.errno === -32) {
     // Ignore EPIPE errors - these happen when writing to a closed pipe
     // This is common when child processes close unexpectedly
     return;
   }
   // For other errors, log and continue
-  console.error('Uncaught exception:', error);
+  console.error("Uncaught exception:", error);
 });
 
 // Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
 // Persistent storage
 const store = new Store({
   defaults: {
     setupComplete: false,
-    pythonPath: '',
-    ollamaPath: '',
-    vaultPath: '',
+    pythonPath: "",
+    ollamaPath: "",
+    vaultPath: "",
     codebasePaths: [],
-    theme: 'dark',
-    routingMode: 'auto',
-    windowBounds: { width: 1200, height: 800 }
-  }
+    theme: "dark",
+    routingMode: "auto",
+    windowBounds: { width: 1200, height: 800 },
+  },
 });
 
 // Global references
@@ -62,43 +71,46 @@ let vscodeView = null; // BrowserView for VSCode fork
 // Paths - detect if we're in development by checking if we're running from node_modules
 const isDev = !app.isPackaged;
 const pythonDir = isDev
-  ? path.join(__dirname, '..', '..', '..',)  // electron-app/../ = polly root
-  : path.join(process.resourcesPath, 'python');
+  ? path.join(__dirname, "..", "..", "..") // electron-app/../ = polly root
+  : path.join(process.resourcesPath, "python");
 
-console.log('=== Polly Paths ===');
-console.log('isDev:', isDev);
-console.log('__dirname:', __dirname);
-console.log('pythonDir:', pythonDir);
-console.log('requirements.txt exists:', fs.existsSync(path.join(pythonDir, 'requirements.txt')));
+console.log("=== Polly Paths ===");
+console.log("isDev:", isDev);
+console.log("__dirname:", __dirname);
+console.log("pythonDir:", pythonDir);
+console.log(
+  "requirements.txt exists:",
+  fs.existsSync(path.join(pythonDir, "requirements.txt")),
+);
 
 /**
  * Create the main application window
  */
 function createWindow() {
-  const bounds = store.get('windowBounds');
+  const bounds = store.get("windowBounds");
 
   mainWindow = new BrowserWindow({
     width: bounds.width,
     height: bounds.height,
     minWidth: 800,
     minHeight: 600,
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 20, y: 20 },
-    backgroundColor: '#1a1a2e',
+    backgroundColor: "#1a1a2e",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
-    }
+      preload: path.join(__dirname, "preload.js"),
+    },
   });
 
   // Load the app
-  mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
 
   // Save window size on resize
-  mainWindow.on('resize', () => {
+  mainWindow.on("resize", () => {
     const { width, height } = mainWindow.getBounds();
-    store.set('windowBounds', { width, height });
+    store.set("windowBounds", { width, height });
     // Update VSCode BrowserView bounds if it's visible
     if (vscodeView) {
       updateVSCodeViewBounds();
@@ -106,7 +118,7 @@ function createWindow() {
   });
 
   // Handle close to tray
-  mainWindow.on('close', (event) => {
+  mainWindow.on("close", (event) => {
     if (!isQuitting) {
       event.preventDefault();
       mainWindow.hide();
@@ -116,10 +128,10 @@ function createWindow() {
   // Open devtools in development
   if (isDev) {
     mainWindow.webContents.openDevTools();
-    
+
     // Add keyboard shortcut to toggle DevTools (Cmd+Option+I)
-    mainWindow.webContents.on('before-input-event', (event, input) => {
-      if (input.meta && input.alt && input.key === 'i') {
+    mainWindow.webContents.on("before-input-event", (event, input) => {
+      if (input.meta && input.alt && input.key === "i") {
         if (mainWindow.webContents.isDevToolsOpened()) {
           mainWindow.webContents.closeDevTools();
         } else {
@@ -134,61 +146,61 @@ function createWindow() {
  * Create system tray icon
  */
 function createTray() {
-  const iconPath = path.join(__dirname, '..', '..', 'assets', 'tray-icon.png');
+  const iconPath = path.join(__dirname, "..", "..", "assets", "tray-icon.png");
 
   // Use a template icon if available, otherwise create basic tray
   try {
     tray = new Tray(iconPath);
   } catch (e) {
     // Create without icon if not found
-    console.log('Tray icon not found, using default');
+    console.log("Tray icon not found, using default");
     return;
   }
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Open Polly',
-      click: () => mainWindow.show()
+      label: "Open Polly",
+      click: () => mainWindow.show(),
     },
-    { type: 'separator' },
+    { type: "separator" },
     {
-      label: 'Quick Query...',
-      accelerator: 'CmdOrCtrl+Shift+P',
+      label: "Quick Query...",
+      accelerator: "CmdOrCtrl+Shift+P",
       click: () => {
         mainWindow.show();
-        mainWindow.webContents.send('focus-query');
-      }
+        mainWindow.webContents.send("focus-query");
+      },
     },
-    { type: 'separator' },
+    { type: "separator" },
     {
-      label: 'Server Status',
-      sublabel: pollyServer ? 'Running' : 'Stopped',
-      enabled: false
+      label: "Server Status",
+      sublabel: pollyServer ? "Running" : "Stopped",
+      enabled: false,
     },
     {
-      label: pollyServer ? 'Restart Server' : 'Start Server',
-      click: () => startPollyServer()
+      label: pollyServer ? "Restart Server" : "Start Server",
+      click: () => startPollyServer(),
     },
-    { type: 'separator' },
+    { type: "separator" },
     {
-      label: 'Quit Polly',
+      label: "Quit Polly",
       click: () => {
         isQuitting = true;
         app.quit();
-      }
-    }
+      },
+    },
   ]);
 
-  tray.setToolTip('Polly');
+  tray.setToolTip("Polly");
   tray.setContextMenu(contextMenu);
 
-  tray.on('click', async () => {
+  tray.on("click", async () => {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
     } else {
       // In dev, restart backend when opening from tray so code changes are picked up
       if (isDev && pollyServer) {
-        console.log('[Dev] Restarting backend so latest code is loaded...');
+        console.log("[Dev] Restarting backend so latest code is loaded...");
         await stopPollyServer();
         await startPollyServer();
       }
@@ -199,41 +211,43 @@ function createTray() {
 
 /**
  * Create and configure VSCode BrowserView
- * 
+ *
  * NOTE: VSCode's workbench.html requires VSCode's main process to function.
  * Loading it in a BrowserView won't work because it needs VSCode's IPC channels
  * and services. We need to launch VSCode as a separate process.
- * 
+ *
  * For now, this creates a BrowserView that shows a placeholder message
  * explaining that full VSCode integration requires launching it as a separate process.
  */
 function createVSCodeView() {
   if (vscodeView) {
-    console.log('[VSCode] Reusing existing BrowserView');
+    console.log("[VSCode] Reusing existing BrowserView");
     return vscodeView;
   }
 
   const vscodeCodePath = path.join(
     process.env.HOME || os.homedir(),
-    'projects',
-    'polly-code'
+    "projects",
+    "polly-code",
   );
 
-  console.log('[VSCode] Creating BrowserView (placeholder mode)');
-  console.log('[VSCode] VSCode path:', vscodeCodePath);
-  console.log('[VSCode] NOTE: Full VSCode integration requires launching as separate process');
+  console.log("[VSCode] Creating BrowserView (placeholder mode)");
+  console.log("[VSCode] VSCode path:", vscodeCodePath);
+  console.log(
+    "[VSCode] NOTE: Full VSCode integration requires launching as separate process",
+  );
 
   vscodeView = new BrowserView({
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
-      sandbox: true
-    }
+      sandbox: true,
+    },
   });
-  
+
   // Set background color to match VSCode theme
-  vscodeView.setBackgroundColor('#1e1e1e');
+  vscodeView.setBackgroundColor("#1e1e1e");
 
   // For now, load a placeholder HTML that explains the situation
   // TODO: Launch VSCode fork as separate process and embed it
@@ -275,18 +289,23 @@ function createVSCodeView() {
     </body>
     </html>
   `;
-  
+
   // Load the placeholder
-  vscodeView.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(placeholderHTML)}`).then(() => {
-    console.log('[VSCode] Placeholder HTML loaded');
-  }).catch(err => {
-    console.error('[VSCode] Failed to load placeholder:', err);
-  });
+  vscodeView.webContents
+    .loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(placeholderHTML)}`,
+    )
+    .then(() => {
+      console.log("[VSCode] Placeholder HTML loaded");
+    })
+    .catch((err) => {
+      console.error("[VSCode] Failed to load placeholder:", err);
+    });
 
   // Handle window resize to reposition BrowserView
   if (mainWindow) {
-    mainWindow.on('resize', updateVSCodeViewBounds);
-    mainWindow.on('move', updateVSCodeViewBounds);
+    mainWindow.on("resize", updateVSCodeViewBounds);
+    mainWindow.on("move", updateVSCodeViewBounds);
   }
 
   return vscodeView;
@@ -305,27 +324,33 @@ function updateVSCodeViewBounds() {
   const titlebarHeight = 35; // macOS titlebar height
   const leftSidebarWidth = 280; // Left sidebar width (when visible)
   const rightSidebarWidth = 320; // Right sidebar width (when visible)
-  
+
   // For now, assume sidebars are visible
   // TODO: Check actual sidebar state from renderer
   const leftSidebarVisible = true; // Will be dynamic later
   const rightSidebarVisible = true; // Will be dynamic later
-  
+
   const x = ribbonWidth + (leftSidebarVisible ? leftSidebarWidth : 0);
-  const width = bounds.width - ribbonWidth 
-    - (leftSidebarVisible ? leftSidebarWidth : 0)
-    - (rightSidebarVisible ? rightSidebarWidth : 0);
+  const width =
+    bounds.width -
+    ribbonWidth -
+    (leftSidebarVisible ? leftSidebarWidth : 0) -
+    (rightSidebarVisible ? rightSidebarWidth : 0);
 
   vscodeView.setBounds({
     x: x,
     y: titlebarHeight,
     width: width,
-    height: bounds.height - titlebarHeight
+    height: bounds.height - titlebarHeight,
   });
-  
-  console.log('[VSCode] BrowserView bounds updated:', {
-    x, y: titlebarHeight, width, height: bounds.height - titlebarHeight,
-    windowWidth: bounds.width, windowHeight: bounds.height
+
+  console.log("[VSCode] BrowserView bounds updated:", {
+    x,
+    y: titlebarHeight,
+    width,
+    height: bounds.height - titlebarHeight,
+    windowWidth: bounds.width,
+    windowHeight: bounds.height,
   });
 }
 
@@ -334,7 +359,7 @@ function updateVSCodeViewBounds() {
  */
 function showVSCodeView() {
   if (!mainWindow) {
-    console.error('[VSCode] Main window not available');
+    console.error("[VSCode] Main window not available");
     return;
   }
 
@@ -347,11 +372,11 @@ function showVSCodeView() {
 
   mainWindow.setBrowserView(vscodeView);
   updateVSCodeViewBounds();
-  
+
   // Ensure BrowserView is on top
   vscodeView.webContents.focus();
-  
-  console.log('[VSCode] BrowserView shown and focused');
+
+  console.log("[VSCode] BrowserView shown and focused");
 }
 
 /**
@@ -363,7 +388,7 @@ function hideVSCodeView() {
   }
 
   mainWindow.removeBrowserView(vscodeView);
-  console.log('[VSCode] BrowserView hidden');
+  console.log("[VSCode] BrowserView hidden");
 }
 
 /**
@@ -371,137 +396,165 @@ function hideVSCodeView() {
  */
 async function startPollyServer() {
   if (pollyServer) {
-    console.log('Killing existing Polly server...');
+    console.log("Killing existing Polly server...");
     pollyServer.kill();
     pollyServer = null;
   }
 
   // Try to use venv Python first, fall back to configured or system Python
-  const venvPython = path.join(pythonDir, 'venv', 'bin', 'python');
-  const configuredPython = store.get('pythonPath') || 'python3';
-  
+  const venvPython = path.join(pythonDir, "venv", "bin", "python");
+  const configuredPython = store.get("pythonPath") || "python3";
+
   // Check if venv Python exists
   let pythonPath = configuredPython;
   try {
-    const fs = require('fs');
+    const fs = require("fs");
     if (fs.existsSync(venvPython)) {
       pythonPath = venvPython;
-      console.log('Using virtualenv Python');
+      console.log("Using virtualenv Python");
     }
   } catch (error) {
-    console.log('Could not check for venv Python, using configured path');
+    console.log("Could not check for venv Python, using configured path");
   }
-  
-  const serverScript = path.join(pythonDir, 'interfaces', 'server.py');
-  
-  console.log('Starting Polly server...');
-  console.log('Python path:', pythonPath);
-  console.log('Working directory:', pythonDir);
+
+  const serverScript = path.join(pythonDir, "interfaces", "server.py");
+
+  console.log("Starting Polly server...");
+  console.log("Python path:", pythonPath);
+  console.log("Working directory:", pythonDir);
 
   // Load API keys from keychain and add to environment
-  const serverEnv = { ...process.env, PYTHONPATH: pythonDir };
-  
+  // Packaged app: PYTHONPATH must include python dir and libs/polly-routing so polly_routing is importable
+  const pyPath = isDev
+    ? pythonDir
+    : [pythonDir, path.join(pythonDir, "libs", "polly-routing")].join(
+        path.delimiter,
+      );
+  const serverEnv = { ...process.env, PYTHONPATH: pyPath };
+
   try {
     // Load GitHub token (Python secrets_manager expects 'GITHUB_TOKEN')
-    const githubToken = await keytar.getPassword(KEYTAR_SERVICE, 'GITHUB_TOKEN') || 
-                        await keytar.getPassword(KEYTAR_SERVICE, 'github_token');
+    const githubToken =
+      (await keytar.getPassword(KEYTAR_SERVICE, "GITHUB_TOKEN")) ||
+      (await keytar.getPassword(KEYTAR_SERVICE, "github_token"));
     if (githubToken) {
       serverEnv.GITHUB_TOKEN = githubToken;
-      console.log('✓ Loaded GitHub token from keychain');
+      console.log("✓ Loaded GitHub token from keychain");
     }
-    
-    // Load Anthropic API key (Python expects 'ANTHROPIC_API_KEY')  
-    const anthropicKey = await keytar.getPassword(KEYTAR_SERVICE, 'ANTHROPIC_API_KEY') ||
-                         await keytar.getPassword(KEYTAR_SERVICE, 'anthropic_api_key');
+
+    // Load Anthropic API key (Python expects 'ANTHROPIC_API_KEY')
+    const anthropicKey =
+      (await keytar.getPassword(KEYTAR_SERVICE, "ANTHROPIC_API_KEY")) ||
+      (await keytar.getPassword(KEYTAR_SERVICE, "anthropic_api_key"));
     if (anthropicKey) {
       serverEnv.ANTHROPIC_API_KEY = anthropicKey;
-      console.log('✓ Loaded Anthropic API key from keychain');
+      console.log("✓ Loaded Anthropic API key from keychain");
     }
-    
+
     // Load OpenAI API key (Python expects 'OPENAI_API_KEY')
-    const openaiKey = await keytar.getPassword(KEYTAR_SERVICE, 'OPENAI_API_KEY') ||
-                      await keytar.getPassword(KEYTAR_SERVICE, 'openai_api_key');
+    const openaiKey =
+      (await keytar.getPassword(KEYTAR_SERVICE, "OPENAI_API_KEY")) ||
+      (await keytar.getPassword(KEYTAR_SERVICE, "openai_api_key"));
     if (openaiKey) {
       serverEnv.OPENAI_API_KEY = openaiKey;
-      console.log('✓ Loaded OpenAI API key from keychain');
+      console.log("✓ Loaded OpenAI API key from keychain");
     }
   } catch (error) {
-    console.error('Error loading API keys from keychain:', error);
+    console.error("Error loading API keys from keychain:", error);
   }
 
   return new Promise((resolve, reject) => {
-    pollyServer = spawn(pythonPath, ['-m', 'uvicorn', 'interfaces.server:create_app', '--host', '127.0.0.1', '--port', '11436', '--factory'], {
-      cwd: pythonDir,
-      env: serverEnv
-    });
-    
-    console.log('Polly server process spawned with PID:', pollyServer.pid);
+    pollyServer = spawn(
+      pythonPath,
+      [
+        "-m",
+        "uvicorn",
+        "interfaces.server:create_app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "11436",
+        "--factory",
+      ],
+      {
+        cwd: pythonDir,
+        env: serverEnv,
+      },
+    );
+
+    console.log("Polly server process spawned with PID:", pollyServer.pid);
 
     let resolved = false;
-    
+
     // Handle stdout with error catching
-    pollyServer.stdout.on('data', (data) => {
+    pollyServer.stdout.on("data", (data) => {
       try {
         const output = data.toString();
         console.log(`Polly Server: ${output}`);
-        
+
         // Check for various uvicorn startup messages
-        if (!resolved && (output.includes('Uvicorn running') || 
-                          output.includes('Application startup complete') ||
-                          output.includes('Started server process'))) {
+        if (
+          !resolved &&
+          (output.includes("Uvicorn running") ||
+            output.includes("Application startup complete") ||
+            output.includes("Started server process"))
+        ) {
           resolved = true;
-          console.log('Polly server started successfully!');
+          console.log("Polly server started successfully!");
           resolve(true);
-          mainWindow?.webContents.send('server-status', { running: true });
+          mainWindow?.webContents.send("server-status", { running: true });
         }
       } catch (error) {
         // Ignore pipe errors
-        if (error.code !== 'EPIPE' && error.errno !== -32) {
-          console.error('Error handling stdout:', error);
+        if (error.code !== "EPIPE" && error.errno !== -32) {
+          console.error("Error handling stdout:", error);
         }
       }
     });
 
-    pollyServer.stderr.on('data', (data) => {
+    pollyServer.stderr.on("data", (data) => {
       try {
         const error = data.toString();
         console.error(`Polly Server Error: ${error}`);
-        
+
         // Check for startup messages in stderr (uvicorn sends INFO logs to stderr)
-        if (!resolved && (error.includes('Uvicorn running') || 
-                          error.includes('Application startup complete'))) {
+        if (
+          !resolved &&
+          (error.includes("Uvicorn running") ||
+            error.includes("Application startup complete"))
+        ) {
           resolved = true;
-          console.log('Polly server started successfully!');
+          console.log("Polly server started successfully!");
           resolve(true);
-          mainWindow?.webContents.send('server-status', { running: true });
+          mainWindow?.webContents.send("server-status", { running: true });
         }
-        
+
         // Send errors to renderer for debugging
-        mainWindow?.webContents.send('server-error', { error });
+        mainWindow?.webContents.send("server-error", { error });
       } catch (err) {
         // Ignore pipe errors
-        if (err.code !== 'EPIPE' && err.errno !== -32) {
-          console.error('Error handling stderr:', err);
+        if (err.code !== "EPIPE" && err.errno !== -32) {
+          console.error("Error handling stderr:", err);
         }
       }
     });
 
-    pollyServer.on('close', (code) => {
+    pollyServer.on("close", (code) => {
       console.log(`Polly Server exited with code ${code}`);
       pollyServer = null;
-      mainWindow?.webContents.send('server-status', { running: false });
+      mainWindow?.webContents.send("server-status", { running: false });
     });
-    
-    pollyServer.on('error', (error) => {
-      console.error('Polly Server spawn error:', error);
+
+    pollyServer.on("error", (error) => {
+      console.error("Polly Server spawn error:", error);
       reject(error);
     });
 
     // Timeout after 30 seconds
     setTimeout(() => {
       if (!resolved) {
-        console.error('Server start timeout after 30 seconds');
-        reject(new Error('Server start timeout'));
+        console.error("Server start timeout after 30 seconds");
+        reject(new Error("Server start timeout"));
       }
     }, 30000);
   });
@@ -518,30 +571,30 @@ function stopPollyServer() {
       return;
     }
     const pid = pollyServer.pid;
-    console.log('Stopping Polly server (PID:', pid, ')');
+    console.log("Stopping Polly server (PID:", pid, ")");
     let resolved = false;
     const done = () => {
       if (!resolved) {
         resolved = true;
         pollyServer = null;
-        mainWindow?.webContents.send('server-status', { running: false });
+        mainWindow?.webContents.send("server-status", { running: false });
         resolve();
       }
     };
 
-    pollyServer.once('close', (code) => {
-      console.log('Polly server stopped with code', code);
+    pollyServer.once("close", (code) => {
+      console.log("Polly server stopped with code", code);
       done();
     });
 
-    pollyServer.kill('SIGTERM');
+    pollyServer.kill("SIGTERM");
 
     setTimeout(() => {
       try {
         if (pollyServer && pollyServer.pid) {
           process.kill(pid, 0);
-          console.log('Force killing Polly server PID:', pid);
-          process.kill(pid, 'SIGKILL');
+          console.log("Force killing Polly server PID:", pid);
+          process.kill(pid, "SIGKILL");
         }
       } catch (e) {
         // Process already dead
@@ -556,9 +609,9 @@ function stopPollyServer() {
  */
 async function isOllamaRunning() {
   try {
-    const fetch = (await import('node-fetch')).default;
-    const response = await fetch('http://localhost:11434/api/tags', { 
-      timeout: 2000 
+    const fetch = (await import("node-fetch")).default;
+    const response = await fetch("http://localhost:11434/api/tags", {
+      timeout: 2000,
     });
     return response.ok;
   } catch (error) {
@@ -573,47 +626,47 @@ async function startOllamaServer() {
   // Check if already running
   const alreadyRunning = await isOllamaRunning();
   if (alreadyRunning) {
-    console.log('Ollama is already running');
-    mainWindow?.webContents.send('ollama-status', { running: true });
+    console.log("Ollama is already running");
+    mainWindow?.webContents.send("ollama-status", { running: true });
     return true;
   }
 
   // Try to start Ollama
   try {
-    ollamaProcess = spawn('ollama', ['serve'], {
+    ollamaProcess = spawn("ollama", ["serve"], {
       detached: false,
-      stdio: 'pipe'
+      stdio: "pipe",
     });
 
     ollamaStartedByUs = true;
 
-    ollamaProcess.stdout.on('data', (data) => {
+    ollamaProcess.stdout.on("data", (data) => {
       console.log(`Ollama: ${data}`);
     });
 
-    ollamaProcess.stderr.on('data', (data) => {
+    ollamaProcess.stderr.on("data", (data) => {
       console.log(`Ollama: ${data}`);
     });
 
-    ollamaProcess.on('close', (code) => {
+    ollamaProcess.on("close", (code) => {
       console.log(`Ollama exited with code ${code}`);
       ollamaProcess = null;
-      mainWindow?.webContents.send('ollama-status', { running: false });
+      mainWindow?.webContents.send("ollama-status", { running: false });
     });
 
     // Wait a bit and check if it's running
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
     const running = await isOllamaRunning();
-    
+
     if (running) {
-      mainWindow?.webContents.send('ollama-status', { running: true });
-      console.log('Ollama started successfully');
+      mainWindow?.webContents.send("ollama-status", { running: true });
+      console.log("Ollama started successfully");
       return true;
     } else {
-      throw new Error('Ollama did not start');
+      throw new Error("Ollama did not start");
     }
   } catch (error) {
-    console.error('Failed to start Ollama:', error.message);
+    console.error("Failed to start Ollama:", error.message);
     return false;
   }
 }
@@ -626,7 +679,7 @@ function stopOllamaServer() {
     ollamaProcess.kill();
     ollamaProcess = null;
     ollamaStartedByUs = false;
-    mainWindow?.webContents.send('ollama-status', { running: false });
+    mainWindow?.webContents.send("ollama-status", { running: false });
   }
 }
 
@@ -637,27 +690,27 @@ async function checkDependencies() {
   const deps = {
     python: false,
     ollama: false,
-    pythonPackages: false
+    pythonPackages: false,
   };
 
   // Check Python
   try {
-    await execPromise('python3 --version');
+    await execPromise("python3 --version");
     deps.python = true;
   } catch (e) {
-    console.log('Python not found');
+    console.log("Python not found");
   }
 
   // Check Ollama
   try {
-    await execPromise('ollama --version');
+    await execPromise("ollama --version");
     deps.ollama = true;
   } catch (e) {
-    console.log('Ollama not found');
+    console.log("Ollama not found");
   }
 
   // Check if venv exists and has packages
-  const venvPath = path.join(pythonDir, 'venv');
+  const venvPath = path.join(pythonDir, "venv");
   if (fs.existsSync(venvPath)) {
     deps.pythonPackages = true;
   }
@@ -673,26 +726,26 @@ async function runSetup(options) {
 
   // Create virtual environment
   steps.push({
-    name: 'Creating Python environment',
-    command: `python3 -m venv "${path.join(pythonDir, 'venv')}"`
+    name: "Creating Python environment",
+    command: `python3 -m venv "${path.join(pythonDir, "venv")}"`,
   });
 
   // Install packages
-  const pipPath = path.join(pythonDir, 'venv', 'bin', 'pip');
+  const pipPath = path.join(pythonDir, "venv", "bin", "pip");
   steps.push({
-    name: 'Installing Python packages',
-    command: `"${pipPath}" install -r "${path.join(pythonDir, 'requirements.txt')}"`
+    name: "Installing Python packages",
+    command: `"${pipPath}" install -r "${path.join(pythonDir, "requirements.txt")}"`,
   });
 
   // Pull Ollama models if requested
   if (options.pullModels) {
     steps.push({
-      name: 'Pulling embedding model',
-      command: 'ollama pull nomic-embed-text'
+      name: "Pulling embedding model",
+      command: "ollama pull nomic-embed-text",
     });
     steps.push({
-      name: 'Pulling chat model',
-      command: 'ollama pull llama3.2'
+      name: "Pulling chat model",
+      command: "ollama pull llama3.2",
     });
   }
 
@@ -704,10 +757,10 @@ async function runSetup(options) {
   // - ollama pull (hardcoded model names)
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
-    mainWindow.webContents.send('setup-progress', {
+    mainWindow.webContents.send("setup-progress", {
       step: i + 1,
       total: steps.length,
-      message: step.name
+      message: step.name,
     });
 
     try {
@@ -719,15 +772,15 @@ async function runSetup(options) {
 
   // Save config
   if (options.vaultPath) {
-    store.set('vaultPath', options.vaultPath);
+    store.set("vaultPath", options.vaultPath);
   }
   if (options.codebasePaths) {
-    store.set('codebasePaths', options.codebasePaths);
+    store.set("codebasePaths", options.codebasePaths);
   }
 
   // Update Python path to use venv
-  store.set('pythonPath', path.join(pythonDir, 'venv', 'bin', 'python'));
-  store.set('setupComplete', true);
+  store.set("pythonPath", path.join(pythonDir, "venv", "bin", "python"));
+  store.set("setupComplete", true);
 
   return true;
 }
@@ -737,20 +790,22 @@ async function runSetup(options) {
  */
 async function indexKnowledgeBase(options = {}) {
   // Call the API endpoint instead of CLI
-  const fetch = (await import('node-fetch')).default;
+  const fetch = (await import("node-fetch")).default;
 
   try {
-    mainWindow?.webContents.send('index-progress', { message: 'Starting indexing...' });
+    mainWindow?.webContents.send("index-progress", {
+      message: "Starting indexing...",
+    });
 
     // Start indexing (returns immediately)
-    const startResponse = await fetch('http://localhost:11436/polly/index', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const startResponse = await fetch("http://localhost:11436/polly/index", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         obsidian: !options.codeOnly,
         codebases: !options.obsidianOnly,
-        force: options.force || false
-      })
+        force: options.force || false,
+      }),
     });
 
     if (!startResponse.ok) {
@@ -758,9 +813,11 @@ async function indexKnowledgeBase(options = {}) {
     }
 
     const startResult = await startResponse.json();
-    
-    if (startResult.status === 'already_running') {
-      mainWindow?.webContents.send('index-progress', { message: 'Indexing already in progress...' });
+
+    if (startResult.status === "already_running") {
+      mainWindow?.webContents.send("index-progress", {
+        message: "Indexing already in progress...",
+      });
     }
 
     // Poll for completion
@@ -769,49 +826,51 @@ async function indexKnowledgeBase(options = {}) {
     let attempts = 0;
 
     while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
       attempts++;
 
-      const statusResponse = await fetch('http://localhost:11436/polly/index/status');
+      const statusResponse = await fetch(
+        "http://localhost:11436/polly/index/status",
+      );
       if (!statusResponse.ok) {
         throw new Error(`Status check failed: ${statusResponse.status}`);
       }
 
       const status = await statusResponse.json();
-      
+
       if (!status.in_progress) {
         // Indexing complete
         if (status.last_error) {
           throw new Error(`Indexing failed: ${status.last_error}`);
         }
-        
+
         lastResult = status.last_result || {};
-        
+
         // Format results - lastResult is like {obsidian: 75, codebases: 0}
-        let message = '✅ Indexing complete!';
+        let message = "✅ Indexing complete!";
         if (lastResult.obsidian) {
           message += ` Obsidian: ${lastResult.obsidian} files.`;
         }
         if (lastResult.codebases) {
           message += ` Codebases: ${lastResult.codebases} files.`;
         }
-        
-        mainWindow?.webContents.send('index-progress', { message });
-        
+
+        mainWindow?.webContents.send("index-progress", { message });
+
         return {
-          status: 'complete',
-          result: lastResult
+          status: "complete",
+          result: lastResult,
         };
       } else {
         // Still in progress
-        mainWindow?.webContents.send('index-progress', { 
-          message: `Indexing in progress... (${attempts}s)` 
+        mainWindow?.webContents.send("index-progress", {
+          message: `Indexing in progress... (${attempts}s)`,
         });
       }
     }
 
     // Timeout
-    throw new Error('Indexing timed out after 2 minutes');
+    throw new Error("Indexing timed out after 2 minutes");
   } catch (error) {
     throw new Error(`Indexing failed: ${error.message}`);
   }
@@ -821,19 +880,25 @@ async function indexKnowledgeBase(options = {}) {
  * Query Polly
  */
 async function queryPolly(query, options = {}) {
-  const fetch = (await import('node-fetch')).default;
+  const fetch = (await import("node-fetch")).default;
 
   try {
-    const response = await fetch('http://localhost:11436/polly/query', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query,
-        mode: options.mode || 'auto',
-        tier: options.tier || 'balanced',
-        stream: false,
-        conversation_history: options.conversation_history || []
-      })
+    const body = {
+      query,
+      mode: options.mode || "auto",
+      tier: options.tier || "balanced",
+      stream: false,
+      conversation_history: options.conversation_history || [],
+    };
+    if (options.confidence != null) body.confidence = options.confidence;
+    if (options.provider_override != null) body.provider_override = options.provider_override;
+    if (options.page != null) body.page = options.page;
+    if (options.mental_models_override != null) body.mental_models_override = options.mental_models_override;
+
+    const response = await fetch("http://localhost:11436/polly/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -847,24 +912,24 @@ async function queryPolly(query, options = {}) {
       } catch (e) {
         // Ignore if we can't read error body
       }
-      console.error('Query error:', errorDetail);
+      console.error("Query error:", errorDetail);
       throw new Error(errorDetail);
     }
 
     return await response.json();
   } catch (error) {
-    console.error('Query failed:', error);
+    console.error("Query failed:", error);
     throw new Error(`Query failed: ${error.message}`);
   }
 }
 
 /**
  * Promise wrapper for exec
- * 
+ *
  * SECURITY WARNING (Phase 23.5): Only use with hardcoded commands or controlled inputs.
  * Never pass user input directly to this function without validation.
  * All current uses are safe (version checks, setup commands with controlled paths).
- * 
+ *
  * @param {string} command - Command to execute (must be trusted)
  * @returns {Promise<string>} Command output
  */
@@ -884,7 +949,7 @@ function execPromise(command) {
 // Keytar / Credential Management
 // ============================================
 
-const KEYTAR_SERVICE = 'Polly';
+const KEYTAR_SERVICE = "Polly";
 
 /**
  * Store credential in OS keychain
@@ -894,7 +959,7 @@ async function storeCredential(account, password) {
     await keytar.setPassword(KEYTAR_SERVICE, account, password);
     return { success: true };
   } catch (error) {
-    console.error('Failed to store credential:', error);
+    console.error("Failed to store credential:", error);
     return { success: false, error: error.message };
   }
 }
@@ -907,7 +972,7 @@ async function getCredential(account) {
     const password = await keytar.getPassword(KEYTAR_SERVICE, account);
     return { success: true, password };
   } catch (error) {
-    console.error('Failed to get credential:', error);
+    console.error("Failed to get credential:", error);
     return { success: false, error: error.message };
   }
 }
@@ -920,7 +985,7 @@ async function deleteCredential(account) {
     await keytar.deletePassword(KEYTAR_SERVICE, account);
     return { success: true };
   } catch (error) {
-    console.error('Failed to delete credential:', error);
+    console.error("Failed to delete credential:", error);
     return { success: false, error: error.message };
   }
 }
@@ -930,22 +995,23 @@ async function deleteCredential(account) {
 // ============================================
 
 // GitHub OAuth configuration
-const GITHUB_OAUTH_URL = 'https://github.com/login/oauth/authorize';
-const GITHUB_TOKEN_URL = 'https://github.com/login/oauth/access_token';
-const GITHUB_REDIRECT_URI = 'http://localhost:3000/oauth/callback';
+const GITHUB_OAUTH_URL = "https://github.com/login/oauth/authorize";
+const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
+const GITHUB_REDIRECT_URI = "http://localhost:3000/oauth/callback";
 
 /**
  * Start GitHub OAuth flow
  */
 async function startGitHubOAuth() {
   // Get OAuth config from electron-store
-  const GITHUB_CLIENT_ID = store.get('github_oauth_client_id');
-  const GITHUB_CLIENT_SECRET = store.get('github_oauth_client_secret');
-  
+  const GITHUB_CLIENT_ID = store.get("github_oauth_client_id");
+  const GITHUB_CLIENT_SECRET = store.get("github_oauth_client_secret");
+
   if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
     return {
       success: false,
-      error: 'GitHub OAuth not configured. Please configure your Client ID and Secret in Settings → Integrations.'
+      error:
+        "GitHub OAuth not configured. Please configure your Client ID and Secret in Settings → Integrations.",
     };
   }
 
@@ -957,89 +1023,89 @@ async function startGitHubOAuth() {
       show: false,
       webPreferences: {
         nodeIntegration: false,
-        contextIsolation: true
+        contextIsolation: true,
       },
       parent: mainWindow,
-      modal: true
+      modal: true,
     });
 
     const authUrl = `${GITHUB_OAUTH_URL}?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(GITHUB_REDIRECT_URI)}&scope=repo,read:user`;
-    
+
     oauthWindow.loadURL(authUrl);
     oauthWindow.show();
 
     // Listen for redirect
-    oauthWindow.webContents.on('will-redirect', async (event, url) => {
+    oauthWindow.webContents.on("will-redirect", async (event, url) => {
       if (url.startsWith(GITHUB_REDIRECT_URI)) {
         const urlParams = new URL(url).searchParams;
-        const code = urlParams.get('code');
-        
+        const code = urlParams.get("code");
+
         if (code) {
           // Exchange code for access token
           try {
-            const fetch = (await import('node-fetch')).default;
+            const fetch = (await import("node-fetch")).default;
             const tokenResponse = await fetch(GITHUB_TOKEN_URL, {
-              method: 'POST',
+              method: "POST",
               headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
+                Accept: "application/json",
+                "Content-Type": "application/json",
               },
               body: JSON.stringify({
                 client_id: GITHUB_CLIENT_ID,
                 client_secret: GITHUB_CLIENT_SECRET,
                 code: code,
-                redirect_uri: GITHUB_REDIRECT_URI
-              })
+                redirect_uri: GITHUB_REDIRECT_URI,
+              }),
             });
-            
+
             const tokenData = await tokenResponse.json();
-            
+
             if (tokenData.access_token) {
               // Store token securely in keychain
-              await storeCredential('github_token', tokenData.access_token);
-              
+              await storeCredential("github_token", tokenData.access_token);
+
               // Get user info
-              const userResponse = await fetch('https://api.github.com/user', {
+              const userResponse = await fetch("https://api.github.com/user", {
                 headers: {
-                  'Authorization': `token ${tokenData.access_token}`,
-                  'Accept': 'application/vnd.github.v3+json'
-                }
+                  Authorization: `token ${tokenData.access_token}`,
+                  Accept: "application/vnd.github.v3+json",
+                },
               });
-              
+
               const userData = await userResponse.json();
-              
+
               resolve({
                 success: true,
                 token: tokenData.access_token,
-                username: userData.login
+                username: userData.login,
               });
             } else {
               resolve({
                 success: false,
-                error: 'No access token received from GitHub'
+                error: "No access token received from GitHub",
               });
             }
           } catch (error) {
             resolve({
               success: false,
-              error: error.message
+              error: error.message,
             });
           }
         } else {
           resolve({
             success: false,
-            error: 'No authorization code received'
+            error: "No authorization code received",
           });
         }
-        
+
         oauthWindow.close();
       }
     });
 
-    oauthWindow.on('closed', () => {
+    oauthWindow.on("closed", () => {
       resolve({
         success: false,
-        error: 'OAuth window closed by user'
+        error: "OAuth window closed by user",
       });
     });
   });
@@ -1049,44 +1115,44 @@ async function startGitHubOAuth() {
 // IPC Handlers
 // ============================================
 
-ipcMain.handle('get-store', (event, key) => {
+ipcMain.handle("get-store", (event, key) => {
   return store.get(key);
 });
 
-ipcMain.handle('set-store', (event, key, value) => {
+ipcMain.handle("set-store", (event, key, value) => {
   store.set(key, value);
 });
 
 // VSCode BrowserView handlers
-console.log('[VSCode] Registering IPC handlers...');
-ipcMain.handle('show-vscode', () => {
-  console.log('[VSCode] show-vscode handler called');
+console.log("[VSCode] Registering IPC handlers...");
+ipcMain.handle("show-vscode", () => {
+  console.log("[VSCode] show-vscode handler called");
   try {
     showVSCodeView();
     return { success: true };
   } catch (error) {
-    console.error('[VSCode] Error showing BrowserView:', error);
+    console.error("[VSCode] Error showing BrowserView:", error);
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle('hide-vscode', () => {
-  console.log('[VSCode] hide-vscode handler called');
+ipcMain.handle("hide-vscode", () => {
+  console.log("[VSCode] hide-vscode handler called");
   try {
     hideVSCodeView();
     return { success: true };
   } catch (error) {
-    console.error('[VSCode] Error hiding BrowserView:', error);
+    console.error("[VSCode] Error hiding BrowserView:", error);
     return { success: false, error: error.message };
   }
 });
-console.log('[VSCode] IPC handlers registered');
+console.log("[VSCode] IPC handlers registered");
 
-ipcMain.handle('check-dependencies', async () => {
+ipcMain.handle("check-dependencies", async () => {
   return await checkDependencies();
 });
 
-ipcMain.handle('run-setup', async (event, options) => {
+ipcMain.handle("run-setup", async (event, options) => {
   try {
     await runSetup(options);
     return { success: true };
@@ -1095,7 +1161,7 @@ ipcMain.handle('run-setup', async (event, options) => {
   }
 });
 
-ipcMain.handle('start-server', async () => {
+ipcMain.handle("start-server", async () => {
   try {
     // First check if server is already running via health check
     try {
@@ -1103,25 +1169,25 @@ ipcMain.handle('start-server', async () => {
       if (global.fetch) {
         fetchFn = global.fetch;
       } else {
-        fetchFn = (await import('node-fetch')).default;
+        fetchFn = (await import("node-fetch")).default;
       }
-      
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 2000);
-      const response = await fetchFn('http://localhost:11436/health', { 
-        signal: controller.signal 
+      const response = await fetchFn("http://localhost:11436/health", {
+        signal: controller.signal,
       });
       clearTimeout(timeout);
-      
+
       if (response.ok) {
-        console.log('Server already running, no need to start');
-        return { success: true, message: 'Server already running' };
+        console.log("Server already running, no need to start");
+        return { success: true, message: "Server already running" };
       }
     } catch (healthError) {
       // Health check failed, proceed with starting server
-      console.log('Health check failed, will start server');
+      console.log("Health check failed, will start server");
     }
-    
+
     await startPollyServer();
     return { success: true };
   } catch (error) {
@@ -1129,12 +1195,12 @@ ipcMain.handle('start-server', async () => {
   }
 });
 
-ipcMain.handle('stop-server', async () => {
+ipcMain.handle("stop-server", async () => {
   await stopPollyServer();
-  return { success: true, message: 'Server stopped' };
+  return { success: true, message: "Server stopped" };
 });
 
-ipcMain.handle('get-server-status', async () => {
+ipcMain.handle("get-server-status", async () => {
   // Check if pollyServer process exists and is tracked
   // Don't rely solely on health endpoint since file watcher can block it
   if (pollyServer && pollyServer.pid) {
@@ -1148,36 +1214,36 @@ ipcMain.handle('get-server-status', async () => {
       return { running: false };
     }
   }
-  
+
   // If no tracked process, try health endpoint as fallback
   try {
     let fetchFn;
     if (global.fetch) {
       fetchFn = global.fetch;
     } else {
-      fetchFn = (await import('node-fetch')).default;
+      fetchFn = (await import("node-fetch")).default;
     }
-    
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2000);
-    
-    const response = await fetchFn('http://localhost:11436/health', { 
-      signal: controller.signal 
+
+    const response = await fetchFn("http://localhost:11436/health", {
+      signal: controller.signal,
     });
     clearTimeout(timeout);
-    
+
     return { running: response.ok };
   } catch (error) {
     return { running: false };
   }
 });
 
-ipcMain.handle('get-ollama-status', async () => {
+ipcMain.handle("get-ollama-status", async () => {
   const running = await isOllamaRunning();
   return { running };
 });
 
-ipcMain.handle('start-ollama', async () => {
+ipcMain.handle("start-ollama", async () => {
   try {
     await startOllamaServer();
     return { success: true };
@@ -1186,12 +1252,12 @@ ipcMain.handle('start-ollama', async () => {
   }
 });
 
-ipcMain.handle('stop-ollama', () => {
+ipcMain.handle("stop-ollama", () => {
   stopOllamaServer();
   return { success: true };
 });
 
-ipcMain.handle('index-knowledge', async (event, options) => {
+ipcMain.handle("index-knowledge", async (event, options) => {
   try {
     const result = await indexKnowledgeBase(options);
     return { success: true, result };
@@ -1200,7 +1266,7 @@ ipcMain.handle('index-knowledge', async (event, options) => {
   }
 });
 
-ipcMain.handle('query', async (event, query, options) => {
+ipcMain.handle("query", async (event, query, options) => {
   try {
     const result = await queryPolly(query, options);
     return { success: true, result };
@@ -1209,182 +1275,195 @@ ipcMain.handle('query', async (event, query, options) => {
   }
 });
 
-ipcMain.handle('select-directory', async () => {
+ipcMain.handle("select-directory", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openDirectory']
+    properties: ["openDirectory"],
   });
-  
+
   if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
     return { success: false, path: null };
   }
-  
+
   return { success: true, path: result.filePaths[0] };
 });
 
-ipcMain.handle('select-directories', async () => {
+ipcMain.handle("select-directories", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openDirectory', 'multiSelections']
+    properties: ["openDirectory", "multiSelections"],
   });
   return result.canceled ? [] : result.filePaths;
 });
 
 // Config management handlers
-ipcMain.handle('get-config', async (event, key) => {
+ipcMain.handle("get-config", async (event, key) => {
   try {
-    const configPath = path.join(app.getPath('home'), '.polly', 'config.yaml');
-    
+    const configPath = path.join(app.getPath("home"), ".polly", "config.yaml");
+
     if (!fs.existsSync(configPath)) {
-      return { success: false, error: 'Config file not found' };
+      return { success: false, error: "Config file not found" };
     }
-    
-    const yaml = require('js-yaml');
-    const config = yaml.load(fs.readFileSync(configPath, 'utf8')) || {};
-    
+
+    const yaml = require("js-yaml");
+    const config = yaml.load(fs.readFileSync(configPath, "utf8")) || {};
+
     // Support dot notation (e.g., 'obsidian.vault_path')
-    const keys = key.split('.');
+    const keys = key.split(".");
     let value = config;
     for (const k of keys) {
-      if (value && typeof value === 'object' && k in value) {
+      if (value && typeof value === "object" && k in value) {
         value = value[k];
       } else {
-        return { success: false, error: 'Key not found' };
+        return { success: false, error: "Key not found" };
       }
     }
-    
+
     return { success: true, value };
   } catch (error) {
-    console.error('Error getting config:', error);
+    console.error("Error getting config:", error);
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle('update-config', async (event, key, value) => {
+ipcMain.handle("update-config", async (event, key, value) => {
   try {
-    const configDir = path.join(app.getPath('home'), '.polly');
-    const configPath = path.join(configDir, 'config.yaml');
-    
+    const configDir = path.join(app.getPath("home"), ".polly");
+    const configPath = path.join(configDir, "config.yaml");
+
     // Ensure directory exists
     if (!fs.existsSync(configDir)) {
       fs.mkdirSync(configDir, { recursive: true });
     }
-    
-    const yaml = require('js-yaml');
+
+    const yaml = require("js-yaml");
     let config = {};
-    
+
     if (fs.existsSync(configPath)) {
-      config = yaml.load(fs.readFileSync(configPath, 'utf8')) || {};
+      config = yaml.load(fs.readFileSync(configPath, "utf8")) || {};
     }
-    
+
     // Support dot notation (e.g., 'obsidian.vault_path')
-    const keys = key.split('.');
+    const keys = key.split(".");
     let obj = config;
-    
+
     for (let i = 0; i < keys.length - 1; i++) {
       const k = keys[i];
-      if (!(k in obj) || typeof obj[k] !== 'object') {
+      if (!(k in obj) || typeof obj[k] !== "object") {
         obj[k] = {};
       }
       obj = obj[k];
     }
-    
+
     obj[keys[keys.length - 1]] = value;
-    
+
     // Write config file with options to prevent line wrapping
-    fs.writeFileSync(configPath, yaml.dump(config, {
-      lineWidth: -1,  // Disable line wrapping
-      noCompatMode: true
-    }), 'utf8');
-    
+    fs.writeFileSync(
+      configPath,
+      yaml.dump(config, {
+        lineWidth: -1, // Disable line wrapping
+        noCompatMode: true,
+      }),
+      "utf8",
+    );
+
     console.log(`Updated config: ${key} = ${value}`);
-    
+
     return { success: true };
   } catch (error) {
-    console.error('Error updating config:', error);
+    console.error("Error updating config:", error);
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle('open-external', (event, url) => {
+ipcMain.handle("open-external", (event, url) => {
   shell.openExternal(url);
 });
 
 // Keytar / Credential handlers
-ipcMain.handle('keytar-set', async (event, account, password) => {
+ipcMain.handle("keytar-set", async (event, account, password) => {
   return await storeCredential(account, password);
 });
 
-ipcMain.handle('keytar-get', async (event, account) => {
+ipcMain.handle("keytar-get", async (event, account) => {
   return await getCredential(account);
 });
 
-ipcMain.handle('keytar-delete', async (event, account) => {
+ipcMain.handle("keytar-delete", async (event, account) => {
   return await deleteCredential(account);
 });
 
 // GitHub OAuth handler
-ipcMain.handle('github-oauth', async () => {
+ipcMain.handle("github-oauth", async () => {
   return await startGitHubOAuth();
 });
 
 // Integration handlers
-ipcMain.handle('integration-connect', async (event, integration, credentials) => {
+ipcMain.handle(
+  "integration-connect",
+  async (event, integration, credentials) => {
+    try {
+      const fetch = (await import("node-fetch")).default;
+      const response = await fetch(
+        "http://localhost:11436/polly/integrations/connect",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ integration, credentials }),
+        },
+      );
+
+      if (!response.ok) {
+        const error = await response.text();
+        return { success: false, error };
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Integration connect failed:", error);
+      return { success: false, error: error.message };
+    }
+  },
+);
+
+ipcMain.handle("integration-sync", async (event, integration, options) => {
   try {
-    const fetch = (await import('node-fetch')).default;
-    const response = await fetch('http://localhost:11436/polly/integrations/connect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ integration, credentials })
-    });
-    
+    const fetch = (await import("node-fetch")).default;
+    const response = await fetch(
+      "http://localhost:11436/polly/integrations/sync",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ integration, options }),
+      },
+    );
+
     if (!response.ok) {
       const error = await response.text();
       return { success: false, error };
     }
-    
+
     return await response.json();
   } catch (error) {
-    console.error('Integration connect failed:', error);
+    console.error("Integration sync failed:", error);
     return { success: false, error: error.message };
   }
 });
 
-ipcMain.handle('integration-sync', async (event, integration, options) => {
+ipcMain.handle("integration-status", async () => {
   try {
-    const fetch = (await import('node-fetch')).default;
-    const response = await fetch('http://localhost:11436/polly/integrations/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ integration, options })
+    const fetch = (await import("node-fetch")).default;
+    const response = await fetch("http://localhost:11436/polly/integrations", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
     });
-    
-    if (!response.ok) {
-      const error = await response.text();
-      return { success: false, error };
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Integration sync failed:', error);
-    return { success: false, error: error.message };
-  }
-});
 
-ipcMain.handle('integration-status', async () => {
-  try {
-    const fetch = (await import('node-fetch')).default;
-    const response = await fetch('http://localhost:11436/polly/integrations', {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    
     if (!response.ok) {
       const error = await response.text();
       return { success: false, error };
     }
-    
+
     return await response.json();
   } catch (error) {
-    console.error('Integration status failed:', error);
+    console.error("Integration status failed:", error);
     return { success: false, error: error.message };
   }
 });
@@ -1393,30 +1472,44 @@ ipcMain.handle('integration-status', async () => {
 // File Operations
 // ============================================
 
-// Read file content
-ipcMain.handle('read-file', async (event, filePath) => {
+// Read file content (with timeout for iCloud/slow paths to avoid indefinite hang)
+const READ_FILE_TIMEOUT_MS = 25000;
+ipcMain.handle("read-file", async (event, filePath) => {
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(
+      () => reject(new Error("ETIMEDOUT: connection timed out, read")),
+      READ_FILE_TIMEOUT_MS,
+    );
+  });
   try {
-    const content = await fs.promises.readFile(filePath, 'utf-8');
+    const content = await Promise.race([
+      fs.promises.readFile(filePath, "utf-8"),
+      timeoutPromise,
+    ]);
     return { success: true, content };
   } catch (error) {
-    console.error('Error reading file:', error);
+    if (error.message && error.message.includes("ETIMEDOUT")) {
+      console.warn("Read file timed out (e.g. iCloud not synced):", filePath);
+    } else {
+      console.error("Error reading file:", error);
+    }
     return { success: false, error: error.message };
   }
 });
 
 // Write file handler (Phase 16c - for Scribe persona note saving)
-ipcMain.handle('write-file', async (event, filePath, content) => {
+ipcMain.handle("write-file", async (event, filePath, content) => {
   try {
     // Ensure directory exists
     const dir = path.dirname(filePath);
     await fs.promises.mkdir(dir, { recursive: true });
-    
+
     // Write file
-    await fs.promises.writeFile(filePath, content, 'utf-8');
-    
+    await fs.promises.writeFile(filePath, content, "utf-8");
+
     return { success: true };
   } catch (error) {
-    console.error('Error writing file:', error);
+    console.error("Error writing file:", error);
     return { success: false, error: error.message };
   }
 });
@@ -1426,243 +1519,260 @@ ipcMain.handle('write-file', async (event, filePath, content) => {
 // ============================================
 
 // Check if ConversationManager is ready
-ipcMain.handle('conversation-manager-status', async () => {
+ipcMain.handle("conversation-manager-status", async () => {
   return {
     initialized: conversationManager !== null,
-    error: conversationManager === null ? 'ConversationManager is null' : null
+    error: conversationManager === null ? "ConversationManager is null" : null,
   };
 });
 
 // Create conversation
-ipcMain.handle('conversation-create', async (event, data) => {
+ipcMain.handle("conversation-create", async (event, data) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
-    return conversationManager.createConversation(data);
+    const payload = data && typeof data === "object" ? { ...data } : {};
+    if (payload.agent_id == null || payload.agent_id === "") {
+      payload.agent_id = "default";
+    } else {
+      payload.agent_id = String(payload.agent_id);
+    }
+    return conversationManager.createConversation(payload);
   } catch (error) {
-    console.error('Failed to create conversation:', error);
+    console.error("Failed to create conversation:", error);
     throw error;
   }
 });
 
 // Get conversation by ID
-ipcMain.handle('conversation-get', async (event, id, options) => {
+ipcMain.handle("conversation-get", async (event, id, options) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.getConversation(id, options);
   } catch (error) {
-    console.error('Failed to get conversation:', error);
+    console.error("Failed to get conversation:", error);
     throw error;
   }
 });
 
 // Update conversation
-ipcMain.handle('conversation-update', async (event, id, updates) => {
+ipcMain.handle("conversation-update", async (event, id, updates) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.updateConversation(id, updates);
   } catch (error) {
-    console.error('Failed to update conversation:', error);
+    console.error("Failed to update conversation:", error);
     throw error;
   }
 });
 
 // Delete conversation
-ipcMain.handle('conversation-delete', async (event, id, soft) => {
+ipcMain.handle("conversation-delete", async (event, id, soft) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.deleteConversation(id, soft);
   } catch (error) {
-    console.error('Failed to delete conversation:', error);
+    console.error("Failed to delete conversation:", error);
     throw error;
   }
 });
 
-// Get all conversations
-ipcMain.handle('conversation-list', async (event, options) => {
+// Get all conversations (always filter by agent_id so agents don't share lists)
+ipcMain.handle("conversation-list", async (event, options) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
-    return conversationManager.getAllConversations(options);
+    const opts = options && typeof options === "object" ? { ...options } : {};
+    const agentId = opts.agent_id != null ? String(opts.agent_id) : "default";
+    opts.agent_id = agentId;
+    return conversationManager.getAllConversations(opts);
   } catch (error) {
-    console.error('Failed to list conversations:', error);
+    console.error("Failed to list conversations:", error);
     throw error;
   }
 });
 
 // Search conversations
-ipcMain.handle('conversation-search', async (event, query, limit) => {
+ipcMain.handle("conversation-search", async (event, query, limit) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.searchConversations(query, limit);
   } catch (error) {
-    console.error('Failed to search conversations:', error);
+    console.error("Failed to search conversations:", error);
     throw error;
   }
 });
 
 // Add message to conversation
-ipcMain.handle('message-add', async (event, conversationId, role, content, metadata) => {
-  try {
-    if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+ipcMain.handle(
+  "message-add",
+  async (event, conversationId, role, content, metadata) => {
+    try {
+      if (!conversationManager) {
+        throw new Error("ConversationManager not initialized");
+      }
+      return conversationManager.addMessage(
+        conversationId,
+        role,
+        content,
+        metadata,
+      );
+    } catch (error) {
+      console.error("Failed to add message:", error);
+      throw error;
     }
-    return conversationManager.addMessage(conversationId, role, content, metadata);
-  } catch (error) {
-    console.error('Failed to add message:', error);
-    throw error;
-  }
-});
+  },
+);
 
 // Get messages for conversation
-ipcMain.handle('message-list', async (event, conversationId, limit, offset) => {
+ipcMain.handle("message-list", async (event, conversationId, limit, offset) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.getMessages(conversationId, limit, offset);
   } catch (error) {
-    console.error('Failed to list messages:', error);
+    console.error("Failed to list messages:", error);
     throw error;
   }
 });
 
 // Get all categories
-ipcMain.handle('category-list', async () => {
+ipcMain.handle("category-list", async () => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.getAllCategories();
   } catch (error) {
-    console.error('Failed to list categories:', error);
+    console.error("Failed to list categories:", error);
     throw error;
   }
 });
 
 // Create custom category
-ipcMain.handle('category-create', async (event, data) => {
+ipcMain.handle("category-create", async (event, data) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.createCategory(data);
   } catch (error) {
-    console.error('Failed to create category:', error);
+    console.error("Failed to create category:", error);
     throw error;
   }
 });
 
 // Toggle star status
-ipcMain.handle('conversation-star-toggle', async (event, id) => {
+ipcMain.handle("conversation-star-toggle", async (event, id) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.toggleStar(id);
   } catch (error) {
-    console.error('Failed to toggle star:', error);
+    console.error("Failed to toggle star:", error);
     throw error;
   }
 });
 
 // Toggle pin status
-ipcMain.handle('conversation-pin-toggle', async (event, id) => {
+ipcMain.handle("conversation-pin-toggle", async (event, id) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.togglePin(id);
   } catch (error) {
-    console.error('Failed to toggle pin:', error);
+    console.error("Failed to toggle pin:", error);
     throw error;
   }
 });
 
 // Set generated title
-ipcMain.handle('conversation-set-title', async (event, id, title) => {
+ipcMain.handle("conversation-set-title", async (event, id, title) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.setGeneratedTitle(id, title);
   } catch (error) {
-    console.error('Failed to set title:', error);
+    console.error("Failed to set title:", error);
     throw error;
   }
 });
 
 // Check if needs auto-title
-ipcMain.handle('conversation-needs-title', async (event, id) => {
+ipcMain.handle("conversation-needs-title", async (event, id) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.needsAutoTitle(id);
   } catch (error) {
-    console.error('Failed to check auto-title:', error);
+    console.error("Failed to check auto-title:", error);
     throw error;
   }
 });
 
 // Migrate old conversation
-ipcMain.handle('conversation-migrate', async (event, messages, title) => {
+ipcMain.handle("conversation-migrate", async (event, messages, title) => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.migrateOldConversation(messages, title);
   } catch (error) {
-    console.error('Failed to migrate conversation:', error);
+    console.error("Failed to migrate conversation:", error);
     throw error;
   }
 });
 
 // Get conversation stats
-ipcMain.handle('conversation-stats', async () => {
+ipcMain.handle("conversation-stats", async () => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.getStats();
   } catch (error) {
-    console.error('Failed to get stats:', error);
+    console.error("Failed to get stats:", error);
     throw error;
   }
 });
 
 // Cleanup old conversations
-ipcMain.handle('conversation-cleanup', async () => {
+ipcMain.handle("conversation-cleanup", async () => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.cleanupOldConversations();
   } catch (error) {
-    console.error('Failed to cleanup conversations:', error);
+    console.error("Failed to cleanup conversations:", error);
     throw error;
   }
 });
 
 // Enforce conversation limit
-ipcMain.handle('conversation-enforce-limit', async () => {
+ipcMain.handle("conversation-enforce-limit", async () => {
   try {
     if (!conversationManager) {
-      throw new Error('ConversationManager not initialized');
+      throw new Error("ConversationManager not initialized");
     }
     return conversationManager.enforceLimit();
   } catch (error) {
-    console.error('Failed to enforce limit:', error);
+    console.error("Failed to enforce limit:", error);
     throw error;
   }
 });
@@ -1673,36 +1783,38 @@ ipcMain.handle('conversation-enforce-limit', async () => {
 
 app.whenReady().then(async () => {
   // Verify VSCode handlers are registered
-  console.log('[VSCode] Verifying IPC handlers on app ready...');
-  const handlers = ipcMain.listenerCount('show-vscode');
-  console.log('[VSCode] show-vscode handler count:', handlers);
+  console.log("[VSCode] Verifying IPC handlers on app ready...");
+  const handlers = ipcMain.listenerCount("show-vscode");
+  console.log("[VSCode] show-vscode handler count:", handlers);
   if (handlers === 0) {
-    console.error('[VSCode] WARNING: show-vscode handler not registered!');
+    console.error("[VSCode] WARNING: show-vscode handler not registered!");
   }
-  
+
   // Initialize ConversationManager
   try {
-    const dbPath = path.join(app.getPath('userData'), 'conversations.db');
-    console.log('=== ConversationManager Initialization ===');
-    console.log('DB Path:', dbPath);
-    console.log('Creating ConversationManager...');
+    const dbPath = path.join(app.getPath("userData"), "conversations.db");
+    console.log("=== ConversationManager Initialization ===");
+    console.log("DB Path:", dbPath);
+    console.log("Creating ConversationManager...");
     conversationManager = new ConversationManager(dbPath);
-    console.log('ConversationManager created successfully');
-    console.log('ConversationManager type:', typeof conversationManager);
-    console.log('ConversationManager.db:', conversationManager.db);
-    console.log('=== ConversationManager Initialized ===');
+    console.log("ConversationManager created successfully");
+    console.log("ConversationManager type:", typeof conversationManager);
+    console.log("ConversationManager.db:", conversationManager.db);
+    console.log("=== ConversationManager Initialized ===");
   } catch (error) {
-    console.error('!!! FAILED to initialize ConversationManager !!!');
-    console.error('Error:', error.message);
-    console.error('Stack:', error.stack);
+    console.error("!!! FAILED to initialize ConversationManager !!!");
+    console.error("Error:", error.message);
+    console.error("Stack:", error.stack);
     // Set to null explicitly
     conversationManager = null;
-    
+
     // Show error dialog
     setTimeout(() => {
       dialog.showErrorBox(
-        'Database Initialization Failed',
-        'Failed to initialize conversation database:\n\n' + error.message + '\n\nCheck console for details.'
+        "Database Initialization Failed",
+        "Failed to initialize conversation database:\n\n" +
+          error.message +
+          "\n\nCheck console for details.",
       );
     }, 1000);
   }
@@ -1711,27 +1823,27 @@ app.whenReady().then(async () => {
   createTray();
 
   // Auto-start services if setup is complete
-  if (store.get('setupComplete')) {
-    console.log('Setup complete, starting services...');
-    
+  if (store.get("setupComplete")) {
+    console.log("Setup complete, starting services...");
+
     // Start Ollama first
     try {
-      console.log('Starting Ollama...');
+      console.log("Starting Ollama...");
       await startOllamaServer();
     } catch (err) {
-      console.error('Failed to start Ollama:', err);
+      console.error("Failed to start Ollama:", err);
     }
-    
+
     // Then start Python server
     try {
-      console.log('Starting Polly server...');
+      console.log("Starting Polly server...");
       await startPollyServer();
     } catch (err) {
-      console.error('Failed to auto-start server:', err);
+      console.error("Failed to auto-start server:", err);
     }
   }
 
-  app.on('activate', () => {
+  app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     } else {
@@ -1740,8 +1852,8 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
     app.quit();
   }
 });
@@ -1749,34 +1861,37 @@ app.on('window-all-closed', () => {
 // Prevent second before-quit from waiting again when we call app.quit() after shutdown
 let quitHandled = false;
 
-app.on('before-quit', (event) => {
+app.on("before-quit", (event) => {
   if (quitHandled) return;
   event.preventDefault();
   quitHandled = true;
   isQuitting = true;
-  console.log('Shutting down services...');
+  console.log("Shutting down services...");
 
   stopPollyServer()
     .then(() => {
       stopOllamaServer();
       if (conversationManager) {
         conversationManager.close();
-        console.log('ConversationManager closed');
+        console.log("ConversationManager closed");
       }
       app.quit();
     })
     .catch((err) => {
-      console.error('Error during shutdown:', err);
+      console.error("Error during shutdown:", err);
       app.quit();
     });
 });
 
 // Handle certificate errors in development
-app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-  if (isDev) {
-    event.preventDefault();
-    callback(true);
-  } else {
-    callback(false);
-  }
-});
+app.on(
+  "certificate-error",
+  (event, webContents, url, error, certificate, callback) => {
+    if (isDev) {
+      event.preventDefault();
+      callback(true);
+    } else {
+      callback(false);
+    }
+  },
+);
