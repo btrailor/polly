@@ -94,7 +94,7 @@ Comprehensive audit and remediation of architectural gaps between Polly's core s
 - 📐 Conversation synchronization between Electron and Python
 - 📐 Extract 5 libraries: `polly-routing`, `polly-patterns`, `polly-compression`, `polly-entities`, `polly-personas`
 - ✅ Rename PIL → Compact Format (honest naming)
-- 📐 Spec reconciliation: status markers on all 30+ specs
+- ✅ Spec reconciliation: status markers on prioritized specs, architecture spec updated with actual data flow, vision headers on unimplemented specs (agent-swarms, drm, mobile, communication, publishing, canvas, analytics, data-autonomy, onboarding). See [architecture-integration-audit tasks](../../changes/architecture-integration-audit/tasks.md) Tasks 6–9.
 
 Master reference: [changes/architecture-integration-audit/](../changes/architecture-integration-audit/)
 

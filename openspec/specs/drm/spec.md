@@ -2,17 +2,21 @@
 
 Source of truth for Polly's peer-to-peer distributed reasoning protocol. Enables multiple Polly instances to discover each other, share computational resources, and collaboratively process complex queries across local networks, remote tunnels, and resilient mesh radios.
 
+> **Implementation Status:** 💭 Vision — no code exists for this system.
+> This spec describes the target design. Implementation is planned for Tier 5 / Phases 36–36e.
+> Other specs should not design integration points against this system until implementation begins.
+
 ## Overview
 
 The DRM allows Polly instances to cooperate without a central coordinator. Each node runs a worker (executes tasks) and a coordinator (discovers peers, distributes work). Any node can process locally or distribute subtasks across available peers.
 
 Three discovery/communication layers provide progressive reach and resilience:
 
-| Layer | Scope | Latency | Bandwidth | When |
-|---|---|---|---|---|
-| **mDNS** | LAN / VPN | 1–10ms | Gigabit | Always (home network) |
-| **Cloudflare Tunnels** | Internet | 50–150ms | Full | Remote hardware, mobile nodes |
-| **Meshtastic (LoRa)** | Radio range (km) | 2–30s | 1–10 kbps | IP network unavailable, off-grid |
+| Layer                  | Scope            | Latency  | Bandwidth | When                             |
+| ---------------------- | ---------------- | -------- | --------- | -------------------------------- |
+| **mDNS**               | LAN / VPN        | 1–10ms   | Gigabit   | Always (home network)            |
+| **Cloudflare Tunnels** | Internet         | 50–150ms | Full      | Remote hardware, mobile nodes    |
+| **Meshtastic (LoRa)**  | Radio range (km) | 2–30s    | 1–10 kbps | IP network unavailable, off-grid |
 
 All three layers are optional and composable. A node can use any combination.
 
@@ -44,11 +48,16 @@ Each Polly node maintains a capability manifest:
   },
   "current_load": {
     "cpu_percent": 0.25,
-    "memory_percent": 0.40,
+    "memory_percent": 0.4,
     "active_tasks": 2
   },
   "models": [
-    { "domain": "sigils", "model_id": "llama3.2:3b-sigils-ft", "loaded": true, "context_window": 8192 }
+    {
+      "domain": "sigils",
+      "model_id": "llama3.2:3b-sigils-ft",
+      "loaded": true,
+      "context_window": 8192
+    }
   ],
   "network": {
     "local_ip": "192.168.1.100",
@@ -68,6 +77,7 @@ Each Polly node maintains a capability manifest:
 ```
 
 **New fields (vs v0.1):**
+
 - `tunnel_url` / `tunnel_id` — Cloudflare Tunnel endpoint (null if local-only).
 - `network_type` — `local` (LAN/VPN), `remote` (Cloudflare Tunnel), `mesh` (Meshtastic gateway).
 - `geography` — Optional geographic tagging for data sovereignty and compliance routing.
@@ -120,7 +130,7 @@ credentials-file: /path/to/credentials.json
 
 ingress:
   - hostname: nas-polly.yourdomain.com
-    service: http://localhost:8765  # Polly DRM API
+    service: http://localhost:8765 # Polly DRM API
   - service: http_status:404
 ```
 
@@ -145,6 +155,7 @@ def discover_peers(self):
 ```
 
 Routing logic adapts by task sensitivity:
+
 - **Interactive queries** → local peers only (sub-100ms latency).
 - **Batch processing** → anywhere (latency doesn't matter).
 - **Specialized models** → wherever they exist (accept latency cost).
@@ -160,6 +171,7 @@ Compare to cloud compute: one GPU instance = $500+/mo. Your own hardware + Cloud
 #### Exit Strategy
 
 Cloudflare is convenience, not dependency. The coordination logic is simple enough to self-host:
+
 - Deploy coordination Worker as standalone service on your own VPS.
 - Run WireGuard mesh (Tailscale/Headscale) for direct peer connectivity.
 - System continues working with different discovery mechanism.
@@ -173,6 +185,7 @@ When IP networks are unavailable, LoRa radio provides coordination-only communic
 #### Core Constraint
 
 LoRa realities fundamentally reshape what "distributed" means:
+
 - Max payload: 237 bytes per packet.
 - Bandwidth: 1–10 kbps typical.
 - Range: 5–30 km (line of sight).
@@ -204,6 +217,7 @@ Role: Bridge between LoRa mesh and IP network.
 Uses Meshtastic `PRIVATE_APP` portnum for custom DRM messages. Payloads use msgpack for efficiency (40% smaller than JSON). Dictionary encoding for common fields.
 
 **Task request (via mesh):**
+
 ```python
 {
     "v": 1,           # protocol version
@@ -217,6 +231,7 @@ Uses Meshtastic `PRIVATE_APP` portnum for custom DRM messages. Payloads use msgp
 ```
 
 **Result notification (via mesh):**
+
 ```python
 {
     "v": 1,
@@ -231,20 +246,20 @@ Uses Meshtastic `PRIVATE_APP` portnum for custom DRM messages. Payloads use msgp
 
 #### Meshtastic Computation Patterns
 
-| Pattern | Description | Via Mesh | Via IP |
-|---|---|---|---|
-| **Hash Reference** | Send references to pre-synced data, not data itself | Instruction (~200B) | Nothing (corpus pre-synced) |
-| **Delegation** | Request computation on known data | Task ref (~200B) | Full result retrieval later |
-| **Sensor Aggregation** | Edge nodes process locally, send only metadata/decisions | Alert (~100B) | Nothing |
-| **Task Queue** | Mesh as durable task queue, actual data via IP when available | Coordination (~200B) | Task data + results |
+| Pattern                | Description                                                   | Via Mesh             | Via IP                      |
+| ---------------------- | ------------------------------------------------------------- | -------------------- | --------------------------- |
+| **Hash Reference**     | Send references to pre-synced data, not data itself           | Instruction (~200B)  | Nothing (corpus pre-synced) |
+| **Delegation**         | Request computation on known data                             | Task ref (~200B)     | Full result retrieval later |
+| **Sensor Aggregation** | Edge nodes process locally, send only metadata/decisions      | Alert (~100B)        | Nothing                     |
+| **Task Queue**         | Mesh as durable task queue, actual data via IP when available | Coordination (~200B) | Task data + results         |
 
 #### Power Considerations
 
-| Mode | Current (3.3V) | Battery Life (2500mAh) |
-|---|---|---|
-| Active TX | ~120mA | ~18 hours |
-| Receive | ~40mA | ~60 hours |
-| Sleep + periodic check (5min) | ~1mA avg | ~1 week |
+| Mode                          | Current (3.3V) | Battery Life (2500mAh) |
+| ----------------------------- | -------------- | ---------------------- |
+| Active TX                     | ~120mA         | ~18 hours              |
+| Receive                       | ~40mA          | ~60 hours              |
+| Sleep + periodic check (5min) | ~1mA avg       | ~1 week                |
 
 Strategy: aggressive sleep/wake cycles. Send task request → sleep for estimated processing time → wake and check for response.
 
@@ -254,13 +269,13 @@ Strategy: aggressive sleep/wake cycles. Send task request → sleep for estimate
 
 ### Task Types
 
-| Type | Description |
-|---|---|
-| **Parallel Inference** | Same query to multiple models, merge results |
-| **Domain Routing** | Route query to specialized domain model on appropriate node |
-| **Pipeline** | Sequential tasks with dependencies (DAG) |
-| **Map-Reduce** | Split corpus search across nodes, aggregate findings |
-| **Ensemble** | Generate multiple responses, select/blend best |
+| Type                   | Description                                                 |
+| ---------------------- | ----------------------------------------------------------- |
+| **Parallel Inference** | Same query to multiple models, merge results                |
+| **Domain Routing**     | Route query to specialized domain model on appropriate node |
+| **Pipeline**           | Sequential tasks with dependencies (DAG)                    |
+| **Map-Reduce**         | Split corpus search across nodes, aggregate findings        |
+| **Ensemble**           | Generate multiple responses, select/blend best              |
 
 ### Work Assignment Algorithm
 
@@ -272,6 +287,7 @@ Strategy: aggressive sleep/wake cycles. Send task request → sleep for estimate
 6. **Fallback:** If no suitable peer, process locally.
 
 **Scoring function (updated for hybrid network):**
+
 ```
 score = (1 - cpu_percent) * 0.25
       + (1 - memory_percent) * 0.15
@@ -335,6 +351,7 @@ Once DRM extends beyond trusted local network (Cloudflare Tunnels), proper authe
 Each node has an Ed25519 keypair proving it's an authorized member of the mesh. Used for peer registration with the coordinator. Rotated monthly or on compromise.
 
 **Key generation:**
+
 ```bash
 polly keygen --name nas-polly
 # Output: nas-polly.pub, nas-polly.key
@@ -342,6 +359,7 @@ polly keygen --name nas-polly
 ```
 
 **Mesh constitution (`trusted-peers.yaml`):**
+
 ```yaml
 mesh_id: "polly-mesh-home"
 version: 1
@@ -380,6 +398,7 @@ Distributed to all nodes. All nodes verify signature against admin public key be
 JWT-based with Ed25519 signatures (asymmetric — better for p2p than HMAC). Generated per request, valid 5 minutes.
 
 **Token structure (JWT):**
+
 ```json
 {
   "header": {
@@ -406,6 +425,7 @@ JWT-based with Ed25519 signatures (asymmetric — better for p2p than HMAC). Gen
 ```
 
 **Verification flow (recipient):**
+
 1. Decode header → get sender `kid` (node ID).
 2. Look up sender's public key in `trusted-peers.yaml`.
 3. Verify Ed25519 signature.
@@ -454,12 +474,12 @@ Tradeoffs: simpler implementation, faster symmetric crypto. But compromise affec
 
 ### Performance
 
-| Operation | Time |
-|---|---|
-| Key generation | ~1ms (one-time) |
-| Token creation (signing) | ~0.5ms |
-| Token verification | ~0.8ms |
-| Replay check (hash lookup) | ~0.1ms |
+| Operation                   | Time                                 |
+| --------------------------- | ------------------------------------ |
+| Key generation              | ~1ms (one-time)                      |
+| Token creation (signing)    | ~0.5ms                               |
+| Token verification          | ~0.8ms                               |
+| Replay check (hash lookup)  | ~0.1ms                               |
 | **Total per-task overhead** | **~1.5ms** (negligible vs inference) |
 
 ---
@@ -491,7 +511,7 @@ discovery:
   meshtastic:
     enabled: false
     serial_port: "/dev/ttyUSB0"
-    gateway_mode: false  # true if this node bridges mesh↔IP
+    gateway_mode: false # true if this node bridges mesh↔IP
     portnum: PRIVATE_APP
 
 models:
@@ -505,7 +525,7 @@ routing:
   local_preference: 0.1
   max_retries: 3
   timeout_seconds: 300
-  latency_sensitive_threshold_ms: 100  # below this, local peers only
+  latency_sensitive_threshold_ms: 100 # below this, local peers only
 
 resources:
   cpu_limit: 0.8
@@ -519,7 +539,7 @@ networks:
 security:
   # Phase 36: no auth (local trusted network)
   # Phase 36d+: Ed25519 PKI
-  auth_method: none  # none | shared_secret | ed25519
+  auth_method: none # none | shared_secret | ed25519
   mesh_id: "polly-mesh-home"
   private_key: "~/.polly/keys/nas-polly.key"
   trusted_peers: "~/.polly/drm/trusted-peers.yaml"
@@ -533,12 +553,13 @@ security:
 geography:
   country: "US"
   region: "us-east"
-  enforce_data_sovereignty: false  # if true, tasks stay in same country
+  enforce_data_sovereignty: false # if true, tasks stay in same country
 ```
 
 ## Example Workflows
 
 ### Cross-Domain Analysis (Local)
+
 ```
 Query: "Review this SuperCollider code for pedagogical clarity"
 → Break into: Code analysis (Sigils node) + Pedagogy extraction (Scrolls node) + Cross-reference (Glyphs node)
@@ -547,6 +568,7 @@ Query: "Review this SuperCollider code for pedagogical clarity"
 ```
 
 ### Remote Model Specialization (Cloudflare)
+
 ```
 NAS in Michigan receives query requiring Signals domain expertise.
 NAS sees friend's server in California has signals-ft model loaded.
@@ -557,6 +579,7 @@ Latency: ~100ms network + inference time. Negligible vs local for batch work.
 ```
 
 ### Off-Grid Research (Meshtastic)
+
 ```
 Laptop in backcountry with Meshtastic radio. Gateway 20km away at base camp.
 User needs species confirmation from knowledge corpus.
@@ -566,6 +589,7 @@ Full result retrieved later when laptop regains WiFi.
 ```
 
 ### Large Corpus Search (Map-Reduce)
+
 ```
 Query: "Find all references to 'finite games' in my corpus"
 → Map-reduce: Split corpus by domain/date → distribute to all peers (local + remote)
@@ -575,43 +599,48 @@ Query: "Find all references to 'finite games' in my corpus"
 
 ## Relationship to Existing Systems
 
-| System | Integration |
-|---|---|
-| **Agent Swarms** | DRM is the physical distribution layer for parallel agent tasks. Nexus composes logically; DRM distributes across nodes. Agent capability declarations map to DRM task requirements. See [agent-swarms spec](../agent-swarms/spec.md) |
-| **Router** | DRM adds a node-routing tier above existing model/provider routing. Three-tier stack: Nexus (agents) → DRM (nodes) → Router v2 (models) |
-| **LiteLLM** | A DRM peer is conceptually another "provider" — extends adapter pattern |
-| **Query Decomposition (planned)** | Decomposed subtasks route across nodes via DRM |
-| **RAG** | Distributed corpus search across node-local indices |
-| **Mobile companion** | Mobile app is a thin DRM node (capture + chat relay). Connects via Cloudflare Tunnel when away from home network |
-| **Security (Phase 23.5)** | Capability Broker concept extends to DRM node trust. Ed25519 PKI for inter-node authentication |
-| **Observability (planned)** | Langfuse/Prometheus metrics per node, including network type and latency |
+| System                            | Integration                                                                                                                                                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Agent Swarms**                  | DRM is the physical distribution layer for parallel agent tasks. Nexus composes logically; DRM distributes across nodes. Agent capability declarations map to DRM task requirements. See [agent-swarms spec](../agent-swarms/spec.md) |
+| **Router**                        | DRM adds a node-routing tier above existing model/provider routing. Three-tier stack: Nexus (agents) → DRM (nodes) → Router v2 (models)                                                                                               |
+| **LiteLLM**                       | A DRM peer is conceptually another "provider" — extends adapter pattern                                                                                                                                                               |
+| **Query Decomposition (planned)** | Decomposed subtasks route across nodes via DRM                                                                                                                                                                                        |
+| **RAG**                           | Distributed corpus search across node-local indices                                                                                                                                                                                   |
+| **Mobile companion**              | Mobile app is a thin DRM node (capture + chat relay). Connects via Cloudflare Tunnel when away from home network                                                                                                                      |
+| **Security (Phase 23.5)**         | Capability Broker concept extends to DRM node trust. Ed25519 PKI for inter-node authentication                                                                                                                                        |
+| **Observability (planned)**       | Langfuse/Prometheus metrics per node, including network type and latency                                                                                                                                                              |
 
 ## Implementation Phases
 
 ### DRM Phase 1: Basic Peer Discovery (2–3 weeks) — Phase 36
+
 - mDNS service announcement and peer registry
 - Node capability manifests + health endpoint
 - Manual task assignment API ("run this on node X")
 - No authentication (trusted local network)
 
 ### DRM Phase 2: Automatic Distribution (3–4 weeks) — Phase 36a
+
 - Task submission API with assignment algorithm
 - Result collection and merging (first-response, consensus)
 - Basic failure handling (timeout, retry, reassign)
 
 ### DRM Phase 3: Model Specialization (3–4 weeks) — Phase 36b
+
 - Domain-aware routing across nodes
 - Model loading coordination
 - Parallel inference and ensemble generation
 - Depends on: intelligent routing pipeline (Wave 3) complete
 
 ### DRM Phase 4: Advanced Features (4+ weeks) — Phase 36c
+
 - Pipeline dependencies (DAG execution)
 - Map-reduce corpus operations
 - Adaptive load balancing + performance telemetry
 - Mobile node support (join/leave gracefully)
 
 ### DRM Phase 5: Remote Mesh via Cloudflare (3–4 weeks) — Phase 36d
+
 - `cloudflared` tunnel setup and management
 - Cloudflare Workers coordination service (peer registry)
 - Ed25519 PKI: key generation CLI, `trusted-peers.yaml` management
@@ -623,6 +652,7 @@ Query: "Find all references to 'finite games' in my corpus"
 - Depends on: Phase 36a (automatic distribution working locally first)
 
 ### DRM Phase 6: Meshtastic Gateway (2–3 weeks) — Phase 36e
+
 - Meshtastic serial interface integration
 - Gateway node software (bridge LoRa ↔ IP)
 - Custom DRM message protocol (msgpack, dictionary encoding)
@@ -633,13 +663,13 @@ Query: "Find all references to 'finite games' in my corpus"
 
 ## Performance Targets
 
-| Metric | Local | Remote (CF) | Mesh (LoRa) |
-|---|---|---|---|
-| Peer discovery | <100ms | <500ms | N/A (gateway) |
-| Task routing | <50ms | <50ms | N/A |
-| Network transfer | 1–10ms | 50–150ms | 2–30s (coordination only) |
-| Total overhead | <200ms | <400ms | Seconds (coordination) + later retrieval |
-| Scale | 2–10 nodes | 2–20 nodes | 2–10 gateways |
+| Metric           | Local      | Remote (CF) | Mesh (LoRa)                              |
+| ---------------- | ---------- | ----------- | ---------------------------------------- |
+| Peer discovery   | <100ms     | <500ms      | N/A (gateway)                            |
+| Task routing     | <50ms      | <50ms       | N/A                                      |
+| Network transfer | 1–10ms     | 50–150ms    | 2–30s (coordination only)                |
+| Total overhead   | <200ms     | <400ms      | Seconds (coordination) + later retrieval |
+| Scale            | 2–10 nodes | 2–20 nodes  | 2–10 gateways                            |
 
 ## Monitoring
 

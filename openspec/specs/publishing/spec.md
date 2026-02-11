@@ -2,6 +2,10 @@
 
 Source of truth for Polly's capture-to-publish workflow. POSE (Publish, Organize, Synthesize, Export) transforms knowledge into published output across multiple platforms.
 
+> **Implementation Status:** 💭 Vision — no code exists for this system.
+> This spec describes the target design. Implementation is planned for Tier 3 / Phases 34–34a.
+> Other specs should not design integration points against this system until implementation begins.
+
 ## Overview
 
 The publishing pipeline takes knowledge from Polly's vault — notes, captures, canvas content — and prepares it for publication. It supports multi-platform distribution with domain-specific formatting, scheduling, and analytics.

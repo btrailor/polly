@@ -2,6 +2,10 @@
 
 Source of truth for Polly's onboarding, progressive feature revelation, and adaptive tutorial system. Detail: [docs/planning/phases/other/PHASE18_ONBOARDING.md](../../../docs/planning/phases/other/PHASE18_ONBOARDING.md).
 
+> **Implementation Status:** 💭 Vision — no code exists for this system.
+> This spec describes the target design. Implementation is planned for Tier 4 / Phase 18.
+> Other specs should not design integration points against this system until implementation begins.
+
 ## Overview
 
 Onboarding is how Polly teaches users to use Polly — without forced tutorials, through contextual education that reveals features when they're relevant. The system learns each user's pace and adapts.

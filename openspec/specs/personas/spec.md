@@ -2,6 +2,16 @@
 
 Source of truth for the agent persona system. Full architecture: [docs/PERSONA_SYSTEM_ARCHITECTURE.md](../../../docs/PERSONA_SYSTEM_ARCHITECTURE.md). API: [docs/PERSONA_API.md](../../../docs/PERSONA_API.md).
 
+## Implementation Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Architect, Scribe, Professor | ✅ Implemented | `core/personas/implementations/` |
+| PersonaManager, mode switching | ✅ Implemented | `core/personas/manager.py` |
+| PersonaAware (pattern, entity, mental model) | ✅ Implemented | integration-contracts |
+| Theme behavior injection | 💭 Vision | aesthetic-theme-engine change |
+| Programmer, Librarian, Designer, Administrator | 💭 Vision | Spec-only; Phase 25, 27, 20a–20b |
+
 ## Integration Contracts (Feb 2026)
 
 Personas compose with other systems via shared protocols:

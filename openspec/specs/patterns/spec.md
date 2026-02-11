@@ -2,6 +2,19 @@
 
 Source of truth for the pattern learning system (Phase 13a) and pattern-based compression (Phase 2b). Detail: [docs/planning/phases/other/PHASE13A_PATTERN_LEARNING_CORE.md](../../../docs/planning/phases/other/PHASE13A_PATTERN_LEARNING_CORE.md), [docs/planning/tiers/TIER_1_INTELLIGENCE.md](../../../docs/planning/tiers/TIER_1_INTELLIGENCE.md).
 
+## Implementation Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| PatternEngine (learn, search, storage) | ✅ Implemented | `core/patterns/engine.py`, storage JSON + Mem0 |
+| Pattern types (QUERY, ROUTING_OUTCOME, etc.) | ✅ Implemented | `core/patterns/models.py` |
+| ContextContributor (build_context) | ✅ Implemented | PatternEngine in _gather_context (priority 20) |
+| Pattern→router feedback (ROUTING_OUTCOME) | ✅ Implemented | `_record_routing_outcome()` in polly.py |
+| Query→chunk, domain→collection patterns | ✅ Implemented | PatternEngine scoring and RAG integration |
+| Code patterns (CodePatternExtractor) | 📐 Partial | learners/code_patterns; full integration planned |
+| Library usage patterns | 💭 Vision | code-library-and-dev-philosophy change |
+| Workflow patterns (learning/application) | 📐 Designed | Data model exists; learning pipeline planned |
+
 ## Overview
 
 Polly learns from every interaction. The pattern learning system extracts recurring structures from user queries, code, concepts, routing decisions, and workflows — then uses those patterns to optimize RAG retrieval, inform routing decisions, and personalize responses. Knowledge compounds over time: the more you use Polly, the better it gets.

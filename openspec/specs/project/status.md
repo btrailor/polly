@@ -1,7 +1,7 @@
 # Polly Project Status (OpenSpec)
 
 **Authority:** This file is the single source of truth for "where we are now."  
-**Last Updated:** February 2026  
+**Last Updated:** February 10, 2026  
 **Full history:** [docs/status/CHANGELOG.md](../../../docs/status/CHANGELOG.md)
 
 ---
@@ -96,3 +96,4 @@ Detailed phase notes and file references remain in [docs/status/CURRENT.md](../.
 - **Active OpenSpec changes:** [openspec/changes/](../changes/) — e.g. **Phase 17 (Monaco code workspace):** [phase-17-monaco-code-workspace/](../changes/phase-17-monaco-code-workspace/); **Code Library & Philosophy:** [code-library-and-dev-philosophy/](../changes/code-library-and-dev-philosophy/); **Designer Profile:** [designer-profile/](../changes/designer-profile/); **Learning & Administrator Profiles:** [learning-and-administrator-profiles/](../changes/learning-and-administrator-profiles/); **Constitutional Epistemology:** [constitutional-epistemology/](../changes/constitutional-epistemology/)
 - **Void vs Monaco decision:** [void-migration/VOID_VS_MONACO_DECISION_FEB2026.md](../../../void-migration/VOID_VS_MONACO_DECISION_FEB2026.md)
 - **Changelog (completion history):** [docs/status/CHANGELOG.md](../../../docs/status/CHANGELOG.md)
+- **OpenSpec implementation status:** [openspec/changes/IMPLEMENTATION_STATUS.md](../../changes/IMPLEMENTATION_STATUS.md) — What's implemented vs pending per change; completed changes (architecture-integration-audit, entity-model-unification, integration-contracts, litellm-provider-adapter, mem0-adaptive-memory, unified-pattern-engine) are done and folders retained for reference.

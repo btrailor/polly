@@ -2,6 +2,10 @@
 
 Source of truth for Polly's email intelligence, calendar features, and progressive communication autonomy. Detail: [docs/planning/phases/other/PHASE20_INTELLIGENT_COMMUNICATION.md](../../../docs/planning/phases/other/PHASE20_INTELLIGENT_COMMUNICATION.md), [docs/planning/phases/other/PHASE7_CALENDAR_FEATURES.md](../../../docs/planning/phases/other/PHASE7_CALENDAR_FEATURES.md).
 
+> **Implementation Status:** 💭 Vision — no code exists for this system.
+> This spec describes the target design. Implementation is planned for Tier 5 / Phases 20a–20c.
+> Other specs should not design integration points against this system until implementation begins.
+
 ## Overview
 
 Intelligent Communication transforms Polly from a knowledge tool into a communication partner. Rather than simply forwarding emails or showing calendars, Polly understands communication patterns, extracts actionable information, and progressively takes on communication tasks as user trust builds.

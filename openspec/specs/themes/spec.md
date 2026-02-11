@@ -5,6 +5,16 @@ Source of truth for Polly's artist-derived aesthetic theme system. Themes operat
 **Catalogue Reference:** Affinity Suite Techniques Catalogue (38 techniques, 12 artists)
 **Domains touched:** Sights × Sigils × Signals × Scrolls × Glyphs (all five)
 
+## Implementation Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Theme schema, registry, loader | 💭 Vision | aesthetic-theme-engine change |
+| Theme API (list, active, switch, compose) | 💭 Vision | aesthetic-theme-engine change |
+| Persona theme behavior injection | 💭 Vision | aesthetic-theme-engine change |
+| CSS variable system, settings UI | 💭 Vision | aesthetic-theme-engine change |
+| Theme sequences, conditional activation | 💭 Vision | aesthetic-theme-engine change |
+
 ---
 
 ## Core Concept

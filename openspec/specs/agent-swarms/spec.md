@@ -2,6 +2,10 @@
 
 Source of truth for Polly's configurable multi-agent workflow architecture. Subsumes and expands the original Phase 24 Orchestrator Mode concept.
 
+> **Implementation Status:** 💭 Vision — no code exists for this system.
+> This spec describes the target design. Implementation is planned for Tier 2 / Phases 24a–24e.
+> Other specs should not design integration points against this system until implementation begins.
+
 ## Overview
 
 Agent Swarms is Polly's system for composing multiple AI agents into collaborative workflows. Rather than a single LLM processing everything sequentially, complex tasks decompose into subtasks handled by specialized agents that coordinate through a central Nexus.
@@ -41,17 +45,17 @@ agent:
   # What this agent consumes
   input_schema:
     required:
-      - code: string        # Source code to review
-      - language: string     # Programming language
+      - code: string # Source code to review
+      - language: string # Programming language
     optional:
-      - style_guide: string  # Project style guide reference
+      - style_guide: string # Project style guide reference
       - focus_areas: [string] # Specific concerns to check
 
   # What this agent produces
   output_schema:
     issues: [{ severity: string, line: number, message: string }]
     summary: string
-    score: number  # 0-100 quality score
+    score: number # 0-100 quality score
 
   # What tasks it can handle
   capabilities:
@@ -63,11 +67,11 @@ agent:
   # What other agent outputs it needs (optional)
   dependencies:
     optional:
-      - file_context: "file-reader"  # Can use file reader output
+      - file_context: "file-reader" # Can use file reader output
 
   # Synchronous/asynchronous, interactive/autonomous
   execution_mode:
-    type: autonomous         # autonomous | interactive | hybrid
+    type: autonomous # autonomous | interactive | hybrid
     async_capable: true
     streaming: true
 
@@ -76,18 +80,18 @@ agent:
     max_tokens: 4096
     timeout_seconds: 120
     cost_cap_usd: 0.10
-    prefer_local: true       # Prefer local model when capable
+    prefer_local: true # Prefer local model when capable
 
   # Execution contexts required (brokered via Capability Broker)
   execution_contexts:
     required: []
     optional:
-      - github              # Can access repos if available
-      - filesystem           # Can read project files if available
+      - github # Can access repos if available
+      - filesystem # Can read project files if available
 
   # Domain affinity (for domain-aware routing)
   domain_affinity:
-    primary: ["sigils"]      # Example: code-related domain
+    primary: ["sigils"] # Example: code-related domain
     secondary: []
 ```
 
@@ -95,13 +99,13 @@ agent:
 
 Existing personas become agents with formal declarations:
 
-| Persona | Agent Capabilities | Execution Contexts | Modes as Sub-Agents |
-|---|---|---|---|
-| **Architect** | planning, decomposition, canvas_analysis | filesystem, github | Plan Agent, Build Agent, Canvas Agent |
-| **Scribe** | writing, enrichment, publishing, organization | obsidian, ghost_cms | Capture Agent, Organize Agent, Enrich Agent, Edit Agent, Publish Agent |
-| **Professor** | teaching, assessment, curriculum, explanation | curriculum_db | Explain Agent, Socratic Agent, Quiz Agent |
+| Persona       | Agent Capabilities                            | Execution Contexts  | Modes as Sub-Agents                                                    |
+| ------------- | --------------------------------------------- | ------------------- | ---------------------------------------------------------------------- |
+| **Architect** | planning, decomposition, canvas_analysis      | filesystem, github  | Plan Agent, Build Agent, Canvas Agent                                  |
+| **Scribe**    | writing, enrichment, publishing, organization | obsidian, ghost_cms | Capture Agent, Organize Agent, Enrich Agent, Edit Agent, Publish Agent |
+| **Professor** | teaching, assessment, curriculum, explanation | curriculum_db       | Explain Agent, Socratic Agent, Quiz Agent                              |
 
-Each persona mode becomes a distinct agent capability that the Nexus can invoke independently. The persona itself becomes an agent *group* — a pre-composed swarm.
+Each persona mode becomes a distinct agent capability that the Nexus can invoke independently. The persona itself becomes an agent _group_ — a pre-composed swarm.
 
 ## Nexus: Agent Coordination Layer
 
@@ -135,6 +139,7 @@ Task ───→ │                ├───→ Merge → Result
 ```
 
 The Nexus manages:
+
 - **Parallel execution** — Independent agents run simultaneously.
 - **Sequential dependencies** — Agent C waits for Agent B's output.
 - **Merge strategies** — Combine results (first-response, consensus, ensemble, reduce).
@@ -144,14 +149,14 @@ The Nexus manages:
 
 ```yaml
 complexity_signals:
-  simple:    # Single agent
+  simple: # Single agent
     - Single capability required
     - No cross-context needs
     - Low token budget
-  moderate:  # 2-3 agents, mostly sequential
+  moderate: # 2-3 agents, mostly sequential
     - Multiple capabilities but clear order
     - One execution context
-  complex:   # Full swarm
+  complex: # Full swarm
     - Multiple capabilities in parallel
     - Multiple execution contexts
     - Cross-domain reasoning
@@ -171,15 +176,15 @@ Pre-configured swarms for common workflows. Users start here and customize.
 
 ### Built-in Templates
 
-| Template | Agents | Workflow |
-|---|---|---|
-| **Research → Write** | Scribe(Research) → Scribe(Organize) → Scribe(Write) → Scribe(Edit) | Sequential pipeline for turning research into a draft |
-| **Code Review + Docs** | Architect(Build) → Code Reviewer → Doc Generator | Review code, then generate documentation |
-| **Plan → Build → Test** | Architect(Plan) → Architect(Build) → Code Reviewer | Full development cycle |
-| **Teach → Assess → Refine** | Professor(Explain) → Professor(Quiz) → Professor(Socratic) | Teaching workflow with assessment |
-| **Capture → Enrich → Publish** | Scribe(Capture) → Scribe(Enrich) → Scribe(Publish) | POSE publishing pipeline as swarm |
-| **Multi-Domain Analysis** | Domain Agent A ∥ Domain Agent B → Merge Agent | Parallel analysis across domains |
-| **Canvas Validation** | Architect(Canvas) → Business Analyst → User Researcher | BAD Canvas gap analysis |
+| Template                       | Agents                                                             | Workflow                                              |
+| ------------------------------ | ------------------------------------------------------------------ | ----------------------------------------------------- |
+| **Research → Write**           | Scribe(Research) → Scribe(Organize) → Scribe(Write) → Scribe(Edit) | Sequential pipeline for turning research into a draft |
+| **Code Review + Docs**         | Architect(Build) → Code Reviewer → Doc Generator                   | Review code, then generate documentation              |
+| **Plan → Build → Test**        | Architect(Plan) → Architect(Build) → Code Reviewer                 | Full development cycle                                |
+| **Teach → Assess → Refine**    | Professor(Explain) → Professor(Quiz) → Professor(Socratic)         | Teaching workflow with assessment                     |
+| **Capture → Enrich → Publish** | Scribe(Capture) → Scribe(Enrich) → Scribe(Publish)                 | POSE publishing pipeline as swarm                     |
+| **Multi-Domain Analysis**      | Domain Agent A ∥ Domain Agent B → Merge Agent                      | Parallel analysis across domains                      |
+| **Canvas Validation**          | Architect(Canvas) → Business Analyst → User Researcher             | BAD Canvas gap analysis                               |
 
 ### Template Structure
 
@@ -188,7 +193,7 @@ template:
   id: "research-to-publish"
   name: "Research → Publish"
   description: "Turn research into a published piece"
-  domain_affinity: ["scrolls"]  # Suggested for writing domains
+  domain_affinity: ["scrolls"] # Suggested for writing domains
 
   agents:
     - id: researcher
@@ -205,7 +210,11 @@ template:
     - id: writer
       type: scribe
       mode: write
-      input: { outline: "$organizer.output", style: "$user_preferences.writing_style" }
+      input:
+        {
+          outline: "$organizer.output",
+          style: "$user_preferences.writing_style",
+        }
       depends_on: [organizer]
 
     - id: editor
@@ -229,17 +238,17 @@ Agents don't just need LLM access — they need brokered access to external syst
 
 ### Context Types
 
-| Context | Provides | Used By |
-|---|---|---|
-| **filesystem** | Read/write files, directory listing | Architect, Code agents |
-| **github** | Repo access, PR operations, issue management | Code agents, Project agents |
-| **obsidian** | Vault read/write, wikilink resolution | Scribe, Knowledge agents |
-| **ghost_cms** | Post creation, media upload, scheduling | Scribe(Publish) |
-| **email** | Inbox access, SMTP send, template library | Communication agents |
-| **calendar** | Event read/write, availability check | Scheduling agents |
-| **knowledge_graph** | Entity queries, connection metrics | Any agent needing context |
-| **rag** | Semantic search, domain-filtered retrieval | Any agent needing knowledge |
-| **drm** | Task distribution to peer nodes | Nexus (for distributed swarms) |
+| Context             | Provides                                     | Used By                        |
+| ------------------- | -------------------------------------------- | ------------------------------ |
+| **filesystem**      | Read/write files, directory listing          | Architect, Code agents         |
+| **github**          | Repo access, PR operations, issue management | Code agents, Project agents    |
+| **obsidian**        | Vault read/write, wikilink resolution        | Scribe, Knowledge agents       |
+| **ghost_cms**       | Post creation, media upload, scheduling      | Scribe(Publish)                |
+| **email**           | Inbox access, SMTP send, template library    | Communication agents           |
+| **calendar**        | Event read/write, availability check         | Scheduling agents              |
+| **knowledge_graph** | Entity queries, connection metrics           | Any agent needing context      |
+| **rag**             | Semantic search, domain-filtered retrieval   | Any agent needing knowledge    |
+| **drm**             | Task distribution to peer nodes              | Nexus (for distributed swarms) |
 
 ### Context Brokering
 
@@ -576,20 +585,20 @@ Storage in `~/.polly/knowledge.db` alongside other knowledge platform tables.
 
 ## Relationship to Other Systems
 
-| System | Integration |
-|---|---|
-| **Personas** | Personas wrapped as agents; modes become agent capabilities. Nexus replaces planned "Orchestrator mode" toggle |
-| **DRM** | Physical distribution layer for parallel agent tasks. DRM scoring applies to agent task assignment |
-| **Router v2** | Model selection remains within each agent. Nexus sits above: Nexus → DRM → Router v2 |
-| **RAG** | Agents access knowledge via RAG. Cross-agent context sharing prevents redundant queries |
-| **Knowledge Graph** | Agents query entity graph for context. Swarm outputs can trigger entity extraction |
-| **Security** | Capability Broker mediates agent access to execution contexts. Trust model enforced |
-| **Patterns** | Successful workflow patterns learned. Template suggestions improve over time |
-| **Domains** | Domain affinity on agents and templates. Cross-domain swarms for polymathic tasks |
-| **Canvas** | Canvas validation as a workflow template. Architect(Canvas) as specialized agent |
-| **Publishing** | POSE pipeline expressible as a swarm workflow. Scribe modes as publishing agents |
-| **Capture** | Capture processing pipelines as lightweight swarms (entity extraction → routing → enrichment) |
-| **Analytics** | Per-workflow and per-agent metrics. Swarm efficiency tracking |
+| System              | Integration                                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Personas**        | Personas wrapped as agents; modes become agent capabilities. Nexus replaces planned "Orchestrator mode" toggle |
+| **DRM**             | Physical distribution layer for parallel agent tasks. DRM scoring applies to agent task assignment             |
+| **Router v2**       | Model selection remains within each agent. Nexus sits above: Nexus → DRM → Router v2                           |
+| **RAG**             | Agents access knowledge via RAG. Cross-agent context sharing prevents redundant queries                        |
+| **Knowledge Graph** | Agents query entity graph for context. Swarm outputs can trigger entity extraction                             |
+| **Security**        | Capability Broker mediates agent access to execution contexts. Trust model enforced                            |
+| **Patterns**        | Successful workflow patterns learned. Template suggestions improve over time                                   |
+| **Domains**         | Domain affinity on agents and templates. Cross-domain swarms for polymathic tasks                              |
+| **Canvas**          | Canvas validation as a workflow template. Architect(Canvas) as specialized agent                               |
+| **Publishing**      | POSE pipeline expressible as a swarm workflow. Scribe modes as publishing agents                               |
+| **Capture**         | Capture processing pipelines as lightweight swarms (entity extraction → routing → enrichment)                  |
+| **Analytics**       | Per-workflow and per-agent metrics. Swarm efficiency tracking                                                  |
 
 ## Key Architectural Decisions
 
@@ -599,7 +608,8 @@ Storage in `~/.polly/knowledge.db` alongside other knowledge platform tables.
 
 ### Why not CrewAI directly?
 
-The original Phase 24 plan used CrewAI as the framework. The Agent Swarms architecture is more fundamental — it defines a Polly-native agent interface that *could* use CrewAI as one implementation backend, but isn't coupled to it. Benefits:
+The original Phase 24 plan used CrewAI as the framework. The Agent Swarms architecture is more fundamental — it defines a Polly-native agent interface that _could_ use CrewAI as one implementation backend, but isn't coupled to it. Benefits:
+
 - Agent interface is Polly's own, portable across execution backends
 - Existing persona system maps cleanly without framework translation layer
 - DRM integration is native (CrewAI doesn't know about node distribution)
@@ -614,6 +624,7 @@ Composability. If agents declare what they can do and what they need, the Nexus 
 ### Why execution contexts as a first-class concept?
 
 Agents in Polly don't just generate text — they interact with systems (GitHub, Obsidian, Ghost CMS, filesystem). Treating these as declared, brokered execution contexts means:
+
 - Security model is explicit (Capability Broker mediates all access)
 - New integrations automatically become available to agents
 - Users can see and control what agents can access

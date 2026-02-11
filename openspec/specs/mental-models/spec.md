@@ -2,6 +2,16 @@
 
 Source of truth for the mental models system (Phase 14). Detail: [docs/planning/phases/phase-14/PHASE14_MENTAL_MODELS.md](../../../docs/planning/phases/phase-14/PHASE14_MENTAL_MODELS.md).
 
+## Implementation Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| MentalModelManager (storage, activation, build_context) | ✅ Implemented | `core/mental_models.py` |
+| ContextContributor (priority 60) | ✅ Implemented | _gather_context in polly.py |
+| PersonaAware, effectiveness tracking | ✅ Implemented | integration-contracts |
+| Constitutional tier (Cui Bono, etc.) | 💭 Vision | constitutional-epistemology change; spec-only |
+| Constitutional models always active | 📐 Designed | ethics spec; not yet in code |
+
 ## Integration Contracts (Feb 2026)
 
 - **ContextContributor** — `MentalModelManager.build_context(query, domains, persona, mode)` returns the "Active Mental Models (Compressed)" block; `context_priority = 60`.

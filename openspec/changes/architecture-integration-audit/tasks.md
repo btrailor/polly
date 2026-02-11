@@ -14,10 +14,10 @@
 | 3 | Create sibling change folders with proposals | ✅ |
 | 4 | Create sibling change folders with designs | ✅ |
 | 5 | Create sibling change folders with tasks | ✅ |
-| 6 | Update roadmap.md with integration tier | ⬜ |
-| 7 | Spec reconciliation: add status markers to all specs | ⬜ |
-| 8 | Update architecture/spec.md with actual data flow | ⬜ |
-| 9 | Add "Vision" headers to unimplemented specs | ⬜ |
+| 6 | Update roadmap.md with integration tier | ✅ |
+| 7 | Spec reconciliation: add status markers to all specs | ✅ |
+| 8 | Update architecture/spec.md with actual data flow | ✅ |
+| 9 | Add "Vision" headers to unimplemented specs | ✅ |
 
 ---
 

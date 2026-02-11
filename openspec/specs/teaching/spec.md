@@ -2,6 +2,16 @@
 
 Source of truth for teaching mode, learning tracking (Phase 22), and meta-pedagogy (how Polly teaches users to use Polly). Detail: [docs/planning/phases/phase-22/](../../../docs/planning/phases/phase-22/).
 
+## Implementation Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| LearningTracker, Socratic mode, learning notes | ✅ Implemented | `learners/learning_tracker.py` |
+| Professor curriculum generation, section enrichment | ✅ Implemented | Phase 23 |
+| Backend API (mode switch, analytics) | ✅ Implemented | interfaces/server.py |
+| Learning page center area (Active Session, Curriculum View, Review) | 📐 Partial | ~40% frontend; learning-and-administrator-profiles |
+| Meta-pedagogy (prompt injectors, competency tracking) | 💭 Vision | learning-and-administrator-profiles change |
+
 ## Current Behavior
 
 - **LearningTracker:** `learners/learning_tracker.py`. Tracks topics, mastery levels (1–5), spaced repetition, learning notes. Storage and API for mode switching and analytics.

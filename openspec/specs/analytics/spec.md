@@ -2,6 +2,10 @@
 
 Source of truth for Polly's analytics, metrics, and reflective features.
 
+> **Implementation Status:** 💭 Vision — no code exists for this system.
+> This spec describes the target design. Implementation is planned for Tier 4 / Phases 35–35a.
+> Other specs should not design integration points against this system until implementation begins.
+
 ## Overview
 
 Analytics in Polly serve reflection, not productivity tracking. The goal is helping users understand their knowledge patterns, identify neglected areas, and surface historical context — not gamifying output.

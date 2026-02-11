@@ -2,6 +2,10 @@
 
 Source of truth for Polly's data export, self-hosting, offline mode, and anti-lock-in features. Detail: [docs/planning/phases/other/PHASE19_DATA_AUTONOMY.md](../../../docs/planning/phases/other/PHASE19_DATA_AUTONOMY.md).
 
+> **Implementation Status:** 💭 Vision — no code exists for this system.
+> This spec describes the target design. Implementation is planned for Tier 4 / Phase 19.
+> Other specs should not design integration points against this system until implementation begins.
+
 ## Overview
 
 Data Autonomy ensures users always own their data and can leave Polly at any time with everything intact. Export is always free. Formats are portable. Self-hosting is supported. This is a core design principle, not a feature checkbox.
@@ -20,25 +24,26 @@ Data Autonomy ensures users always own their data and can leave Polly at any tim
 
 ### 1. Knowledge Graph Export
 
-| Format | Use Case |
-|---|---|
-| **JSON** | Full fidelity, machine-readable, re-importable |
-| **GraphML** | Visualization in external tools (Gephi, yEd) |
-| **CSV** | Spreadsheet analysis, simple processing |
+| Format      | Use Case                                       |
+| ----------- | ---------------------------------------------- |
+| **JSON**    | Full fidelity, machine-readable, re-importable |
+| **GraphML** | Visualization in external tools (Gephi, yEd)   |
+| **CSV**     | Spreadsheet analysis, simple processing        |
 
 Includes: entities, edges, connection metrics, authority scores, metadata.
 
 ### 2. Notes Export
 
-| Format | Use Case |
-|---|---|
+| Format       | Use Case                                                                                |
+| ------------ | --------------------------------------------------------------------------------------- |
 | **Markdown** | Obsidian-compatible with `[[wikilinks]]` preserved. Domain folder structure maintained. |
-| **JSON** | Full metadata including maturity stage, domain tags, entity links, version history |
-| **HTML** | Standalone readable archive with embedded styles |
+| **JSON**     | Full metadata including maturity stage, domain tags, entity links, version history      |
+| **HTML**     | Standalone readable archive with embedded styles                                        |
 
 ### 3. Configuration Backup
 
 Export all user configuration as a portable bundle:
+
 - Domains (domains.json)
 - Patterns (patterns.json)
 - Mental models configuration
@@ -49,6 +54,7 @@ Export all user configuration as a portable bundle:
 ### 4. Full System Backup
 
 One-click ZIP export containing:
+
 - All notes (Markdown)
 - Knowledge graph (JSON)
 - Conversation history (JSON)
@@ -67,6 +73,7 @@ For users who want full infrastructure control:
 - **Kubernetes** — Helm chart for production-scale self-hosting (future).
 
 Self-hosting gives users:
+
 - Full network control (no data leaves their infrastructure).
 - Custom domain and SSL.
 - Integration with existing infrastructure.
@@ -91,12 +98,12 @@ Polly continues working without internet:
 
 ## Competitive Differentiation
 
-| Competitor | Data Ownership |
-|---|---|
-| **Notion/Roam** | Cloud-dependent. Export exists but lossy. |
-| **ChatGPT/Claude** | Chat history exportable but no knowledge graph or configuration. |
-| **Obsidian** | Strong (local files), but no AI state export. |
-| **Polly** | Complete: notes + knowledge graph + AI state + configuration + conversations. All portable formats. Self-hosting supported. |
+| Competitor         | Data Ownership                                                                                                              |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| **Notion/Roam**    | Cloud-dependent. Export exists but lossy.                                                                                   |
+| **ChatGPT/Claude** | Chat history exportable but no knowledge graph or configuration.                                                            |
+| **Obsidian**       | Strong (local files), but no AI state export.                                                                               |
+| **Polly**          | Complete: notes + knowledge graph + AI state + configuration + conversations. All portable formats. Self-hosting supported. |
 
 ## Storage
 

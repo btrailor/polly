@@ -2,6 +2,18 @@
 
 Source of truth for entity extraction, knowledge graph, authority scoring, anti-slop mechanisms, and unified knowledge retrieval. Extends Phase 12a/12b (Knowledge Graph), overhauls Phase 21 (Deduplication), and supersedes the original LlamaIndex KG task (#24 in Core Framework Refinement).
 
+## Implementation Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Entity extraction (spaCy + regex) | ✅ Implemented | `core/entities/extractor.py` |
+| EntityStore (SQLite, CRUD, graph ops) | ✅ Implemented | `core/entities/store.py`, `~/.polly/entities.db` |
+| Authority scoring (recompute_authority) | ✅ Implemented | `EntityStore.recompute_authority()` |
+| EntityContextBuilder (prompt context) | ✅ Implemented | `core/entities/context.py` |
+| LlamaIndex KG / SubQuestionQueryEngine | 💭 Vision | Core Framework Refinement Task #24 |
+| Anti-slop (connection metrics, garden maintenance) | 📐 Designed | Spec-only; Phase 12b-ext |
+| RAG entity-graph retrieval | 📐 Partial | Entity context in _gather_context; multi-collection KG routing planned |
+
 ## Overview
 
 The Knowledge Quality system is the connective tissue for all knowledge management in Polly. It extracts entities from content, builds a queryable graph of relationships, scores notes by authority, and provides ongoing maintenance to prevent knowledge fragmentation ("slop").

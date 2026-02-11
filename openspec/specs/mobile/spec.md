@@ -2,6 +2,10 @@
 
 Source of truth for Polly's mobile companion app — a lightweight client focused on capture and chat.
 
+> **Implementation Status:** 💭 Vision — no code exists for this system.
+> This spec describes the target design. Implementation is planned for Tier 5 / Phases 37–37b.
+> Other specs should not design integration points against this system until implementation begins.
+
 ## Overview
 
 The mobile companion is **not** a full Polly port. It is a stripped-down app focused on two things: **capturing knowledge** (voice, text, image) and **chatting with Polly**. It acts as a lightweight DRM node, submitting tasks to more capable Polly instances (desktop, NAS) for processing.
@@ -13,18 +17,21 @@ The desktop Electron app remains the primary, full-featured Polly interface.
 ## Core Functions
 
 ### Chat Agent
+
 - Conversational interface with Polly.
 - Queries relay to desktop/NAS Polly instance via DRM protocol — Cloudflare Tunnel when away from home network, mDNS when on LAN (or REST fallback).
 - Conversation history synced with main instance.
 - Persona awareness (Architect, Scribe, Professor) — selection relayed to processing node.
 
 ### Voice Input
+
 - **First-class citizen.** Prominent microphone button; voice is the primary input method.
 - Voice-to-text transcription (on-device or via service).
 - Domain auto-detection on transcribed content.
 - Direct submission as capture or as chat message.
 
 ### Quick Capture
+
 - Text, voice, image, URL captures.
 - Minimal metadata entry: domain (auto-suggested), optional project tag.
 - Default maturity: 30-Ideas.
@@ -67,6 +74,7 @@ The mobile companion advertises itself as a thin DRM node:
 ## Technology (TBD)
 
 Platform and technology decisions deferred. Options include:
+
 - React Native (cross-platform)
 - Swift/SwiftUI (iOS-first)
 - PWA (web-based, no app store)
@@ -76,35 +84,39 @@ Decision depends on DRM transport requirements (Cloudflare Tunnel support), nati
 ## Implementation Phases
 
 ### Mobile Phase 1: Chat Relay (3–4 weeks)
+
 - Basic app shell with chat interface.
 - REST API connection to main Polly instance.
 - Text input + voice-to-text.
 - Conversation sync.
 
 ### Mobile Phase 2: Capture (2–3 weeks)
+
 - Quick capture (text, voice, URL).
 - Domain auto-suggestion.
 - Offline queue with sync.
 
 ### Mobile Phase 3: DRM Integration (2–3 weeks)
+
 - DRM node registration (mDNS on LAN, Cloudflare Tunnel when remote).
 - Task submission via DRM protocol with Ed25519 JWT auth.
 - Hybrid peer discovery (local + remote).
 
 ### Mobile Phase 4: Rich Capture (2–3 weeks)
+
 - Image capture with OCR.
 - Location metadata.
 - Recent captures browser.
 
 ## Relationship to Existing Systems
 
-| System | Integration |
-|---|---|
-| **DRM** | Mobile is a thin DRM node; submits tasks to capable peers |
-| **Capture** | Mobile captures enter the same capture pipeline as desktop |
-| **Chat** | Conversations relay to main Polly instance |
+| System       | Integration                                                  |
+| ------------ | ------------------------------------------------------------ |
+| **DRM**      | Mobile is a thin DRM node; submits tasks to capable peers    |
+| **Capture**  | Mobile captures enter the same capture pipeline as desktop   |
+| **Chat**     | Conversations relay to main Polly instance                   |
 | **Personas** | Persona selection relayed; processing happens on desktop/NAS |
-| **RAG** | No local RAG; queries processed by main instance |
+| **RAG**      | No local RAG; queries processed by main instance             |
 
 ## Reference
 

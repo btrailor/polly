@@ -2,6 +2,20 @@
 
 Source of truth for retrieval-augmented generation and hybrid local/cloud routing. Full architecture: [docs/RAG_ROUTING_ARCHITECTURE.md](../../../docs/RAG_ROUTING_ARCHITECTURE.md).
 
+## Implementation Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Hybrid search (ChromaDB + BM25) | ✅ Implemented | `core/rag.py` |
+| RAG context compression (LLMLingua) | ✅ Implemented | `core/compression/llmlingua_strategy.py` |
+| Pattern-aware retrieval (chunk boosting) | ✅ Implemented | PatternEngine + RAG integration |
+| Incremental indexing (index_single_document) | ✅ Implemented | core-framework-refinement |
+| Multi-collection unified retrieval | 📐 Designed | Spec-only; library collection planned |
+| Entity-graph retrieval | 📐 Partial | Entity context in _gather_context; KG retrieval planned |
+| Authority scoring in RRF | 💭 Vision | knowledge-graph spec |
+| DRM node routing | 💭 Vision | drm spec |
+| Agent swarm context | 💭 Vision | agent-swarms spec |
+
 ## RAG
 
 - **Hybrid search:** Semantic (ChromaDB, nomic-embed-text) + keyword (BM25). Reciprocal Rank Fusion (RRF); title boosting.

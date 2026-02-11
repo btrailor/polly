@@ -2,6 +2,16 @@
 
 Source of truth for user-definable domain configuration (Phase 1.5). Detail: [docs/planning/phases/phase-1.5/](../../../docs/planning/phases/phase-1.5/), [docs/planning/tiers/TIER_1_INTELLIGENCE.md](../../../docs/planning/tiers/TIER_1_INTELLIGENCE.md).
 
+## Implementation Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| DomainEngine, domain_config (YAML) | ✅ Implemented | `core/domains.py`, `core/domain_config.py` |
+| Custom domains (load from domain_config) | ✅ Implemented | custom-domains-feature (backend) |
+| CRUD API, Settings UI | ✅ Implemented | server + electron-app |
+| detect_domains_with_custom, custom in prompts | 📐 Partial | Optional tasks pending; custom-domains-feature |
+| Domain-triggered themes, smart routing | 💭 Vision | themes spec, capture spec |
+
 ## Current Behavior
 
 - **Storage:** `~/.polly/domains.json`. User-defined domains (no hardcoded list).

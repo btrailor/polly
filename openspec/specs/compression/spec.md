@@ -2,6 +2,16 @@
 
 Source of truth for conversation and context compression in Polly.
 
+## Implementation Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| LLM summary (conversation compression) | ✅ Implemented | `core/compression/compressor.py` |
+| LLMLingua (RAG context compression) | ✅ Implemented | `core/compression/llmlingua_strategy.py` |
+| Strategy selection (auto / llmlingua / llm_summary) | ✅ Implemented | config + settings API |
+| ContextContributor (priority 10) | ✅ Implemented | _gather_context in polly.py |
+| Adaptive compression / caching | 💭 Vision | Spec-only; planned enhancement |
+
 ## Overview
 
 Polly uses compression to extend context retention and reduce token usage:
