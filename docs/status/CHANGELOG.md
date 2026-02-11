@@ -7,6 +7,26 @@
 
 ## February 2026
 
+### February 10, 2026 - Architecture Integration Audit Complete + Spec Reconciliation ✅
+
+**Type:** Documentation / OpenSpec  
+**Impact:** Single source of truth for implementation status; architecture spec reflects actual code; vision markers on unimplemented specs.
+
+**Completed:**
+- **openspec/changes/IMPLEMENTATION_STATUS.md** — Summary table of all changes (implemented vs partial vs not started); recommended next steps; ready-to-archive list.
+- **Architecture integration audit Tasks 6–9:** Roadmap updated with spec reconciliation note; **openspec/specs/architecture/spec.md** rewritten with current component diagram, `Polly.query()` hot path, actual data stores, integration contracts, and planned vs current architecture; **Implementation Status** tables added to 12 domain specs (knowledge-graph, patterns, personas, mental-models, rag, compression, themes, teaching, domains, security, plus architecture); **Vision** headers added to 9 unimplemented specs (agent-swarms, drm, mobile, communication, publishing, canvas, analytics, data-autonomy, onboarding).
+- **openspec/changes/architecture-integration-audit/tasks.md** — All 9 tasks marked complete.
+
+**Completed OpenSpec changes (implementation done; folders retained for reference):** architecture-integration-audit, entity-model-unification, integration-contracts, litellm-provider-adapter, mem0-adaptive-memory, unified-pattern-engine. See [openspec/changes/IMPLEMENTATION_STATUS.md](../../openspec/changes/IMPLEMENTATION_STATUS.md).
+
+### February 10, 2026 - Electron: Wait for Polly Ready Before API Calls ✅
+
+**Type:** Bug fix / UX  
+**Impact:** Eliminates 503s on conversation sync, persona state, mental models, and templates during startup.
+
+**Implemented:**
+- **electron-app/src/renderer/app.js** — Added `waitForPollyReady()` that polls `GET /polly/status` until `status === "ready"` (2 min timeout). After `waitForServerReady()`, init now awaits `waitForPollyReady()` before `showView("dashboard")`, `initializeConversations()`, and `restorePersonaState()`, so Polly-dependent APIs are not called until Polly is initialized. Added 1.5s initial delay before first `/health` check to reduce connection-refused console noise.
+
 ### February 9, 2026 - Compression Strategy: LLMLingua RAG Context Compression ✅
 
 **Type:** Feature Implementation  
