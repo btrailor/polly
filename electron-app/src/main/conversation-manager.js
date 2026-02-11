@@ -94,6 +94,29 @@ class ConversationManager {
                 console.log('Migration complete: page_context column and index added');
             }
             
+            // Check if agent_id column exists (re-read table info after prior migrations)
+            const tableInfoForAgent = this.db.pragma('table_info(conversations)');
+            const hasAgentId = tableInfoForAgent.some(col => col.name === 'agent_id');
+            
+            if (!hasAgentId) {
+                console.log('Adding agent_id column to conversations table...');
+                
+                this.db.exec(`
+                    ALTER TABLE conversations ADD COLUMN agent_id TEXT DEFAULT 'default';
+                    CREATE INDEX IF NOT EXISTS idx_conversations_agent_id ON conversations(agent_id);
+                `);
+                
+                console.log('Migration complete: agent_id column and index added');
+            }
+            
+            // Backfill NULL agent_id to 'default' so filtering is consistent
+            const nullCount = this.db.prepare('SELECT COUNT(*) as n FROM conversations WHERE agent_id IS NULL').get();
+            if (nullCount && nullCount.n > 0) {
+                console.log('Backfilling agent_id for', nullCount.n, 'existing conversations...');
+                this.db.prepare("UPDATE conversations SET agent_id = 'default' WHERE agent_id IS NULL").run();
+                console.log('Backfill complete');
+            }
+            
             // Migration: Update category icons from emoji to Lucide icon names
             const categories = this.db.prepare('SELECT id, icon FROM categories').all();
             const hasEmojiIcons = categories.some(cat => cat.icon && cat.icon.length <= 2); // Emojis are typically 1-2 chars
@@ -138,11 +161,14 @@ class ConversationManager {
     createConversation(data = {}) {
         const id = uuidv4();
         const now = Date.now();
-        
+        const agentId = (data.agent_id != null && data.agent_id !== '')
+            ? String(data.agent_id)
+            : 'default';
+
         const stmt = this.db.prepare(`
             INSERT INTO conversations (
-                id, title, category_id, page_context, is_starred, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                id, title, category_id, page_context, agent_id, is_starred, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         stmt.run(
@@ -150,6 +176,7 @@ class ConversationManager {
             data.title || 'New Conversation',
             data.category_id || 'uncategorized',
             data.page_context || null,
+            agentId,
             data.is_starred ? 1 : 0,
             now,
             now
@@ -198,7 +225,7 @@ class ConversationManager {
      */
     updateConversation(id, updates) {
         const allowedFields = [
-            'title', 'category_id', 'page_context', 'is_starred', 'is_pinned', 
+            'title', 'category_id', 'page_context', 'agent_id', 'is_starred', 'is_pinned',
             'auto_titled', 'message_count'
         ];
         
@@ -380,6 +407,7 @@ class ConversationManager {
     /**
      * Get all conversations with optional filtering
      * @param {Object} options - Filter options
+     * @param {string} options.agent_id - Filter by agent ID
      * @param {string} options.category_id - Filter by category
      * @param {string} options.page_context - Filter by page context
      * @param {boolean} options.starred - Filter by starred status
@@ -389,41 +417,48 @@ class ConversationManager {
      * @returns {Array} Conversations
      */
     getAllConversations(options = {}) {
+        const opts = options || {};
+        // Always filter by agent_id so each agent only sees its own conversations
+        const agentId = (opts.agent_id !== undefined && opts.agent_id !== null)
+            ? (opts.agent_id || 'default')
+            : 'default';
+
         let query = `
             SELECT c.*, cat.name as category_name, cat.color as category_color, cat.icon as category_icon
             FROM conversations c
             LEFT JOIN categories cat ON c.category_id = cat.id
             WHERE c.deleted_at IS NULL
+            AND (c.agent_id = ? OR (c.agent_id IS NULL AND ? = 'default'))
         `;
         
-        const params = [];
+        const params = [agentId, agentId];
         
-        if (options.category_id) {
+        if (opts.category_id) {
             query += ' AND c.category_id = ?';
-            params.push(options.category_id);
+            params.push(opts.category_id);
         }
         
-        if (options.page_context) {
+        if (opts.page_context) {
             query += ' AND c.page_context = ?';
-            params.push(options.page_context);
+            params.push(opts.page_context);
         }
         
-        if (options.starred !== undefined) {
+        if (opts.starred !== undefined) {
             query += ' AND c.is_starred = ?';
-            params.push(options.starred ? 1 : 0);
+            params.push(opts.starred ? 1 : 0);
         }
         
-        if (options.pinned !== undefined) {
+        if (opts.pinned !== undefined) {
             query += ' AND c.is_pinned = ?';
-            params.push(options.pinned ? 1 : 0);
+            params.push(opts.pinned ? 1 : 0);
         }
         
         // Order by pinned first, then updated
         query += ' ORDER BY c.is_pinned DESC, c.updated_at DESC';
         
-        if (options.limit) {
+        if (opts.limit) {
             query += ' LIMIT ? OFFSET ?';
-            params.push(options.limit, options.offset || 0);
+            params.push(opts.limit, opts.offset || 0);
         }
         
         const conversations = this.db.prepare(query).all(...params);

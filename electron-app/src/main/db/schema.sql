@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     title TEXT NOT NULL DEFAULT 'New Conversation',
     category_id TEXT,
     page_context TEXT DEFAULT NULL,
+    agent_id TEXT DEFAULT 'default',
     is_starred INTEGER DEFAULT 0,
     is_pinned INTEGER DEFAULT 0,
     created_at INTEGER NOT NULL,
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS conversation_metadata (
 -- Indexes for Performance
 CREATE INDEX IF NOT EXISTS idx_conversations_category ON conversations(category_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_page_context ON conversations(page_context);
+CREATE INDEX IF NOT EXISTS idx_conversations_agent_id ON conversations(agent_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_created ON conversations(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_conversations_deleted ON conversations(deleted_at);
