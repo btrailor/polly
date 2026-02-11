@@ -20,7 +20,7 @@ from .config import PollyConfig, get_config
 from .domains import DomainEngine, DOMAIN_PROMPTS
 from .rag import UnifiedRAG
 from .router import IntelligentRouter, UnifiedLLM, RoutingMode, ModelTier
-from .router_v2 import IntelligentRouterV2, ConfidenceLevel
+from .router_v2 import IntelligentRouterV2, ConfidenceLevel, create_router_v2, AllProvidersFailed
 from .compression import CompressionManager
 from .skills.manager import SkillManager
 
@@ -149,8 +149,8 @@ class Polly:
 
     def _init_router(self):
         """Initialize model router (v1 or v2 based on config)."""
-        # Check if router_v2 is enabled in config
-        use_router_v2 = self.config.get("routing_v2.enabled", False)
+        # Check if router_v2 is enabled in config (default True for chat/personas)
+        use_router_v2 = self.config.get("routing_v2.enabled", True)
         
         if use_router_v2:
             logger.info("Initializing router_v2 (multi-provider intelligent routing)")
@@ -217,7 +217,7 @@ class Polly:
         mistral_key = secrets.get_secret('mistral', fallback_to_env=True)
         openrouter_key = secrets.get_secret('openrouter', fallback_to_env=True)
         
-        # Initialize budget manager
+        # Initialize budget manager (from polly_routing)
         budget_db_path = Path(self.config.get("routing_v2.budget.database_path", "~/.polly/usage.db")).expanduser()
         self.budget_manager = BudgetManager(
             db_path=budget_db_path,
@@ -225,12 +225,12 @@ class Polly:
             monthly_limit=self.config.get("routing_v2.budget.monthly_limit", 200.0)
         )
         
-        # Use unified LiteLLM adapter when configured (replaces individual providers)
         use_litellm = self.config.get("routing_v2.use_litellm", False)
         litellm_config_path = self.config.get("routing_v2.litellm_config_path", "config/litellm_config.yaml")
         
-        # Initialize router_v2
-        self.router_v2 = IntelligentRouterV2(
+        # Build router via adapter (polly_routing + core providers when not use_litellm)
+        self.router_v2 = create_router_v2(
+            budget_manager=self.budget_manager,
             anthropic_api_key=anthropic_key,
             openai_api_key=openai_key,
             github_token=github_token,
@@ -239,9 +239,8 @@ class Polly:
             gemini_api_key=gemini_key,
             mistral_api_key=mistral_key,
             openrouter_api_key=openrouter_key,
-            budget_manager=self.budget_manager,
             use_litellm=use_litellm,
-            litellm_config_path=litellm_config_path
+            litellm_config_path=litellm_config_path,
         )
         # Attach config dict so personas can read memory.* for Mem0 (per-persona memory)
         self.router_v2.config = getattr(self.config, "_config", {})
@@ -1145,10 +1144,15 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         
         from core.personas import PersonaContext
         
+        meta = metadata or {}
+        # Use conversation_history from request (frontend) when provided; else server-side state
+        conv = meta.get("conversation_history")
+        conversation_history = list(conv) if conv is not None else self.conversation_history.copy()
+        
         context = PersonaContext(
             user_message=user_message,
-            conversation_history=self.conversation_history.copy(),
-            metadata=metadata or {}
+            conversation_history=conversation_history,
+            metadata=meta
         )
         
         response = await self.persona_manager.process(context)
@@ -1752,6 +1756,9 @@ When answering questions, prioritize information from the knowledge base context
                     # Use cloud providers via router_v2 (weak RAG or complex query)
                     logger.info("Router v2 Hybrid: Using CLOUD model (weak RAG or complex query)")
                     
+                    # Include system prompt in messages so all providers (including LiteLLM) receive it
+                    messages_with_system = [{"role": "system", "content": augmented_system}] + messages
+                    
                     # Map confidence string to ConfidenceLevel enum
                     if confidence:
                         confidence_level = ConfidenceLevel(confidence)
@@ -1760,81 +1767,18 @@ When answering questions, prioritize information from the knowledge base context
                     
                     logger.info(f"Router v2: Using confidence level '{confidence_level.value}'")
                     
-                    # Pattern-informed routing (integration-contracts)
-                    routing_patterns: List[Any] = []
-                    if self.pattern_engine:
-                        try:
-                            from core.patterns.models import PatternQuery, PatternType
-                            routing_patterns = self.pattern_engine.search(
-                                PatternQuery(
-                                    pattern_types=[PatternType.ROUTING_OUTCOME],
-                                    min_confidence=0.6,
-                                    limit=3,
-                                )
-                            )
-                        except Exception as e:
-                            logger.debug(f"Routing patterns fetch failed: {e}")
+                    use_override = bool(provider_override and provider_override in self.router_v2.providers)
                     
-                    # Get routing decision
-                    routing_decision = await self.router_v2.route(
-                        messages=messages,
-                        confidence=confidence_level,
-                        max_tokens=4096,
-                        patterns=routing_patterns,
-                    )
-                    
-                    logger.info(f"Router v2 decision: {routing_decision.reason}")
-                    
-                    # Use provider_override if specified
-                    selected_provider = routing_decision.provider
-                    selected_model = routing_decision.model
-                    
-                    if provider_override and provider_override in self.router_v2.providers:
-                        selected_provider = self.router_v2.providers[provider_override]
-                        # Use same model from routing decision
-                        logger.info(f"Router v2: Overriding to provider '{provider_override}'")
-                    
-                    # Complete with selected provider
-                    if stream:
-                        # Streaming response
-                        collected_chunks = []
-                        async for chunk in selected_provider.stream(
-                            messages=messages,
-                            model=selected_model,
+                    if not stream and not use_override:
+                        # Non-streaming: use full fallback chain so we try next provider on failure
+                        response = await self.router_v2.complete_with_fallback(
+                            messages=messages_with_system,
+                            confidence=confidence_level,
                             max_tokens=4096,
-                            system=augmented_system
-                        ):
-                            full_response += chunk
-                            collected_chunks.append(chunk)
-                            yield chunk
-                        
-                        # Estimate tokens and cost for streaming (approximate)
-                        # TODO: Get actual token counts from provider if available
-                        tokens_in = len(augmented_system.split()) + sum(len(m.get('content', '').split()) for m in messages)
-                        tokens_out = len(full_response.split())
-                        cost = selected_provider.estimate_cost(tokens_in + tokens_out, selected_model)
-                        
-                        response_metadata = {
-                            'provider': selected_provider.name,
-                            'model': selected_model,
-                            'cost': cost,
-                            'tokens_in': tokens_in,
-                            'tokens_out': tokens_out,
-                            'estimated': True
-                        }
-                        
-                    else:
-                        # Non-streaming response
-                        response = await selected_provider.complete(
-                            messages=messages,
-                            model=selected_model,
-                            max_tokens=4096,
-                            system=augmented_system
+                            temperature=0.7,
                         )
-                        
                         full_response = response.content
                         yield full_response
-                        
                         response_metadata = {
                             'provider': response.provider,
                             'model': response.model,
@@ -1843,6 +1787,73 @@ When answering questions, prioritize information from the knowledge base context
                             'tokens_out': response.tokens_out,
                             'estimated': False
                         }
+                    else:
+                        # Streaming or provider_override: route once then use selected provider
+                        routing_patterns: List[Any] = []
+                        if self.pattern_engine:
+                            try:
+                                from core.patterns.models import PatternQuery, PatternType
+                                routing_patterns = self.pattern_engine.search(
+                                    PatternQuery(
+                                        pattern_types=[PatternType.ROUTING_OUTCOME],
+                                        min_confidence=0.6,
+                                        limit=3,
+                                    )
+                                )
+                            except Exception as e:
+                                logger.debug(f"Routing patterns fetch failed: {e}")
+                        
+                        routing_decision = await self.router_v2.route(
+                            messages=messages_with_system,
+                            confidence=confidence_level,
+                            max_tokens=4096,
+                            patterns=routing_patterns,
+                        )
+                        logger.info(f"Router v2 decision: {routing_decision.reason}")
+                        
+                        selected_provider = routing_decision.provider
+                        selected_model = routing_decision.model
+                        if use_override:
+                            selected_provider = self.router_v2.providers[provider_override]
+                            logger.info(f"Router v2: Overriding to provider '{provider_override}'")
+                        
+                        if stream:
+                            collected_chunks = []
+                            async for chunk in selected_provider.stream(
+                                messages=messages_with_system,
+                                model=selected_model,
+                                max_tokens=4096,
+                            ):
+                                full_response += chunk
+                                collected_chunks.append(chunk)
+                                yield chunk
+                            tokens_in = len(augmented_system.split()) + sum(len(m.get('content', '').split()) for m in messages)
+                            tokens_out = len(full_response.split())
+                            cost = selected_provider.estimate_cost(tokens_in + tokens_out, selected_model)
+                            response_metadata = {
+                                'provider': selected_provider.name,
+                                'model': selected_model,
+                                'cost': cost,
+                                'tokens_in': tokens_in,
+                                'tokens_out': tokens_out,
+                                'estimated': True
+                            }
+                        else:
+                            response = await selected_provider.complete(
+                                messages=messages_with_system,
+                                model=selected_model,
+                                max_tokens=4096,
+                            )
+                            full_response = response.content
+                            yield full_response
+                            response_metadata = {
+                                'provider': response.provider,
+                                'model': response.model,
+                                'cost': response.cost,
+                                'tokens_in': response.tokens_in,
+                                'tokens_out': response.tokens_out,
+                                'estimated': False
+                            }
                     
                     # Track budget usage
                     if self.budget_manager:
