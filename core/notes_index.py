@@ -151,8 +151,15 @@ class NotesIndex:
         try:
             with open(md_file, 'r', encoding='utf-8') as f:
                 content = f.read()
+        except OSError as e:
+            # Errno 60 = ETIMEDOUT (e.g. iCloud not synced); avoid flooding logs
+            if getattr(e, 'errno', None) == 60:
+                logger.debug("Could not read %s: %s", md_file, e)
+            else:
+                logger.warning("Could not read %s: %s", md_file, e)
+            return note_info
         except Exception as e:
-            logger.warning(f"Could not read {md_file}: {e}")
+            logger.warning("Could not read %s: %s", md_file, e)
             return note_info
         
         # Extract frontmatter

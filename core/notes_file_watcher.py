@@ -71,18 +71,15 @@ class NotesFileWatcher:
     
     def start(self):
         """Start watching the notes directory."""
-        print(f"=== FILE WATCHER START CALLED === (path: {self.notes_path})", flush=True)
+        logger.debug("FILE WATCHER start called (path: %s)", self.notes_path)
         if self._is_running:
-            print("File watcher already running!", flush=True)
             logger.warning("File watcher already running")
             return
         
         if not self.notes_path.exists():
-            print(f"Notes path does not exist: {self.notes_path}", flush=True)
             raise FileNotFoundError(f"Notes path does not exist: {self.notes_path}")
         
-        print(f"Starting observer for: {self.notes_path}", flush=True)
-        logger.info(f"Starting file watcher for: {self.notes_path}")
+        logger.info("Starting file watcher for: %s", self.notes_path)
         
         # Create event handler
         event_handler = NotesEventHandler(self)
@@ -95,7 +92,7 @@ class NotesFileWatcher:
         self._is_running = True
         self.stats["started_at"] = datetime.now().isoformat()
         
-        print(f"File watcher started! is_running={self._is_running}", flush=True)
+        logger.debug("File watcher started is_running=%s", self._is_running)
         self._notify_status("started", {"path": str(self.notes_path)})
         logger.info("File watcher started")
     
@@ -135,31 +132,29 @@ class NotesFileWatcher:
         Returns:
             True if file should be processed
         """
-        print(f"[FILE WATCHER] _should_process_file checking: {path}", flush=True)
+        logger.debug("[FILE WATCHER] _should_process_file checking: %s", path)
         
         # Only process markdown files
         if path.suffix.lower() != '.md':
-            print(f"[FILE WATCHER] Not a markdown file: {path.suffix}", flush=True)
+            logger.debug("[FILE WATCHER] Not a markdown file: %s", path.suffix)
             return False
         
         # Ignore hidden files and directories - CHECK RELATIVE PATH ONLY
         try:
             relative = path.relative_to(self.notes_path)
-            print(f"[FILE WATCHER] Relative path: {relative}", flush=True)
-            print(f"[FILE WATCHER] Relative parts: {relative.parts}", flush=True)
+            logger.debug("[FILE WATCHER] Relative path: %s parts: %s", relative, relative.parts)
             
             # Check if any part of the relative path starts with . or _
             for part in relative.parts:
                 if part.startswith('.') or part.startswith('_'):
-                    print(f"[FILE WATCHER] Filtered: part '{part}' starts with . or _", flush=True)
+                    logger.debug("[FILE WATCHER] Filtered: part '%s' starts with . or _", part)
                     return False
             
-            print(f"[FILE WATCHER] File passes all filters!", flush=True)
+            logger.debug("[FILE WATCHER] File passes all filters")
             return True
             
         except ValueError as e:
-            # Path is not relative to notes_path
-            print(f"[FILE WATCHER] Path not relative to notes_path: {e}", flush=True)
+            logger.debug("[FILE WATCHER] Path not relative to notes_path: %s", e)
             return False
     
     def _handle_file_added(self, path: Path):
@@ -169,9 +164,9 @@ class NotesFileWatcher:
         Args:
             path: Path to added file
         """
-        print(f"[FILE WATCHER] _handle_file_added called for: {path}", flush=True)
+        logger.debug("[FILE WATCHER] _handle_file_added called for: %s", path)
         try:
-            logger.info(f"File added: {path.name}")
+            logger.info("File added: %s", path.name)
             
             self.stats["files_added"] += 1
             self.stats["last_event"] = datetime.now().isoformat()
@@ -185,10 +180,10 @@ class NotesFileWatcher:
             
             # Call callback
             if self.on_file_added:
-                print(f"[FILE WATCHER] Calling on_file_added callback", flush=True)
+                logger.debug("[FILE WATCHER] Calling on_file_added callback")
                 self.on_file_added(path)
             else:
-                print(f"[FILE WATCHER] No on_file_added callback registered!", flush=True)
+                logger.debug("[FILE WATCHER] No on_file_added callback registered")
             
             # Notify complete
             self._notify_status("indexed", {
@@ -199,7 +194,6 @@ class NotesFileWatcher:
         except Exception as e:
             error_msg = f"Error handling added file {path}: {str(e)}"
             logger.error(error_msg)
-            print(f"[FILE WATCHER] ERROR: {error_msg}", flush=True)
             self.stats["errors"].append({
                 "timestamp": datetime.now().isoformat(),
                 "error": error_msg
@@ -307,12 +301,12 @@ class NotesFileWatcher:
             event_type: Type of event ('added', 'modified', 'deleted')
             path: Path to file
         """
-        print(f"[FILE WATCHER] _schedule_event: type={event_type}, path={path}", flush=True)
+        logger.debug("[FILE WATCHER] _schedule_event: type=%s path=%s", event_type, path)
         
         # Cancel existing timer for this file
         key = f"{event_type}:{path}"
         if key in self._pending_changes:
-            print(f"[FILE WATCHER] Canceling existing timer for: {key}", flush=True)
+            logger.debug("[FILE WATCHER] Canceling existing timer for: %s", key)
             self._pending_changes[key].cancel()
         
         # Create new timer
@@ -324,15 +318,14 @@ class NotesFileWatcher:
         
         handler = handler_map.get(event_type)
         if not handler:
-            logger.error(f"Unknown event type: {event_type}")
-            print(f"[FILE WATCHER] ERROR: Unknown event type: {event_type}", flush=True)
+            logger.error("Unknown event type: %s", event_type)
             return
         
-        print(f"[FILE WATCHER] Creating timer: {self.DEBOUNCE_SECONDS}s delay for {key}", flush=True)
+        logger.debug("[FILE WATCHER] Creating timer: %ss delay for %s", self.DEBOUNCE_SECONDS, key)
         timer = Timer(self.DEBOUNCE_SECONDS, handler, args=[path])
         self._pending_changes[key] = timer
         timer.start()
-        print(f"[FILE WATCHER] Timer started for: {key}", flush=True)
+        logger.debug("[FILE WATCHER] Timer started for: %s", key)
     
     def _notify_status(self, status: str, data: Dict[str, Any]):
         """
@@ -378,62 +371,62 @@ class NotesEventHandler(FileSystemEventHandler):
     
     def on_created(self, event: FileSystemEvent):
         """Handle file/directory created event."""
-        print(f"[FILE WATCHER] on_created triggered: {event.src_path} (is_dir={event.is_directory})", flush=True)
-        logger.info(f"Event received: created {event.src_path}")
+        logger.debug("[FILE WATCHER] on_created: %s is_dir=%s", event.src_path, event.is_directory)
+        logger.info("Event received: created %s", event.src_path)
         
         if event.is_directory:
-            print(f"[FILE WATCHER] Skipping directory: {event.src_path}", flush=True)
+            logger.debug("[FILE WATCHER] Skipping directory: %s", event.src_path)
             return
         
         path = Path(event.src_path)
         should_process = self.watcher._should_process_file(path)
-        print(f"[FILE WATCHER] Should process {path.name}? {should_process}", flush=True)
+        logger.debug("[FILE WATCHER] Should process %s? %s", path.name, should_process)
         
         if should_process:
-            print(f"[FILE WATCHER] Scheduling 'added' event for: {path}", flush=True)
+            logger.debug("[FILE WATCHER] Scheduling 'added' event for: %s", path)
             self.watcher._schedule_event('added', path)
         else:
-            print(f"[FILE WATCHER] Filtered out: {path}", flush=True)
+            logger.debug("[FILE WATCHER] Filtered out: %s", path)
     
     def on_modified(self, event: FileSystemEvent):
         """Handle file/directory modified event."""
-        print(f"[FILE WATCHER] on_modified triggered: {event.src_path} (is_dir={event.is_directory})", flush=True)
-        logger.info(f"Event received: modified {event.src_path}")
+        logger.debug("[FILE WATCHER] on_modified: %s is_dir=%s", event.src_path, event.is_directory)
+        logger.info("Event received: modified %s", event.src_path)
         
         if event.is_directory:
-            print(f"[FILE WATCHER] Skipping directory: {event.src_path}", flush=True)
+            logger.debug("[FILE WATCHER] Skipping directory: %s", event.src_path)
             return
         
         path = Path(event.src_path)
         should_process = self.watcher._should_process_file(path)
-        print(f"[FILE WATCHER] Should process {path.name}? {should_process}", flush=True)
+        logger.debug("[FILE WATCHER] Should process %s? %s", path.name, should_process)
         
         if should_process:
-            print(f"[FILE WATCHER] Scheduling 'modified' event for: {path}", flush=True)
+            logger.debug("[FILE WATCHER] Scheduling 'modified' event for: %s", path)
             self.watcher._schedule_event('modified', path)
         else:
-            print(f"[FILE WATCHER] Filtered out: {path}", flush=True)
+            logger.debug("[FILE WATCHER] Filtered out: %s", path)
     
     def on_deleted(self, event: FileSystemEvent):
         """Handle file/directory deleted event."""
-        print(f"[FILE WATCHER] on_deleted triggered: {event.src_path} (is_dir={event.is_directory})", flush=True)
-        logger.info(f"Event received: deleted {event.src_path}")
+        logger.debug("[FILE WATCHER] on_deleted: %s is_dir=%s", event.src_path, event.is_directory)
+        logger.info("Event received: deleted %s", event.src_path)
         
         if event.is_directory:
-            print(f"[FILE WATCHER] Skipping directory: {event.src_path}", flush=True)
+            logger.debug("[FILE WATCHER] Skipping directory: %s", event.src_path)
             return
         
         path = Path(event.src_path)
         # For deleted files, we can't check if they should be processed
         # So we check the extension only
         is_markdown = path.suffix.lower() == '.md'
-        print(f"[FILE WATCHER] Is markdown? {is_markdown} (suffix={path.suffix})", flush=True)
+        logger.debug("[FILE WATCHER] Is markdown? %s (suffix=%s)", is_markdown, path.suffix)
         
         if is_markdown:
-            print(f"[FILE WATCHER] Scheduling 'deleted' event for: {path}", flush=True)
+            logger.debug("[FILE WATCHER] Scheduling 'deleted' event for: %s", path)
             self.watcher._schedule_event('deleted', path)
         else:
-            print(f"[FILE WATCHER] Filtered out: {path}", flush=True)
+            logger.debug("[FILE WATCHER] Filtered out: %s", path)
 
 
 # Global singleton instance

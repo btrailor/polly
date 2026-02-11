@@ -157,8 +157,14 @@ class BacklinksIndex:
         try:
             with open(note_info.path, 'r', encoding='utf-8') as f:
                 content = f.read()
+        except OSError as e:
+            if getattr(e, 'errno', None) == 60:
+                logger.debug("Could not read %s: %s", note_info.path, e)
+            else:
+                logger.warning("Could not read %s: %s", note_info.path, e)
+            return backlinks
         except Exception as e:
-            logger.warning(f"Could not read {note_info.path}: {e}")
+            logger.warning("Could not read %s: %s", note_info.path, e)
             return backlinks
         
         # Extract wiki-links
