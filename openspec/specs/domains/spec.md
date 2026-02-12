@@ -19,6 +19,7 @@ Source of truth for user-definable domain configuration (Phase 1.5). Detail: [do
 - **Templates:** Six templates (Software Dev, Research, Creative Writing, Personal Knowledge, Academic, Polly Creator). First-run quick-start domains available.
 - **API:** CRUD via server; Settings UI for domain management (add, edit, delete).
 - **Use:** Patterns, mental models, notes, RAG, and routing are domain-aware. Domain detection and auto-tagging for notes.
+- **Persona integration:** ProfessorPersona uses DomainEngine.detect_domains() to dynamically tag learning notes, curricula, and learning paths with the correct domain based on topic content.
 - **Custom domains:** Domains added in Settings (any id, e.g. `work`, `my-domain`) are stored in `domains.json` and loaded by DomainEngine into `_custom_domains`. They are available for notes, folder organization, and RAG; inclusion in detection and prompts is planned (see [custom-domains-feature](../../changes/custom-domains-feature/design.md)).
 
 ## Domain Fluidity Principle

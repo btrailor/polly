@@ -75,28 +75,12 @@
 
 ---
 
-### 4. Domain Tagging Misclassification
+### 4. ~~Domain Tagging Misclassification~~ (RESOLVED)
 **Severity:** LOW-MEDIUM  
 **Affected:** Domain auto-tagging  
-**Description:** Python curriculum getting tagged as "Glyphs" domain when it's clearly a "Sigils" domain thing  
-**Impact:** Incorrect organization, user must manually fix  
-**Root Cause:** Domain classification logic needs refinement
-
-**Example:**
-```
-Note: "Python Fundamentals Curriculum"
-Tagged as: Glyphs (incorrect)
-Should be: Sigils
-```
-
-**Fix Approach:**
-- Review domain classification rules
-- Add keyword weighting
-- Improve context analysis
-- Allow user to train classifier
-
-**Fix Estimate:** 1-2 days  
-**Priority:** Medium (quality of life)
+**Status:** RESOLVED  
+**Resolution:** Removed 5 hardcoded `domain="glyphs"` values in ProfessorPersona that caused all learning interactions to be tagged as glyphs regardless of content. Professor now uses DomainEngine.detect_domains() for dynamic detection. Also improved keyword matching in Domain.matches_content() to use word-boundary matching for short keywords (<=3 chars) to reduce false positives.  
+**Change:** See `openspec/changes/fix-domain-autotagging/`
 
 ---
 
