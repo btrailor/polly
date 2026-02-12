@@ -1866,6 +1866,7 @@ def create_app(polly_instance=None) -> FastAPI:
         {
             "user_message": "Create a note about Docker",
             "persona_name": "professor",   // optional; if provided, activate this persona before processing (keeps UI and server in sync)
+            "persona_mode": "curriculum",  // optional; mode to activate (e.g. from /learning-path slash command)
             "metadata": {
                 "page": "scrolls",
                 "domain": "scrolls"
@@ -1897,12 +1898,13 @@ def create_app(polly_instance=None) -> FastAPI:
         
         metadata = request.get("metadata", {})
         persona_name = request.get("persona_name")
+        persona_mode = request.get("persona_mode")
         
         try:
             # If frontend sends persona_name, ensure that persona is active (handles refresh / programmatic select)
             if persona_name:
                 try:
-                    await polly.activate_persona(persona_name)
+                    await polly.activate_persona(persona_name, mode=persona_mode)
                 except (ValueError, RuntimeError) as e:
                     logger.warning(f"Could not activate persona {persona_name}: {e}")
                     raise HTTPException(400, f"Invalid or unavailable persona: {persona_name}")
@@ -2046,6 +2048,27 @@ def create_app(polly_instance=None) -> FastAPI:
         except Exception as e:
             logger.error(f"Failed to list personas: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to list personas: {str(e)}")
+    
+    @app.get("/persona/commands")
+    async def list_persona_commands():
+        """
+        List slash commands for persona/mode invocation (autocomplete).
+        
+        Returns:
+            {
+                "commands": [
+                    {"command": "learning-path", "persona": "professor", "mode": "curriculum", "description": "..."},
+                    ...
+                ]
+            }
+        """
+        try:
+            from core.personas.commands import list_commands
+            commands = list_commands()
+            return {"commands": commands}
+        except Exception as e:
+            logger.error(f"Failed to list persona commands: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to list persona commands: {str(e)}")
     
     @app.post("/persona/deactivate")
     async def deactivate_persona():
@@ -5960,7 +5983,8 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
                         rag=polly.rag,
                         learning_tracker=polly.learning_tracker if hasattr(polly, 'learning_tracker') else None,
                         curriculum_manager=polly.curriculum_manager,
-                        template_manager=polly.template_manager if hasattr(polly, 'template_manager') else None
+                        template_manager=polly.template_manager if hasattr(polly, 'template_manager') else None,
+                        domain_engine=polly.domains if hasattr(polly, 'domains') else None
                     )
                     # Cache it for future use
                     polly.persona_manager._persona_cache['professor'] = professor
@@ -6195,7 +6219,8 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
                 rag=polly.rag if hasattr(polly, 'rag') else None,
                 learning_tracker=None,
                 curriculum_manager=polly.curriculum_manager if hasattr(polly, 'curriculum_manager') else None,
-                template_manager=polly.template_manager if hasattr(polly, 'template_manager') else None
+                template_manager=polly.template_manager if hasattr(polly, 'template_manager') else None,
+                domain_engine=polly.domains if hasattr(polly, 'domains') else None
             )
             logger.info("=== ProfessorPersona instance created ===")
 
