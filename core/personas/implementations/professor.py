@@ -79,7 +79,7 @@ class ProfessorPersona(AgentPersona):
        Professor suggests milestones and resources
     """
     
-    def __init__(self, name: str, router: Any, skill_manager: Any = None, rag: Any = None, learning_tracker: Any = None, curriculum_manager: Any = None, template_manager: Any = None):
+    def __init__(self, name: str, router: Any, skill_manager: Any = None, rag: Any = None, learning_tracker: Any = None, curriculum_manager: Any = None, template_manager: Any = None, domain_engine: Any = None):
         """
         Initialize Professor persona.
         
@@ -91,6 +91,7 @@ class ProfessorPersona(AgentPersona):
             learning_tracker: LearningTracker instance for progress tracking (Phase 22)
             curriculum_manager: CurriculumManager instance for curriculum CRUD (Phase 23)
             template_manager: CurriculumTemplateManager instance for templates (Phase 23)
+            domain_engine: DomainEngine instance for auto-detecting domains from content
         """
         super().__init__(name, router)
         self.skill_manager = skill_manager
@@ -98,10 +99,33 @@ class ProfessorPersona(AgentPersona):
         self.learning_tracker = learning_tracker
         self.curriculum_manager = curriculum_manager
         self.template_manager = template_manager
+        self.domain_engine = domain_engine
         
         logger.info(f"Initialized Professor persona (skills: {skill_manager is not None}, "
                    f"rag: {rag is not None}, tracker: {learning_tracker is not None}, "
-                   f"curriculum: {curriculum_manager is not None}, templates: {template_manager is not None})")
+                   f"curriculum: {curriculum_manager is not None}, templates: {template_manager is not None}, "
+                   f"domain_engine: {domain_engine is not None})")
+    
+    def _detect_domain_for_topic(self, topic: str) -> str:
+        """Detect the best domain for a topic using DomainEngine.
+        
+        Args:
+            topic: The topic or goal text to classify
+            
+        Returns:
+            Domain ID string (e.g. 'sigils', 'scrolls', 'glyphs'), or 'general' as fallback
+        """
+        if not topic:
+            return "general"
+        if self.domain_engine:
+            try:
+                domains = self.domain_engine.detect_domains(topic)
+                if domains and domains[0] != "unknown":
+                    logger.info(f"Detected domain '{domains[0]}' for topic: {topic}")
+                    return domains[0]
+            except Exception as e:
+                logger.warning(f"Domain detection failed for topic '{topic}': {e}")
+        return "general"
     
     @property
     def default_mode(self) -> str:
@@ -230,9 +254,10 @@ class ProfessorPersona(AgentPersona):
         
         # Record learning
         if topic and self.learning_tracker:
+            detected_domain = self._detect_domain_for_topic(topic)
             self.learning_tracker.record_learning(
                 title=topic,
-                domain="glyphs",
+                domain=detected_domain,
                 concepts=[topic],
                 mastery_level=1
             )
@@ -315,9 +340,10 @@ class ProfessorPersona(AgentPersona):
         mastery_level = self._estimate_mastery_from_dialogue(context)
         
         if topic and self.learning_tracker and mastery_level:
+            detected_domain = self._detect_domain_for_topic(topic)
             self.learning_tracker.record_learning(
                 title=topic,
-                domain="glyphs",
+                domain=detected_domain,
                 concepts=[topic],
                 mastery_level=mastery_level
             )
@@ -364,13 +390,18 @@ class ProfessorPersona(AgentPersona):
         goal = self._extract_topic_from_context(context) or context.user_message
         
         # Check if structured curriculum request (Phase 23)
-        is_structured_request = self._detect_structured_curriculum_request(context)
+        # When already in curriculum mode (e.g. via /curriculum slash command),
+        # always use the structured flow — the user explicitly asked for a curriculum.
+        is_structured_request = (
+            self.state.current_mode == "curriculum"
+            or self._detect_structured_curriculum_request(context)
+        )
         
         if is_structured_request:
             logger.info("Detected structured curriculum request - using Phase 23 flow")
             return await self._generate_structured_curriculum(context, goal)
         
-        # Legacy flow: Simple learning path
+        # Legacy flow: Simple learning path (only reached if mode was set externally)
         logger.info("Generating simple learning path (legacy mode)")
         
         # Search KB for related materials (if RAG available)
@@ -378,10 +409,14 @@ class ProfessorPersona(AgentPersona):
         if self.rag:
             try:
                 if goal:
-                    results = await self.rag.search(
+                    detected_domain = self._detect_domain_for_topic(goal)
+                    # Only filter by domain if we got a specific detection;
+                    # otherwise search broadly across all domains
+                    domain_filter = detected_domain if detected_domain != "general" else None
+                    results = self.rag.search(
                         query=goal,
-                        top_k=5,
-                        filters={"domain": "glyphs"}  # Learning materials
+                        n_results=5,
+                        domain_filter=domain_filter
                     )
                     related_notes = [r.get("title", r.get("file_path", "")) for r in results]
             except Exception as e:
@@ -416,11 +451,12 @@ class ProfessorPersona(AgentPersona):
             )
         
         # Offer to save as note
+        curriculum_domain = self._detect_domain_for_topic(goal) if goal else "general"
         actions = [PersonaAction(
             type="offer_save_as_note",
             data={
                 "note_type": "learning_path",
-                "domain": "glyphs",
+                "domain": curriculum_domain,
                 "suggested_title": f"Learning Path - {goal}"
             }
         )]
@@ -957,11 +993,12 @@ Make it comprehensive, progressive, and practical. Include 15-25 total sections 
 
 Would you like me to create this note?"""
         
+        note_domain = self._detect_domain_for_topic(topic)
         actions = [PersonaAction(
             type="offer_learning_note",
             data={
                 "topic": topic,
-                "domain": "glyphs",
+                "domain": note_domain,
                 "concepts": [topic]
             }
         )]

@@ -80,7 +80,8 @@ class PersonaManager:
         rag: Optional[Any] = None,
         learning_tracker: Optional[Any] = None,
         curriculum_manager: Optional[Any] = None,
-        template_manager: Optional[Any] = None
+        template_manager: Optional[Any] = None,
+        domain_engine: Optional[Any] = None
     ):
         """
         Initialize persona manager.
@@ -94,6 +95,7 @@ class PersonaManager:
             learning_tracker: LearningTracker instance for tracking learning progress (Phase 22)
             curriculum_manager: CurriculumManager instance for curriculum management (Phase 23)
             template_manager: CurriculumTemplateManager instance for templates (Phase 23)
+            domain_engine: DomainEngine instance for auto-detecting domains from content
         """
         self.router = router
         self.skill_manager = skill_manager
@@ -101,6 +103,7 @@ class PersonaManager:
         self.learning_tracker = learning_tracker
         self.curriculum_manager = curriculum_manager
         self.template_manager = template_manager
+        self.domain_engine = domain_engine
         
         # Set definitions directory
         if definitions_dir is None:
@@ -361,7 +364,7 @@ class PersonaManager:
                 )
             elif persona_name == "professor":
                 # Professor needs skill_manager, rag, and learning_tracker (Phase 20+22)
-                # Plus curriculum_manager and template_manager (Phase 23)
+                # Plus curriculum_manager, template_manager (Phase 23), and domain_engine
                 persona = persona_class(
                     name=persona_name,
                     router=self.router,
@@ -369,7 +372,8 @@ class PersonaManager:
                     rag=self.rag,
                     learning_tracker=self.learning_tracker,
                     curriculum_manager=self.curriculum_manager,
-                    template_manager=self.template_manager
+                    template_manager=self.template_manager,
+                    domain_engine=self.domain_engine
                 )
             else:
                 # Other personas don't need additional dependencies yet

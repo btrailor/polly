@@ -484,7 +484,8 @@ class Polly:
                 rag=self.rag,
                 learning_tracker=self.learning_tracker,
                 curriculum_manager=self.curriculum_manager,
-                template_manager=self.template_manager
+                template_manager=self.template_manager,
+                domain_engine=self.domains if hasattr(self, 'domains') else None
             )
             
             # Get list of available personas
@@ -1099,24 +1100,25 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
     
     # ========== Persona Methods ==========
     
-    async def activate_persona(self, persona_name: str) -> Dict:
+    async def activate_persona(self, persona_name: str, mode: Optional[str] = None) -> Dict:
         """
         Activate a persona for specialized workflows.
         
         Args:
             persona_name: Name of persona to activate (e.g., "architect")
+            mode: Optional mode to activate (uses persona default if not specified)
         
         Returns:
             Dict with persona state
         
         Raises:
             RuntimeError: If persona system not initialized
-            ValueError: If persona_name is unknown
+            ValueError: If persona_name is unknown or mode is invalid
         """
         if not self.persona_manager:
             raise RuntimeError("Persona system not initialized. Enable routing_v2 in config.")
         
-        state = self.persona_manager.activate_persona(persona_name)
+        state = self.persona_manager.activate_persona(persona_name, mode=mode)
         logger.info(f"Activated {persona_name} persona (mode: {state.current_mode})")
         # Notify pattern engine, entity context, mental models (integration-contracts)
         self._notify_persona_context(persona_name, state.current_mode or "")

@@ -120,9 +120,23 @@ class Domain:
         return False
 
     def matches_content(self, content: str) -> float:
-        """Score how well content matches this domain (0-1)."""
+        """Score how well content matches this domain (0-1).
+        
+        Uses word-boundary matching for short keywords (<=3 chars) to avoid
+        false positives like 'ui' matching inside 'build' or 'fruit'.
+        Longer keywords use substring matching.
+        """
         content_lower = content.lower()
-        matches = sum(1 for kw in self.keywords if kw.lower() in content_lower)
+        matches = 0
+        for kw in self.keywords:
+            kw_lower = kw.lower()
+            if len(kw_lower) <= 3:
+                # Word-boundary match for short keywords to avoid substring false positives
+                if re.search(r'\b' + re.escape(kw_lower) + r'\b', content_lower):
+                    matches += 1
+            else:
+                if kw_lower in content_lower:
+                    matches += 1
         return min(matches / max(len(self.keywords), 1), 1.0)
 
 
