@@ -2297,6 +2297,9 @@ function setupEventListeners() {
 
       // Re-init icons
       setTimeout(() => lucide.createIcons(), 50);
+
+      // If expanding left sidebar, clamp chat panel first (before transition) so it doesn't overflow
+      if (isCollapsed) clampChatPanelToMax(false, true);
     }
   }
 
@@ -2314,6 +2317,9 @@ function setupEventListeners() {
 
       // Re-init icons
       setTimeout(() => lucide.createIcons(), 50);
+
+      // If expanding right sidebar, clamp chat panel first (before transition) so it doesn't overflow
+      if (isCollapsed) clampChatPanelToMax(true, false);
     }
   }
 
@@ -14862,6 +14868,9 @@ function initializeFloatingChat() {
   // Set up sidebar resize functionality
   setupSidebarResize();
 
+  // Set up center resize (conversation pane vs main content)
+  setupCenterResizeHandle();
+
   console.log("[Floating Chat] Initialized");
 }
 
@@ -15772,6 +15781,115 @@ function setupSidebarResize() {
 
     console.log("[Sidebar Resize] Initialized successfully");
   }, 500); // Wait 500ms to ensure DOM is ready
+}
+
+const AGENTS_SIDEBAR_WIDTH = 280;
+const LEFT_SIDEBAR_WIDTH = 280;
+
+/**
+ * Compute max chat panel width so agents sidebar stays visible.
+ * Reserves: left sidebar, main min-width (400), handle (4), agents sidebar.
+ * @param {Object} overrides - Optional { agentsWidth, leftWidth } when expanding (avoids measuring during CSS transition)
+ */
+function getMaxChatPanelWidth(overrides = {}) {
+  const layout = document.querySelector(".three-column-layout");
+  const leftSidebar = document.getElementById("left-sidebar");
+  const agentsSidebar = document.getElementById("agents-sidebar");
+  if (!layout || !leftSidebar || !agentsSidebar) return 800;
+  const layoutWidth = layout.offsetWidth;
+  const leftWidth =
+    overrides.leftWidth ?? leftSidebar.offsetWidth ?? 0;
+  const agentsWidth =
+    overrides.agentsWidth ?? agentsSidebar.offsetWidth ?? 0;
+  const mainMin = 400;
+  const handleWidth = 4;
+  return Math.max(300, layoutWidth - leftWidth - agentsWidth - mainMin - handleWidth);
+}
+
+/**
+ * Clamp chat panel to current max width (e.g. after sidebar expand).
+ * Call when left or right sidebar is toggled to expand.
+ * Uses known sidebar widths when expanding to avoid measuring during CSS transition.
+ */
+function clampChatPanelToMax(expandingRight = false, expandingLeft = false) {
+  const chatPanel = document.getElementById("chat-panel");
+  if (!chatPanel) return;
+  const overrides = {};
+  if (expandingRight) overrides.agentsWidth = AGENTS_SIDEBAR_WIDTH;
+  if (expandingLeft) overrides.leftWidth = LEFT_SIDEBAR_WIDTH;
+  const maxWidth = getMaxChatPanelWidth(overrides);
+  const currentWidth = chatPanel.offsetWidth;
+  if (currentWidth > maxWidth) {
+    chatPanel.style.width = maxWidth + "px";
+    chatPanel.style.flex = "0 0 " + maxWidth + "px";
+    localStorage.setItem("chat-panel-width", String(maxWidth));
+  }
+}
+
+/**
+ * Set up center resize handle (between main content and chat panel)
+ */
+function setupCenterResizeHandle() {
+  setTimeout(() => {
+    const resizeHandle = document.getElementById("center-resize-handle");
+    const chatPanel = document.getElementById("chat-panel");
+    const mainContent = document.getElementById("main-content-area");
+
+    if (!resizeHandle || !chatPanel || !mainContent) return;
+
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    const minWidth = 300;
+
+    const savedWidth = localStorage.getItem("chat-panel-width");
+    if (savedWidth) {
+      const w = parseInt(savedWidth, 10);
+      const maxW = getMaxChatPanelWidth();
+      if (w >= minWidth && w <= maxW) {
+        chatPanel.style.width = w + "px";
+        chatPanel.style.flex = "0 0 " + w + "px";
+      }
+    }
+
+    const onMouseMove = (e) => {
+      if (!isResizing) return;
+      const deltaX = e.clientX - startX;
+      // Handle is at left edge of chat panel. Drag right = chat panel narrower.
+      const newWidth = startWidth - deltaX;
+      const maxWidth = getMaxChatPanelWidth();
+      const clamped = Math.max(minWidth, Math.min(newWidth, maxWidth));
+      chatPanel.style.width = clamped + "px";
+      chatPanel.style.flex = "0 0 " + clamped + "px";
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const onMouseUp = () => {
+      if (!isResizing) return;
+      isResizing = false;
+      resizeHandle.classList.remove("dragging");
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      const w = chatPanel.offsetWidth;
+      localStorage.setItem("chat-panel-width", String(w));
+    };
+
+    resizeHandle.onmousedown = (e) => {
+      isResizing = true;
+      startX = e.clientX;
+      startWidth = chatPanel.offsetWidth;
+      resizeHandle.classList.add("dragging");
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+      e.preventDefault();
+    };
+  }, 500);
 }
 
 // ========================================
