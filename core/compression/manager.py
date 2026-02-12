@@ -154,7 +154,7 @@ class CompressionManager:
         
         # Compress old messages
         logger.info(f"Compressing {len(old_messages)} messages from conversation {conversation_id}")
-        compressed = self.compressor.compress(old_messages, metadata)
+        compressed = self.compressor.compress(old_messages, type="conversation", metadata=metadata)
         
         # Store in database
         self._store_compressed(conversation_id, compressed)

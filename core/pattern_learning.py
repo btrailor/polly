@@ -50,8 +50,23 @@ class Pattern:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Pattern':
-        """Create Pattern from dict."""
-        return cls(**data)
+        """Create Pattern from dict, handling different schema formats."""
+        # Map field names from different schemas
+        # Handle both 'type' and 'pattern_type' field names
+        pattern_type = data.get('type') or data.get('pattern_type', 'unknown')
+        
+        # Handle timestamp field variations
+        timestamp = data.get('timestamp') or data.get('last_seen') or data.get('first_seen', '')
+        
+        # Extract only the fields we need
+        return cls(
+            type=pattern_type,
+            description=data.get('description', ''),
+            confidence=data.get('confidence', 0.5),
+            timestamp=timestamp,
+            metadata=data.get('metadata', {}),
+            occurrences=data.get('occurrences', 1)
+        )
 
 
 class PatternLearner:
@@ -115,16 +130,36 @@ class PatternLearner:
         """Load patterns from JSON file."""
         try:
             with open(self.patterns_file, 'r') as f:
-                return json.load(f)
+                data = json.load(f)
+                # Handle both legacy list format and new dict format with 'patterns' key
+                if isinstance(data, dict):
+                    return data.get('patterns', [])
+                return data if isinstance(data, list) else []
         except Exception as e:
             logger.warning(f"Failed to load patterns: {e}")
             return []
     
-    def _save_patterns(self, patterns: List[Dict[str, Any]]):
-        """Save patterns to JSON file."""
+    def _load_full_patterns_data(self) -> Dict[str, Any]:
+        """Load full patterns data structure from JSON file."""
         try:
+            with open(self.patterns_file, 'r') as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+                # Migrate legacy list format to dict format
+                return {'patterns': data if isinstance(data, list) else []}
+        except Exception as e:
+            logger.warning(f"Failed to load patterns data: {e}")
+            return {'patterns': []}
+    
+    def _save_patterns(self, patterns: List[Dict[str, Any]]):
+        """Save patterns to JSON file, preserving other data in the file."""
+        try:
+            # Load full data to preserve other keys (query_chunk_patterns, etc.)
+            full_data = self._load_full_patterns_data()
+            full_data['patterns'] = patterns
             with open(self.patterns_file, 'w') as f:
-                json.dump(patterns, f, indent=2)
+                json.dump(full_data, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save patterns: {e}")
     
@@ -142,10 +177,13 @@ class PatternLearner:
         patterns = self._load_patterns()
         
         # Check for existing similar pattern
+        # Handle both 'type' and 'pattern_type' field names for compatibility
         existing_idx = None
         for i, p in enumerate(patterns):
-            if (p['type'] == pattern.type and 
-                p['description'].lower() == pattern.description.lower()):
+            p_type = p.get('type') or p.get('pattern_type', '')
+            p_desc = p.get('description', '')
+            if (p_type == pattern.type and 
+                p_desc.lower() == pattern.description.lower()):
                 existing_idx = i
                 break
         

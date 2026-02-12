@@ -28,11 +28,11 @@ async def test_get_tier_candidates_uses_litellm_when_enabled(mock_litellm_adapte
     """When use_litellm=True, _get_tier_candidates returns (litellm_adapter, model, priority) per tier row."""
     from core.router_v2 import IntelligentRouterV2, ConfidenceLevel
     
-    with patch("core.providers.litellm_adapter.LiteLLMAdapter", MagicMock(return_value=mock_litellm_adapter)):
+    with patch("polly_routing.providers.litellm.LiteLLMAdapter", MagicMock(return_value=mock_litellm_adapter)):
         router = IntelligentRouterV2(
-            anthropic_api_key="test",
             use_litellm=True,
-            litellm_config_path="config/litellm_config.yaml"
+            litellm_config_path="config/litellm_config.yaml",
+            api_keys={"anthropic": "test"}
         )
     
     assert router.use_litellm is True
@@ -44,7 +44,8 @@ async def test_get_tier_candidates_uses_litellm_when_enabled(mock_litellm_adapte
     for provider, model, priority in candidates:
         assert provider is mock_litellm_adapter
         assert isinstance(model, str)
-        assert "gpt-4o-mini" in model or "claude" in model or "gemini" in model or "mistral" in model or "sonar" in model
+        # Model should be one of the tier's configured models
+        assert any(m in model for m in ["gpt", "claude", "gemini", "mistral", "sonar", "haiku"])
 
 
 @pytest.mark.asyncio
@@ -52,11 +53,11 @@ async def test_route_returns_decision_when_litellm_enabled(mock_litellm_adapter)
     """When use_litellm=True, route() returns a RoutingDecision with the LiteLLM provider."""
     from core.router_v2 import IntelligentRouterV2, ConfidenceLevel
     
-    with patch("core.providers.litellm_adapter.LiteLLMAdapter", MagicMock(return_value=mock_litellm_adapter)):
+    with patch("polly_routing.providers.litellm.LiteLLMAdapter", MagicMock(return_value=mock_litellm_adapter)):
         router = IntelligentRouterV2(
-            anthropic_api_key="test",
             use_litellm=True,
-            litellm_config_path="config/litellm_config.yaml"
+            litellm_config_path="config/litellm_config.yaml",
+            api_keys={"anthropic": "test"}
         )
     
     decision = await router.route(

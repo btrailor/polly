@@ -109,7 +109,6 @@ class Mem0Adapter:
                 "config": {
                     "collection_name": collections.get('knowledge', 'polly_mem0_memories'),
                     "path": str(Path.home() / ".polly" / "chroma_mem0"),
-                    "embedding_model_dims": 1536  # Default OpenAI dimension
                 }
             }
         }
