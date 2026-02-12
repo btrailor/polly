@@ -219,6 +219,20 @@ let statsRetryCount = 0;
 const MAX_STATS_RETRIES = 3;
 
 /**
+ * Get the effective page context for mental models scoring.
+ * When the user is in the "chat" view, derive the page from the active
+ * conversation's page_context rather than sending the literal string "chat"
+ * (which no mental model knows about).
+ * @returns {string} Effective page name for the backend
+ */
+function getEffectivePage() {
+  if (currentPage === "chat" && currentConversation && currentConversation.page_context) {
+    return currentConversation.page_context;
+  }
+  return currentPage;
+}
+
+/**
  * Show a toast notification
  * @param {string} message - Message to display
  * @param {string} type - Type of toast: 'success', 'error', 'info', 'warning'
@@ -3516,6 +3530,7 @@ function updateLeftSidebar(view) {
           } else if (tab === "mental-models") {
             loadMentalModels();
             refreshMentalModelsStats();
+            loadGlobalDefaultsPicker();
           } else if (tab === "advanced") {
             loadDedupSettings();
           }
@@ -8371,14 +8386,20 @@ async function sendQueryInternal(displayQuery, apiQuery, overrides) {
     const queryOptions = {
       mode: currentMode,
       conversation_history: conversationHistory,
-      page: currentPage, // Pass current page to backend for mental models & RAG filtering
+      page: getEffectivePage(), // Resolved page for mental models & RAG filtering
       confidence: confidence, // Router v2: fast/balanced/thorough
       provider_override: providerOverride, // Router v2: force specific provider
     };
 
-    // Add mental models override if present
+    // Add mental models override if present (per-conversation or global defaults)
     if (mentalModelsOverride && !mentalModelsOverride.useDefaults) {
       queryOptions.mental_models_override = mentalModelsOverride.modelIds;
+    } else {
+      // Check for global default models
+      const globalDefaults = getGlobalDefaultModels();
+      if (globalDefaults && globalDefaults.enabled && globalDefaults.modelIds.length > 0) {
+        queryOptions.mental_models_override = globalDefaults.modelIds;
+      }
     }
 
     const result = await window.polly.query(apiQuery, queryOptions);
@@ -12355,6 +12376,40 @@ async function deleteMentalModel(modelId) {
 }
 
 /**
+ * Global Default Mental Models
+ * Stored in localStorage — applies to all conversations that don't have
+ * a per-conversation override.
+ */
+const MM_GLOBAL_DEFAULTS_KEY = "mm_global_defaults";
+
+/**
+ * Get global default models preference.
+ * @returns {{ enabled: boolean, modelIds: string[] } | null}
+ */
+function getGlobalDefaultModels() {
+  const stored = localStorage.getItem(MM_GLOBAL_DEFAULTS_KEY);
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored);
+  } catch (error) {
+    console.error("Failed to parse global default models:", error);
+    return null;
+  }
+}
+
+/**
+ * Set global default models preference.
+ * @param {{ enabled: boolean, modelIds: string[] } | null} defaults
+ */
+function setGlobalDefaultModels(defaults) {
+  if (defaults === null) {
+    localStorage.removeItem(MM_GLOBAL_DEFAULTS_KEY);
+  } else {
+    localStorage.setItem(MM_GLOBAL_DEFAULTS_KEY, JSON.stringify(defaults));
+  }
+}
+
+/**
  * Mental Models Override for specific conversations
  * Stored in localStorage keyed by conversation ID
  */
@@ -12433,6 +12488,21 @@ async function refreshMentalModelsStats() {
 }
 
 /**
+ * Toggle the override modal between defaults-active and manual-selection states.
+ */
+function _updateOverrideDefaultsState(useDefaults) {
+  const modelsList = document.getElementById("override-models-list");
+  const infoEl = document.getElementById("override-defaults-info");
+  if (useDefaults) {
+    modelsList.classList.add("defaults-active");
+    if (infoEl) infoEl.style.display = "";
+  } else {
+    modelsList.classList.remove("defaults-active");
+    if (infoEl) infoEl.style.display = "none";
+  }
+}
+
+/**
  * Open mental models override modal
  */
 async function openMentalModelsOverrideModal(conversationId) {
@@ -12465,13 +12535,13 @@ async function openMentalModelsOverrideModal(conversationId) {
     // Get current override
     const override = getMentalModelsOverride(conversationId);
 
-    // Set checkbox state
+    // Set checkbox state and toggle defaults-active / manual UI
     if (override && override.useDefaults === false) {
       useDefaultsCheckbox.checked = false;
-      modelsList.classList.remove("disabled");
+      _updateOverrideDefaultsState(false);
     } else {
       useDefaultsCheckbox.checked = true;
-      modelsList.classList.add("disabled");
+      _updateOverrideDefaultsState(true);
     }
 
     // Render models list
@@ -12483,7 +12553,7 @@ async function openMentalModelsOverrideModal(conversationId) {
             : model.enabled;
 
         return `
-        <div class="override-model-item">
+        <div class="override-model-item" data-model-id="${model.id}">
           <div class="override-model-info">
             <div class="override-model-name">${model.name}</div>
             <div class="override-model-desc">${model.description}</div>
@@ -12502,13 +12572,19 @@ async function openMentalModelsOverrideModal(conversationId) {
     // Hide loading
     loading.style.display = "none";
 
+    // Make entire model row clickable — toggle its checkbox
+    modelsList.querySelectorAll(".override-model-item").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        // Don't double-toggle when the checkbox itself is clicked
+        if (e.target.classList.contains("override-model-checkbox")) return;
+        const cb = item.querySelector(".override-model-checkbox");
+        if (cb) cb.checked = !cb.checked;
+      });
+    });
+
     // Setup use defaults checkbox handler
     useDefaultsCheckbox.onchange = () => {
-      if (useDefaultsCheckbox.checked) {
-        modelsList.classList.add("disabled");
-      } else {
-        modelsList.classList.remove("disabled");
-      }
+      _updateOverrideDefaultsState(useDefaultsCheckbox.checked);
     };
   } catch (error) {
     console.error("Error loading mental models:", error);
@@ -12555,6 +12631,112 @@ function saveMentalModelsOverride() {
 
   // Refresh conversation list to show indicator
   renderConversationsList();
+}
+
+// ============================================
+// Global Default Mental Models Picker
+// ============================================
+
+/**
+ * Load and render the global defaults picker in the Mental Models settings tab.
+ * Called once when the settings view is first shown and on subsequent tab switches.
+ */
+async function loadGlobalDefaultsPicker() {
+  const listEl = document.getElementById("global-defaults-models-list");
+  const enabledCb = document.getElementById("global-defaults-enabled");
+  const saveBtn = document.getElementById("btn-save-global-defaults");
+  const clearBtn = document.getElementById("btn-clear-global-defaults");
+
+  if (!listEl || !enabledCb) return;
+
+  // Fetch models
+  try {
+    const response = await fetch("http://127.0.0.1:11436/polly/mental-models/list");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    const models = data.models || [];
+
+    // Load stored defaults
+    const defaults = getGlobalDefaultModels();
+    const isEnabled = defaults && defaults.enabled;
+    const selectedIds = (defaults && defaults.modelIds) || [];
+
+    enabledCb.checked = !!isEnabled;
+    listEl.style.display = isEnabled ? "" : "none";
+    if (saveBtn) saveBtn.style.display = isEnabled ? "" : "none";
+    if (clearBtn) clearBtn.style.display = isEnabled ? "" : "none";
+
+    // Render model list with checkboxes
+    listEl.innerHTML = models
+      .map((model) => {
+        const isChecked = selectedIds.includes(model.id);
+        return `
+          <div class="override-model-item" data-model-id="${model.id}" style="margin-bottom: 6px;">
+            <div class="override-model-info">
+              <div class="override-model-name">${model.name}</div>
+              <div class="override-model-desc">${model.description}</div>
+            </div>
+            <input
+              type="checkbox"
+              class="global-default-model-checkbox override-model-checkbox"
+              data-model-id="${model.id}"
+              ${isChecked ? "checked" : ""}
+            >
+          </div>
+        `;
+      })
+      .join("");
+
+    // Row click toggles checkbox
+    listEl.querySelectorAll(".override-model-item").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        if (e.target.tagName === "INPUT") return;
+        const cb = item.querySelector(".global-default-model-checkbox");
+        if (cb) cb.checked = !cb.checked;
+      });
+    });
+
+    // Toggle visibility when enabled checkbox changes
+    enabledCb.onchange = () => {
+      const show = enabledCb.checked;
+      listEl.style.display = show ? "" : "none";
+      if (saveBtn) saveBtn.style.display = show ? "" : "none";
+      if (clearBtn) clearBtn.style.display = show ? "" : "none";
+      if (!show) {
+        // Disable global defaults when unchecked
+        setGlobalDefaultModels(null);
+        console.log("[Global Defaults] Disabled global default models");
+      }
+    };
+
+    // Save button
+    if (saveBtn) {
+      saveBtn.onclick = () => {
+        const selectedModelIds = Array.from(
+          listEl.querySelectorAll(".global-default-model-checkbox:checked"),
+        ).map((cb) => cb.dataset.modelId);
+
+        setGlobalDefaultModels({
+          enabled: true,
+          modelIds: selectedModelIds,
+        });
+        console.log(`[Global Defaults] Saved ${selectedModelIds.length} default models`);
+        alert(`Saved ${selectedModelIds.length} global default model(s).`);
+      };
+    }
+
+    // Clear button
+    if (clearBtn) {
+      clearBtn.onclick = () => {
+        listEl.querySelectorAll(".global-default-model-checkbox").forEach((cb) => {
+          cb.checked = false;
+        });
+      };
+    }
+  } catch (error) {
+    console.error("Error loading global defaults picker:", error);
+    listEl.innerHTML = `<p style="color: var(--danger); padding: 12px;">Failed to load models: ${error.message}</p>`;
+  }
 }
 
 // ============================================
@@ -15216,14 +15398,20 @@ async function sendFloatingMessageInternal(displayQuery, apiQuery, overrides) {
     const queryOptions = {
       mode: currentMode,
       conversation_history: conversationHistory,
-      page_context: currentView, // Use current view as page context
+      page: getEffectivePage(), // Resolved page for mental models & RAG filtering
       confidence: confidence,
       provider_override: providerOverride,
     };
 
-    // Add mental models override if present
+    // Add mental models override if present (per-conversation or global defaults)
     if (mentalModelsOverride && !mentalModelsOverride.useDefaults) {
       queryOptions.mental_models_override = mentalModelsOverride.modelIds;
+    } else {
+      // Check for global default models
+      const globalDefaults = getGlobalDefaultModels();
+      if (globalDefaults && globalDefaults.enabled && globalDefaults.modelIds.length > 0) {
+        queryOptions.mental_models_override = globalDefaults.modelIds;
+      }
     }
 
     const result = await window.polly.query(apiQuery, queryOptions);

@@ -192,6 +192,16 @@ class MentalModelManager:
         parts.append("Apply these frameworks to guide your thinking and responses.\n")
         return "".join(parts)
 
+    # Minimum score a model must reach to be included in auto-assignment.
+    # A single keyword match (+2) or lone domain match (+3) is not enough;
+    # the model needs at least a strong contextual signal (page, persona, or
+    # multiple keyword hits) to earn its place.
+    MIN_SCORE_THRESHOLD = 5
+
+    # Maximum points that keyword matches can contribute.  This prevents
+    # keyword flooding from overwhelming deliberate page/persona signals.
+    MAX_KEYWORD_SCORE = 6
+
     def get_models_for_context(
         self,
         domain: Optional[str] = None,
@@ -210,7 +220,10 @@ class MentalModelManager:
         - Persona/mode match: +8 (explicit AI behavior mode)
         - Category trigger: +5 (auto-activation)
         - Domain match: +3 (content-based)
-        - Keyword match: +2 per keyword
+        - Keyword match: +2 per keyword (capped at MAX_KEYWORD_SCORE)
+        
+        Models must reach MIN_SCORE_THRESHOLD to be included.
+        Keyword matching uses exact whole-word equality (not substrings).
         
         Args:
             domain: Current domain (e.g., "scrolls", "sigils")
@@ -262,21 +275,21 @@ class MentalModelManager:
                 score += 3
                 logger.debug(f"Model '{model.name}' +3 (domain match: {domain})")
             
-            # Keyword matches: +2 per keyword
+            # Keyword matches: +2 per exact match, capped at MAX_KEYWORD_SCORE
             if keywords and model.keywords:
-                keyword_matches = sum(
-                    1 for kw in keywords 
-                    if any(model_kw.lower() in kw.lower() or kw.lower() in model_kw.lower() 
-                           for model_kw in model.keywords)
-                )
+                kw_lower = {k.lower() for k in keywords}
+                model_kw_lower = {mk.lower() for mk in model.keywords}
+                keyword_matches = len(kw_lower & model_kw_lower)
                 if keyword_matches > 0:
-                    keyword_score = keyword_matches * 2
+                    keyword_score = min(keyword_matches * 2, self.MAX_KEYWORD_SCORE)
                     score += keyword_score
-                    logger.debug(f"Model '{model.name}' +{keyword_score} ({keyword_matches} keyword matches)")
+                    logger.debug(f"Model '{model.name}' +{keyword_score} ({keyword_matches} keyword matches, capped at {self.MAX_KEYWORD_SCORE})")
             
-            if score > 0:
+            if score >= self.MIN_SCORE_THRESHOLD:
                 scored_models.append((score, model))
-                logger.debug(f"Model '{model.name}' total score: {score}")
+                logger.debug(f"Model '{model.name}' total score: {score} (meets threshold {self.MIN_SCORE_THRESHOLD})")
+            elif score > 0:
+                logger.debug(f"Model '{model.name}' total score: {score} (below threshold {self.MIN_SCORE_THRESHOLD}, excluded)")
         
         # Sort by score (descending)
         scored_models.sort(key=lambda x: x[0], reverse=True)
@@ -286,6 +299,8 @@ class MentalModelManager:
         
         if top_models:
             logger.info(f"Selected {len(top_models)} mental models for context: {[m.name for m in top_models]}")
+        else:
+            logger.info("No mental models met the activation threshold for this context")
         
         return top_models
     
@@ -431,11 +446,11 @@ class MentalModelManager:
                 'Horizon of possibility over endpoint'
             ],
             prompt_injection='When discussing systems, learning, or creative work, consider the infinite game perspective: How can this keep going? How might the rules evolve? How can more people get involved? Focus on continuation over completion.',
-            applies_to=['scrolls', 'grids', 'signals'],
-            active_on_pages=['learning', 'patterns', 'projects'],
+            applies_to=['scrolls'],
+            active_on_pages=['learning'],
             active_for_personas=[],
             active_for_modes=[],
-            keywords=['infinite', 'finite', 'continuation', 'horizon', 'game', 'evolve'],
+            keywords=['infinite', 'finite', 'carse', 'infinite game', 'continuation'],
             category_triggers=[],
             enabled=True
         )
@@ -451,11 +466,11 @@ class MentalModelManager:
                 'Open-ended over closed systems'
             ],
             prompt_injection='When discussing creative or technical projects, consider: How can this be an instrument that generates possibilities rather than a fixed output? Focus on building tools and systems that enable creation.',
-            applies_to=['signals', 'sigils', 'glyphs'],
-            active_on_pages=['code', 'projects', 'patterns'],
+            applies_to=['signals'],
+            active_on_pages=[],
             active_for_personas=['architect'],
-            active_for_modes=['plan', 'build'],
-            keywords=['instrument', 'track', 'generative', 'system', 'tool', 'enable', 'possibility'],
+            active_for_modes=['build'],
+            keywords=['instrument', 'generative', 'monome', 'open-ended'],
             category_triggers=[],
             enabled=True
         )
@@ -471,11 +486,11 @@ class MentalModelManager:
                 'Form creates content'
             ],
             prompt_injection='When discussing creative or technical challenges, explore how constraints can be generative. What limitations might actually create new possibilities? How do boundaries enable creativity?',
-            applies_to=['signals', 'glyphs', 'sigils', 'scrolls'],
-            active_on_pages=['code', 'projects', 'learning'],
-            active_for_personas=['architect'],
-            active_for_modes=['plan'],
-            keywords=['constraint', 'limitation', 'boundary', 'form', 'generative', 'enable'],
+            applies_to=['signals'],
+            active_on_pages=[],
+            active_for_personas=[],
+            active_for_modes=[],
+            keywords=['constraint', 'limitation', 'boundary', 'creative constraint'],
             category_triggers=[],
             enabled=True
         )

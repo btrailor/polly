@@ -1,6 +1,6 @@
 # Mental Models (OpenSpec)
 
-Source of truth for the mental models system (Phase 14). Detail: [docs/planning/phases/phase-14/PHASE14_MENTAL_MODELS.md](../../../docs/planning/phases/phase-14/PHASE14_MENTAL_MODELS.md).
+Source of truth for the mental models system (Phase 14 + refinement). Detail: [docs/planning/phases/phase-14/PHASE14_MENTAL_MODELS.md](../../../docs/planning/phases/phase-14/PHASE14_MENTAL_MODELS.md).
 
 ## Implementation Status
 
@@ -9,6 +9,10 @@ Source of truth for the mental models system (Phase 14). Detail: [docs/planning/
 | MentalModelManager (storage, activation, build_context) | ✅ Implemented | `core/mental_models.py` |
 | ContextContributor (priority 60) | ✅ Implemented | _gather_context in polly.py |
 | PersonaAware, effectiveness tracking | ✅ Implemented | integration-contracts |
+| Refined scoring (exact keywords, threshold, cap) | ✅ Implemented | mental-models-refinement change |
+| Per-conversation override modal (fixed UX) | ✅ Implemented | mental-models-refinement change |
+| Global default models picker | ✅ Implemented | mental-models-refinement change |
+| Page context resolution (chat view) | ✅ Implemented | mental-models-refinement change |
 | Constitutional tier (Cui Bono, etc.) | 💭 Vision | constitutional-epistemology change; spec-only |
 | Constitutional models always active | 📐 Designed | ethics spec; not yet in code |
 
@@ -22,10 +26,16 @@ See [integration-contracts design](../../changes/integration-contracts/design.md
 
 ## Current Behavior
 
-- **Storage:** `~/.polly/mental_models.yaml`. Twelve default models across four tiers (Core Philosophy, Learning, Systems, Communication).
-- **Activation:** Three-tier — domain, page, persona. Top 3–5 models per query selected and injected.
+- **Storage:** `~/.polly/mental_models.yaml`. Default models across five tiers (Core Philosophy, Learning, Systems, Communication, Aesthetic & Craft).
+- **Activation:** Three-tier scoring — page (+10), persona/mode (+8), category (+5), domain (+3), keyword (+2 per exact match, capped at +6). Models must reach a minimum score of 5 to be included. Top 3–5 models selected per query.
+- **Keyword matching:** Exact whole-word equality only (no substring matching). Prevents false positives like "form" matching "information".
+- **Score threshold:** `MIN_SCORE_THRESHOLD = 5`. A single keyword match (+2) or lone domain match (+3) is insufficient; models need deliberate contextual signals.
+- **Keyword cap:** `MAX_KEYWORD_SCORE = 6`. Prevents keyword flooding from overwhelming page/persona signals.
+- **Page resolution:** When the user is in the "chat" view, the effective page is derived from the active conversation's `page_context` field, not the literal view name.
 - **Compression:** Compact Format (formerly PIL) ~2.3x compression; injected into system prompt.
-- **UI:** Settings tab with full CRUD; template-based creation; per-conversation override (context menu, localStorage). Visual tag system, animated toggles.
+- **UI:** Settings tab with full CRUD; template-based creation; per-conversation override (context menu, localStorage) with improved UX; global default models picker (Settings > Mental Models). Visual tag system, animated toggles.
+- **Global defaults:** Users can pin specific models as always-active via the "Default Models" picker in Settings > Mental Models. Stored in localStorage as `mm_global_defaults`. When enabled, overrides auto-assignment for all conversations without a per-conversation override.
+- **Per-conversation override:** Accessed via conversation context menu. "Use Defaults" toggle clearly hides/shows the model selection list. Entire model rows are clickable to toggle checkboxes. Override modal z-index 10001 (above other overlays).
 - **API:** REST CRUD (7 endpoints). Integration in `core/polly.py` and compressor.
 
 ## Constitutional Tier (Always Active)

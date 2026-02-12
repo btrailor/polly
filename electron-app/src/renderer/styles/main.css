@@ -5304,7 +5304,11 @@ body {
   color: var(--text-primary);
 }
 
-/* Mental Models Override Modal */
+/* Mental Models Override Modal — sits above other overlays */
+#mental-models-override-modal {
+  z-index: 10001;
+}
+
 #override-models-list {
   max-height: 400px;
   overflow-y: auto;
@@ -5312,11 +5316,25 @@ body {
   border-radius: 8px;
   padding: 12px;
   background: var(--bg-secondary);
+  transition: opacity 0.2s ease;
 }
 
-#override-models-list.disabled {
-  opacity: 0.5;
-  pointer-events: none;
+/* When "Use Defaults" is checked the list is hidden entirely */
+#override-models-list.defaults-active {
+  display: none;
+}
+
+/* Info message shown when defaults are active */
+.override-defaults-info {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  margin-top: 16px;
 }
 
 .override-model-item {
@@ -5329,10 +5347,13 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   transition: all 0.2s ease;
+  cursor: pointer;
+  user-select: none;
 }
 
 .override-model-item:hover {
   border-color: var(--accent);
+  background: var(--bg-tertiary, var(--bg-hover));
 }
 
 .override-model-item:last-child {
@@ -5341,6 +5362,7 @@ body {
 
 .override-model-info {
   flex: 1;
+  pointer-events: none;
 }
 
 .override-model-name {
@@ -5358,6 +5380,7 @@ body {
   width: 18px;
   height: 18px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 /* Visual indicator for conversations with overrides */

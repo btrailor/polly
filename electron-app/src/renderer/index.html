@@ -1758,7 +1758,31 @@
                   </p>
                 </div>
 
-                <div class="quick-links" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                <!-- Global Default Models Picker -->
+                <div class="settings-section" style="margin-top: 24px; padding: 20px; background: var(--bg-hover); border-radius: 8px; border: 1px solid var(--border);">
+                  <h4 style="margin: 0 0 8px 0; font-size: 15px; font-weight: 600; color: var(--text-primary);">
+                    Default Models
+                  </h4>
+                  <p style="margin: 0 0 12px 0; font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                    Choose specific mental models to always use. When enabled, these override the automatic
+                    context-based selection for all conversations (unless a conversation has its own override).
+                  </p>
+                  <div class="form-group" style="margin-bottom: 12px;">
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="global-defaults-enabled">
+                      <span>Enable global default models</span>
+                    </label>
+                  </div>
+                  <div id="global-defaults-models-list" style="max-height: 350px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: var(--bg-secondary); display: none;">
+                    <!-- Populated dynamically by loadGlobalDefaultsPicker() -->
+                  </div>
+                  <div style="margin-top: 10px; display: flex; gap: 8px;">
+                    <button class="btn btn-primary btn-sm" id="btn-save-global-defaults" style="display: none;">Save Defaults</button>
+                    <button class="btn btn-secondary btn-sm" id="btn-clear-global-defaults" style="display: none;">Clear All</button>
+                  </div>
+                </div>
+
+                <div class="quick-links" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 24px;">
                   <div class="quick-link-card" style="padding: 16px; background: var(--bg-hover); border-radius: 6px; border: 1px solid var(--border);">
                     <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600;">
                       <i data-lucide="lightbulb" style="width: 16px; height: 16px; display: inline-block; vertical-align: middle;"></i>
@@ -2492,7 +2516,7 @@
       </div>
       <div class="modal-body">
         <p class="form-hint" style="margin-bottom: 16px;">
-          Select which mental models should be active for this conversation. This overrides the default activation rules.
+          Choose how mental models are selected for this conversation.
         </p>
         
         <div class="form-group">
@@ -2501,8 +2525,13 @@
             <span>Use Default Activation (automatic based on context)</span>
           </label>
         </div>
+
+        <div id="override-defaults-info" class="override-defaults-info">
+          Mental models are automatically selected based on the current page, persona, domain, and query keywords.
+          Uncheck "Use Default Activation" above to manually choose which models are active for this conversation.
+        </div>
         
-        <div id="override-models-list" style="margin-top: 16px;">
+        <div id="override-models-list" class="defaults-active" style="margin-top: 16px;">
           <!-- Will be populated dynamically -->
         </div>
         
