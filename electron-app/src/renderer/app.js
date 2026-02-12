@@ -6,6 +6,185 @@
 // API Configuration
 const API_URL = "http://127.0.0.1:11436";
 
+// Slash command cache (persona mode invocation)
+let _slashCommandsCache = null;
+
+/**
+ * Default messages per command when user sends only /command (no additional text).
+ * These explicitly invoke the persona mode so it doesn't get confused.
+ */
+const SLASH_COMMAND_DEFAULTS = {
+  curriculum: "I want to create a structured curriculum. What topic or skill should we focus on?",
+  "learning-path": "I want to create a structured curriculum. What topic or skill should we focus on?",
+  teach: "I'd like to learn through guided dialogue. What topic should we explore?",
+  socratic: "I'd like to learn through guided dialogue. What topic should we explore?",
+  explain: "Please explain this concept. What would you like me to explain?",
+  quiz: "I'm ready for a quiz. What topic should we test?",
+  save: "Please save this conversation as a note in my knowledge base.",
+  note: "Please save this conversation as a note in my knowledge base.",
+  plan: "I'd like to create a plan. What would you like me to help plan?",
+  build: "I'm ready to build. What should we create?",
+};
+
+/**
+ * Parse slash command from message. Returns { persona, mode, userMessage } or null.
+ * @param {string} message - Raw message (e.g. "/learning-path Create path for Python")
+ * @returns {{ persona: string, mode: string|null, userMessage: string }|null}
+ */
+function parseSlashCommand(message) {
+  const trimmed = message.trim();
+  if (!trimmed.startsWith("/")) return null;
+  const rest = trimmed.slice(1).trim();
+  const spaceIdx = rest.indexOf(" ");
+  const cmd = spaceIdx >= 0 ? rest.slice(0, spaceIdx).toLowerCase() : rest.toLowerCase();
+  const userMsg = spaceIdx >= 0 ? rest.slice(spaceIdx).trim() : "";
+  if (!cmd) return null;
+  const resolved = resolveSlashCommand(cmd);
+  if (!resolved) return null;
+  const defaultMsg = SLASH_COMMAND_DEFAULTS[cmd];
+  return {
+    persona: resolved.persona,
+    mode: resolved.mode || null,
+    userMessage: userMsg || defaultMsg || "Continue",
+  };
+}
+
+/**
+ * Resolve command string to { persona, mode }. Uses cached commands from API.
+ * @param {string} cmd - Command without leading / (e.g. "learning-path")
+ * @returns {{ persona: string, mode: string|null }|null}
+ */
+function resolveSlashCommand(cmd) {
+  const c = (cmd || "").toLowerCase().trim();
+  if (!c) return null;
+  // Use fallback when cache is empty (API failed or not yet called)
+  if (!_slashCommandsCache || _slashCommandsCache.length === 0) {
+    const fallback = {
+      teach: { persona: "professor", mode: "socratic" },
+      "learning-path": { persona: "professor", mode: "curriculum" },
+      curriculum: { persona: "professor", mode: "curriculum" },
+      explain: { persona: "professor", mode: "explain" },
+      quiz: { persona: "professor", mode: "quiz" },
+      save: { persona: "scribe", mode: "capture" },
+      note: { persona: "scribe", mode: "capture" },
+      plan: { persona: "architect", mode: "plan" },
+      build: { persona: "architect", mode: "build" },
+    };
+    return fallback[c] || null;
+  }
+  for (const item of _slashCommandsCache) {
+    if (item.command === c) return { persona: item.persona, mode: item.mode || null };
+  }
+  return null;
+}
+
+/**
+ * Fetch and cache slash commands from API. Call on init or before autocomplete.
+ * @returns {Promise<Array<{command:string,persona:string,mode:string,description:string}>>}
+ */
+async function fetchSlashCommands() {
+  if (_slashCommandsCache) return _slashCommandsCache;
+  try {
+    const res = await fetch(`${API_URL}/persona/commands`);
+    if (res.ok) {
+      const data = await res.json();
+      _slashCommandsCache = data.commands || [];
+      return _slashCommandsCache;
+    }
+  } catch (e) {
+    console.warn("[SlashCommands] Failed to fetch:", e);
+  }
+  // Keep cache null on failure so resolveSlashCommand uses the built-in fallback
+  return [];
+}
+
+/**
+ * Setup slash command autocomplete for chat inputs.
+ * Shows dropdown when user types / and filters as they type.
+ */
+function setupSlashCommandAutocomplete() {
+  const configs = [
+    { inputId: "chat-input", dropdownId: "slash-command-autocomplete" },
+    { inputId: "floating-query-input", dropdownId: "floating-slash-command-autocomplete" },
+  ];
+
+  for (const { inputId, dropdownId } of configs) {
+    const input = document.getElementById(inputId);
+    const dropdown = document.getElementById(dropdownId);
+    if (!input || !dropdown) continue;
+
+    let selectedIndex = 0;
+
+    const hide = () => {
+      dropdown.classList.add("hidden");
+      dropdown.innerHTML = "";
+    };
+
+    const show = (items) => {
+      if (!items.length) {
+        hide();
+        return;
+      }
+      selectedIndex = 0;
+      dropdown.innerHTML = items
+        .map(
+          (item, i) =>
+            `<div class="slash-command-item" data-index="${i}" data-cmd="${item.command}">
+              <span class="cmd-name">/${item.command}</span>
+              <span class="cmd-desc">${item.description || ""}</span>
+            </div>`,
+        )
+        .join("");
+      dropdown.classList.remove("hidden");
+      dropdown.querySelectorAll(".slash-command-item").forEach((el, i) => {
+        el.addEventListener("click", () => {
+          const cmd = el.dataset.cmd;
+          const pre = input.value.startsWith("/") ? "" : "/";
+          const before = input.value.replace(/\/(\w*)$/, "").trimEnd();
+          input.value = before ? `${before} /${cmd} ` : `/${cmd} `;
+          input.focus();
+          hide();
+        });
+      });
+    };
+
+    const update = async () => {
+      const val = input.value;
+      const match = val.match(/^\s*\/(\w*)$/);
+      if (!match) {
+        hide();
+        return;
+      }
+      const prefix = (match[1] || "").toLowerCase();
+      await fetchSlashCommands();
+      const all = _slashCommandsCache || [];
+      const filtered = prefix
+        ? all.filter((c) => c.command.toLowerCase().startsWith(prefix))
+        : all;
+      show(filtered.slice(0, 10));
+      selectedIndex = 0;
+      const items = dropdown.querySelectorAll(".slash-command-item");
+      items.forEach((el, i) => el.classList.toggle("selected", i === 0));
+    };
+
+    input.addEventListener("input", update);
+    input.addEventListener("focus", () => {
+      if (input.value.match(/^\s*\//)) update();
+    });
+    input.addEventListener("blur", () => {
+      setTimeout(hide, 150);
+    });
+
+    dropdown.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        hide();
+        input.focus();
+      }
+    });
+  }
+}
+
 // State
 let currentView = "setup";
 let currentPage = "dashboard"; // Track current page for conversation context
@@ -2365,6 +2544,9 @@ function setupEventListeners() {
       });
     });
 
+  // Slash command autocomplete
+  setupSlashCommandAutocomplete();
+
   // Query input - Enter to send (main chat panel + legacy)
   const chatInput = document.getElementById("chat-input");
   if (chatInput) {
@@ -2920,8 +3102,31 @@ function setupSidebarRibbonHandlers(view) {
       );
 
       console.log(`[Sidebar Ribbon] ${view} -> ${tab}`);
+
+      // Learning view: switch between Curricula and Progress panels
+      if (view === "learning") {
+        switchLearningSidebarPanel(tab);
+      }
     });
   });
+}
+
+/**
+ * Switch Learning left sidebar between Curricula and Progress panels
+ */
+function switchLearningSidebarPanel(tab) {
+  const curriculaPanel = document.getElementById("learning-sidebar-curricula");
+  const progressPanel = document.getElementById("learning-sidebar-progress");
+  if (!curriculaPanel || !progressPanel) return;
+  const showProgress = tab === "progress" || tab === "topics";
+  if (showProgress) {
+    curriculaPanel.classList.add("hidden");
+    progressPanel.classList.remove("hidden");
+    if (typeof lucide !== "undefined") lucide.createIcons();
+  } else {
+    curriculaPanel.classList.remove("hidden");
+    progressPanel.classList.add("hidden");
+  }
 }
 
 /**
@@ -3058,12 +3263,42 @@ function updateLeftSidebar(view) {
       `,
     },
     learning: {
-      title: "My Curricula",
+      title: "Learning",
       content: `
-        <div style="padding: 12px;">
+        <div id="learning-sidebar-curricula" class="learning-sidebar-panel">
           <div id="learning-curricula-list" style="margin-bottom: 12px;">
             <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
               Loading curricula...
+            </div>
+          </div>
+        </div>
+        <div id="learning-sidebar-progress" class="learning-sidebar-panel hidden">
+          <div class="learning-progress-sidebar">
+            <div class="stats-header">
+              <i data-lucide="trending-up" style="width: 20px; height: 20px;"></i>
+              <h3>Learning Progress</h3>
+            </div>
+            <div class="stats-content" id="learning-stats-content">
+              <div class="stat-item">
+                <span class="stat-label">Topics Learned:</span>
+                <span class="stat-value" id="stat-total-topics">0</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Needs Review:</span>
+                <span class="stat-value" id="stat-review-count">0</span>
+              </div>
+              <div class="mastery-breakdown" id="mastery-breakdown">
+                <div class="mastery-label">Mastery Levels:</div>
+                <div class="mastery-bars" id="mastery-bars"></div>
+              </div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-refresh-stats" style="margin-top: 12px; width: 100%;">
+              <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+              Refresh Stats
+            </button>
+            <div class="topics-list" id="topics-list">
+              <h4 class="topics-header">Recent Topics</h4>
+              <div class="topics-content" id="topics-content"></div>
             </div>
           </div>
         </div>
@@ -3149,8 +3384,9 @@ function updateLeftSidebar(view) {
         });
       });
     } else if (view === "learning") {
-      // Load curricula list
+      // Load curricula list and set initial panel visibility
       loadLearningSidebarCurricula();
+      switchLearningSidebarPanel(activeSidebarRibbonTab["learning"] || "curricula");
     } else if (view === "knowledge") {
       const indexObsidianBtn = document.getElementById(
         "sidebar-index-obsidian",
@@ -3505,25 +3741,12 @@ function reattachChatEventListeners() {
     });
   }
 
-  // Send button (main chat panel + legacy)
-  const chatSendBtn = document.getElementById("chat-send");
-  if (chatSendBtn) {
-    chatSendBtn.addEventListener("click", () => sendQuery());
-  }
+  // Send button and Enter key: ONLY attach to sidebar elements (query-input, btn-send).
+  // chat-input and chat-send are in the main chat panel and get listeners from setupEventListeners.
+  // Attaching here would duplicate listeners and cause multiple sends per action.
   const sendBtn = document.getElementById("btn-send");
   if (sendBtn) {
     sendBtn.addEventListener("click", () => sendQuery());
-  }
-
-  // Query input Enter key (main chat panel + legacy)
-  const chatInput = document.getElementById("chat-input");
-  if (chatInput) {
-    chatInput.addEventListener("keydown", async (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        await sendQuery();
-      }
-    });
   }
   const queryInput = document.getElementById("query-input");
   if (queryInput) {
@@ -4637,21 +4860,28 @@ function handleModelChange(e) {
 /**
  * Send query to active persona
  * Returns true if persona handled the request, false otherwise
- * @param {string} [personaName] - Current persona from dropdown; sent so server can activate if needed
+ * @param {string} query - User message
+ * @param {Array} conversationHistory - Conversation history
+ * @param {string} loadingId - Loading message ID
+ * @param {string} [personaName] - Persona from dropdown or slash command
+ * @param {string} [personaMode] - Mode from slash command (e.g. curriculum, socratic)
  */
-async function sendToPersona(query, conversationHistory, loadingId, personaName) {
+async function sendToPersona(query, conversationHistory, loadingId, personaName, personaMode) {
   try {
-    const response = await fetch("http://127.0.0.1:11436/persona/process", {
+    const body = {
+      user_message: query,
+      persona_name: personaName || undefined,
+      metadata: {
+        page: currentPage,
+        conversation_history: conversationHistory,
+      },
+    };
+    if (personaMode) body.persona_mode = personaMode;
+
+    const response = await fetch(`${API_URL}/persona/process`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_message: query,
-        persona_name: personaName || undefined,
-        metadata: {
-          page: currentPage,
-          conversation_history: conversationHistory,
-        },
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -4693,7 +4923,7 @@ async function sendToPersona(query, conversationHistory, loadingId, personaName)
     // Handle actions
     if (personaResponse.actions && personaResponse.actions.length > 0) {
       for (const action of personaResponse.actions) {
-        await handlePersonaAction(action);
+        await handlePersonaAction(action, personaResponse.content);
       }
     }
 
@@ -4714,7 +4944,7 @@ async function sendToPersona(query, conversationHistory, loadingId, personaName)
 /**
  * Handle persona action (show_questions, show_preview, etc.)
  */
-async function handlePersonaAction(action) {
+async function handlePersonaAction(action, responseContent) {
   console.log("[Persona] Handling action:", action.type);
 
   switch (action.type) {
@@ -4905,6 +5135,17 @@ async function handlePersonaAction(action) {
       // Show learning note creation modal
       if (action.data) {
         showLearningNoteModal(action.data);
+      }
+      break;
+
+    case "offer_save_as_note":
+      // Curriculum mode (legacy): offer to save the learning path response as a note
+      if (action.data && responseContent) {
+        const noteTitle = action.data.suggested_title || "Learning Path";
+        const noteDomain = action.data.domain || "general";
+        console.log("[Persona] offer_save_as_note - domain:", noteDomain, "title:", noteTitle);
+
+        showSaveAsNotePrompt(noteTitle, noteDomain, responseContent);
       }
       break;
 
@@ -5150,6 +5391,61 @@ async function sendTemplateSelectionToPersona(templateFilename) {
     console.error("[Persona] Request failed:", error);
     addMessageToUI("assistant", `Error: ${error.message}`);
   }
+}
+
+/**
+ * Show a prompt bar offering to save curriculum/learning path content as a note.
+ * Appended below the last assistant message in the chat.
+ */
+function showSaveAsNotePrompt(title, domain, content) {
+  // Create a save prompt bar that appears after the response
+  const promptBar = document.createElement("div");
+  promptBar.className = "save-note-prompt";
+  promptBar.style.cssText =
+    "display: flex; align-items: center; gap: 10px; padding: 12px 16px; " +
+    "background: var(--bg-secondary); border: 1px solid var(--border-color); " +
+    "border-radius: 8px; margin: 8px 0 16px 0;";
+  promptBar.innerHTML = `
+    <i data-lucide="bookmark" style="width: 18px; height: 18px; color: var(--accent); flex-shrink: 0;"></i>
+    <span style="flex: 1; font-size: 13px; color: var(--text-secondary);">
+      Save <strong>${title}</strong> to <strong>${domain}</strong> domain?
+    </span>
+    <button class="btn btn-primary btn-sm save-note-accept" style="padding: 4px 14px; font-size: 12px;">Save</button>
+    <button class="btn btn-secondary btn-sm save-note-dismiss" style="padding: 4px 10px; font-size: 12px;">Dismiss</button>
+  `;
+
+  // Insert after the last message in the chat
+  const messagesContainer = document.getElementById("messages");
+  if (messagesContainer) {
+    messagesContainer.appendChild(promptBar);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }
+
+  // Initialize icons
+  if (typeof lucide !== "undefined") {
+    lucide.createIcons({ attrs: {}, nameAttr: "data-lucide" });
+  }
+
+  // Handle Save
+  promptBar.querySelector(".save-note-accept").addEventListener("click", async () => {
+    promptBar.remove();
+    try {
+      await saveNoteToKnowledgeBase({
+        title: title,
+        domain: domain,
+        content: content,
+      });
+      showToast(`Saved "${title}" to ${domain}`, "success");
+    } catch (err) {
+      console.error("[Persona] Failed to save note:", err);
+      showToast("Failed to save note: " + err.message, "error");
+    }
+  });
+
+  // Handle Dismiss
+  promptBar.querySelector(".save-note-dismiss").addEventListener("click", () => {
+    promptBar.remove();
+  });
 }
 
 /**
@@ -7939,26 +8235,54 @@ async function regenerateCurriculum() {
 /**
  * Send query
  */
+let _sendQueryInProgress = false;
+
 async function sendQuery() {
-  const chatInput = document.getElementById("chat-input");
-  const queryInput = document.getElementById("query-input");
-  const input = chatInput || queryInput;
-  const query = input?.value.trim();
+  if (_sendQueryInProgress) return;
+  _sendQueryInProgress = true;
 
-  if (!query) return;
+  try {
+    const chatInput = document.getElementById("chat-input");
+    const queryInput = document.getElementById("query-input");
+    const input = chatInput || queryInput;
+    const query = input?.value.trim();
+    if (!query) return;
 
+    await sendQueryCore(query);
+  } finally {
+    _sendQueryInProgress = false;
+  }
+}
+
+async function sendQueryCore(query) {
   console.log("[Send Query] Sending message:", query);
+
+  // Slash command: parse and route directly to persona+mode
+  const parsed = parseSlashCommand(query);
+  if (parsed) {
+    console.log("[SlashCommand] Resolved:", query.slice(0, 30), "->", parsed.persona, ":", parsed.mode, "| message:", parsed.userMessage.slice(0, 60));
+    await fetchSlashCommands(); // populate cache for next time
+    await sendQueryInternal(query, parsed.userMessage, {
+      personaOverride: parsed.persona,
+      modeOverride: parsed.mode,
+    });
+    return;
+  }
 
   // Check for persona intent and handle switch if needed
   await checkAndHandlePersonaSwitch(query, async () => {
-    await sendQueryInternal(query);
+    await sendQueryInternal(query, query, null);
   });
 }
 
+
 /**
  * Internal function to send query after persona check
+ * @param {string} displayQuery - Message to show in UI (user's full input)
+ * @param {string} apiQuery - Message to send to backend (may differ for slash commands)
+ * @param {{ personaOverride?: string, modeOverride?: string }|null} overrides - From slash command
  */
-async function sendQueryInternal(query) {
+async function sendQueryInternal(displayQuery, apiQuery, overrides) {
   // Ensure we have a conversation
   if (!currentConversationId) {
     console.log("No conversation, creating new one...");
@@ -7976,19 +8300,20 @@ async function sendQueryInternal(query) {
   }
 
   // Add user message to UI
-  addMessageToUI("user", query);
+  addMessageToUI("user", displayQuery);
 
   // Add to conversation in database
-  await addMessageToConversation("user", query);
+  await addMessageToConversation("user", displayQuery);
 
   // Add typing indicator
   const loadingId = addTypingIndicator();
 
   try {
-    // Check if persona is active (Phase 16c) - use visible selector first
+    // Persona: from slash command overrides or dropdown
     const chatPersonaSelect = document.getElementById("chat-persona-select");
     const personaSelect = document.getElementById("persona-select");
-    const activePersona = (chatPersonaSelect || personaSelect)?.value || null;
+    const activePersona = overrides?.personaOverride ?? (chatPersonaSelect || personaSelect)?.value ?? null;
+    const activeMode = overrides?.modeOverride ?? null;
 
     // Get conversation history (excluding the message we just added - it will be included in the query)
     const messages = getCurrentConversationMessages();
@@ -8005,13 +8330,30 @@ async function sendQueryInternal(query) {
       "messages",
     );
 
-    // Route through persona if active
+    // Route through persona if active (or from slash command)
     if (activePersona) {
-      const result = await sendToPersona(query, conversationHistory, loadingId, activePersona);
+      const result = await sendToPersona(apiQuery, conversationHistory, loadingId, activePersona, activeMode);
       if (result) {
+        // Sync persona selector when invoked via slash command
+        if (overrides?.personaOverride) {
+          const sel = document.getElementById("chat-persona-select") || document.getElementById("persona-select");
+          if (sel && sel.value !== activePersona) {
+            sel.value = activePersona;
+            sel.dispatchEvent(new Event("change"));
+          }
+        }
         return; // Persona handled the request
       }
-      // If persona failed, fall through to normal query
+      // If persona failed and this was a slash command, show error instead of falling through
+      if (overrides?.personaOverride) {
+        removeMessage(loadingId);
+        addMessageToUI(
+          "system",
+          "The persona request failed. Make sure the Polly server is running and the persona system is enabled (Router v2).",
+        );
+        return;
+      }
+      // Non-slash persona request failed — fall through to normal query
     }
 
     // Get router v2 settings from model selector (stored in sessionStorage)
@@ -8033,7 +8375,7 @@ async function sendQueryInternal(query) {
       queryOptions.mental_models_override = mentalModelsOverride.modelIds;
     }
 
-    const result = await window.polly.query(query, queryOptions);
+    const result = await window.polly.query(apiQuery, queryOptions);
 
     // Remove loading and add response
     removeMessage(loadingId);
@@ -14561,12 +14903,14 @@ function syncFloatingChatControls() {
       personaSelect.dispatchEvent(new Event("change"));
 
       // Enable/disable mode selector
-      if (floatingPersonaSelect.value) {
-        floatingModeSelect.disabled = false;
-      } else {
-        floatingModeSelect.disabled = true;
-        floatingModeSelect.innerHTML =
-          '<option value="">Select persona first</option>';
+      if (floatingModeSelect) {
+        if (floatingPersonaSelect.value) {
+          floatingModeSelect.disabled = false;
+        } else {
+          floatingModeSelect.disabled = true;
+          floatingModeSelect.innerHTML =
+            '<option value="">Select persona first</option>';
+        }
       }
     });
     personaSelect.addEventListener("change", () => {
@@ -14743,23 +15087,47 @@ function setupFloatingChatShortcuts() {
  * Send message from floating chat
  */
 async function sendFloatingMessage() {
-  const floatingTextarea = document.getElementById("floating-query-input");
-  const query = floatingTextarea?.value.trim();
+  if (_sendQueryInProgress) return;
+  _sendQueryInProgress = true;
 
-  if (!query) return;
+  try {
+    const floatingTextarea = document.getElementById("floating-query-input");
+    const query = floatingTextarea?.value.trim();
+    if (!query) return;
 
+    await sendFloatingMessageCore(query);
+  } finally {
+    _sendQueryInProgress = false;
+  }
+}
+
+async function sendFloatingMessageCore(query) {
   console.log("[Floating Chat] Sending message:", query);
+
+  // Slash command: parse and route directly to persona+mode
+  const parsed = parseSlashCommand(query);
+  if (parsed) {
+    await fetchSlashCommands();
+    await sendFloatingMessageInternal(query, parsed.userMessage, {
+      personaOverride: parsed.persona,
+      modeOverride: parsed.mode,
+    });
+    return;
+  }
 
   // Check for persona intent and handle switch if needed
   await checkAndHandlePersonaSwitch(query, async () => {
-    await sendFloatingMessageInternal(query);
+    await sendFloatingMessageInternal(query, query, null);
   });
 }
 
 /**
  * Internal function to send message after persona check
+ * @param {string} displayQuery - Message to show in UI
+ * @param {string} apiQuery - Message to send to backend
+ * @param {{ personaOverride?: string, modeOverride?: string }|null} overrides - From slash command
  */
-async function sendFloatingMessageInternal(query) {
+async function sendFloatingMessageInternal(displayQuery, apiQuery, overrides) {
   // Ensure we have a conversation
   if (!currentConversationId) {
     console.log("[Floating Chat] No conversation, creating new one...");
@@ -14774,18 +15142,19 @@ async function sendFloatingMessageInternal(query) {
   }
 
   // Add user message to sidebar (NOT overlay)
-  addMessageToUI("user", query);
+  addMessageToUI("user", displayQuery);
 
   // Add to conversation in database
-  await addMessageToConversation("user", query);
+  await addMessageToConversation("user", displayQuery);
 
   // Show typing indicator in sidebar
   const loadingId = addTypingIndicator();
 
   try {
-    // Check if persona is active
+    // Persona: from slash command overrides or dropdown
     const personaSelect = document.getElementById("floating-persona-select");
-    const activePersona = personaSelect ? personaSelect.value : null;
+    const activePersona = overrides?.personaOverride ?? (personaSelect ? personaSelect.value : null);
+    const activeMode = overrides?.modeOverride ?? null;
 
     // Get conversation history
     const messages = getCurrentConversationMessages();
@@ -14800,16 +15169,32 @@ async function sendFloatingMessageInternal(query) {
       "messages of history",
     );
 
-    // Route through persona if active
+    // Route through persona if active (or from slash command)
     if (activePersona) {
       const result = await sendToPersona(
-        query,
+        apiQuery,
         conversationHistory,
         loadingId,
         activePersona,
+        activeMode,
       );
       if (result) {
+        if (overrides?.personaOverride) {
+          const sel = document.getElementById("floating-persona-select");
+          if (sel && sel.value !== activePersona) {
+            sel.value = activePersona;
+            sel.dispatchEvent(new Event("change"));
+          }
+        }
         return; // Persona handled the request
+      }
+      if (overrides?.personaOverride) {
+        removeMessage(loadingId);
+        addMessageToUI(
+          "system",
+          "The persona request failed. Make sure the Polly server is running and the persona system is enabled (Router v2).",
+        );
+        return;
       }
     }
 
@@ -14832,7 +15217,7 @@ async function sendFloatingMessageInternal(query) {
       queryOptions.mental_models_override = mentalModelsOverride.modelIds;
     }
 
-    const result = await window.polly.query(query, queryOptions);
+    const result = await window.polly.query(apiQuery, queryOptions);
 
     // Remove loading indicator
     removeMessage(loadingId);

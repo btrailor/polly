@@ -2040,44 +2040,7 @@
         <!-- Learning View -->
         <div class="view hidden" id="view-learning">
           <div class="learning-container">
-            <!-- Left Sidebar: Stats & Topics -->
-            <div class="learning-sidebar" id="learning-sidebar">
-              <div class="stats-header">
-                <i data-lucide="graduation-cap" style="width: 20px; height: 20px;"></i>
-                <h3>Learning Progress</h3>
-              </div>
-              
-              <div class="stats-content" id="learning-stats-content">
-                <div class="stat-item">
-                  <span class="stat-label">Topics Learned:</span>
-                  <span class="stat-value" id="stat-total-topics">0</span>
-                </div>
-                <div class="stat-item">
-                  <span class="stat-label">Needs Review:</span>
-                  <span class="stat-value" id="stat-review-count">0</span>
-                </div>
-                <div class="mastery-breakdown" id="mastery-breakdown">
-                  <div class="mastery-label">Mastery Levels:</div>
-                  <div class="mastery-bars" id="mastery-bars">
-                    <!-- Dynamically populated -->
-                  </div>
-                </div>
-              </div>
-              
-              <button class="btn btn-secondary btn-sm" id="btn-refresh-stats" style="margin-top: 12px; width: 100%;">
-                <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
-                Refresh Stats
-              </button>
-              
-              <div class="topics-list" id="topics-list">
-                <h4 class="topics-header">Recent Topics</h4>
-                <div class="topics-content" id="topics-content">
-                  <!-- Dynamically populated with topic cards -->
-                </div>
-              </div>
-            </div>
-
-            <!-- Main Content Area: Dashboard or Active Session -->
+            <!-- Main Content Area: Curriculum, Dashboard or Active Session -->
             <div class="learning-main-content" id="learning-main-content">
               <!-- Dashboard View (shown by default) -->
               <div class="learning-dashboard" id="learning-dashboard">
@@ -2202,7 +2165,10 @@
                     <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>
                   </button>
                 </div>
-                <textarea class="chat-input" id="chat-input" placeholder="Ask Polly anything... (use @domain, @note, @folder to add context)" rows="2"></textarea>
+                <div class="chat-input-wrap" style="position: relative; flex: 1;">
+                  <textarea class="chat-input" id="chat-input" placeholder="Ask anything... or /teach, /learning-path, /save for modes" rows="2"></textarea>
+                  <div id="slash-command-autocomplete" class="slash-command-autocomplete hidden"></div>
+                </div>
                 <button class="send-button" id="chat-send">
                   <i data-lucide="send"></i>
                 </button>
@@ -2897,13 +2863,14 @@
       </div>
       
       <!-- Normal text input mode -->
-      <div class="floating-chat-input" id="floating-chat-normal-input">
+      <div class="floating-chat-input" id="floating-chat-normal-input" style="position: relative; flex: 1;">
         <textarea 
           id="floating-query-input" 
           class="floating-textarea"
-          placeholder="Ask Polly anything... (use @domain, @note, @folder to add context)"
+          placeholder="Ask anything... or /teach, /learning-path, /save for modes"
           rows="2"
         ></textarea>
+        <div id="floating-slash-command-autocomplete" class="slash-command-autocomplete hidden"></div>
       </div>
       
       <!-- Structured input mode (hidden by default) -->

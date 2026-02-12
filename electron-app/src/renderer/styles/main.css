@@ -806,6 +806,62 @@ body {
   border-color: var(--accent-primary);
 }
 
+.chat-input-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.slash-command-autocomplete {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+.slash-command-autocomplete.hidden {
+  display: none !important;
+}
+
+.slash-command-item {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  transition: background 0.15s;
+}
+
+.slash-command-item:last-child {
+  border-bottom: none;
+}
+
+.slash-command-item:hover,
+.slash-command-item.selected {
+  background: var(--bg-hover);
+}
+
+.slash-command-item .cmd-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-primary);
+}
+
+.slash-command-item .cmd-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
 .send-button {
   align-self: flex-end;
   padding: 8px 16px;
@@ -5557,17 +5613,153 @@ body {
 
 /* ==================== Learning Page Styles (Phase 22) ==================== */
 
-/* Learning Container */
+/* Learning Container - full width for curriculum/dashboard */
 .learning-container {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 20px;
+  display: flex;
+  flex-direction: column;
   height: 100%;
   padding: 20px;
   overflow: hidden;
 }
 
-/* Learning Sidebar */
+/* Learning sidebar panels (in left sidebar) */
+.learning-sidebar-panel.hidden {
+  display: none !important;
+}
+
+.learning-progress-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 8px;
+}
+
+.learning-progress-sidebar .stats-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.learning-progress-sidebar .stats-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.learning-progress-sidebar .stats-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.learning-progress-sidebar .stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.learning-progress-sidebar .stat-label {
+  font-size: 12px;
+  color: #a0a0a0;
+}
+
+.learning-progress-sidebar .stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #00d9ff;
+}
+
+.learning-progress-sidebar .mastery-breakdown {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #2a2a2a;
+}
+
+.learning-progress-sidebar .mastery-label {
+  font-size: 12px;
+  color: #a0a0a0;
+  margin-bottom: 8px;
+}
+
+.learning-progress-sidebar .mastery-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.learning-progress-sidebar .mastery-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.learning-progress-sidebar .mastery-bar-label {
+  width: 70px;
+  color: #a0a0a0;
+  font-size: 10px;
+}
+
+.learning-progress-sidebar .mastery-bar-fill {
+  flex: 1;
+  height: 5px;
+  background: #2a2a2a;
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.learning-progress-sidebar .mastery-bar-progress {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.learning-progress-sidebar .mastery-bar-progress.mastery-1 {
+  background: linear-gradient(90deg, #ff6b6b, #ff4444);
+}
+
+.learning-progress-sidebar .mastery-bar-progress.mastery-2 {
+  background: linear-gradient(90deg, #ffa500, #ff8c00);
+}
+
+.learning-progress-sidebar .mastery-bar-progress.mastery-3 {
+  background: linear-gradient(90deg, #ffd700, #ffb700);
+}
+
+.learning-progress-sidebar .mastery-bar-progress.mastery-4 {
+  background: linear-gradient(90deg, #00d9ff, #0099ff);
+}
+
+.learning-progress-sidebar .mastery-bar-progress.mastery-5 {
+  background: linear-gradient(90deg, #00ff88, #00cc66);
+}
+
+.learning-progress-sidebar .mastery-bar-count {
+  min-width: 18px;
+  text-align: right;
+  color: #e0e0e0;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.learning-progress-sidebar .topics-list {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #2a2a2a;
+}
+
+.learning-progress-sidebar .topics-header {
+  font-size: 12px;
+  margin: 0 0 8px 0;
+}
+
+/* Legacy Learning Sidebar (kept for any remaining refs) */
 .learning-sidebar {
   background: #1a1a1a;
   border: 1px solid #2a2a2a;
@@ -5769,11 +5961,12 @@ body {
 
 /* Learning Main Content */
 .learning-main-content {
+  flex: 1;
+  min-height: 0;
   background: #1a1a1a;
   border: 1px solid #2a2a2a;
   border-radius: 8px;
   overflow-y: auto;
-  height: 100%;
 }
 
 /* Learning Dashboard */
@@ -5879,23 +6072,7 @@ body {
 }
 
 /* Responsive Design */
-@media (max-width: 1024px) {
-  .learning-container {
-    grid-template-columns: 250px 1fr;
-    gap: 16px;
-  }
-}
-
 @media (max-width: 768px) {
-  .learning-container {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-  }
-  
-  .learning-sidebar {
-    max-height: 300px;
-  }
-  
   .learning-sections {
     grid-template-columns: 1fr;
   }
