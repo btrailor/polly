@@ -222,7 +222,11 @@ class NotesIndex:
         # Parse YAML
         frontmatter_text = '\n'.join(lines[1:end_idx])
         try:
-            return yaml.safe_load(frontmatter_text) or {}
+            # Sanitize Obsidian Templater expressions (<%...%>) before YAML parsing.
+            # Unresolved templates like [[<% tp.date.now("YYYY-[W]ww") %>]] contain
+            # brackets that PyYAML misinterprets as flow sequences.
+            sanitized = re.sub(r'<%.*?%>', '', frontmatter_text)
+            return yaml.safe_load(sanitized) or {}
         except yaml.YAMLError as e:
             logger.warning(f"Failed to parse frontmatter: {e}")
             return None
