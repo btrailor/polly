@@ -887,11 +887,17 @@ async function switchToAgent(agentId) {
   const agent = getAgentById(agentId);
   if (agent && agent.persona_name) {
     try {
-      await fetch(API_URL + "/persona/activate", {
+      const activateResponse = await fetch(API_URL + "/persona/activate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ persona_name: agent.persona_name }),
       });
+      const activateData = await activateResponse.json();
+      if (activateData.success && activateData.state && activateData.state.introduction) {
+        const formattedIntro = formatResponse(activateData.state.introduction);
+        addMessageToUI("assistant", formattedIntro);
+        await addMessageToConversation("assistant", activateData.state.introduction);
+      }
     } catch (e) {
       console.warn("Persona activate failed:", e);
     }
@@ -4601,6 +4607,13 @@ async function handlePersonaChange(e) {
 
         // Update teaching mode indicator
         updateTeachingModeIndicator(personaName, data.state.current_mode);
+
+        // Display persona introduction if present
+        if (data.state.introduction) {
+          const formattedIntro = formatResponse(data.state.introduction);
+          addMessageToUI("assistant", formattedIntro);
+          await addMessageToConversation("assistant", data.state.introduction);
+        }
       } else {
         console.error("[Persona] No modes found!", {
           hasPersona: !!persona,
