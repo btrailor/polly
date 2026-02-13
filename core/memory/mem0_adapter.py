@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from pathlib import Path
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,11 @@ class Mem0Adapter:
             Configuration dict for Memory.from_config()
         """
         mem0_config = self.config.get('memory', {}).get('mem0', {})
+        models_config = self.config.get('models', {})
+        
+        # Get embedding model from config
+        embedding_model = models_config.get('local', {}).get('embedding_model', 'nomic-embed-text')
+        ollama_host = models_config.get('local', {}).get('host', 'http://localhost:11434')
         
         # Vector store configuration (ChromaDB)
         vector_store_provider = mem0_config.get('vector_store', 'chroma')
@@ -108,8 +114,15 @@ class Mem0Adapter:
                 "provider": vector_store_provider,
                 "config": {
                     "collection_name": collections.get('knowledge', 'polly_mem0_memories'),
-                    "path": str(Path.home() / ".polly" / "chroma_mem0"),
-                    "embedding_model_dims": 1536  # Default OpenAI dimension
+                    "path": str(Path.home() / ".polly" / "chroma_mem0")
+                }
+            },
+            "embedder": {
+                "provider": "openai",
+                "config": {
+                    "model": embedding_model,
+                    "openai_base_url": f"{ollama_host}/v1",
+                    "api_key": "ollama"  # Dummy key; Ollama doesn't validate but OpenAI client requires one
                 }
             }
         }
@@ -123,11 +136,15 @@ class Mem0Adapter:
         # Optional LLM configuration (use LiteLLM if available)
         llm_provider = mem0_config.get('llm', 'litellm')
         if llm_provider == 'litellm':
-            # Mem0 can use LiteLLM for entity extraction
+            # Get fast model from config for entity extraction
+            fast_model = models_config.get('local', {}).get('chat_models', {}).get('fast', 'llama3.2:3b')
+            # Ensure LiteLLM can find Ollama for ollama/ prefixed models
+            os.environ.setdefault("OLLAMA_API_BASE", ollama_host)
+            # Mem0 can use LiteLLM for entity extraction with local Ollama model
             mem_config["llm"] = {
                 "provider": "litellm",
                 "config": {
-                    "model": "gpt-4o-mini",  # Fast model for entity extraction
+                    "model": f"ollama/{fast_model}",  # Use local model via LiteLLM
                     "temperature": 0.0
                 }
             }
