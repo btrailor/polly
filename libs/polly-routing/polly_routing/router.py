@@ -1,38 +1,99 @@
 """
-IntelligentRouterV2 - Multi-Provider Intelligent Routing.
+IntelligentRouterV2 - Multi-Provider Intelligent Routing
+
+Routes queries across multiple cloud providers (Anthropic, OpenAI, GitHub Copilot,
+Grok, Perplexity, Gemini, Mistral) using a three-tier system: Fast, Balanced, and Thorough.
+
+Features:
+- Task complexity classification
+- Budget-aware provider selection
+- Automatic fallback chains
+- Cost estimation and tracking
+- Provider health monitoring
 """
 
+from dataclasses import dataclass
+from enum import Enum
 from typing import List, Dict, Optional, Any
 import asyncio
 import logging
 import re
 from datetime import datetime
 
-from .models import ConfidenceLevel, TaskType, RoutingDecision, TierConfig
-from .providers.base import (
+from polly_routing.providers.base import (
     ProviderAdapter,
     CompletionResponse,
     ProviderError,
     ProviderRateLimitError,
-    AllProvidersFailed,
+    AllProvidersFailed
 )
-from .providers.litellm import LiteLLMAdapter
 
 logger = logging.getLogger(__name__)
 
 
-class IntelligentRouterV2:
-    """Intelligent multi-provider routing. Routes to provider/model by complexity, confidence, and budget."""
+class ConfidenceLevel(Enum):
+    """User confidence/quality preference."""
+    FAST = "fast"           # Speed over quality, low cost
+    BALANCED = "balanced"   # Balance speed, quality, cost
+    THOROUGH = "thorough"   # Quality over speed, higher cost
 
+
+class TaskType(Enum):
+    """Types of tasks for complexity classification."""
+    SIMPLE_QUERY = "simple_query"           # Basic questions, lookups
+    CODE_COMPLETION = "code_completion"     # Autocomplete, simple edits
+    CODE_GENERATION = "code_generation"     # Write new functions
+    CODE_REVIEW = "code_review"             # Review existing code
+    MULTI_FILE = "multi_file"               # Cross-file analysis
+    REFACTORING = "refactoring"             # Complex code changes
+    ARCHITECTURAL = "architectural"         # Design decisions
+    CREATIVE = "creative"                   # Novel solutions
+    DEBUGGING = "debugging"                 # Find and fix bugs
+    DOCUMENTATION = "documentation"         # Write docs, comments
+
+
+@dataclass
+class RoutingDecision:
+    """Result of routing logic."""
+    provider: ProviderAdapter
+    model: str
+    confidence: ConfidenceLevel
+    complexity_score: int  # 1-10
+    estimated_cost: float
+    reason: str
+    fallback_chain: List[tuple[ProviderAdapter, str]]  # List of (provider, model)
+
+
+@dataclass
+class TierConfig:
+    """Configuration for a routing tier."""
+    name: str
+    max_cost_per_request: float
+    providers: List[tuple[str, str, int]]  # (provider_name, model, priority)
+
+
+class IntelligentRouterV2:
+    """
+    Intelligent multi-provider routing system.
+    
+    Routes queries to the most appropriate model based on:
+    - Task complexity (classified 1-10)
+    - User confidence preference (fast/balanced/thorough)
+    - Budget constraints
+    - Provider availability
+    - Context size requirements
+    """
+
+    # Default tier configurations
     DEFAULT_TIERS = {
         ConfidenceLevel.FAST: TierConfig(
             name="fast",
             max_cost_per_request=0.01,
             providers=[
-                ("github", "openai/gpt-4o-mini", 1),
-                ("gemini", "gemini-1.5-flash-8b", 2),
-                ("mistral", "mistral-small-latest", 3),
-                ("perplexity", "llama-3.1-sonar-small-128k-online", 4),
+                ("github", "openai/gpt-4o-mini", 1),  # Fastest, cheapest
+                ("gemini", "gemini-1.5-flash-8b", 2),  # Google's fastest model
+                ("mistral", "mistral-small-latest", 3),  # Mistral small
+                ("perplexity", "llama-3.1-sonar-small-128k-online", 4),  # Perplexity small
                 ("anthropic", "claude-3-haiku-20240307", 5),
                 ("openai", "gpt-3.5-turbo", 6),
             ]
@@ -41,11 +102,11 @@ class IntelligentRouterV2:
             name="balanced",
             max_cost_per_request=0.10,
             providers=[
-                ("github", "openai/gpt-4o", 1),
-                ("gemini", "gemini-1.5-flash", 2),
+                ("github", "openai/gpt-4o", 1),  # Good balance
+                ("gemini", "gemini-1.5-flash", 2),  # Google balanced
                 ("anthropic", "claude-sonnet-4-20250514", 3),
-                ("mistral", "mistral-medium-latest", 4),
-                ("perplexity", "llama-3.1-sonar-large-128k-online", 5),
+                ("mistral", "mistral-medium-latest", 4),  # Mistral medium
+                ("perplexity", "llama-3.1-sonar-large-128k-online", 5),  # Perplexity large
                 ("openai", "gpt-4-turbo", 6),
             ]
         ),
@@ -53,18 +114,20 @@ class IntelligentRouterV2:
             name="thorough",
             max_cost_per_request=1.00,
             providers=[
-                ("github", "openai/gpt-4o", 1),
-                ("anthropic", "claude-opus-4-20250514", 2),
-                ("openai", "gpt-4o", 3),
-                ("gemini", "gemini-1.5-pro", 4),
-                ("mistral", "mistral-large-latest", 5),
-                ("grok", "grok-2-1212", 6),
-                ("perplexity", "llama-3.1-sonar-huge-128k-online", 7),
+                ("github", "openai/gpt-4o", 1),  # GPT-4o via GitHub (free, reliable)
+                ("anthropic", "claude-opus-4-20250514", 2),  # Claude Opus (highest quality)
+                ("openai", "gpt-4o", 3),  # GPT-4o direct (if GitHub fails)
+                ("gemini", "gemini-1.5-pro", 4),  # Google Pro model
+                ("mistral", "mistral-large-latest", 5),  # Mistral large
+                ("grok", "grok-2-1212", 6),  # Grok latest
+                ("perplexity", "llama-3.1-sonar-huge-128k-online", 7),  # Perplexity huge
             ]
         )
     }
 
+    # Patterns for task complexity classification
     COMPLEXITY_INDICATORS = {
+        # High complexity (7-10)
         'high': [
             r'architect|design system|refactor entire',
             r'multi-file|across files|whole codebase',
@@ -72,6 +135,7 @@ class IntelligentRouterV2:
             r'optimize|performance|scalability',
             r'review all|analyze entire|comprehensive',
         ],
+        # Medium complexity (4-6)
         'medium': [
             r'implement|create|build',
             r'review|analyze|explain',
@@ -79,6 +143,7 @@ class IntelligentRouterV2:
             r'refactor|improve|enhance',
             r'integrate|connect|combine',
         ],
+        # Low complexity (1-3)
         'low': [
             r'what is|define|explain simple',
             r'quick|simple|basic',
@@ -92,49 +157,92 @@ class IntelligentRouterV2:
         self,
         providers: Optional[Dict[str, ProviderAdapter]] = None,
         tier_configs: Optional[Dict[ConfidenceLevel, TierConfig]] = None,
-        budget_manager: Optional[Any] = None,
-        use_litellm: bool = False,
+        budget_manager: Optional[Any] = None,  # BudgetManager instance
+        use_litellm: bool = False,  # Use unified LiteLLM adapter
         litellm_config_path: str = "config/litellm_config.yaml",
-        api_keys: Optional[Dict[str, str]] = None,
+        api_keys: Optional[Dict[str, str]] = None,  # API keys for LiteLLM mode
     ):
+        """
+        Initialize the router.
+        
+        Args:
+            providers: Dict mapping provider names to ProviderAdapter instances.
+                      When use_litellm=False, these are used directly.
+                      When use_litellm=True, this is ignored and LiteLLM adapter is created.
+            tier_configs: Custom tier configurations (defaults to DEFAULT_TIERS)
+            budget_manager: BudgetManager instance for cost tracking
+            use_litellm: Use unified LiteLLM adapter instead of individual providers
+            litellm_config_path: Path to litellm_config.yaml (for LiteLLM mode)
+            api_keys: Dict of provider API keys for LiteLLM mode
+                     Keys: provider names (anthropic, openai, github, etc.)
+                     Values: API keys
+        """
         self.tier_configs = tier_configs or self.DEFAULT_TIERS
         self.budget_manager = budget_manager
         self.use_litellm = use_litellm
-        self.providers: Dict[str, ProviderAdapter] = {}
 
-        if providers is not None:
-            self.providers = dict(providers)
-        elif use_litellm:
+        # Initialize providers
+        self.providers: Dict[str, ProviderAdapter] = {}
+        
+        if use_litellm:
+            # Use unified LiteLLM adapter
             try:
+                from polly_routing.providers.litellm import LiteLLMAdapter
+                
+                # Initialize unified adapter with provided API keys
                 self.providers['litellm'] = LiteLLMAdapter(
                     config_path=litellm_config_path,
-                    api_keys=api_keys or None
+                    api_keys=api_keys
                 )
                 logger.info("Initialized unified LiteLLM adapter")
+                
             except Exception as e:
                 logger.error(f"Failed to initialize LiteLLM adapter: {e}")
+                logger.warning("Falling back to provided providers")
+                use_litellm = False
                 self.use_litellm = False
+        
+        if not use_litellm:
+            # Use provided provider adapters
+            if providers:
+                self.providers = dict(providers)
+                for name in providers:
+                    logger.info(f"Initialized {name} provider")
+            else:
+                logger.warning("No providers configured and LiteLLM not enabled")
 
+        # Provider health tracking
         self._provider_failures: Dict[str, int] = {name: 0 for name in self.providers}
         self._provider_last_success: Dict[str, datetime] = {}
+        # Pattern-informed routing (integration-contracts): patterns set via apply_patterns or passed to route()
         self._routing_patterns: Optional[List[Any]] = None
-        self.config: Dict[str, Any] = {}
 
     def apply_patterns(self, patterns: List[Any], context: Dict[str, Any]) -> None:
         """Apply ROUTING_OUTCOME patterns for next route() (PatternConsumer protocol)."""
         self._routing_patterns = list(patterns) if patterns else None
 
     async def validate_providers(self) -> Dict[str, bool]:
+        """
+        Validate all configured providers.
+        
+        Returns:
+            Dict mapping provider name to availability status
+        """
         status = {}
+        
         for name, provider in self.providers.items():
             try:
                 is_valid = await provider.validate_credentials()
                 status[name] = is_valid
                 if is_valid:
+                    logger.info(f"Provider {name} validated successfully")
                     self._provider_last_success[name] = datetime.now()
+                else:
+                    logger.warning(f"Provider {name} credentials invalid")
             except Exception as e:
                 logger.error(f"Provider {name} validation failed: {e}")
                 status[name] = False
+        
         return status
 
     async def route(
@@ -145,21 +253,50 @@ class IntelligentRouterV2:
         max_tokens: int = 2000,
         patterns: Optional[List[Any]] = None,
     ) -> RoutingDecision:
+        """
+        Route a request to the most appropriate provider and model.
+        
+        Args:
+            messages: Chat messages (OpenAI format)
+            task_type: Type of task (for complexity hints)
+            confidence: User's confidence/quality preference
+            max_tokens: Maximum tokens to generate
+            patterns: Optional ROUTING_OUTCOME patterns to hint model preference (integration-contracts)
+        
+        Returns:
+            RoutingDecision with selected provider, model, and reasoning
+        
+        Raises:
+            AllProvidersFailed: If all providers are unavailable
+        """
+        # Use passed patterns or those set by apply_patterns (PatternConsumer)
         patterns = patterns if patterns is not None else self._routing_patterns
+        # Classify complexity
         user_query = self._extract_user_query(messages)
         complexity = self._classify_complexity(user_query, task_type)
+        
+        # Get tier configuration
         tier_config = self.tier_configs[confidence]
+        
+        # Get candidates from tier
         candidates = self._get_tier_candidates(tier_config)
+        
         if not candidates:
             raise AllProvidersFailed("No providers available")
+        
+        # Filter by budget if budget manager available
         if self.budget_manager:
             candidates = await self._filter_by_budget(candidates, max_tokens)
+        
         if not candidates:
+            # Budget exceeded - try fast tier as fallback
             logger.warning("Budget constraints - falling back to fast tier")
             fast_config = self.tier_configs[ConfidenceLevel.FAST]
             candidates = self._get_tier_candidates(fast_config)
             if not candidates:
                 raise AllProvidersFailed("No providers available within budget")
+        
+        # Pattern-informed hint: boost a candidate that matches learned ROUTING_OUTCOME (integration-contracts)
         if patterns:
             for p in patterns:
                 pt = getattr(p, "pattern_type", None)
@@ -177,12 +314,26 @@ class IntelligentRouterV2:
                         candidates.insert(0, candidates.pop(i))
                         logger.info(f"Pattern-informed routing: boosted {preferred}")
                         break
-                break
+                break  # use only first matching pattern
+
+        # Select primary provider (first available candidate)
         provider, model, priority = candidates[0]
-        estimated_cost = provider.estimate_cost(tokens=max_tokens, model=model)
+        
+        # Estimate cost
+        estimated_cost = provider.estimate_cost(
+            tokens=max_tokens,
+            model=model
+        )
+        
+        # Build fallback chain (remaining candidates)
         fallback_chain = [(p, m) for p, m, _ in candidates[1:]]
-        reason = self._explain_routing(confidence, complexity, provider, model, estimated_cost)
-        return RoutingDecision(
+        
+        # Create routing decision
+        reason = self._explain_routing(
+            confidence, complexity, provider, model, estimated_cost
+        )
+        
+        decision = RoutingDecision(
             provider=provider,
             model=model,
             confidence=confidence,
@@ -191,6 +342,9 @@ class IntelligentRouterV2:
             reason=reason,
             fallback_chain=fallback_chain
         )
+        
+        logger.info(f"Routing: {reason}")
+        return decision
 
     async def complete_with_fallback(
         self,
@@ -201,7 +355,27 @@ class IntelligentRouterV2:
         temperature: float = 0.7,
         **kwargs
     ) -> CompletionResponse:
+        """
+        Complete a request with automatic fallback on failure.
+        
+        Args:
+            messages: Chat messages
+            task_type: Task type hint
+            confidence: Quality preference
+            max_tokens: Max tokens to generate
+            temperature: Sampling temperature
+            **kwargs: Additional provider-specific parameters
+        
+        Returns:
+            CompletionResponse from successful provider
+        
+        Raises:
+            AllProvidersFailed: If all providers fail
+        """
+        # Get routing decision
         decision = await self.route(messages, task_type, confidence, max_tokens)
+        
+        # Try primary provider
         try:
             response = await decision.provider.complete(
                 messages=messages,
@@ -210,9 +384,13 @@ class IntelligentRouterV2:
                 temperature=temperature,
                 **kwargs
             )
+            
+            # Record success
             provider_name = self._get_provider_name(decision.provider)
             self._provider_failures[provider_name] = 0
             self._provider_last_success[provider_name] = datetime.now()
+            
+            # Track usage if budget manager available
             if self.budget_manager:
                 await self.budget_manager.record_usage(
                     provider=provider_name,
@@ -221,25 +399,52 @@ class IntelligentRouterV2:
                     tokens_out=response.tokens_out,
                     cost=response.cost
                 )
+            
+            logger.info(
+                f"Completion successful: {provider_name}/{response.model} "
+                f"(in={response.tokens_in}, out={response.tokens_out}, cost=${response.cost:.4f})"
+            )
+            
             return response
-        except ProviderRateLimitError:
-            return await self._try_fallback_chain(decision.fallback_chain, messages, max_tokens, temperature, **kwargs)
+        
+        except ProviderRateLimitError as e:
+            logger.warning(f"Rate limit hit: {e}")
+            # Try fallback chain
+            return await self._try_fallback_chain(
+                decision.fallback_chain,
+                messages,
+                max_tokens,
+                temperature,
+                **kwargs
+            )
+        
         except ProviderError as e:
+            logger.error(f"Provider error: {e}")
             provider_name = self._get_provider_name(decision.provider)
             self._provider_failures[provider_name] += 1
-            return await self._try_fallback_chain(decision.fallback_chain, messages, max_tokens, temperature, **kwargs)
+            
+            # Try fallback chain
+            return await self._try_fallback_chain(
+                decision.fallback_chain,
+                messages,
+                max_tokens,
+                temperature,
+                **kwargs
+            )
 
     async def _try_fallback_chain(
         self,
-        fallback_chain: List[tuple],
+        fallback_chain: List[tuple[ProviderAdapter, str]],
         messages: List[Dict[str, str]],
         max_tokens: int,
         temperature: float,
         **kwargs
     ) -> CompletionResponse:
-        failures = []
+        """Try providers in fallback chain."""
         for provider, model in fallback_chain:
             try:
+                logger.info(f"Trying fallback: {self._get_provider_name(provider)}/{model}")
+                
                 response = await provider.complete(
                     messages=messages,
                     model=model,
@@ -247,9 +452,13 @@ class IntelligentRouterV2:
                     temperature=temperature,
                     **kwargs
                 )
+                
+                # Record success
                 provider_name = self._get_provider_name(provider)
                 self._provider_failures[provider_name] = 0
                 self._provider_last_success[provider_name] = datetime.now()
+                
+                # Track usage
                 if self.budget_manager:
                     await self.budget_manager.record_usage(
                         provider=provider_name,
@@ -258,55 +467,101 @@ class IntelligentRouterV2:
                         tokens_out=response.tokens_out,
                         cost=response.cost
                     )
+                
+                logger.info(f"Fallback successful: {provider_name}/{model}")
                 return response
+            
             except ProviderError as e:
+                logger.warning(f"Fallback failed: {e}")
                 provider_name = self._get_provider_name(provider)
                 self._provider_failures[provider_name] += 1
-                reason = str(e).strip() or type(e).__name__
-                failures.append((provider_name, model, reason))
-                logger.warning("Provider %s (%s) failed: %s", provider_name, model, reason)
                 continue
-        msg = "All providers in fallback chain failed"
-        if failures:
-            details = "; ".join(f"{p} ({m}): {r}" for p, m, r in failures)
-            msg = f"{msg}: {details}"
-            logger.error("All providers failed. Details: %s", details)
-        raise AllProvidersFailed(msg, failures=failures)
+        
+        # All providers failed
+        raise AllProvidersFailed("All providers in fallback chain failed")
 
     def _extract_user_query(self, messages: List[Dict[str, str]]) -> str:
+        """Extract the latest user query from messages."""
         for msg in reversed(messages):
             if msg.get('role') == 'user':
                 return msg.get('content', '')
         return ''
 
-    def _classify_complexity(self, query: str, task_type: Optional[TaskType] = None) -> int:
-        score = 5
+    def _classify_complexity(
+        self,
+        query: str,
+        task_type: Optional[TaskType] = None
+    ) -> int:
+        """
+        Classify query complexity on scale of 1-10.
+        
+        Args:
+            query: User query text
+            task_type: Optional task type hint
+        
+        Returns:
+            Complexity score (1=trivial, 10=highly complex)
+        """
+        score = 5  # Start at medium
         query_lower = query.lower()
+        
+        # Check high complexity indicators
         for pattern in self.COMPLEXITY_INDICATORS['high']:
             if re.search(pattern, query_lower):
                 score += 1
+        
+        # Check medium complexity indicators
         for pattern in self.COMPLEXITY_INDICATORS['medium']:
             if re.search(pattern, query_lower):
                 score += 0.5
+        
+        # Check low complexity indicators
         for pattern in self.COMPLEXITY_INDICATORS['low']:
             if re.search(pattern, query_lower):
                 score -= 1
+        
+        # Task type hints
         if task_type:
             task_complexity = {
-                TaskType.SIMPLE_QUERY: 2, TaskType.CODE_COMPLETION: 3, TaskType.CODE_GENERATION: 5,
-                TaskType.CODE_REVIEW: 6, TaskType.MULTI_FILE: 7, TaskType.REFACTORING: 7,
-                TaskType.ARCHITECTURAL: 9, TaskType.CREATIVE: 8, TaskType.DEBUGGING: 6, TaskType.DOCUMENTATION: 4,
+                TaskType.SIMPLE_QUERY: 2,
+                TaskType.CODE_COMPLETION: 3,
+                TaskType.CODE_GENERATION: 5,
+                TaskType.CODE_REVIEW: 6,
+                TaskType.MULTI_FILE: 7,
+                TaskType.REFACTORING: 7,
+                TaskType.ARCHITECTURAL: 9,
+                TaskType.CREATIVE: 8,
+                TaskType.DEBUGGING: 6,
+                TaskType.DOCUMENTATION: 4,
             }
+            # Weight task type hint heavily
             score = (score + task_complexity.get(task_type, 5) * 2) / 3
+        
+        # Query length factor
         if len(query) > 500:
             score += 1
         if len(query) > 1000:
             score += 1
+        
+        # Clamp to 1-10
         return max(1, min(10, int(score)))
 
-    def _get_tier_candidates(self, tier_config: TierConfig) -> List[tuple]:
+    def _get_tier_candidates(
+        self,
+        tier_config: TierConfig
+    ) -> List[tuple[ProviderAdapter, str, int]]:
+        """
+        Get available providers for a tier, sorted by priority.
+        When use_litellm is True, the single LiteLLM adapter is used for all tier
+        (provider_name, model) entries; model is passed as LiteLLM model string.
+        
+        Returns:
+            List of (provider, model, priority) tuples
+        """
         candidates = []
+        
         if self.use_litellm and "litellm" in self.providers:
+            # Single LiteLLM adapter: one candidate per tier (model, priority)
             litellm_provider = self.providers["litellm"]
             if self._provider_failures.get("litellm", 0) > 3:
                 return []
@@ -314,33 +569,50 @@ class IntelligentRouterV2:
                 candidates.append((litellm_provider, model, priority))
             candidates.sort(key=lambda x: x[2])
             return candidates
+        
         for provider_name, model, priority in tier_config.providers:
             if provider_name not in self.providers:
                 continue
             provider = self.providers[provider_name]
             if self._provider_failures.get(provider_name, 0) > 3:
+                logger.warning(f"Skipping {provider_name} due to recent failures")
                 continue
             available_models = [m.id for m in provider.get_models()]
             if model not in available_models:
                 logger.warning(f"Model {model} not available in {provider_name}")
                 continue
             candidates.append((provider, model, priority))
+        
         candidates.sort(key=lambda x: x[2])
         return candidates
 
     async def _filter_by_budget(
         self,
-        candidates: List[tuple],
+        candidates: List[tuple[ProviderAdapter, str, int]],
         max_tokens: int
-    ) -> List[tuple]:
+    ) -> List[tuple[ProviderAdapter, str, int]]:
+        """Filter candidates by budget constraints."""
         if not self.budget_manager:
             return candidates
+        
         filtered = []
+        
         for provider, model, priority in candidates:
+            # Estimate cost for this request
             estimated_cost = provider.estimate_cost(max_tokens, model)
+            
+            # Check if within budget
             can_afford = await self.budget_manager.check_budget(estimated_cost)
+            
             if can_afford:
                 filtered.append((provider, model, priority))
+            else:
+                provider_name = self._get_provider_name(provider)
+                logger.warning(
+                    f"Filtering out {provider_name}/{model} "
+                    f"(estimated cost: ${estimated_cost:.4f})"
+                )
+        
         return filtered
 
     def _explain_routing(
@@ -351,22 +623,40 @@ class IntelligentRouterV2:
         model: str,
         cost: float
     ) -> str:
+        """Generate human-readable routing explanation."""
         provider_name = self._get_provider_name(provider)
-        return f"{confidence.value} tier | complexity={complexity}/10 | {provider_name}/{model} | ~${cost:.4f}"
+        
+        reason_parts = [
+            f"{confidence.value} tier",
+            f"complexity={complexity}/10",
+            f"{provider_name}/{model}",
+            f"~${cost:.4f}"
+        ]
+        
+        return " | ".join(reason_parts)
 
     def _get_provider_name(self, provider: ProviderAdapter) -> str:
+        """Get provider name from adapter instance."""
         for name, p in self.providers.items():
             if p is provider:
                 return name
         return "unknown"
 
     def get_provider_stats(self) -> Dict[str, Any]:
-        return {
-            name: {
+        """
+        Get statistics about provider usage and health.
+        
+        Returns:
+            Dict with provider statistics
+        """
+        stats = {}
+        
+        for name, provider in self.providers.items():
+            stats[name] = {
                 'available': name in self._provider_last_success,
                 'failures': self._provider_failures.get(name, 0),
                 'last_success': self._provider_last_success.get(name),
                 'models': [m.id for m in provider.get_models()]
             }
-            for name, provider in self.providers.items()
-        }
+        
+        return stats

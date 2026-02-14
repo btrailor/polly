@@ -1,60 +1,56 @@
 # polly-routing
 
-Intelligent multi-provider routing for LLM requests: Router v2, provider adapters (base + LiteLLM), and budget tracking.
-
-## What it does
-
-- **IntelligentRouterV2** — Routes queries by complexity, confidence tier (fast/balanced/thorough), and budget. Supports pattern-informed routing (PatternConsumer protocol).
-- **ProviderAdapter** — Base interface; **LiteLLMAdapter** — unified adapter over LiteLLM (100+ providers).
-- **BudgetManager** — SQLite-backed usage tracking, daily/monthly limits, spending summaries.
-
-Individual provider adapters (Anthropic, OpenAI, GitHub, etc.) remain in the main app (`core/providers/archive/`) and are passed into the router via the core adapter.
+Intelligent multi-provider routing library for AI applications.
 
 ## Installation
 
-From the Polly repo root (with venv active):
-
 ```bash
+# Basic installation
 pip install -e libs/polly-routing
-```
 
-Optional LiteLLM support:
-
-```bash
+# With LiteLLM support (100+ providers)
 pip install -e "libs/polly-routing[litellm]"
 ```
 
-## Usage
+## Quick Start
 
 ```python
 from polly_routing import IntelligentRouterV2, ConfidenceLevel, BudgetManager
 
-# With pre-built providers (e.g. from core.providers)
-providers = {"anthropic": AnthropicAdapter(api_key), "openai": OpenAIAdapter(api_key)}
+# Create budget manager
 budget = BudgetManager()
-router = IntelligentRouterV2(providers=providers, budget_manager=budget)
 
-# Or use LiteLLM only
+# Option 1: Use LiteLLM adapter (recommended)
 router = IntelligentRouterV2(
+    budget_manager=budget,
     use_litellm=True,
     litellm_config_path="config/litellm_config.yaml",
-    api_keys={"anthropic": "...", "openai": "..."},
+    api_keys={
+        "anthropic": "sk-ant-...",
+        "openai": "sk-...",
+    }
+)
+
+# Option 2: Provide your own provider adapters
+router = IntelligentRouterV2(
+    providers={"anthropic": my_anthropic_adapter},
     budget_manager=budget,
 )
 
-decision = await router.route(messages, confidence=ConfidenceLevel.BALANCED)
-response = await router.complete_with_fallback(messages, confidence=ConfidenceLevel.BALANCED)
+# Route and complete
+messages = [{"role": "user", "content": "Hello!"}]
+response = await router.complete_with_fallback(
+    messages,
+    confidence=ConfidenceLevel.BALANCED
+)
 ```
 
-In Polly, use `core.router_v2.create_router_v2(...)` to build the router from config and secrets; it injects providers from `core.providers` when not using LiteLLM.
+## Features
 
-## Public API
-
-- **IntelligentRouterV2**, **ConfidenceLevel**, **TaskType**, **RoutingDecision**, **TierConfig**
-- **BudgetManager**, **UsageRecord**, **SpendingSummary**
-- **ProviderAdapter**, **CompletionResponse**, **ModelInfo**, **LiteLLMAdapter**
-- **ProviderError**, **ProviderAPIError**, **ProviderRateLimitError**, **AllProvidersFailed**, etc.
-
-## Dependency
-
-- **polly-routing** has no dependency on other Polly libs. The main app depends on it via `-e libs/polly-routing` in `requirements.txt`.
+- Three-tier routing: Fast, Balanced, Thorough
+- Task complexity classification
+- Budget-aware provider selection
+- Automatic fallback chains
+- Cost estimation and tracking
+- Provider health monitoring
+- LiteLLM integration for 100+ providers
