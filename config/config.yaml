@@ -55,9 +55,37 @@ memory:
   provider: mem0
   mem0:
     enabled: true
+    embedding_provider: ollama
+    llm_provider: ollama
     vector_store: chroma
     graph_store: null
-    llm: litellm
+    
+    providers:
+      ollama:
+        host: http://localhost:11434
+        embedding_model: nomic-embed-text
+        llm_model: llama3.2:3b
+        temperature: 0.0
+      
+      qwen:
+        api_key_env: DASHSCOPE_API_KEY
+        embedding_model: text-embedding-v3
+        llm_model: qwen-turbo
+        temperature: 0.0
+      
+      minimax:
+        api_key_env: MINIMAX_API_KEY
+        group_id_env: MINIMAX_GROUP_ID
+        embedding_model: embo-01
+        llm_model: abab6.5s-chat
+        temperature: 0.0
+      
+      glm:
+        api_key_env: ZHIPUAI_API_KEY
+        embedding_model: embedding-3
+        llm_model: glm-4-flash
+        temperature: 0.0
+    
     collections:
       knowledge: polly_mem0_knowledge
       patterns: polly_mem0_patterns

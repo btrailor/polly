@@ -98,58 +98,191 @@ class Mem0Adapter:
             Configuration dict for Memory.from_config()
         """
         mem0_config = self.config.get('memory', {}).get('mem0', {})
-        models_config = self.config.get('models', {})
         
-        # Get embedding model from config
-        embedding_model = models_config.get('local', {}).get('embedding_model', 'nomic-embed-text')
-        ollama_host = models_config.get('local', {}).get('host', 'http://localhost:11434')
+        # Get selected providers
+        embedding_provider = mem0_config.get('embedding_provider', 'ollama')
+        llm_provider = mem0_config.get('llm_provider', 'ollama')
         
-        # Vector store configuration (ChromaDB)
-        vector_store_provider = mem0_config.get('vector_store', 'chroma')
-        collections = mem0_config.get('collections', {})
+        # Get provider configurations
+        providers = mem0_config.get('providers', {})
         
+        if not providers:
+            logger.warning("No providers configured in memory.mem0.providers, using defaults")
+            providers = self._get_default_provider_config()
+        
+        # Validate selected providers exist in config
+        if embedding_provider not in providers:
+            raise ValueError(f"Embedding provider '{embedding_provider}' not found in config")
+        if llm_provider not in providers:
+            raise ValueError(f"LLM provider '{llm_provider}' not found in config")
+        
+        # Build Mem0 config
         mem_config = {
             "version": "v1.1",
-            "vector_store": {
-                "provider": vector_store_provider,
-                "config": {
-                    "collection_name": collections.get('knowledge', 'polly_mem0_memories'),
-                    "path": str(Path.home() / ".polly" / "chroma_mem0")
-                }
-            },
-            "embedder": {
-                "provider": "openai",
-                "config": {
-                    "model": embedding_model,
-                    "openai_base_url": f"{ollama_host}/v1",
-                    "api_key": "ollama"  # Dummy key; Ollama doesn't validate but OpenAI client requires one
-                }
-            }
+            "vector_store": self._build_vector_store_config(mem0_config)
         }
         
-        # Optional graph store (Neo4j) - disabled by default
+        # Add embedder config
+        try:
+            mem_config["embedder"] = self._build_embedder_config(
+                embedding_provider,
+                providers[embedding_provider]
+            )
+            logger.info(f"Using {embedding_provider} for Mem0 embeddings")
+        except Exception as e:
+            logger.error(f"Failed to build embedder config: {e}")
+            raise
+        
+        # Add LLM config
+        try:
+            mem_config["llm"] = self._build_llm_config(
+                llm_provider,
+                providers[llm_provider]
+            )
+            logger.info(f"Using {llm_provider} for Mem0 LLM")
+        except Exception as e:
+            logger.error(f"Failed to build LLM config: {e}")
+            raise
+        
+        # Set provider-specific environment variables
+        self._set_provider_env_vars(llm_provider, providers[llm_provider])
+        
+        # Optional: Graph store configuration
         graph_store_config = mem0_config.get('graph_store')
         if graph_store_config:
             mem_config["graph_store"] = graph_store_config
             logger.info("Graph store enabled for entity relationships")
         
-        # Optional LLM configuration (use LiteLLM if available)
-        llm_provider = mem0_config.get('llm', 'litellm')
-        if llm_provider == 'litellm':
-            # Get fast model from config for entity extraction
-            fast_model = models_config.get('local', {}).get('chat_models', {}).get('fast', 'llama3.2:3b')
-            # Ensure LiteLLM can find Ollama for ollama/ prefixed models
-            os.environ.setdefault("OLLAMA_API_BASE", ollama_host)
-            # Mem0 can use LiteLLM for entity extraction with local Ollama model
-            mem_config["llm"] = {
-                "provider": "litellm",
+        return mem_config
+    
+    def _build_embedder_config(self, provider: str, config: Dict) -> Dict:
+        """Build embedder config based on provider type."""
+        if provider == "ollama":
+            host = config.get('host', 'http://localhost:11434')
+            model = config.get('embedding_model', 'nomic-embed-text')
+            return {
+                "provider": "openai",
                 "config": {
-                    "model": f"ollama/{fast_model}",  # Use local model via LiteLLM
-                    "temperature": 0.0
+                    "model": model,
+                    "openai_base_url": f"{host}/v1",
+                    "api_key": "ollama"  # Dummy key; Ollama doesn't validate
                 }
             }
         
-        return mem_config
+        elif provider == "qwen":
+            api_key_env = config.get('api_key_env', 'DASHSCOPE_API_KEY')
+            model = config.get('embedding_model', 'text-embedding-v3')
+            return {
+                "provider": "openai",
+                "config": {
+                    "model": model,
+                    "openai_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                    "api_key": os.environ.get(api_key_env)
+                }
+            }
+        
+        elif provider == "minimax":
+            api_key_env = config.get('api_key_env', 'MINIMAX_API_KEY')
+            model = config.get('embedding_model', 'embo-01')
+            return {
+                "provider": "openai",
+                "config": {
+                    "model": model,
+                    "openai_base_url": "https://api.minimax.chat/v1",
+                    "api_key": os.environ.get(api_key_env)
+                }
+            }
+        
+        elif provider == "glm":
+            api_key_env = config.get('api_key_env', 'ZHIPUAI_API_KEY')
+            model = config.get('embedding_model', 'embedding-3')
+            return {
+                "provider": "openai",
+                "config": {
+                    "model": model,
+                    "openai_base_url": "https://open.bigmodel.cn/api/paas/v4",
+                    "api_key": os.environ.get(api_key_env)
+                }
+            }
+        
+        else:
+            raise ValueError(f"Unsupported embedding provider: {provider}")
+    
+    def _build_llm_config(self, provider: str, config: Dict) -> Dict:
+        """Build LLM config based on provider type."""
+        model = config.get('llm_model')
+        temperature = config.get('temperature', 0.0)
+        
+        provider_prefixes = {
+            "ollama": "ollama",
+            "qwen": "dashscope",
+            "minimax": "minimax",
+            "glm": "zhipuai"
+        }
+        
+        prefix = provider_prefixes.get(provider)
+        if not prefix:
+            raise ValueError(f"Unsupported LLM provider: {provider}")
+        
+        return {
+            "provider": "litellm",
+            "config": {
+                "model": f"{prefix}/{model}",
+                "temperature": temperature
+            }
+        }
+    
+    def _set_provider_env_vars(self, provider: str, config: Dict):
+        """Set provider-specific environment variables for LiteLLM."""
+        if provider == "ollama":
+            host = config.get('host', 'http://localhost:11434')
+            os.environ.setdefault("OLLAMA_API_BASE", host)
+        
+        elif provider == "qwen":
+            api_key_env = config.get('api_key_env', 'DASHSCOPE_API_KEY')
+            if api_key_env in os.environ:
+                os.environ.setdefault("DASHSCOPE_API_KEY", os.environ[api_key_env])
+        
+        elif provider == "minimax":
+            api_key_env = config.get('api_key_env', 'MINIMAX_API_KEY')
+            group_id_env = config.get('group_id_env', 'MINIMAX_GROUP_ID')
+            if api_key_env in os.environ:
+                os.environ.setdefault("MINIMAX_API_KEY", os.environ[api_key_env])
+            if group_id_env in os.environ:
+                os.environ.setdefault("MINIMAX_GROUP_ID", os.environ[group_id_env])
+        
+        elif provider == "glm":
+            api_key_env = config.get('api_key_env', 'ZHIPUAI_API_KEY')
+            if api_key_env in os.environ:
+                os.environ.setdefault("ZHIPUAI_API_KEY", os.environ[api_key_env])
+    
+    def _build_vector_store_config(self, mem0_config: Dict) -> Dict:
+        """Build vector store config (extracted for clarity)."""
+        vector_store_provider = mem0_config.get('vector_store', 'chroma')
+        collections = mem0_config.get('collections', {})
+        
+        return {
+            "provider": vector_store_provider,
+            "config": {
+                "collection_name": collections.get('knowledge', 'polly_mem0_memories'),
+                "path": str(Path.home() / ".polly" / "chroma_mem0")
+            }
+        }
+    
+    def _get_default_provider_config(self) -> Dict:
+        """Fallback to old config structure for backward compatibility."""
+        logger.warning("Using legacy config structure (models.local)")
+        
+        models_config = self.config.get('models', {})
+        ollama_config = models_config.get('local', {})
+        return {
+            "ollama": {
+                "host": ollama_config.get('host', 'http://localhost:11434'),
+                "embedding_model": ollama_config.get('embedding_model', 'nomic-embed-text'),
+                "llm_model": ollama_config.get('chat_models', {}).get('fast', 'llama3.2:3b'),
+                "temperature": 0.0
+            }
+        }
     
     def add_memory(
         self,

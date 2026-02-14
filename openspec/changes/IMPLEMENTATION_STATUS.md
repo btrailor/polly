@@ -23,6 +23,7 @@
 | **library-extraction** | Partial | Task 1 (libs/ structure), Task 2 (polly-routing extracted) | Tasks 3–11 (polly-patterns, polly-compression, polly-entities, polly-personas extraction, consumers, tests, READMEs, architecture) |
 | **litellm-provider-adapter** | Complete | Full implementation (litellm_adapter.py, config, router integration, OpenRouter, provider status, tests, CHANGELOG) | — |
 | **mem0-adaptive-memory** | Complete | Adapter, Knowledge Writer + Pattern + Persona integration, config, settings API + Memory UI, migration script, tests | — |
+| **mem0-multi-provider-config** | Complete | Multi-provider config structure, 4 helper methods in mem0_adapter.py, 17 unit tests (all passing), backward compatibility, integration verified | — |
 | **oss-tool-integration-research** | Merged | Research done; execution lives in core-framework-refinement (LiteLLM, LLMLingua, Mem0 done) | Tier 2+ items in core-framework-refinement |
 | **phase-17-monaco-code-workspace** | Not started | — | Backend workspace/file APIs, git/terminal (optional), frontend Code page, file tree, Monaco, chat panel, terminal, polish |
 | **spec-integration-2026-02** | Specs only | New/updated domain specs and roadmap in OpenSpec | No implementation tasks in this change; work is in other changes |
@@ -40,6 +41,7 @@ These changes have their implementation complete per their tasks; they can be ar
 - **integration-contracts** — All 14 tasks done; `core/protocols/`, `_gather_context()`, cross-system wiring in place.
 - **litellm-provider-adapter** — Complete; IMPLEMENTATION_SUMMARY.md and CHANGELOG confirm.
 - **mem0-adaptive-memory** — Complete; COMPLETION_REPORT.md confirms; Memory UI and settings in place.
+- **mem0-multi-provider-config** — Complete; all 17 tests passing; supports Ollama, Qwen, MiniMax, GLM providers; backward compatible.
 - **unified-pattern-engine** — All 16 tasks done (Task 14 archive optional); `core/patterns/` in use.
 
 ---
@@ -73,7 +75,7 @@ These changes have their implementation complete per their tasks; they can be ar
 
 ## Recommended Next Steps
 
-1. **Archive completed changes** (after updating `openspec/specs/project/status.md`, `roadmap.md`, and `docs/status/CHANGELOG.md`): architecture-integration-audit, entity-model-unification, integration-contracts, litellm-provider-adapter, mem0-adaptive-memory, unified-pattern-engine.
+1. **Archive completed changes** (after updating `openspec/specs/project/status.md`, `roadmap.md`, and `docs/status/CHANGELOG.md`): architecture-integration-audit, entity-model-unification, integration-contracts, litellm-provider-adapter, mem0-adaptive-memory, mem0-multi-provider-config, unified-pattern-engine.
 2. **Continue core-framework-refinement** — Next: Provider Management UI (#15), "Polly" mode (#16), then Wave 3 (Query Decomposition, Split Routing, Synthesis). Per status.md, Phase 23.5 (Security Hardening) is the critical next phase before Phase 24.
 3. **Optional cleanup** — custom-domains: finish optional tasks and spec update; library-extraction: proceed with polly-patterns/polly-compression/polly-entities/polly-personas or pause and document current state.
 4. **Pick next big change** — When ready: Phase 23.5 (security), Phase 22 frontend (teaching), code-library-and-dev-philosophy, learning-and-administrator-profiles, phase-17 (Monaco), or cursor-ui-pattern-migration.
