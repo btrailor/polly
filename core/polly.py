@@ -1109,7 +1109,13 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             mode: Optional mode to activate (uses persona default if not specified)
         
         Returns:
-            Dict with persona state
+            Dict with persona state and introduction message (if first time)
+            {
+                "persona_name": "professor",
+                "current_mode": "socratic",
+                "introduction": "Hello! I'm Professor..." (only on first activation)
+                ...
+            }
         
         Raises:
             RuntimeError: If persona system not initialized
@@ -1120,9 +1126,32 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         
         state = self.persona_manager.activate_persona(persona_name, mode=mode)
         logger.info(f"Activated {persona_name} persona (mode: {state.current_mode})")
+        
+        # DEBUG: Log pending introduction state
+        logger.info(f"[DEBUG] pending_introduction after activation: {getattr(state, 'pending_introduction', 'NOT SET')}")
+        
         # Notify pattern engine, entity context, mental models (integration-contracts)
         self._notify_persona_context(persona_name, state.current_mode or "")
-        return state.to_dict()
+        
+        # Convert state to dict and include introduction if present
+        state_dict = state.to_dict()
+        
+        # DEBUG: Log state_dict keys
+        logger.info(f"[DEBUG] state_dict keys after to_dict(): {list(state_dict.keys())}")
+        
+        # Check if there's a pending introduction (Wave 1, Task 2)
+        if hasattr(state, 'pending_introduction') and state.pending_introduction:
+            logger.info(f"[DEBUG] Adding introduction to response: {state.pending_introduction[:50]}...")
+            state_dict["introduction"] = state.pending_introduction
+            # Clear it since we're delivering it now
+            state.pending_introduction = None
+        else:
+            logger.info(f"[DEBUG] No pending_introduction to add")
+        
+        # DEBUG: Final state_dict keys
+        logger.info(f"[DEBUG] Final state_dict keys: {list(state_dict.keys())}")
+        
+        return state_dict
     
     async def process_with_persona(self, user_message: str, metadata: Optional[Dict] = None) -> Dict:
         """

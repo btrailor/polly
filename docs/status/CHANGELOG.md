@@ -7,6 +7,39 @@
 
 ## February 2026
 
+### February 12, 2026 - Hardened Knowledge Infrastructure ✅
+
+**Type:** Cross-cutting infrastructure  
+**Impact:** Defense-in-depth layer for query pipeline with observable failure modes, retry management, dual validation, three-tier retrieval, performance observability, and schema migration.
+
+**Implemented (4 waves):**
+- **Wave 1 — Observable Failure Modes + Retry Manager:**
+  - `core/hardened/failure.py` — FailureCategory enum (18 categories), FailureReport, FailureFactory (17 factory methods + ProviderError bridge), FailureLogger (persistent to hardened.db), ErrorHandler
+  - `core/hardened/retry_manager.py` — RetryManager (async/sync), CircuitBreaker (CLOSED/OPEN/HALF_OPEN), exponential backoff with jitter, operation-specific parameter adjustments per attempt
+  - `config/retry.yaml` — Retry policies for rag_retrieval, llm_generation, context_assembly, external_api
+- **Wave 2 — Dual-Phenomenology Validation + Three-Tier Classification:**
+  - `core/hardened/validator.py` — ProvenanceValidator (source trust by type), ContentValidator (quality + PII hard block + prompt injection hard block + epistemological enrichment), DualValidator (batch/filter methods)
+  - `core/hardened/classifier.py` — RetrievalClassifier producing DIRECT/ADJACENT/ABSENT tiers with domain awareness and refinement suggestions
+  - `config/validation.yaml` — Trust levels, score thresholds, epistemological vs security check config, classification thresholds
+- **Wave 3 — Performance Metrics + Observability:**
+  - `core/hardened/performance.py` — PerformanceTracker (in-memory buffer → hardened.db), PercentileStats (p50-p99 via stdlib), track_performance / track_performance_async context managers
+  - `core/hardened/dashboard.py` — Report generation, degradation detection (recent p95 vs baseline), layer status, JSON export
+- **Wave 4 — Persistent State + Schema Migration:**
+  - `core/hardened/db.py` — Database initialization (WAL mode, foreign keys)
+  - `core/hardened/migration.py` — MigrationManager (forward-only SQL migrations)
+  - `migrations/001_initial_hardened.sql` — 8 tables: schema_version, source_provenance, content_validations, retrieval_events, retry_events, circuit_breaker_state, failure_log, performance_metrics
+
+**Key design decisions:**
+- Separate database (`~/.polly/hardened.db`) to avoid migration risk on existing DBs
+- Pre-filter architecture: DualValidator runs between RAG search and `_gather_context()`, not as ContextContributor
+- Ethics reconciliation: scapegoat/essentialist detection triggers epistemological enrichment (structural analysis, material analysis), never content filtering — per ethics spec
+- No numpy dependency: percentiles use stdlib statistics + linear interpolation
+- ProviderError bridge: FailureFactory.from_provider_error() wraps existing error hierarchy without replacing it
+
+**Specs updated:** architecture, rag, security, project/roadmap, project/status  
+**OpenSpec:** [openspec/changes/hardened-knowledge-infrastructure/](../../openspec/changes/hardened-knowledge-infrastructure/)  
+**Next:** Wire into `Polly.query()` hot path (modules ready, integration is a separate step); future subsystems should use hardened layer — see integration guide in change folder.
+
 ### February 10, 2026 - Architecture Integration Audit Complete + Spec Reconciliation ✅
 
 **Type:** Documentation / OpenSpec  

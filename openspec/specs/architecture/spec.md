@@ -10,6 +10,7 @@ Source of truth for Polly's system architecture. **Current Architecture** descri
 |---------|--------|-------|
 | Current architecture (stack, query flow, storage) | ✅ Implemented | This spec |
 | Integration contracts (ContextContributor, _gather_context) | ✅ Implemented | `core/protocols/`, `core/polly.py` |
+| Hardened knowledge infrastructure | ✅ Implemented | `core/hardened/`, `config/retry.yaml`, `config/validation.yaml`, `migrations/` |
 | Planned subsystems (Agent Swarms, DRM, Canvas, etc.) | 💭 Vision | See Planned Architecture below |
 
 ---
@@ -105,7 +106,52 @@ Reference: `core/polly.py` — `query()` (≈1207), `_gather_context()` (≈738)
 | File system | Notes, patterns (JSON), mental models, curricula, templates, domain_config | `~/.polly/`, vault/ | core/domains.py, core/patterns/storage/, core/mental_models.py |
 | Mem0 (optional) | Adaptive memory (knowledge, patterns, persona) | ChromaDB or configurable | core/memory/mem0_adapter.py; opt-in via config |
 
+| SQLite (hardened.db) | Hardened infrastructure: validation, retry, failure, performance | `~/.polly/hardened.db` | core/hardened/, migrations/ |
+
 Planned (not yet implemented): `knowledge.db` (canvases, captures, publications), DRM state (`~/.polly/drm/`), library files (`~/.polly/library/`). See roadmap and domain specs.
+
+---
+
+## Hardened Knowledge Infrastructure (Current)
+
+Defense-in-depth layer that sits within the query hot path. All protections are architectural, active by default, and observable.
+
+**Subsystems:**
+
+| Subsystem | Location | Purpose |
+|-----------|----------|---------|
+| Observable Failure Modes | `core/hardened/failure.py` | Explicit failure taxonomy, FailureFactory, FailureLogger |
+| Retry Manager + Circuit Breaker | `core/hardened/retry_manager.py` | Unified retry with exponential backoff, jitter, operation-specific policies |
+| Dual-Phenomenology Validation | `core/hardened/validator.py` | Independent provenance (source trust) + content (quality) checks |
+| Three-Tier Retrieval Classification | `core/hardened/classifier.py` | DIRECT / ADJACENT / ABSENT tier assignment |
+| Performance Metrics | `core/hardened/performance.py` | p50/p90/p95/p99 percentile tracking per operation |
+| Performance Dashboard | `core/hardened/dashboard.py` | Report generation, degradation detection |
+| Database + Migrations | `core/hardened/db.py`, `core/hardened/migration.py` | Schema evolution for `hardened.db` |
+
+**Query hot path integration:**
+
+```
+UnifiedRAG.search()
+  ↓
+[Hardened] RetrievalClassifier → DIRECT / ADJACENT / ABSENT
+[Hardened] DualValidator → provenance + content checks
+  ↓ (only VERIFIED results pass)
+_gather_context() (ContextContributor protocol — unchanged)
+  ↓
+Build augmented prompt
+  ↓
+[Hardened] RetryManager wraps router_v2.route()
+  ↓
+LLM Response
+  ↓
+[Hardened] PerformanceTracker.record()
+```
+
+**Configuration:** `config/validation.yaml` (trust levels, thresholds), `config/retry.yaml` (retry policies per operation).
+
+**Constitutional alignment:** Epistemological checks (scapegoat narrative, essentialist claims) trigger deeper analysis enrichment, NOT blocking — per [ethics spec](../ethics/spec.md). Hard blocks reserved for PII and prompt injection only.
+
+Change folder: [changes/hardened-knowledge-infrastructure/](../../changes/hardened-knowledge-infrastructure/).
 
 ---
 
@@ -126,6 +172,8 @@ See [integration-contracts](../../changes/integration-contracts/design.md) and [
 
 The following subsystems are specified but not implemented. Do not design integration points against them until implementation begins.
 
+**Hardened infrastructure requirement:** All planned subsystems MUST use the hardened knowledge infrastructure layer (`core/hardened/`) for retry logic, error handling, validation, and performance tracking. Do not build ad-hoc equivalents. See [hardened-knowledge-infrastructure/specs/future-integration-guide.md](../../changes/hardened-knowledge-infrastructure/specs/future-integration-guide.md) for per-subsystem integration notes.
+
 ### Multi-Agent (Agent Swarms / Nexus)
 
 - Complex tasks: User → Nexus (task decomposition, agent selection) → Agent execution → Merge → Response.
@@ -133,6 +181,7 @@ The following subsystems are specified but not implemented. Do not design integr
 - Agents declare capabilities, input/output schemas, execution context requirements.
 - Nexus composes workflows from agent pool.
 - Execution contexts brokered via Capability Broker (Phase 23.5 extension).
+- **Hardened integration:** RetryManager for agent LLM/RAG calls; FailureLogger for agent failures; ContentValidator on agent outputs before handoff; per-agent CircuitBreaker; PerformanceTracker per-workflow.
 
 Spec: [agent-swarms](../agent-swarms/spec.md). Phase 24a–24e in roadmap.
 
@@ -141,6 +190,7 @@ Spec: [agent-swarms](../agent-swarms/spec.md). Phase 24a–24e in roadmap.
 - Query → DRM Router (which node?) → Node Router (which model/provider?) → LLM → Response.
 - Three discovery layers: mDNS (LAN), Cloudflare Tunnels (internet), Meshtastic (LoRa). Ed25519 PKI, `trusted-peers.yaml`.
 - Mobile companion submits tasks to capable peers.
+- **Hardened integration:** Per-node CircuitBreaker; ProvenanceValidator for remote content (drm_remote = MEDIUM_TRUST); FailureLogger for node/timeout failures; PerformanceTracker per node for routing intelligence.
 
 Spec: [drm](../drm/spec.md). Phases 36–36e in roadmap.
 

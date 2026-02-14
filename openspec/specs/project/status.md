@@ -31,6 +31,12 @@
 - **Analysis:** [docs/planning/phases/phase-23.5/PHASE23.5_ANALYSIS.md](../../../docs/planning/phases/phase-23.5/PHASE23.5_ANALYSIS.md)
 - **Unlocked:** Phase 22 frontend, Phase 24 (Agent Swarms), Phase 27, 28, etc. can proceed.
 
+### Hardened Knowledge Infrastructure ✅ (NEW — Feb 2026)
+- **Status:** Complete. All 4 waves implemented.
+- **Scope:** Defense-in-depth infrastructure layer: observable failure modes, unified retry manager with circuit breaker, dual-phenomenology validation (provenance + content), three-tier retrieval classification (DIRECT/ADJACENT/ABSENT), performance metrics with percentiles, persistent state with schema migration.
+- **Impact:** `core/hardened/` (8 modules), `config/retry.yaml`, `config/validation.yaml`, `migrations/001_initial_hardened.sql`. Constitutional checks reconciled with ethics spec: epistemological enrichment, not content filtering. All hardened tables in `~/.polly/hardened.db` with WAL mode and automatic migration.
+- **OpenSpec:** [openspec/changes/hardened-knowledge-infrastructure/](../../changes/hardened-knowledge-infrastructure/)
+
 ### Spec Integration (Feb 2026) 📋
 - **Status:** Specs integrated into OpenSpec. Implementation not started.
 - **Scope:** Five specification sets plus comprehensive gap audit — knowledge management & capture, DRM (hybrid discovery, PKI security, Meshtastic resilience), BAD Canvas, knowledge quality/anti-slop, Agent Swarms, plus missing personas, communication, onboarding, data autonomy, and detailed Phase 25–29 plans.

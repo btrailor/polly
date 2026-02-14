@@ -104,6 +104,7 @@ class PersonaState:
     - Mode history
     - Persona-specific data (plan, generated content, etc.)
     - Timestamps
+    - Pending introduction message (Wave 1, Task 2)
     """
     persona_name: str
     current_mode: str
@@ -111,6 +112,7 @@ class PersonaState:
     mode_history: List[Dict[str, Any]] = field(default_factory=list)
     activated_at: datetime = field(default_factory=datetime.now)
     last_interaction: datetime = field(default_factory=datetime.now)
+    pending_introduction: Optional[str] = None  # Wave 1: One-time intro message
     
     def switch_mode(self, new_mode: str):
         """Record mode switch"""
@@ -133,7 +135,7 @@ class PersonaState:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization"""
-        return {
+        result = {
             "persona_name": self.persona_name,
             "current_mode": self.current_mode,
             "data": self.data,
@@ -141,6 +143,10 @@ class PersonaState:
             "activated_at": self.activated_at.isoformat(),
             "last_interaction": self.last_interaction.isoformat()
         }
+        # Include pending_introduction if present (Wave 1, Task 2)
+        if self.pending_introduction:
+            result["pending_introduction"] = self.pending_introduction
+        return result
 
 
 # ========== Base Persona Class ==========

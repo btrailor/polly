@@ -150,13 +150,19 @@ class Plan:
         understanding: What Architect understands about the request
         questions: List of clarifying questions (if any)
         outline: Hierarchical outline structure
-        approach: Suggested approach for execution
+        approach: Suggested approach for execution (optional, defaults to empty string)
+        template: Template suggestion (optional)
+        needs_clarification: Whether clarification is needed
+        user_answers: Dictionary of user answers to questions
         created_at: When plan was created
     """
     understanding: str
     questions: List[str]
     outline: List[OutlineNode]
-    approach: str
+    approach: str = ""
+    template: Optional[str] = None
+    needs_clarification: bool = False
+    user_answers: Dict[str, str] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -166,8 +172,35 @@ class Plan:
             "questions": self.questions,
             "outline": [node.to_dict() for node in self.outline],
             "approach": self.approach,
+            "template": self.template,
+            "needs_clarification": self.needs_clarification,
+            "user_answers": self.user_answers,
             "created_at": self.created_at.isoformat()
         }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Plan':
+        """Create Plan from dictionary"""
+        outline = [OutlineNode(**node) if isinstance(node, dict) else node 
+                   for node in data.get("outline", [])]
+        return cls(
+            understanding=data.get("understanding", ""),
+            questions=data.get("questions", []),
+            outline=outline,
+            approach=data.get("approach", ""),
+            template=data.get("template"),
+            needs_clarification=data.get("needs_clarification", False),
+            user_answers=data.get("user_answers", {}),
+            created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now()
+        )
+    
+    def get_unanswered_questions(self) -> List[str]:
+        """Get list of questions that haven't been answered yet"""
+        return [q for q in self.questions if q not in self.user_answers]
+    
+    def add_answer(self, question: str, answer: str):
+        """Add user's answer to a question"""
+        self.user_answers[question] = answer
 
 
 @dataclass
@@ -177,19 +210,28 @@ class GeneratedContent:
     
     Attributes:
         content: The generated markdown content
-        metadata: Metadata about the generation (word count, sections, etc.)
-        created_at: When content was generated
+        format: Format of the content (default: "markdown")
+        title: Title of the generated content
+        tags: Tags to apply to the content
+        metadata: Additional metadata about the generation
+        generated_at: When content was generated
     """
     content: str
+    format: str = "markdown"
+    title: Optional[str] = None
+    tags: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.now)
+    generated_at: datetime = field(default_factory=datetime.now)
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
             "content": self.content,
+            "format": self.format,
+            "title": self.title,
+            "tags": self.tags,
             "metadata": self.metadata,
-            "created_at": self.created_at.isoformat()
+            "generated_at": self.generated_at.isoformat()
         }
 
 

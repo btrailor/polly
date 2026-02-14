@@ -1,0 +1,74 @@
+# Validation Configuration — Hardened Knowledge Infrastructure
+#
+# Dual-phenomenology validation: independent provenance (source trust) and
+# content (quality/safety) checks on every RAG retrieval result.
+#
+# Constitutional checks follow the ethics spec:
+#   - Epistemological alignment checks trigger deeper analysis, NOT blocking
+#   - Hard blocks reserved for PII and prompt injection only
+
+provenance:
+  # Source trust levels — maps source_type to trust level
+  trust_levels:
+    obsidian_vault: HIGH_TRUST
+    notes: HIGH_TRUST
+    curriculum_exercises: HIGH_TRUST
+    github_personal: HIGH_TRUST
+    codebase: HIGH_TRUST
+    pattern_derived: MEDIUM_TRUST
+    entity_graph: MEDIUM_TRUST
+    mem0_memories: MEDIUM_TRUST
+    github_starred: MEDIUM_TRUST
+    documents: MEDIUM_TRUST
+    library: MEDIUM_TRUST
+    web_search: VERIFY_REQUIRED
+    external_api: LOW_TRUST
+    unknown: UNTRUSTED
+
+  # Minimum provenance score thresholds per trust level
+  # Higher trust = lower threshold (trusted sources need less proof)
+  min_score_thresholds:
+    HIGH_TRUST: 0.7
+    MEDIUM_TRUST: 0.8
+    LOW_TRUST: 0.9
+    VERIFY_REQUIRED: 0.95
+    UNTRUSTED: 1.0
+
+  # Staleness thresholds (seconds) — how old before re-verification needed
+  staleness_thresholds:
+    obsidian_vault: 86400      # 1 day
+    notes: 86400               # 1 day
+    codebase: 86400            # 1 day
+    documents: 604800          # 1 week
+    web_search: 3600           # 1 hour
+    external_api: 300          # 5 minutes
+
+content:
+  # Minimum scores for content to pass validation
+  min_relevance_score: 0.6
+  min_quality_score: 0.5
+
+  # Constitutional checks — per ethics spec
+  # These trigger enrichment (deeper analysis), NOT blocking
+  epistemological_checks:
+    - scapegoat_narrative_detection
+    - essentialist_claim_detection
+
+  # Security checks — hard blocks (infrastructure, not epistemological)
+  security_checks:
+    - pii_detection
+    - prompt_injection_detection
+
+  # Fact contradiction detection — soft warning, allows override
+  soft_checks:
+    - fact_contradiction_check
+    - staleness_detection
+
+classification:
+  # Three-tier retrieval classification thresholds
+  direct_threshold: 0.8       # Minimum score for DIRECT tier
+  adjacent_threshold: 0.5     # Minimum score for ADJACENT tier
+
+  # Domain awareness
+  domain_match_boost: 0.1     # Score boost for matching domain
+  cross_domain_penalty: 0.15  # Score penalty for cross-domain

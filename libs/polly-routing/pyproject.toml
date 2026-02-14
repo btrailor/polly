@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "polly-routing"
+version = "0.1.0"
+description = "Intelligent multi-provider routing for Polly (Router v2, providers, budget)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=6.0"]
+
+[project.optional-dependencies]
+litellm = ["litellm>=1.30.0"]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["polly_routing*"]

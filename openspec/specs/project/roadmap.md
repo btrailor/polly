@@ -100,6 +100,30 @@ Master reference: [changes/architecture-integration-audit/](../changes/architect
 
 **Dependency note:** Phase A (P0) is complete. Phase B (Integration Contracts) is next; it builds on the unified pattern engine and entity model. Phase B should precede Phase 23.5 (Security) since the integration contracts will define the systems that security hardens.
 
+### Cross-Cutting: Hardened Knowledge Infrastructure (NEW — Feb 2026)
+
+Defense-in-depth infrastructure layer for Polly's query pipeline. Formalizes and unifies existing fragments of retry logic, error handling, validation, and observability into a coherent hardened system.
+
+| Wave | Name | Status | Components |
+|------|------|--------|------------|
+| 1 | Observable Failure Modes + Retry Manager | ✅ Done | `core/hardened/failure.py`, `core/hardened/retry_manager.py`, `config/retry.yaml` |
+| 2 | Dual-Phenomenology Validation + Three-Tier Classification | ✅ Done | `core/hardened/validator.py`, `core/hardened/classifier.py`, `config/validation.yaml` |
+| 3 | Performance Metrics + Observability | ✅ Done | `core/hardened/performance.py`, `core/hardened/dashboard.py` |
+| 4 | Persistent State + Schema Migration | ✅ Done | `core/hardened/db.py`, `core/hardened/migration.py`, `migrations/001_initial_hardened.sql` |
+
+**Key deliverables:**
+- ✅ Explicit failure taxonomy with FailureCategory enum, FailureFactory, FailureLogger
+- ✅ Unified RetryManager with circuit breaker, exponential backoff, operation-specific policies
+- ✅ DualValidator: independent provenance (source trust) + content (quality/epistemological alignment) checks
+- ✅ RetrievalClassifier: DIRECT / ADJACENT / ABSENT three-tier system
+- ✅ PerformanceTracker with p50/p90/p95/p99 percentile stats
+- ✅ PerformanceDashboard with degradation detection
+- ✅ MigrationManager with forward-only SQL migrations
+- ✅ Constitutional check reconciliation: epistemological enrichment, not content filtering (per ethics spec)
+- ✅ All tables in `~/.polly/hardened.db` with WAL mode
+
+Change folder: [changes/hardened-knowledge-infrastructure/](../../changes/hardened-knowledge-infrastructure/)
+
 ### Cross-Cutting: Code Library & Development Philosophy
 | Component | Status | OpenSpec / Notes |
 |-----------|--------|-------------------|

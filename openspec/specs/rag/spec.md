@@ -10,6 +10,9 @@ Source of truth for retrieval-augmented generation and hybrid local/cloud routin
 | RAG context compression (LLMLingua) | ✅ Implemented | `core/compression/llmlingua_strategy.py` |
 | Pattern-aware retrieval (chunk boosting) | ✅ Implemented | PatternEngine + RAG integration |
 | Incremental indexing (index_single_document) | ✅ Implemented | core-framework-refinement |
+| Dual-phenomenology validation (provenance + content) | ✅ Implemented | `core/hardened/validator.py` |
+| Three-tier retrieval classification (DIRECT/ADJACENT/ABSENT) | ✅ Implemented | `core/hardened/classifier.py` |
+| Retry manager for RAG retrieval | ✅ Implemented | `core/hardened/retry_manager.py` |
 | Multi-collection unified retrieval | 📐 Designed | Spec-only; library collection planned |
 | Entity-graph retrieval | 📐 Partial | Entity context in _gather_context; KG retrieval planned |
 | Authority scoring in RRF | 💭 Vision | knowledge-graph spec |
@@ -23,6 +26,28 @@ Source of truth for retrieval-augmented generation and hybrid local/cloud routin
 - **Pattern-aware retrieval (integration-contracts):** Pattern engine supplies query→chunk and domain→collection patterns. Chunk boosting and collection weighting use learned patterns; router v2 can use ROUTING_OUTCOME patterns to prefer models that performed well for similar tasks.
 - **Config:** Thresholds for "high quality" context; top-k and context size. Metadata tracking, source attribution.
 - **Compression (NEW - Wave 1):** Optional LLMLingua compression of RAG context chunks (2x-10x token reduction). Config: `compression.rag_context.enabled`, `compression.rag_context.ratio`.
+
+### Dual-Phenomenology Validation (Hardened Infrastructure)
+
+Every RAG retrieval result passes through independent provenance and content validation before entering the context pipeline. Runs as a pre-filter between `UnifiedRAG.search()` and `_gather_context()`.
+
+- **Provenance Validator** — Checks source trust level (HIGH_TRUST for Obsidian vault, VERIFY_REQUIRED for web search, etc.), freshness, and verification history. Config: `config/validation.yaml`.
+- **Content Validator** — Checks quality, relevance, and epistemological alignment. Constitutional checks (scapegoat narrative, essentialist claims) trigger deeper analysis enrichment, NOT blocking — per [ethics spec](../ethics/spec.md). PII and prompt injection are hard blocks.
+- **DualValidator** — Combines both checks. Status outcomes: VERIFIED, TRUSTED_SOURCE_POOR_CONTENT, UNTRUSTED_SOURCE_GOOD_CONTENT, REJECTED. Only VERIFIED (and optionally UNTRUSTED_SOURCE_GOOD_CONTENT) results enter context.
+
+### Three-Tier Retrieval Classification (Hardened Infrastructure)
+
+Replaces binary found/not-found with DIRECT / ADJACENT / ABSENT tiers:
+
+- **DIRECT** — Provenance ≥ 0.8, content relevance ≥ 0.8, constitutional pass, matching domain. User gets high-confidence answer with source attribution.
+- **ADJACENT** — Scores 0.5–0.8, or cross-domain match. User gets related information + refinement suggestions + option for external search.
+- **ABSENT** — Below 0.5 threshold. User gets acknowledgment + options to search externally or add to knowledge base.
+
+Domain-aware: a query about Sigils (code) hitting only Scrolls (writing) documents is ADJACENT even if scores are high.
+
+Config: `config/validation.yaml` → `classification.direct_threshold`, `classification.adjacent_threshold`.
+
+Implementation: `core/hardened/validator.py`, `core/hardened/classifier.py`. Change folder: [changes/hardened-knowledge-infrastructure/](../../changes/hardened-knowledge-infrastructure/).
 
 ### Planned: Multi-Collection Unified Retrieval
 ChromaDB organized into separate collections (`notes`, `code`, `library`) with configurable source-type weighting. Smart routing determines which collections to search per query. Library results weighted below personal notes by default (0.3) to prevent drowning user-generated content. See [library spec](../library/spec.md).

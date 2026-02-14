@@ -30,6 +30,8 @@ from .architect import ArchitectPersona
 from .implementations.scribe import ScribePersona
 from .implementations.professor import ProfessorPersona
 from core.router_v2 import IntelligentRouterV2
+from core.user_journey import get_journey_tracker
+from core.pedagogy.coaching_templates import get_persona_introduction
 
 logger = logging.getLogger(__name__)
 
@@ -415,6 +417,40 @@ class PersonaManager:
             f"(mode: {state.current_mode})"
         )
         
+        # Check if we should deliver introduction message (Wave 1, Task 2)
+        journey_tracker = get_journey_tracker()
+        feature_key = f"persona_intro_{persona_name}"
+        
+        print(f"\n{'='*60}")
+        print(f"🔍 PERSONA INTRODUCTION CHECK FOR: {persona_name}")
+        print(f"{'='*60}")
+        logger.info(f"[DEBUG] Checking introduction for {persona_name}, feature_key: {feature_key}")
+        logger.info(f"[DEBUG] Feature already revealed: {journey_tracker.is_feature_revealed(feature_key)}")
+        
+        if not journey_tracker.is_feature_revealed(feature_key):
+            # First time activating this persona - prepare introduction
+            intro_message = get_persona_introduction(persona_name)
+            print(f"📝 Introduction message retrieved: {intro_message[:80] if intro_message else 'NONE'}...")
+            logger.info(f"[DEBUG] Got introduction message (length: {len(intro_message) if intro_message else 0})")
+            if intro_message:
+                # Store introduction for delivery (will be injected in next response)
+                state.pending_introduction = intro_message
+                print(f"✅ Set state.pending_introduction")
+                logger.info(f"[DEBUG] Set state.pending_introduction to: {intro_message[:50]}...")
+                # Mark as revealed so it won't be shown again
+                journey_tracker.mark_feature_revealed(feature_key)
+                logger.info(f"Prepared introduction message for {persona_name}")
+        else:
+            print(f"⏭️  Skipping introduction - already revealed")
+            logger.info(f"[DEBUG] Skipping introduction - already revealed")
+        
+        # Track interaction count
+        journey_tracker.increment_interaction(f"persona_{persona_name}_activated")
+        
+        print(f"🔚 Final state.pending_introduction: {getattr(state, 'pending_introduction', 'NOT SET')}")
+        print(f"{'='*60}\n")
+        logger.info(f"[DEBUG] Final state.pending_introduction: {getattr(state, 'pending_introduction', 'NOT SET')}")
+        
         return state
     
     def deactivate_persona(self):
@@ -462,7 +498,12 @@ class PersonaManager:
             f"(mode: {self.active_persona.state.current_mode})"
         )
         
-        return await self.active_persona.process(context)
+        # Process user input and return response directly
+        # Note: Introduction is now delivered immediately on activation (Option A)
+        # so we don't need to prepend it here
+        response = await self.active_persona.process(context)
+        
+        return response
     
     def get_system_prompt(self, include_metadata: bool = True) -> str:
         """

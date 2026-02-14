@@ -13,7 +13,12 @@ Source of truth for security behavior. Current + planned (Phase 23.5): [docs/SEC
 | Package allowlist + approval workflow | ✅ Implemented | core/package_detector.py, approved_packages.yaml, package-approval-dialog.js |
 | CORS from security policy | ✅ Implemented | server.py loads security_policy.get_cors_config() |
 | Audit logging | ✅ Implemented | core/audit_logger.py, ~/.polly/audit.db |
-| Content sanitization (prompt injection, PII) | 📐 Config only | security_policy.yaml; no content_sanitizer.py / pii_filter.py |
+| Hardened failure logging | ✅ Implemented | core/hardened/failure.py → ~/.polly/hardened.db |
+| Retry manager + circuit breaker | ✅ Implemented | core/hardened/retry_manager.py; config/retry.yaml |
+| PII detection in RAG content | ✅ Implemented | core/hardened/validator.py ContentValidator |
+| Prompt injection detection in RAG content | ✅ Implemented | core/hardened/validator.py ContentValidator |
+| Performance observability | ✅ Implemented | core/hardened/performance.py, dashboard.py |
+| Content sanitization (prompt injection, PII) | ✅ Partial | Hardened validator checks RAG content; server-level sanitizer not yet implemented |
 | API key context managers / cleanup | 📐 Config only | security_policy api_keys section; not verified in providers |
 | Agent Swarms execution context brokering | 💭 Vision | Phase 24c |
 | DRM Ed25519 PKI | 💭 Vision | Phase 36d |
@@ -32,6 +37,44 @@ Source of truth for security behavior. Current + planned (Phase 23.5): [docs/SEC
 - **API key hardening:** 📐 Config (use_secure_context_manager, auto_cleanup_memory). Provider-level implementation not verified.
 - **CORS:** ✅ Loaded from `config/security_policy.yaml`.
 - **Analysis:** See [PHASE23.5_ANALYSIS.md](../../../docs/planning/phases/phase-23.5/PHASE23.5_ANALYSIS.md).
+
+## Hardened Knowledge Infrastructure (Current)
+
+Defense-in-depth for the query pipeline with fail-closed design and observable failure modes.
+
+### Observable Failure Modes
+- Explicit `FailureCategory` taxonomy mapping every failure type to actionable context
+- `FailureFactory` generates standardized `FailureReport` objects with user messages, technical details, and suggestions
+- `FailureLogger` persists failures to `~/.polly/hardened.db` for pattern analysis
+- `ErrorHandler` bridges existing `ProviderError` hierarchy into failure reports
+
+### Retry Manager + Circuit Breaker
+- Unified retry strategy across RAG retrieval, LLM generation, context assembly, external APIs
+- Exponential backoff with jitter (configurable per operation in `config/retry.yaml`)
+- Operation-specific parameter adjustments per attempt (e.g. relax similarity threshold, reduce max_tokens)
+- Circuit breaker prevents cascading failures: CLOSED → OPEN (after threshold failures) → HALF_OPEN (probe) → CLOSED
+- All retry events logged to `hardened.db`
+
+### Dual-Phenomenology Validation
+- Independent provenance (source trust) and content (quality/safety) checks on every RAG result
+- Source trust levels per Polly source type: HIGH_TRUST (vault, codebase), MEDIUM_TRUST (patterns, entities), VERIFY_REQUIRED (web), UNTRUSTED (unknown)
+- Content validator: PII hard block, prompt injection hard block, epistemological alignment checks (enrichment, not blocking)
+- Constitutional check reconciliation: scapegoat/essentialist detection triggers deeper analysis per [ethics spec](../ethics/spec.md), never content filtering
+
+### Performance Observability
+- Percentile tracking (p50/p90/p95/p99) for all pipeline operations
+- In-memory buffer flushed to `hardened.db` periodically
+- Degradation detection: compare recent p95 to baseline p95
+- Dashboard: human-readable reports, JSON export, layer status indicators
+
+### Schema Migration
+- `MigrationManager` handles forward-only SQL migrations in `migrations/`
+- `schema_version` table tracks applied migrations
+- Atomic transactions per migration
+
+Implementation: `core/hardened/`. Config: `config/validation.yaml`, `config/retry.yaml`. Change folder: [changes/hardened-knowledge-infrastructure/](../../changes/hardened-knowledge-infrastructure/).
+
+---
 
 ## Agent Swarms Security (Planned)
 
