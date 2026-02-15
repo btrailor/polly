@@ -1,7 +1,7 @@
 # Polly Project Status (OpenSpec)
 
 **Authority:** This file is the single source of truth for "where we are now."  
-**Last Updated:** February 10, 2026  
+**Last Updated:** February 14, 2026  
 **Full history:** [docs/status/CHANGELOG.md](../../../docs/status/CHANGELOG.md)
 
 ---
@@ -21,10 +21,12 @@
 ## Current Priority (Active Work)
 
 ### Core Framework Refinement 🧠
-- **Status:** In progress — Knowledge Writing + Autonomy Metrics implemented; Intelligent Routing pipeline pending
+- **Status:** Wave 2 complete (Feb 2026) — Provider Management UI + "Polly" Mode implemented; Wave 3 (Query Decomposition → Split Routing → Synthesis) pending
 - **OpenSpec:** [openspec/changes/core-framework-refinement/](../../changes/core-framework-refinement/)
-- **Completed:** Knowledge Writer (`core/knowledge_writer.py`), Autonomy Metrics (`core/autonomy_metrics.py`), Incremental RAG indexing, Scribe standalone enrich, AI Features config + settings UI, save-message frontend component, settings API endpoints
-- **Next:** Provider Registry, "Polly" mode, OpenRouter adapter, Query Decomposition → Split Routing → Synthesis pipeline
+- **Wave 1 Complete (Feb 2026):** LiteLLM adapter integration, LLMLingua compression, Mem0 memory layer
+- **Wave 2 Complete (Feb 2026):** Provider Management UI (Settings → Providers page with toggles, status, test buttons), "Polly" mode in model selector (3 tiers: Fast/Balanced/Thorough with routing explanations)
+- **Completed:** Knowledge Writer (`core/knowledge_writer.py`), Autonomy Metrics (`core/autonomy_metrics.py`), Incremental RAG indexing, Scribe standalone enrich, AI Features config + settings UI, save-message frontend component, settings API endpoints, provider management API + UI, "Polly" model selector with routing transparency
+- **Next:** Wave 3 — Query Decomposition → Split Routing → Synthesis pipeline
 
 ### Phase 23.5: Security Hardening 🔐 ✅
 - **Status:** Substantially complete (Feb 2026 analysis). Implemented: Capability Broker, Pyodide sandbox, package allowlist + approval dialog, CORS from security policy, audit logging. Config only: content sanitization (prompt injection/PII), API key context managers.
@@ -73,7 +75,7 @@
 
 | Phase | Status | Notes |
 |-------|--------|--------|
-| **Core Framework** | 🔄 ~25% | Knowledge Writing done; Provider Registry + Routing pipeline pending |
+| **Core Framework** | 🔄 ~50% | Waves 1–2 complete (LiteLLM, LLMLingua, Mem0, Provider UI, "Polly" mode); Wave 3 (Routing pipeline) pending |
 | **16c** | Backend ready, frontend pending | AI Note Creation; ~4 weeks remaining |
 | **22** | Backend 100%, frontend ~40% | Teaching Mode; 1–2 days to finish UI; deferred until after 23.5 |
 | **12a** | Ready to start | Knowledge Graph — extended scope per spec integration (see Tier 3) |
