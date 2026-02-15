@@ -251,60 +251,115 @@ Overlaps with Wave 1 tail-end. Mem0 benefits from LiteLLM (Wave 1) being done, b
 
 ---
 
-### Wave 3 — Intelligent Routing Pipeline (Weeks 5–8)
+### Wave 3 — Intelligent Routing Pipeline (Weeks 5–8) ✅ COMPLETE
 
 Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed routing).
 
-#### 17. ⬜ Query Decomposition Engine (2 weeks)
+#### 17. ✅ Query Decomposition Engine (2 weeks) — COMPLETE
 
 **Enhanced by:** LlamaIndex `SubQuestionQueryEngine` (Tier 2, Task 20) — but start with simpler custom version now, upgrade to LlamaIndex when Phase 12a KG is available.
 
 **What:** Analyze user queries → identify sub-parts → output structured query plan with routing hints.
 
 **Steps:**
-1. [ ] Create `core/query_decomposition.py`:
+1. [x] Create `core/query_decomposition.py`:
    - `decompose(query, context)` → list of sub-queries with routing hints
    - Simple first version: use LLM (via LiteLLM) to identify sub-queries
    - Each sub-query tagged: `rag_answerable`, `reasoning_required`, `code_generation`, `factual_lookup`
-2. [ ] Integration with pattern learner (enhanced by Mem0 if available):
+2. [x] Integration with pattern learner (enhanced by Mem0 if available):
    - Check if query matches known patterns → use pattern routing hint
-3. [ ] Config: `routing.decomposition.enabled: true`, model selection
-4. [ ] Test with multi-part user queries
+3. [x] Config: `routing.decomposition.enabled: true`, model selection
+4. [x] Test with multi-part user queries
 
-**Backend files:** `core/query_decomposition.py` (new)
+**Backend files:** `core/query_decomposition.py` (467 lines, complete)
 
 ---
 
-#### 18. ⬜ Split Routing (1–2 weeks)
+#### 18. ✅ Split Routing (1–2 weeks) — COMPLETE
 
 **What:** Route sub-queries in parallel to local (RAG + Ollama) and cloud providers.
 
 **Steps:**
-1. [ ] Create `core/split_router.py`:
+1. [x] Create `core/split_router.py`:
    - Takes decomposed query plan → routes each sub-query via `IntelligentRouterV2`
    - RAG-answerable sub-queries → local Ollama + RAG context
    - Reasoning sub-queries → cloud provider via LiteLLM
-   - Parallel execution with asyncio
-2. [ ] Track per-sub-query costs and routing decisions (Autonomy Metrics)
-3. [ ] Only enabled providers are candidates (from LiteLLM adapter)
+   - Parallel execution with asyncio (max 5 concurrent)
+   - Dependency graph resolution for dependent sub-queries
+2. [x] Track per-sub-query costs and routing decisions (Autonomy Metrics)
+3. [x] Only enabled providers are candidates (from LiteLLM adapter)
 
-**Backend files:** `core/split_router.py` (new)
+**Backend files:** `core/split_router.py` (497 lines, complete)
 
 ---
 
-#### 19. ⬜ Synthesis Layer (1 week)
+#### 19. ✅ Synthesis Layer (1 week) — COMPLETE
 
 **What:** Combine local + cloud sub-responses into single coherent answer.
 
 **Steps:**
-1. [ ] Create `core/synthesis.py`:
+1. [x] Create `core/synthesis.py`:
    - `synthesize(sub_responses)` → merged response with source attribution
    - Use local model (Ollama via LiteLLM) for merging when possible
    - Citation of which parts came from local vs cloud
-2. [ ] Integrate with chat response pipeline in `interfaces/server.py`
-3. [ ] LLMLingua compression on combined context if needed (from Wave 1, Task 13)
+2. [x] Integrate with chat response pipeline in `core/polly.py` via `_init_wave3_pipeline()`
+3. [x] LLMLingua compression on combined context if needed (from Wave 1, Task 13)
 
-**Backend files:** `core/synthesis.py` (new)
+**Backend files:** `core/synthesis.py` (392 lines, complete)
+
+**Testing:** `tests/test_wave3_pipeline.py` — 9/9 tests passing
+
+---
+
+#### Wave 3 Code Audit & Fixes (Feb 2026) ✅ COMPLETE
+
+**Full pipeline audit completed with 6 critical issues identified and fixed:**
+
+**ISSUE 1: Gemini model names (FIXED)**
+- Updated all Gemini model IDs to use `-latest` suffix for v1beta API compatibility
+- Changed: `gemini-1.5-flash` → `gemini-1.5-flash-latest`, same for 8b and pro variants
+- Updated in fallback_chains, model_mappings, and provider configs in `litellm_config.yaml`
+
+**ISSUE 2: SplitRouter local execution (FIXED)**
+- Added `local_llm` parameter to `SplitRouter.__init__()` for Ollama access
+- Implemented actual Ollama execution path in `_execute_sub_query()`
+- Split router now routes `type='local'` sub-queries to Ollama (0 cost) instead of always going to cloud
+- Local queries stream from `self.local_llm.chat()`, cloud queries use `router.complete_with_fallback()`
+
+**ISSUE 3: GitHub Copilot routing (FIXED)**
+- Fixed LiteLLM model mapping to check `model_mappings` BEFORE checking for `/` prefix
+- Enables `openai/gpt-4o-mini` → `github/gpt-4o-mini` mapping to work correctly
+- Added API key injection for GitHub provider in `_prepare_kwargs()`
+- Strip `github/` prefix before calling LiteLLM (uses `api_base` to route to Azure endpoint)
+- Applied to both `complete()` and `stream()` methods in LiteLLM adapter
+
+**ISSUE 4: Decomposition tier config (FIXED)**
+- Changed decomposition model tier from `'balanced'` to `'fast'` in `config.yaml`
+- Reasoning: Decomposition is just JSON structuring, doesn't need expensive models
+- Reduces cost for the decomposition LLM call itself
+
+**ISSUE 5: System prompt in Wave 3 (FIXED)**
+- Added `system_prompt` extraction from context in `_execute_sub_query()`
+- Pass `system_prompt` to both local (Ollama) and cloud execution paths
+- System prompt includes Polly's persona, RAG context, and domain information
+- Already passed from `polly.py` at line 1874, now actually used in sub-query execution
+
+**ISSUE 6: Token tracking (ACCEPTABLE)**
+- Split router already aggregates actual tokens from each sub-query response
+- `tokens_in`/`tokens_out` split in `polly.py` metadata uses rough 50/50 estimate for display
+- This is acceptable; `total_tokens` is accurate across the pipeline
+
+**Files modified:**
+- `config/litellm_config.yaml` — Gemini model names + fallback chains
+- `config/config.yaml` — Decomposition tier fast
+- `core/split_router.py` — Local LLM execution + system prompt (lines 108-136, 387-523)
+- `core/polly.py` — Pass local_llm to split router init (line 588)
+- `libs/polly-routing/polly_routing/providers/litellm.py` — GitHub routing fix (lines 194-230, 297-337, 367-385, 461-479)
+
+**Testing:**
+- All 9 Wave 3 unit tests pass (`tests/test_wave3_pipeline.py`)
+- Ready for end-to-end testing in Electron app
+- Commit: `0c87752` (development branch, Feb 15 2026)
 
 ---
 
