@@ -437,7 +437,18 @@ Respond with ONLY a JSON object (no markdown code blocks):
             response = response[4:].strip()
         
         try:
-            return json.loads(response)
+            # Try parsing with strict=False to allow control characters (newlines in strings)
+            return json.loads(response, strict=False)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse LLM response: {e}\nResponse: {response}")
-            raise ValueError(f"Invalid JSON response from LLM: {e}")
+            
+            # Try to fix common issues: escape newlines in string values
+            try:
+                # Replace literal newlines in JSON strings (but not in JSON structure)
+                # This is a heuristic fix - replace \n that appear between quotes
+                import re
+                # Find all string values and escape their newlines
+                fixed_response = re.sub(r':\s*"([^"]*)"', lambda m: f': "{m.group(1).replace(chr(10), "\\n").replace(chr(13), "\\r")}"', response)
+                return json.loads(fixed_response, strict=False)
+            except:
+                raise ValueError(f"Invalid JSON response from LLM: {e}")
