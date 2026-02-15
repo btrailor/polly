@@ -1,226 +1,243 @@
-# LiteLLM Provider Configuration
-# Used when routing_v2.use_litellm is enabled
-# https://docs.litellm.ai/
-
-# Provider configurations
-providers:
-  # Anthropic (Claude)
-  anthropic:
-    enabled: true
-    api_key_env: "ANTHROPIC_API_KEY"
-    models:
-      - id: "claude-3-haiku-20240307"
-        name: "Claude 3 Haiku"
-        context_length: 200000
-        capabilities: ["chat", "code", "analysis"]
-      - id: "claude-sonnet-4-20250514"
-        name: "Claude Sonnet 4"
-        context_length: 200000
-        capabilities: ["chat", "code", "analysis", "planning"]
-      - id: "claude-opus-4-20250514"
-        name: "Claude Opus 4"
-        context_length: 200000
-        capabilities: ["chat", "code", "analysis", "planning", "reasoning"]
-  
-  # OpenAI (GPT)
-  openai:
-    enabled: true
-    api_key_env: "OPENAI_API_KEY"
-    models:
-      - id: "gpt-3.5-turbo"
-        name: "GPT-3.5 Turbo"
-        context_length: 16385
-        capabilities: ["chat", "code"]
-      - id: "gpt-4-turbo"
-        name: "GPT-4 Turbo"
-        context_length: 128000
-        capabilities: ["chat", "code", "analysis"]
-      - id: "gpt-4o"
-        name: "GPT-4o"
-        context_length: 128000
-        capabilities: ["chat", "code", "analysis", "vision"]
-      - id: "gpt-4o-mini"
-        name: "GPT-4o Mini"
-        context_length: 128000
-        capabilities: ["chat", "code"]
-  
-  # GitHub Models (OpenAI models via GitHub)
-  github:
-    enabled: true
-    api_key_env: "GITHUB_TOKEN"
-    base_url: "https://models.inference.ai.azure.com"
-    models:
-      - id: "openai/gpt-4o-mini"
-        name: "GPT-4o Mini (via GitHub)"
-        context_length: 128000
-        capabilities: ["chat", "code"]
-      - id: "openai/gpt-4o"
-        name: "GPT-4o (via GitHub)"
-        context_length: 128000
-        capabilities: ["chat", "code", "analysis"]
-  
-  # Google Gemini
-  gemini:
-    enabled: true
-    api_key_env: "GEMINI_API_KEY"
-    models:
-      - id: "gemini-1.5-flash"
-        name: "Gemini 1.5 Flash"
-        context_length: 1000000
-        capabilities: ["chat", "code", "vision"]
-      - id: "gemini-1.5-flash-8b"
-        name: "Gemini 1.5 Flash 8B"
-        context_length: 1000000
-        capabilities: ["chat", "code"]
-      - id: "gemini-1.5-pro"
-        name: "Gemini 1.5 Pro"
-        context_length: 2000000
-        capabilities: ["chat", "code", "analysis", "vision"]
-  
-  # Mistral AI
-  mistral:
-    enabled: true
-    api_key_env: "MISTRAL_API_KEY"
-    models:
-      - id: "mistral-small-latest"
-        name: "Mistral Small"
-        context_length: 32000
-        capabilities: ["chat", "code"]
-      - id: "mistral-medium-latest"
-        name: "Mistral Medium"
-        context_length: 32000
-        capabilities: ["chat", "code", "analysis"]
-      - id: "mistral-large-latest"
-        name: "Mistral Large"
-        context_length: 32000
-        capabilities: ["chat", "code", "analysis", "reasoning"]
-  
-  # xAI (Grok)
-  grok:
-    enabled: true
-    api_key_env: "XAI_API_KEY"
-    models:
-      - id: "grok-2-1212"
-        name: "Grok 2"
-        context_length: 131072
-        capabilities: ["chat", "code", "analysis", "reasoning"]
-  
-  # Perplexity AI
-  perplexity:
-    enabled: true
-    api_key_env: "PERPLEXITY_API_KEY"
-    models:
-      - id: "llama-3.1-sonar-small-128k-online"
-        name: "Sonar Small (Online)"
-        context_length: 127072
-        capabilities: ["chat", "search", "online"]
-      - id: "llama-3.1-sonar-large-128k-online"
-        name: "Sonar Large (Online)"
-        context_length: 127072
-        capabilities: ["chat", "search", "online", "analysis"]
-      - id: "llama-3.1-sonar-huge-128k-online"
-        name: "Sonar Huge (Online)"
-        context_length: 127072
-        capabilities: ["chat", "search", "online", "analysis", "reasoning"]
-
-  # OpenRouter (aggregator for 100+ models via single API; LiteLLM prefix: openrouter/...)
-  openrouter:
-    enabled: true
-    api_key_env: "OPENROUTER_API_KEY"
-    base_url: "https://openrouter.ai/api/v1"
-    models:
-      - id: "openrouter/anthropic/claude-3.5-sonnet"
-        name: "Claude 3.5 Sonnet (via OpenRouter)"
-        context_length: 200000
-        capabilities: ["chat", "code", "analysis"]
-      - id: "openrouter/openai/gpt-4o"
-        name: "GPT-4o (via OpenRouter)"
-        context_length: 128000
-        capabilities: ["chat", "code", "analysis", "vision"]
-      - id: "openrouter/google/gemini-pro-1.5"
-        name: "Gemini 1.5 Pro (via OpenRouter)"
-        context_length: 2000000
-        capabilities: ["chat", "code", "analysis", "vision"]
-
-# Model name mappings (Polly format → LiteLLM format)
+custom_endpoints: null
+fallback_chains:
+  balanced:
+  - github/openai/gpt-4o-mini
+  - anthropic/claude-sonnet-4-20250514
+  - openai/gpt-4-turbo
+  - gemini/gemini-1.5-flash
+  fast:
+  - github/openai/gpt-4o-mini
+  - anthropic/claude-3-haiku-20240307
+  - openai/gpt-3.5-turbo
+  - gemini/gemini-1.5-flash-8b
+  thorough:
+  - github/openai/gpt-4o
+  - anthropic/claude-opus-4-20250514
+  - openai/gpt-4o
+  - gemini/gemini-1.5-pro
 model_mappings:
-  # Anthropic
-  "claude-3-haiku-20240307": "anthropic/claude-3-haiku-20240307"
-  "claude-sonnet-4-20250514": "anthropic/claude-sonnet-4-20250514"
-  "claude-opus-4-20250514": "anthropic/claude-opus-4-20250514"
-  
-  # OpenAI
-  "gpt-3.5-turbo": "openai/gpt-3.5-turbo"
-  "gpt-4-turbo": "openai/gpt-4-turbo"
-  "gpt-4o": "openai/gpt-4o"
-  "gpt-4o-mini": "openai/gpt-4o-mini"
-  
-  # GitHub Models
-  "openai/gpt-4o-mini": "github/gpt-4o-mini"
-  "openai/gpt-4o": "github/gpt-4o"
-  
-  # Gemini
-  "gemini-1.5-flash": "gemini/gemini-1.5-flash"
-  "gemini-1.5-flash-8b": "gemini/gemini-1.5-flash-8b"
-  "gemini-1.5-pro": "gemini/gemini-1.5-pro"
-  
-  # Mistral
-  "mistral-small-latest": "mistral/mistral-small-latest"
-  "mistral-medium-latest": "mistral/mistral-medium-latest"
-  "mistral-large-latest": "mistral/mistral-large-latest"
-  
-  # Grok (xAI)
-  "grok-2-1212": "xai/grok-2-1212"
-  
-  # Perplexity
-  "llama-3.1-sonar-small-128k-online": "perplexity/llama-3.1-sonar-small-128k-online"
-  "llama-3.1-sonar-large-128k-online": "perplexity/llama-3.1-sonar-large-128k-online"
-  "llama-3.1-sonar-huge-128k-online": "perplexity/llama-3.1-sonar-huge-128k-online"
-  
-  # OpenRouter (LiteLLM prefix: openrouter/model-id)
-  "openrouter/anthropic/claude-3.5-sonnet": "openrouter/anthropic/claude-3.5-sonnet"
-  "openrouter/openai/gpt-4o": "openrouter/openai/gpt-4o"
-  "openrouter/google/gemini-pro-1.5": "openrouter/google/gemini-pro-1.5"
-
-# Optional: Custom endpoints for self-hosted models
-custom_endpoints:
-  # Ollama (local)
-  # ollama:
-  #   base_url: "http://localhost:11434"
-
-# LiteLLM settings
+  claude-3-haiku-20240307: anthropic/claude-3-haiku-20240307
+  claude-opus-4-20250514: anthropic/claude-opus-4-20250514
+  claude-sonnet-4-20250514: anthropic/claude-sonnet-4-20250514
+  gemini-1.5-flash: gemini/gemini-1.5-flash
+  gemini-1.5-flash-8b: gemini/gemini-1.5-flash-8b
+  gemini-1.5-pro: gemini/gemini-1.5-pro
+  gpt-3.5-turbo: openai/gpt-3.5-turbo
+  gpt-4-turbo: openai/gpt-4-turbo
+  gpt-4o: openai/gpt-4o
+  gpt-4o-mini: openai/gpt-4o-mini
+  grok-2-1212: xai/grok-2-1212
+  llama-3.1-sonar-huge-128k-online: perplexity/llama-3.1-sonar-huge-128k-online
+  llama-3.1-sonar-large-128k-online: perplexity/llama-3.1-sonar-large-128k-online
+  llama-3.1-sonar-small-128k-online: perplexity/llama-3.1-sonar-small-128k-online
+  mistral-large-latest: mistral/mistral-large-latest
+  mistral-medium-latest: mistral/mistral-medium-latest
+  mistral-small-latest: mistral/mistral-small-latest
+  openai/gpt-4o: github/gpt-4o
+  openai/gpt-4o-mini: github/gpt-4o-mini
+  openrouter/anthropic/claude-3.5-sonnet: openrouter/anthropic/claude-3.5-sonnet
+  openrouter/google/gemini-pro-1.5: openrouter/google/gemini-pro-1.5
+  openrouter/openai/gpt-4o: openrouter/openai/gpt-4o
+providers:
+  anthropic:
+    api_key_env: ANTHROPIC_API_KEY
+    enabled: true
+    models:
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      context_length: 200000
+      id: claude-3-haiku-20240307
+      name: Claude 3 Haiku
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      - planning
+      context_length: 200000
+      id: claude-sonnet-4-20250514
+      name: Claude Sonnet 4
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      - planning
+      - reasoning
+      context_length: 200000
+      id: claude-opus-4-20250514
+      name: Claude Opus 4
+  gemini:
+    api_key_env: GEMINI_API_KEY
+    enabled: true
+    models:
+    - capabilities:
+      - chat
+      - code
+      - vision
+      context_length: 1000000
+      id: gemini-1.5-flash
+      name: Gemini 1.5 Flash
+    - capabilities:
+      - chat
+      - code
+      context_length: 1000000
+      id: gemini-1.5-flash-8b
+      name: Gemini 1.5 Flash 8B
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      - vision
+      context_length: 2000000
+      id: gemini-1.5-pro
+      name: Gemini 1.5 Pro
+  github:
+    api_key_env: GITHUB_TOKEN
+    base_url: https://models.inference.ai.azure.com
+    enabled: true
+    models:
+    - capabilities:
+      - chat
+      - code
+      context_length: 128000
+      id: openai/gpt-4o-mini
+      name: GPT-4o Mini (via GitHub)
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      context_length: 128000
+      id: openai/gpt-4o
+      name: GPT-4o (via GitHub)
+  grok:
+    api_key_env: XAI_API_KEY
+    enabled: false
+    models:
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      - reasoning
+      context_length: 131072
+      id: grok-2-1212
+      name: Grok 2
+  mistral:
+    api_key_env: MISTRAL_API_KEY
+    enabled: true
+    models:
+    - capabilities:
+      - chat
+      - code
+      context_length: 32000
+      id: mistral-small-latest
+      name: Mistral Small
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      context_length: 32000
+      id: mistral-medium-latest
+      name: Mistral Medium
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      - reasoning
+      context_length: 32000
+      id: mistral-large-latest
+      name: Mistral Large
+  openai:
+    api_key_env: OPENAI_API_KEY
+    enabled: true
+    models:
+    - capabilities:
+      - chat
+      - code
+      context_length: 16385
+      id: gpt-3.5-turbo
+      name: GPT-3.5 Turbo
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      context_length: 128000
+      id: gpt-4-turbo
+      name: GPT-4 Turbo
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      - vision
+      context_length: 128000
+      id: gpt-4o
+      name: GPT-4o
+    - capabilities:
+      - chat
+      - code
+      context_length: 128000
+      id: gpt-4o-mini
+      name: GPT-4o Mini
+  openrouter:
+    api_key_env: OPENROUTER_API_KEY
+    base_url: https://openrouter.ai/api/v1
+    enabled: true
+    models:
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      context_length: 200000
+      id: openrouter/anthropic/claude-3.5-sonnet
+      name: Claude 3.5 Sonnet (via OpenRouter)
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      - vision
+      context_length: 128000
+      id: openrouter/openai/gpt-4o
+      name: GPT-4o (via OpenRouter)
+    - capabilities:
+      - chat
+      - code
+      - analysis
+      - vision
+      context_length: 2000000
+      id: openrouter/google/gemini-pro-1.5
+      name: Gemini 1.5 Pro (via OpenRouter)
+  perplexity:
+    api_key_env: PERPLEXITY_API_KEY
+    enabled: true
+    models:
+    - capabilities:
+      - chat
+      - search
+      - online
+      context_length: 127072
+      id: llama-3.1-sonar-small-128k-online
+      name: Sonar Small (Online)
+    - capabilities:
+      - chat
+      - search
+      - online
+      - analysis
+      context_length: 127072
+      id: llama-3.1-sonar-large-128k-online
+      name: Sonar Large (Online)
+    - capabilities:
+      - chat
+      - search
+      - online
+      - analysis
+      - reasoning
+      context_length: 127072
+      id: llama-3.1-sonar-huge-128k-online
+      name: Sonar Huge (Online)
 settings:
-  # Enable debug logging
-  debug: false
-  
-  # Timeout for API requests (seconds)
-  timeout: 60
-  
-  # Max retries for failed requests
-  max_retries: 2
-  
-  # Enable automatic fallbacks
-  enable_fallbacks: true
-  
-  # Cache API responses (local)
   cache_enabled: false
   cache_ttl: 3600
-
-# Optional: Pre-configured fallback chains
-# Note: Router V2 manages fallback chains, but these can be used
-# for provider-level fallbacks within LiteLLM
-fallback_chains:
-  fast:
-    - "anthropic/claude-3-haiku-20240307"
-    - "openai/gpt-3.5-turbo"
-    - "gemini/gemini-1.5-flash-8b"
-  
-  balanced:
-    - "anthropic/claude-sonnet-4-20250514"
-    - "openai/gpt-4-turbo"
-    - "gemini/gemini-1.5-flash"
-  
-  thorough:
-    - "anthropic/claude-opus-4-20250514"
-    - "openai/gpt-4o"
-    - "gemini/gemini-1.5-pro"
+  debug: false
+  enable_fallbacks: true
+  max_retries: 2
+  timeout: 60

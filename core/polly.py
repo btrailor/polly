@@ -107,6 +107,11 @@ class Polly:
         self._init_knowledge_writer()  # Initialize knowledge writing system
         print(f"[INIT {time.time() - _total_start:.2f}s] _init_knowledge_writer took {time.time() - _step_start:.2f}s", flush=True)
 
+        logger.info("Initializing Wave 3 routing pipeline...")
+        _step_start = time.time()
+        self._init_wave3_pipeline()  # Initialize Wave 3 (decomposition, split routing, synthesis)
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_wave3_pipeline took {time.time() - _step_start:.2f}s", flush=True)
+
         # Conversation state
         self.conversation_history: List[Dict] = []
         self.session_start = datetime.now()
@@ -536,6 +541,86 @@ class Polly:
         except Exception as e:
             logger.warning(f"Could not initialize knowledge writer: {e}")
             self.knowledge_writer = None
+
+    def _init_wave3_pipeline(self):
+        """Initialize Wave 3 routing pipeline (decomposition, split routing, synthesis)."""
+        print("[Wave 3] Initializing Wave 3 routing pipeline...", flush=True)
+        logger.info("Initializing Wave 3 routing pipeline...")
+        try:
+            # Check if Wave 3 is enabled
+            routing_config = self.config.get('routing', {})
+            decomp_enabled = routing_config.get('decomposition', {}).get('enabled', False)
+            split_enabled = routing_config.get('split_routing', {}).get('enabled', False)
+            synthesis_enabled = routing_config.get('synthesis', {}).get('enabled', False)
+            
+            print(f"[Wave 3] Config check: decomp={decomp_enabled}, split={split_enabled}, synthesis={synthesis_enabled}", flush=True)
+            logger.info(f"Wave 3 config: decomp={decomp_enabled}, split={split_enabled}, synthesis={synthesis_enabled}")
+            
+            if not (decomp_enabled or split_enabled or synthesis_enabled):
+                print("[Wave 3] Pipeline disabled in config", flush=True)
+                logger.info("Wave 3 pipeline disabled in config")
+                self.query_decomposer = None
+                self.split_router = None
+                self.synthesizer = None
+                return
+            
+            # Initialize query decomposer
+            if decomp_enabled:
+                from core.query_decomposition import QueryDecomposer
+                self.query_decomposer = QueryDecomposer(
+                    config=self.config,
+                    router=self.router_v2,
+                    pattern_learner=self.pattern_engine
+                )
+                print("[Wave 3] ✓ Query decomposer initialized", flush=True)
+                logger.info("Query decomposer initialized")
+            else:
+                self.query_decomposer = None
+                print("[Wave 3] Query decomposer disabled in config", flush=True)
+                logger.info("Query decomposer disabled in config")
+            
+            # Initialize split router
+            if split_enabled:
+                from core.split_router import SplitRouter
+                self.split_router = SplitRouter(
+                    config=self.config,
+                    router=self.router_v2,
+                    rag=self.rag,
+                    autonomy_metrics=self.autonomy_metrics
+                )
+                print("[Wave 3] ✓ Split router initialized", flush=True)
+                logger.info("Split router initialized")
+            else:
+                self.split_router = None
+                print("[Wave 3] Split router disabled in config", flush=True)
+                logger.info("Split router disabled in config")
+            
+            # Initialize synthesizer
+            if synthesis_enabled:
+                from core.synthesis import Synthesizer
+                # Try to get compression manager
+                compression_mgr = getattr(self, 'compression_manager', None)
+                self.synthesizer = Synthesizer(
+                    config=self.config,
+                    router=self.router_v2,
+                    compression_manager=compression_mgr
+                )
+                print("[Wave 3] ✓ Synthesizer initialized", flush=True)
+                logger.info("Synthesizer initialized")
+            else:
+                self.synthesizer = None
+                print("[Wave 3] Synthesizer disabled in config", flush=True)
+                logger.info("Synthesizer disabled in config")
+            
+            print(f"[Wave 3] ✅ Pipeline fully initialized (decomp={decomp_enabled}, split={split_enabled}, synthesis={synthesis_enabled})", flush=True)
+            logger.info(f"Wave 3 pipeline initialized (decomp={decomp_enabled}, split={split_enabled}, synthesis={synthesis_enabled})")
+            
+        except Exception as e:
+            print(f"[Wave 3] ❌ Initialization failed: {e}", flush=True)
+            logger.error(f"Could not initialize Wave 3 pipeline: {e}", exc_info=True)
+            self.query_decomposer = None
+            self.split_router = None
+            self.synthesizer = None
 
     def _build_system_prompt(self) -> str:
         """Build the base system prompt."""
@@ -1743,6 +1828,106 @@ When answering questions, prioritize information from the knowledge base context
         # 7. Build messages with compressed context
         messages = self._build_context_for_llm()
         messages.append({'role': 'user', 'content': query})
+        
+        print(f"[PRE-WAVE3] About to check Wave 3 pipeline. Query: {query[:100]}", flush=True)
+
+        # 7.5. Wave 3 Pipeline: Query Decomposition → Split Routing → Synthesis
+        # Check if query should be decomposed and routed via Wave 3 pipeline
+        wave3_enabled = (
+            self.query_decomposer is not None and 
+            self.split_router is not None and 
+            self.synthesizer is not None
+        )
+        
+        print(f"[Wave 3 Query Check] decomposer={self.query_decomposer is not None}, split_router={self.split_router is not None}, synthesizer={self.synthesizer is not None}, enabled={wave3_enabled}", flush=True)
+        logger.info(f"Wave 3 check: decomposer={self.query_decomposer is not None}, split_router={self.split_router is not None}, synthesizer={self.synthesizer is not None}, enabled={wave3_enabled}")
+        
+        if wave3_enabled:
+            print("[Wave 3 Query] Pipeline enabled, attempting decomposition...", flush=True)
+            logger.info("Wave 3 pipeline is enabled, attempting decomposition...")
+            try:
+                # Decompose query if complex
+                decomposition_result = await self.query_decomposer.decompose(
+                    query=query,
+                    context={
+                        'domains': domain_names
+                        # Note: Don't pass rag_results or messages - they contain non-serializable objects
+                    }
+                )
+                
+                print(f"[Wave 3 Query] Decomposition complete: is_complex={decomposition_result.is_complex}, sub_queries={len(decomposition_result.sub_queries)}", flush=True)
+                logger.info(f"Wave 3: Decomposition complete, is_complex={decomposition_result.is_complex}")
+                
+                # If query was decomposed (is_complex=True), use Wave 3 pipeline
+                if decomposition_result.is_complex:
+                    print(f"[Wave 3 Query] ✓ Complex query detected! Decomposed into {len(decomposition_result.sub_queries)} sub-queries", flush=True)
+                    print(f"[Wave 3 Query] Reasoning: {decomposition_result.reasoning}", flush=True)
+                    logger.info(f"Wave 3: Query decomposed into {len(decomposition_result.sub_queries)} sub-queries")
+                    logger.info(f"Wave 3: Reasoning: {decomposition_result.reasoning}")
+                    
+                    # Route sub-queries through split router (handles parallel execution)
+                    routing_result = await self.split_router.route(
+                        decomposition=decomposition_result,
+                        context={
+                            'rag_results': filtered_search_results,
+                            'system_prompt': augmented_system,
+                            'messages': messages,
+                            'domains': domain_names
+                        }
+                    )
+                    
+                    # Synthesize responses from sub-queries
+                    synthesis_result = await self.synthesizer.synthesize(
+                        routing_result=routing_result,
+                        context={'rag_context': rag_context}
+                    )
+                    
+                    # Log Wave 3 metrics
+                    logger.info(f"Wave 3 complete: {routing_result.local_count} local, {routing_result.cloud_count} cloud")
+                    logger.info(f"Wave 3 cost: ${routing_result.total_cost:.4f}")
+                    
+                    # Stream the synthesized response (simulate streaming for UX)
+                    full_response = synthesis_result.synthesized_response
+                    if stream:
+                        # Chunk the response for streaming
+                        chunk_size = 50  # chars per chunk
+                        for i in range(0, len(full_response), chunk_size):
+                            chunk = full_response[i:i+chunk_size]
+                            yield chunk
+                            await asyncio.sleep(0.01)  # Small delay for streaming effect
+                    else:
+                        yield full_response
+                    
+                    # Set metadata from Wave 3 routing
+                    response_metadata = {
+                        'provider': 'wave3_hybrid',
+                        'model': f"{routing_result.local_count}×local + {routing_result.cloud_count}×cloud",
+                        'cost': routing_result.total_cost,
+                        'tokens_in': routing_result.total_tokens // 2,  # Rough estimate
+                        'tokens_out': routing_result.total_tokens // 2,
+                        'estimated': True,
+                        'routing_reason': f"Wave 3 decomposed query: {decomposition_result.reasoning}",
+                        'wave3_metrics': {
+                            'sub_queries': len(decomposition_result.sub_queries),
+                            'local_count': routing_result.local_count,
+                            'cloud_count': routing_result.cloud_count,
+                            'total_cost': routing_result.total_cost
+                        }
+                    }
+                    self._last_response_metadata = response_metadata
+                    
+                    # Early return - Wave 3 handled the query
+                    return
+                else:
+                    print(f"[Wave 3 Query] Query is simple, using standard routing", flush=True)
+                    logger.info(f"Wave 3: Query is simple, using standard routing")
+                    # Fall through to standard routing below
+                    
+            except Exception as e:
+                print(f"[Wave 3 Query] ❌ Pipeline failed: {e}", flush=True)
+                logger.error(f"Wave 3 pipeline failed: {e}", exc_info=True)
+                logger.info("Falling back to standard routing")
+                # Fall through to standard routing
 
         # 8. Generate response - use hybrid routing (local vs cloud based on RAG context)
         full_response = ""
@@ -1772,9 +1957,11 @@ When answering questions, prioritize information from the knowledge base context
                         yield chunk
                     
                     # Set metadata indicating local model use
+                    # Get local model from router if available, otherwise use default
+                    local_model = getattr(self.router, 'local_model', 'qwen2.5-coder:7b')
                     response_metadata = {
                         'provider': 'ollama',
-                        'model': self.router.local_model or 'qwen2.5-coder:7b',
+                        'model': local_model,
                         'cost': 0.0,  # Local is free
                         'tokens_in': len(augmented_system.split()) + sum(len(m.get('content', '').split()) for m in messages),
                         'tokens_out': len(full_response.split()),
@@ -1921,6 +2108,19 @@ When answering questions, prioritize information from the knowledge base context
                 ):
                     full_response += chunk
                     yield chunk
+                
+                # Set metadata for v1 fallback
+                local_model = getattr(self.router, 'local_model', 'qwen2.5-coder:7b')
+                response_metadata = {
+                    'provider': 'ollama',
+                    'model': local_model,
+                    'cost': 0.0,
+                    'tokens_in': len(augmented_system.split()) + sum(len(m.get('content', '').split()) for m in messages),
+                    'tokens_out': len(full_response.split()),
+                    'estimated': True,
+                    'routing_reason': 'Router v2 failed, fell back to router v1 local model'
+                }
+                self._last_response_metadata = response_metadata
         else:
             # Router V1 path - legacy routing
             async for chunk in self.llm.chat(
@@ -1930,6 +2130,19 @@ When answering questions, prioritize information from the knowledge base context
             ):
                 full_response += chunk
                 yield chunk
+            
+            # Set metadata for v1 routing
+            local_model = getattr(self.router, 'local_model', 'qwen2.5-coder:7b')
+            response_metadata = {
+                'provider': 'ollama',
+                'model': local_model,
+                'cost': 0.0,
+                'tokens_in': len(augmented_system.split()) + sum(len(m.get('content', '').split()) for m in messages),
+                'tokens_out': len(full_response.split()),
+                'estimated': True,
+                'routing_reason': 'Router v1 (legacy routing)'
+            }
+            self._last_response_metadata = response_metadata
 
         # 9. Update conversation history
         self.conversation_history.append({'role': 'user', 'content': query})
