@@ -330,11 +330,16 @@ Provide the synthesized response:"""
             strategy = self.config.get('compression', {}).get('strategy', 'auto')
             ratio = self.config.get('compression', {}).get('rag_context', {}).get('ratio', 0.5)
             
-            # Compress with LLMLingua strategy
-            result = await self.compression_manager.compress_with_strategy(
-                text=text,
-                strategy='llmlingua',
-                target_ratio=ratio
+            # Compress with specified strategy (run in thread pool since it's blocking)
+            import asyncio
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                self.compression_manager.compress_text,
+                text,
+                strategy,
+                ratio,
+                'synthesis'
             )
             
             return result.get('compressed_text', text)

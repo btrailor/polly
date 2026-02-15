@@ -19,6 +19,11 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 import logging
 
+# Register datetime adapters for Python 3.13+ compatibility
+# https://docs.python.org/3/library/sqlite3.html#adapter-and-converter-recipes
+sqlite3.register_adapter(datetime, lambda val: val.isoformat())
+sqlite3.register_converter("DATETIME", lambda val: datetime.fromisoformat(val.decode()))
+
 logger = logging.getLogger(__name__)
 
 
