@@ -29,6 +29,21 @@ server:
 router:
   default_mode: auto
   allow_override: true
+routing:
+  decomposition:
+    enabled: true
+    model: fast  # fast/balanced/thorough - tier for decomposition LLM (using fast since decomposition is just JSON structuring)
+    min_complexity_score: 0.6  # 0.0-1.0, threshold for decomposition
+  split_routing:
+    enabled: true
+    prefer_local: true  # Prefer local routing when possible
+    local_rag_threshold: 0.7  # RAG coverage threshold for local routing
+    max_parallel_queries: 5  # Max parallel sub-queries
+  synthesis:
+    enabled: true
+    use_llm: true  # Use LLM for synthesis vs simple concatenation
+    prefer_local: true  # Use local model for synthesis when possible
+    compression_threshold: 2000  # Apply LLMLingua compression above this char count
 compression:
   enabled: true
   message_threshold: 20

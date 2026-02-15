@@ -201,13 +201,14 @@ class LiteLLMAdapter(ProviderAdapter):
         Returns:
             LiteLLM model identifier (with provider prefix)
         """
+        # Try direct mapping FIRST (before checking for '/')
+        # This allows us to remap "openai/gpt-4o" -> "github/gpt-4o"
+        if model in self.model_mappings:
+            return self.model_mappings[model]
+        
         # If already in LiteLLM format (has provider prefix), return as-is
         if '/' in model:
             return model
-        
-        # Try direct mapping
-        if model in self.model_mappings:
-            return self.model_mappings[model]
         
         # Try to infer provider from model name
         model_lower = model.lower()
@@ -303,7 +304,7 @@ class LiteLLMAdapter(ProviderAdapter):
             kwargs: Original kwargs
         
         Returns:
-            Prepared kwargs dict
+            Prepared kwargs dict with correct api_base and model name
         """
         prepared = kwargs.copy()
         
@@ -318,6 +319,12 @@ class LiteLLMAdapter(ProviderAdapter):
                 base_url = providers_config['github'].get('base_url')
                 if base_url:
                     prepared['api_base'] = base_url
+                    # For GitHub provider, we also need to ensure the API key is set
+                    api_key_env = providers_config['github'].get('api_key_env', 'GITHUB_TOKEN')
+                    import os
+                    api_key = os.environ.get(api_key_env)
+                    if api_key:
+                        prepared['api_key'] = api_key
         
         # Set timeout from config
         settings = self.config.get('settings', {})
@@ -360,13 +367,23 @@ class LiteLLMAdapter(ProviderAdapter):
         # Map model name to LiteLLM format
         litellm_model = self._map_model_name(model)
         
-        # Prepare kwargs
+        # Prepare kwargs (adds api_base for GitHub, etc.)
         prepared_kwargs = self._prepare_kwargs(litellm_model, kwargs)
+        
+        # For GitHub provider, strip the github/ prefix before calling LiteLLM
+        # LiteLLM will use the api_base to route to GitHub's Azure endpoint
+        provider_prefix = litellm_model.split('/')[0] if '/' in litellm_model else None
+        if provider_prefix == 'github':
+            # Strip github/ prefix - keep only the model name (e.g., "gpt-4o-mini")
+            # LiteLLM will route to GitHub via api_base
+            litellm_call_model = litellm_model.split('/', 1)[1] if '/' in litellm_model else litellm_model
+        else:
+            litellm_call_model = litellm_model
         
         try:
             # Call LiteLLM
             response = await acompletion(
-                model=litellm_model,
+                model=litellm_call_model,
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
@@ -444,13 +461,22 @@ class LiteLLMAdapter(ProviderAdapter):
         # Map model name to LiteLLM format
         litellm_model = self._map_model_name(model)
         
-        # Prepare kwargs
+        # Prepare kwargs (adds api_base for GitHub, etc.)
         prepared_kwargs = self._prepare_kwargs(litellm_model, kwargs)
+        
+        # For GitHub provider, strip the github/ prefix before calling LiteLLM
+        # LiteLLM will use the api_base to route to GitHub's Azure endpoint
+        provider_prefix = litellm_model.split('/')[0] if '/' in litellm_model else None
+        if provider_prefix == 'github':
+            # Strip github/ prefix - keep only the model name (e.g., "gpt-4o-mini")
+            litellm_call_model = litellm_model.split('/', 1)[1] if '/' in litellm_model else litellm_model
+        else:
+            litellm_call_model = litellm_model
         
         try:
             # Call LiteLLM with streaming
             response = await acompletion(
-                model=litellm_model,
+                model=litellm_call_model,
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,

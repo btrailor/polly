@@ -586,6 +586,7 @@ class Polly:
                     config=self.config,
                     router=self.router_v2,
                     rag=self.rag,
+                    local_llm=self.llm,  # Pass local LLM for Ollama routing
                     autonomy_metrics=self.autonomy_metrics
                 )
                 print("[Wave 3] ✓ Split router initialized", flush=True)

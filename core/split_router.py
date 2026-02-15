@@ -110,6 +110,7 @@ class SplitRouter:
         config: Dict[str, Any],
         router,  # IntelligentRouterV2
         rag,  # RAG instance
+        local_llm=None,  # Local LLM instance (for Ollama)
         autonomy_metrics=None  # AutonomyMetrics instance
     ):
         """
@@ -119,11 +120,13 @@ class SplitRouter:
             config: Configuration dict
             router: IntelligentRouterV2 instance
             rag: RAG instance for local retrieval
+            local_llm: Local LLM instance (for Ollama routing)
             autonomy_metrics: AutonomyMetrics instance for tracking
         """
         self.config = config
         self.router = router
         self.rag = rag
+        self.local_llm = local_llm
         self.autonomy_metrics = autonomy_metrics
         
         # Get config
@@ -419,46 +422,95 @@ Based on the above context, answer this question:
                 ])
                 prompt = f"{prev_context}\n\n{prompt}"
             
-            # Route through IntelligentRouterV2
-            # Map route_decision['model'] to confidence level
-            from core.router_v2 import ConfidenceLevel
-            model_str = route_decision.get('model', 'auto:balanced')
-            if 'fast' in model_str.lower() or 'local' in model_str.lower():
-                confidence = ConfidenceLevel.FAST
-            elif 'thorough' in model_str.lower() or 'cloud' in model_str.lower():
-                confidence = ConfidenceLevel.THOROUGH
+            # Get system prompt from context (persona, augmented context, etc.)
+            system_prompt = context.get('system_prompt', '')
+            
+            # Check routing decision type
+            route_type = route_decision.get('type', 'cloud')
+            
+            if route_type == 'local' and self.local_llm:
+                # Use local Ollama for this sub-query
+                logger.info(f"Routing sub-query to LOCAL (Ollama): {sub_query.query[:50]}...")
+                
+                # Build messages for local LLM
+                messages = [{"role": "user", "content": prompt}]
+                
+                # Stream from local LLM and collect response
+                response_text = ""
+                async for chunk in self.local_llm.chat(
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    stream=True
+                ):
+                    response_text += chunk
+                
+                # Estimate tokens (rough approximation)
+                tokens_in = len(system_prompt.split()) + len(prompt.split())
+                tokens_out = len(response_text.split())
+                tokens_used = tokens_in + tokens_out
+                cost = 0.0  # Local is free
+                
+                return SubQueryResponse(
+                    sub_query=sub_query,
+                    response=response_text,
+                    route_info={
+                        'type': 'local',
+                        'provider': 'ollama',
+                        'model': getattr(self.local_llm, 'model', 'qwen2.5-coder:7b'),
+                        'rag_coverage': route_decision.get('rag_coverage', 0.0),
+                        'tokens_used': tokens_used,
+                        'cost': cost
+                    },
+                    success=True,
+                    error=None
+                )
+            
             else:
-                confidence = ConfidenceLevel.BALANCED
-            
-            # Format as messages (OpenAI format)
-            messages = [{"role": "user", "content": prompt}]
-            
-            response = await self.router.complete_with_fallback(
-                messages=messages,
-                confidence=confidence,
-                max_tokens=2000,
-                temperature=0.7
-            )
-            
-            # Extract response content and metadata
-            response_text = response.content
-            tokens_used = response.tokens_in + response.tokens_out
-            cost = response.cost
-            
-            return SubQueryResponse(
-                sub_query=sub_query,
-                response=response_text,
-                route_info={
-                    'type': route_decision['type'],
-                    'provider': route_decision.get('provider'),
-                    'model': route_decision['model'],
-                    'rag_coverage': route_decision.get('rag_coverage', 0.0),
-                    'tokens_used': tokens_used,
-                    'cost': cost
-                },
-                success=True,
-                error=None
-            )
+                # Route through IntelligentRouterV2 (cloud providers)
+                logger.info(f"Routing sub-query to CLOUD: {sub_query.query[:50]}...")
+                
+                # Map route_decision['model'] to confidence level
+                from core.router_v2 import ConfidenceLevel
+                model_str = route_decision.get('model', 'auto:balanced')
+                if 'fast' in model_str.lower():
+                    confidence = ConfidenceLevel.FAST
+                elif 'thorough' in model_str.lower():
+                    confidence = ConfidenceLevel.THOROUGH
+                else:
+                    confidence = ConfidenceLevel.BALANCED
+                
+                # Format as messages (OpenAI format) - include system prompt
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": prompt})
+                
+                response = await self.router.complete_with_fallback(
+                    messages=messages,
+                    confidence=confidence,
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                
+                # Extract response content and metadata
+                response_text = response.content
+                tokens_used = response.tokens_in + response.tokens_out
+                cost = response.cost
+                
+                return SubQueryResponse(
+                    sub_query=sub_query,
+                    response=response_text,
+                    route_info={
+                        'type': route_decision['type'],
+                        'provider': response.provider,
+                        'model': response.model,
+                        'rag_coverage': route_decision.get('rag_coverage', 0.0),
+                        'tokens_used': tokens_used,
+                        'cost': cost
+                    },
+                    success=True,
+                    error=None
+                )
             
         except Exception as e:
             logger.error(f"Sub-query execution failed: {e}")
