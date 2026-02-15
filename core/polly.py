@@ -1867,7 +1867,8 @@ When answering questions, prioritize information from the knowledge base context
                                 'cost': cost,
                                 'tokens_in': tokens_in,
                                 'tokens_out': tokens_out,
-                                'estimated': True
+                                'estimated': True,
+                                'routing_reason': routing_decision.reason  # Add routing explanation
                             }
                         else:
                             response = await selected_provider.complete(
@@ -1883,7 +1884,8 @@ When answering questions, prioritize information from the knowledge base context
                                 'cost': response.cost,
                                 'tokens_in': response.tokens_in,
                                 'tokens_out': response.tokens_out,
-                                'estimated': False
+                                'estimated': False,
+                                'routing_reason': routing_decision.reason  # Add routing explanation
                             }
                     
                     # Track budget usage

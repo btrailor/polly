@@ -3505,7 +3505,9 @@ function updateLeftSidebar(view) {
           });
 
           // Load tab-specific data
-          if (tab === "domains") {
+          if (tab === "general") {
+            loadGeneralSettings();
+          } else if (tab === "domains") {
             loadDomainsConfig();
           } else if (tab === "routing") {
             loadRoutingSettings();
@@ -3539,6 +3541,8 @@ function updateLeftSidebar(view) {
             loadGlobalDefaultsPicker();
           } else if (tab === "advanced") {
             loadDedupSettings();
+          } else if (tab === "providers") {
+            loadProviderSettings();
           }
         });
       });
@@ -3710,6 +3714,10 @@ function renderSettingsSidebar() {
         <button class="nav-item settings-nav-item" data-tab="api-keys" style="width: 100%; justify-content: flex-start;">
           <i data-lucide="key" class="nav-icon"></i>
           <span class="nav-label">API Keys</span>
+        </button>
+        <button class="nav-item settings-nav-item" data-tab="providers" style="width: 100%; justify-content: flex-start;">
+          <i data-lucide="cloud" class="nav-icon"></i>
+          <span class="nav-label">Providers</span>
         </button>
         <button class="nav-item settings-nav-item" data-tab="domains" style="width: 100%; justify-content: flex-start;">
           <i data-lucide="folder-tree" class="nav-icon"></i>
@@ -4815,7 +4823,14 @@ const MODEL_TIERS = [
  * Build options HTML for model selector (one source of truth for chat, hidden, floating).
  */
 function buildModelSelectorOptions() {
-  let html = '<option value="auto:balanced">Polly (Auto) — Balanced</option>';
+  // Add Polly Auto modes for all three tiers at the top
+  let html = '<optgroup label="Polly (Auto)">';
+  html += '<option value="auto:fast">Polly (Auto) — Fast</option>';
+  html += '<option value="auto:balanced">Polly (Auto) — Balanced</option>';
+  html += '<option value="auto:thorough">Polly (Auto) — Thorough</option>';
+  html += '</optgroup>';
+  
+  // Then add specific provider options organized by tier
   for (const tier of MODEL_TIERS) {
     html += `<optgroup label="${tier.label}">`;
     for (const prov of MODEL_PROVIDERS) {
@@ -8437,10 +8452,16 @@ async function sendQueryInternal(displayQuery, apiQuery, overrides) {
         const providerStr = metadata.provider || "-";
         const modelStr = metadata.model || "-";
         const estimatedStr = metadata.estimated ? " (estimated)" : "";
+        
+        // Add routing reason if available (shows why Polly chose this provider)
+        let routingReasonHtml = "";
+        if (metadata.routing_reason) {
+          routingReasonHtml = `<br><span style="color: #606060; font-style: italic;">→ ${metadata.routing_reason}</span>`;
+        }
 
         messageContent += `
           <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #2a2a2a; font-size: 11px; color: #808080; font-family: monospace;">
-            ✓ ${providerStr} (${modelStr}) • ${costStr} • ${tokensStr}${estimatedStr}
+            ✓ ${providerStr} (${modelStr}) • ${costStr} • ${tokensStr}${estimatedStr}${routingReasonHtml}
           </div>
         `;
 
@@ -9619,6 +9640,89 @@ function initSettingsTabs() {
       }
     });
   });
+}
+
+/**
+ * ===========================================
+ * GENERAL SETTINGS
+ * ===========================================
+ */
+
+async function loadGeneralSettings() {
+  try {
+    const response = await fetch(`${API_URL}/api/settings/general`);
+    if (!response.ok) {
+      console.error("Failed to load general settings:", response.status);
+      return;
+    }
+
+    const data = await response.json();
+    if (data.success && data.settings) {
+      // Update routing mode dropdown
+      const routingModeSelect = document.getElementById("settings-routing-mode");
+      if (routingModeSelect) {
+        routingModeSelect.value = data.settings.routing_mode || "auto";
+      }
+
+      // Update LiteLLM toggle
+      const useLiteLLMCheckbox = document.getElementById("settings-use-litellm");
+      if (useLiteLLMCheckbox) {
+        useLiteLLMCheckbox.checked = data.settings.use_litellm !== false;
+      }
+    }
+  } catch (error) {
+    console.error("Error loading general settings:", error);
+  }
+}
+
+async function saveGeneralSettings() {
+  try {
+    const routingMode = document.getElementById("settings-routing-mode")?.value || "auto";
+    const useLiteLLM = document.getElementById("settings-use-litellm")?.checked !== false;
+
+    const response = await fetch(`${API_URL}/api/settings/general`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        routing_mode: routingMode,
+        use_litellm: useLiteLLM
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to save general settings");
+    }
+
+    const data = await response.json();
+    if (data.success) {
+      showToast(data.message || "General settings saved", "success");
+      
+      // If LiteLLM setting changed, reload provider list if on that tab
+      const providersTab = document.getElementById("settings-section-providers");
+      if (providersTab && !providersTab.classList.contains("hidden")) {
+        await loadProviderSettings();
+      }
+    } else {
+      throw new Error(data.error || "Unknown error");
+    }
+  } catch (error) {
+    console.error("Error saving general settings:", error);
+    showToast("Failed to save general settings: " + error.message, "error");
+  }
+}
+
+function setupGeneralSettings() {
+  // Routing mode dropdown
+  const routingModeSelect = document.getElementById("settings-routing-mode");
+  if (routingModeSelect) {
+    routingModeSelect.addEventListener("change", saveGeneralSettings);
+  }
+
+  // LiteLLM toggle
+  const useLiteLLMCheckbox = document.getElementById("settings-use-litellm");
+  if (useLiteLLMCheckbox) {
+    useLiteLLMCheckbox.addEventListener("change", saveGeneralSettings);
+  }
 }
 
 /**
@@ -11407,10 +11511,12 @@ document.addEventListener("DOMContentLoaded", () => {
   initIntegrationConfig();
   initIntegrationPlaceholders();
   initRoutingSettings();
+  setupGeneralSettings(); // General settings UI
   setupDedupSettings(); // Phase 21
   setupMigration(); // Phase 16 - Migration UI
   setupCompressionSettings(); // Compression settings UI
   setupMemorySettings(); // Memory provider settings UI
+  setupSettingsCrossLinks(); // Cross-navigation between settings pages
 
   // Ensure all integration config panels start hidden
   document.querySelectorAll(".integration-config").forEach((panel) => {
@@ -14891,6 +14997,331 @@ function setupCompressionSettings() {
   if (resetBtn) {
     resetBtn.addEventListener("click", resetCompressionSettings);
   }
+}
+
+/**
+ * ===========================================
+ * PROVIDER MANAGEMENT SETTINGS
+ * ===========================================
+ */
+
+async function loadProviderSettings() {
+  const container = document.getElementById('providers-list');
+  if (!container) {
+    console.warn('[Providers] Container #providers-list not found');
+    return;
+  }
+  
+  container.innerHTML = '<div class="settings-loading-spinner">Loading providers...</div>';
+  
+  try {
+    const response = await fetch(`${API_URL}/api/settings/providers/status`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load providers (status ${response.status})`);
+    }
+    
+    const data = await response.json();
+    console.log('[Providers] Data received:', data);
+    
+    // Check if LiteLLM is enabled
+    if (!data.use_litellm) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
+          <i data-lucide="alert-circle" style="width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.5; color: var(--warning);"></i>
+          <p style="font-size: 14px; margin-bottom: 8px;">LiteLLM Provider System Not Enabled</p>
+          <p style="font-size: 12px; opacity: 0.7;">Enable <code>routing_v2.use_litellm: true</code> in config.yaml to use provider management.</p>
+        </div>
+      `;
+      lucide.createIcons();
+      return;
+    }
+    
+    // Merge runtime stats (data.providers object) with config (data.config object)
+    const providersList = [];
+    
+    // Start with config data (has all providers)
+    if (data.config && typeof data.config === 'object') {
+      for (const [providerName, configInfo] of Object.entries(data.config)) {
+        const runtimeStats = data.providers?.[providerName] || {};
+        providersList.push({
+          name: providerName,
+          config_enabled: configInfo.enabled !== false,
+          has_api_key: configInfo.has_api_key === true,
+          models: configInfo.models || [],
+          stats: runtimeStats,
+          available: runtimeStats.available !== false,
+          failures: runtimeStats.failures || 0,
+          last_success: runtimeStats.last_success
+        });
+      }
+    } else if (data.providers && typeof data.providers === 'object') {
+      // Fallback: if no config, use runtime stats only
+      for (const [providerName, stats] of Object.entries(data.providers)) {
+        providersList.push({
+          name: providerName,
+          config_enabled: true,
+          has_api_key: true,
+          models: stats.models || [],
+          stats: stats,
+          available: stats.available !== false,
+          failures: stats.failures || 0,
+          last_success: stats.last_success
+        });
+      }
+    }
+    
+    if (providersList.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
+          <i data-lucide="cloud" style="width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
+          <p style="font-size: 14px;">No providers configured.</p>
+        </div>
+      `;
+      lucide.createIcons();
+      return;
+    }
+    
+    // Sort providers alphabetically
+    providersList.sort((a, b) => a.name.localeCompare(b.name));
+    
+    let html = `
+      <div class="provider-cards">
+    `;
+    
+    providersList.forEach(provider => {
+      const isEnabled = provider.config_enabled === true;
+      const hasApiKey = provider.has_api_key === true;
+      const statusClass = isEnabled && hasApiKey ? 'provider-enabled' : 'provider-disabled';
+      const statusText = !hasApiKey ? 'No API Key' : (isEnabled ? 'Enabled' : 'Disabled');
+      
+      html += `
+        <div class="provider-card ${statusClass}" data-provider="${provider.name}">
+          <div class="provider-header">
+            <div class="provider-name">${formatProviderName(provider.name)}</div>
+            <label class="provider-toggle">
+              <input type="checkbox" 
+                     class="provider-toggle-input" 
+                     data-provider="${provider.name}"
+                     ${isEnabled ? 'checked' : ''}
+                     ${!hasApiKey ? 'disabled' : ''}>
+              <span class="provider-toggle-slider"></span>
+            </label>
+          </div>
+          
+          <div class="provider-details">
+            <div class="provider-status ${statusClass}">
+              <span class="provider-status-dot"></span>
+              <span>${statusText}</span>
+            </div>
+            
+            ${provider.models && provider.models.length > 0 ? `
+              <div class="provider-models">
+                <span style="font-size: 11px; color: var(--text-secondary);">
+                  ${provider.models.length} model${provider.models.length !== 1 ? 's' : ''} available
+                </span>
+              </div>
+            ` : ''}
+            
+            ${provider.failures > 0 ? `
+              <div class="provider-stats">
+                <span style="font-size: 11px; color: var(--error);">
+                  ${provider.failures} recent failure${provider.failures !== 1 ? 's' : ''}
+                </span>
+              </div>
+            ` : ''}
+          </div>
+          
+          <div class="provider-actions">
+            ${!hasApiKey ? `
+              <button class="btn btn-secondary btn-sm provider-add-key-btn" 
+                      data-provider="${provider.name}">
+                <i data-lucide="key" style="width: 14px; height: 14px;"></i>
+                Add Key
+              </button>
+            ` : `
+              <button class="btn btn-secondary btn-sm provider-test-btn" 
+                      data-provider="${provider.name}"
+                      ${!isEnabled ? 'disabled' : ''}>
+                <i data-lucide="activity" style="width: 14px; height: 14px;"></i>
+                Test
+              </button>
+            `}
+          </div>
+        </div>
+      `;
+    });
+    
+    html += `
+      </div>
+    `;
+    
+    container.innerHTML = html;
+    lucide.createIcons();
+    
+    // Attach event listeners
+    setupProviderEventListeners();
+    
+  } catch (error) {
+    console.error('[Providers] Error loading providers:', error);
+    container.innerHTML = `
+      <div class="settings-error">
+        <i data-lucide="alert-circle" style="width: 24px; height: 24px; margin-bottom: 8px;"></i>
+        <p>Failed to load providers</p>
+        <p style="font-size: 12px; opacity: 0.7;">${error.message}</p>
+      </div>
+    `;
+    lucide.createIcons();
+  }
+}
+
+function setupProviderEventListeners() {
+  // Toggle switches
+  document.querySelectorAll('.provider-toggle-input').forEach(toggle => {
+    toggle.addEventListener('change', async (e) => {
+      const providerName = e.target.dataset.provider;
+      const enabled = e.target.checked;
+      await toggleProvider(providerName, enabled);
+    });
+  });
+  
+  // Test buttons
+  document.querySelectorAll('.provider-test-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const providerName = e.currentTarget.dataset.provider;
+      await testProvider(providerName, e.currentTarget);
+    });
+  });
+  
+  // Add Key buttons - navigate to API Keys tab
+  document.querySelectorAll('.provider-add-key-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const providerName = e.currentTarget.dataset.provider;
+      console.log(`[Providers] Add key requested for ${providerName}, navigating to API Keys tab`);
+      navigateToSettingsTab('api-keys');
+    });
+  });
+}
+
+async function toggleProvider(providerName, enabled) {
+  try {
+    const response = await fetch(`${API_URL}/api/settings/providers/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: providerName, enabled })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to toggle provider (status ${response.status})`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      showToast(`${formatProviderName(providerName)} ${enabled ? 'enabled' : 'disabled'}`, 'success');
+      // Update the provider card UI
+      const card = document.querySelector(`.provider-card[data-provider="${providerName}"]`);
+      if (card) {
+        if (enabled) {
+          card.classList.remove('provider-disabled');
+          card.classList.add('provider-enabled');
+        } else {
+          card.classList.remove('provider-enabled');
+          card.classList.add('provider-disabled');
+        }
+        const statusText = card.querySelector('.provider-status span:last-child');
+        if (statusText) statusText.textContent = enabled ? 'Enabled' : 'Disabled';
+      }
+    } else {
+      throw new Error(data.error || 'Unknown error');
+    }
+  } catch (error) {
+    console.error(`[Providers] Error toggling ${providerName}:`, error);
+    showToast(`Failed to toggle provider: ${error.message}`, 'error');
+    // Revert toggle
+    const toggle = document.querySelector(`.provider-toggle-input[data-provider="${providerName}"]`);
+    if (toggle) toggle.checked = !enabled;
+  }
+}
+
+async function testProvider(providerName, button) {
+  const originalHTML = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = '<i data-lucide="loader" style="width: 14px; height: 14px; animation: spin 1s linear infinite;"></i> Testing...';
+  lucide.createIcons();
+  
+  try {
+    const response = await fetch(`${API_URL}/api/settings/providers/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: providerName })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Test request failed (status ${response.status})`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      showToast(`${formatProviderName(providerName)} test successful`, 'success');
+    } else {
+      throw new Error(data.error || 'Test failed');
+    }
+  } catch (error) {
+    console.error(`[Providers] Error testing ${providerName}:`, error);
+    showToast(`Test failed: ${error.message}`, 'error');
+  } finally {
+    button.disabled = false;
+    button.innerHTML = originalHTML;
+    lucide.createIcons();
+  }
+}
+
+function formatProviderName(provider) {
+  const nameMap = {
+    'openai': 'OpenAI',
+    'anthropic': 'Anthropic',
+    'google': 'Google',
+    'deepseek': 'DeepSeek',
+    'openrouter': 'OpenRouter',
+    'groq': 'Groq',
+    'together': 'Together AI'
+  };
+  return nameMap[provider] || provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+/**
+ * Navigates to a specific settings tab
+ */
+function navigateToSettingsTab(tabName) {
+  console.log('[Settings] Navigating to tab:', tabName);
+  
+  // Find the tab button with matching data-tab attribute
+  const tabButton = document.querySelector(`.settings-nav-item[data-tab="${tabName}"]`);
+  
+  if (tabButton) {
+    // Simulate a click to trigger the existing tab switching logic
+    tabButton.click();
+  } else {
+    console.warn('[Settings] Tab not found:', tabName);
+  }
+}
+
+/**
+ * Sets up cross-navigation links between settings pages
+ */
+function setupSettingsCrossLinks() {
+  console.log('[Settings] Setting up cross-navigation links');
+  
+  // Find all links with data-goto-tab attribute
+  document.querySelectorAll('[data-goto-tab]').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const targetTab = e.currentTarget.dataset.gotoTab;
+      navigateToSettingsTab(targetTab);
+    });
+  });
 }
 
 /**

@@ -103,7 +103,17 @@ async function loadAPIKeys() {
             ${getProviderIcon(key.provider)}
           </div>
           <div class="api-key-details">
-            <div class="api-key-provider">${formatProviderName(key.provider)}</div>
+            <div class="api-key-provider">
+              ${formatProviderName(key.provider)}
+              ${getProviderKeyLink(key.provider) ? `
+                <a href="${getProviderKeyLink(key.provider)}" target="_blank" rel="noopener noreferrer" 
+                   style="margin-left: 8px; font-size: 11px; color: var(--accent); text-decoration: none; opacity: 0.8;"
+                   title="Get API key from ${formatProviderName(key.provider)}">
+                  <i data-lucide="external-link" style="width: 12px; height: 12px; vertical-align: middle;"></i>
+                  Get Key
+                </a>
+              ` : ''}
+            </div>
             <div class="api-key-status">
               <span class="api-key-status-dot ${key.is_set ? 'connected' : 'disconnected'}"></span>
               <span>${key.is_set ? 'Configured' : 'Not set'}</span>
@@ -320,24 +330,26 @@ function showAddAPIKeyModal() {
   
   providerSelect.addEventListener('change', () => {
     const provider = providerSelect.value;
+    const keyLink = getProviderKeyLink(provider);
+    
     if (provider === 'anthropic') {
-      hintElement.textContent = 'Format: sk-ant-api03-... • Get your key at console.anthropic.com';
+      hintElement.innerHTML = `Format: sk-ant-api03-... • <a href="${keyLink}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">Get your key at console.anthropic.com</a>`;
     } else if (provider === 'openai') {
-      hintElement.textContent = 'Format: sk-... • Get your key at platform.openai.com/api-keys';
+      hintElement.innerHTML = `Format: sk-... • <a href="${keyLink}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">Get your key at platform.openai.com</a>`;
     } else if (provider === 'github') {
-      hintElement.textContent = 'Format: ghp_... or github_pat_... • Get a token at github.com/settings/tokens (requires "models:read" scope)';
+      hintElement.innerHTML = `Format: ghp_... or github_pat_... • <a href="${keyLink}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">Get a token at github.com/settings/tokens</a> (requires "models:read" scope)`;
     } else if (provider === 'grok') {
-      hintElement.textContent = 'Format: xai-... • Get your key at console.x.ai/';
+      hintElement.innerHTML = `Format: xai-... • <a href="${keyLink}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">Get your key at console.x.ai</a>`;
     } else if (provider === 'perplexity') {
-      hintElement.textContent = 'Format: pplx-... • Get your key at perplexity.ai/settings/api';
+      hintElement.innerHTML = `Format: pplx-... • <a href="${keyLink}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">Get your key at perplexity.ai/settings/api</a>`;
     } else if (provider === 'gemini') {
-      hintElement.textContent = 'Format: AI... • Get your key at aistudio.google.com/app/apikey';
+      hintElement.innerHTML = `Format: AI... • <a href="${keyLink}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">Get your key at aistudio.google.com</a>`;
     } else if (provider === 'mistral') {
-      hintElement.textContent = 'Format: ... • Get your key at console.mistral.ai/';
+      hintElement.innerHTML = `Format: ... • <a href="${keyLink}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">Get your key at console.mistral.ai</a>`;
     } else if (provider === 'openrouter') {
-      hintElement.textContent = 'Format: sk-or-... • Get your key at openrouter.ai/keys (single key for 100+ models)';
+      hintElement.innerHTML = `Format: sk-or-... • <a href="${keyLink}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">Get your key at openrouter.ai/keys</a> (single key for 100+ models)`;
     } else {
-      hintElement.textContent = '';
+      hintElement.innerHTML = '';
     }
   });
   
@@ -548,6 +560,23 @@ function formatProviderName(provider) {
     openrouter: 'OpenRouter'
   };
   return names[provider] || provider;
+}
+
+/**
+ * Helper: Get provider API key documentation URL
+ */
+function getProviderKeyLink(provider) {
+  const links = {
+    anthropic: 'https://console.anthropic.com/settings/keys',
+    openai: 'https://platform.openai.com/api-keys',
+    github: 'https://github.com/settings/tokens?type=beta',
+    grok: 'https://console.x.ai/',
+    perplexity: 'https://www.perplexity.ai/settings/api',
+    gemini: 'https://aistudio.google.com/app/apikey',
+    mistral: 'https://console.mistral.ai/api-keys/',
+    openrouter: 'https://openrouter.ai/keys'
+  };
+  return links[provider] || null;
 }
 
 /**

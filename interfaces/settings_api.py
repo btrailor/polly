@@ -66,6 +66,17 @@ class UpdateAIFeaturesRequest(BaseModel):
     autonomy_dashboard_show_in_status_bar: Optional[bool] = None
 
 
+class ToggleProviderRequest(BaseModel):
+    """Request model for toggling provider enabled status."""
+    provider: str
+    enabled: bool
+
+
+class TestProviderRequest(BaseModel):
+    """Request model for testing a specific provider."""
+    provider: str
+
+
 class QuickSaveRequest(BaseModel):
     """Request model for quick-saving knowledge from chat."""
     content: str
@@ -318,6 +329,61 @@ def create_settings_router() -> APIRouter:
             logger.error(f"Failed to update budget: {e}")
             raise HTTPException(500, f"Failed to update budget: {str(e)}")
     
+    @router.get("/general")
+    async def get_general_settings():
+        """Get general Polly settings."""
+        try:
+            config = get_config()
+            return {
+                "success": True,
+                "settings": {
+                    "routing_mode": config.get("router.default_mode", "auto"),
+                    "use_litellm": config.get("routing_v2.use_litellm", False)
+                }
+            }
+        except Exception as e:
+            logger.error(f"Failed to get general settings: {e}")
+            raise HTTPException(500, f"Failed to get general settings: {str(e)}")
+    
+    @router.post("/general")
+    async def update_general_settings(request: Request):
+        """Update general Polly settings."""
+        try:
+            data = await request.json()
+            config = get_config()
+            config_path = Path("config/config.yaml")
+            
+            # Load current config
+            with open(config_path, 'r') as f:
+                config_data = yaml.safe_load(f) or {}
+            
+            # Update settings
+            if "routing_mode" in data:
+                if "router" not in config_data:
+                    config_data["router"] = {}
+                config_data["router"]["default_mode"] = data["routing_mode"]
+            
+            if "use_litellm" in data:
+                if "routing_v2" not in config_data:
+                    config_data["routing_v2"] = {}
+                config_data["routing_v2"]["use_litellm"] = data["use_litellm"]
+            
+            # Save config
+            with open(config_path, 'w') as f:
+                yaml.dump(config_data, f, default_flow_style=False, sort_keys=False)
+            
+            return {
+                "success": True,
+                "message": "General settings updated. Restart required for changes to take effect.",
+                "settings": {
+                    "routing_mode": config_data.get("router", {}).get("default_mode", "auto"),
+                    "use_litellm": config_data.get("routing_v2", {}).get("use_litellm", False)
+                }
+            }
+        except Exception as e:
+            logger.error(f"Failed to update general settings: {e}")
+            raise HTTPException(500, f"Failed to update general settings: {str(e)}")
+    
     @router.get("/providers")
     async def get_provider_info():
         """Get information about all providers."""
@@ -354,14 +420,143 @@ def create_settings_router() -> APIRouter:
                 }
             stats = polly.router_v2.get_provider_stats()
             use_litellm = getattr(polly.router_v2, "use_litellm", False)
+            
+            # Also load configuration info (enabled status from litellm_config.yaml)
+            config = get_config()
+            config_status = {}
+            
+            if use_litellm:
+                try:
+                    import yaml
+                    litellm_config_path = config.get("routing_v2.litellm_config_path", "config/litellm_config.yaml")
+                    litellm_config_file = Path(litellm_config_path)
+                    if litellm_config_file.exists():
+                        with open(litellm_config_file, 'r') as f:
+                            litellm_config = yaml.safe_load(f) or {}
+                            providers_config = litellm_config.get('providers', {})
+                            for provider_name, provider_conf in providers_config.items():
+                                has_api_key = bool(secrets.get_secret(provider_name, fallback_to_env=True))
+                                config_status[provider_name] = {
+                                    'enabled': provider_conf.get('enabled', True),
+                                    'has_api_key': has_api_key,
+                                    'models': provider_conf.get('models', [])
+                                }
+                except Exception as e:
+                    logger.warning(f"Failed to load litellm config: {e}")
+            
             return {
                 "success": True,
                 "use_litellm": use_litellm,
-                "providers": stats
+                "providers": stats,
+                "config": config_status
             }
         except Exception as e:
             logger.error(f"Failed to get provider status: {e}")
             raise HTTPException(500, f"Failed to get provider status: {str(e)}")
+    
+    @router.post("/providers/toggle")
+    async def toggle_provider(request: ToggleProviderRequest):
+        """Toggle provider enabled status in litellm_config.yaml."""
+        try:
+            import yaml
+            
+            config = get_config()
+            litellm_config_path = config.get("routing_v2.litellm_config_path", "config/litellm_config.yaml")
+            litellm_config_file = Path(litellm_config_path)
+            
+            if not litellm_config_file.exists():
+                raise HTTPException(404, "LiteLLM config file not found")
+            
+            # Load current config
+            with open(litellm_config_file, 'r') as f:
+                litellm_config = yaml.safe_load(f) or {}
+            
+            # Update provider enabled status
+            providers = litellm_config.setdefault('providers', {})
+            if request.provider not in providers:
+                raise HTTPException(404, f"Provider {request.provider} not found in configuration")
+            
+            providers[request.provider]['enabled'] = request.enabled
+            
+            # Save updated config
+            with open(litellm_config_file, 'w') as f:
+                yaml.safe_dump(litellm_config, f, default_flow_style=False)
+            
+            return {
+                "success": True,
+                "provider": request.provider,
+                "enabled": request.enabled,
+                "message": f"Provider {request.provider} {'enabled' if request.enabled else 'disabled'}. Restart required for changes to take effect."
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to toggle provider: {e}")
+            raise HTTPException(500, f"Failed to toggle provider: {str(e)}")
+    
+    @router.post("/providers/test")
+    async def test_provider(request: TestProviderRequest):
+        """Test a specific provider's connectivity."""
+        try:
+            # Get API key
+            key = secrets.get_secret(request.provider, fallback_to_env=True)
+            
+            if not key:
+                return {
+                    "success": False,
+                    "provider": request.provider,
+                    "available": False,
+                    "valid": False,
+                    "error": "API key not configured"
+                }
+            
+            # Test based on provider
+            if request.provider == 'openrouter':
+                # OpenRouter doesn't have a legacy adapter, will be validated via LiteLLM on use
+                is_valid = True
+                error = None
+            else:
+                try:
+                    from core.providers import (
+                        AnthropicAdapter,
+                        OpenAIAdapter,
+                        GitHubModelsAdapter,
+                        GrokAdapter,
+                        PerplexityAdapter,
+                        GeminiAdapter,
+                        MistralAdapter,
+                    )
+                    _adapters = {
+                        'anthropic': AnthropicAdapter,
+                        'openai': OpenAIAdapter,
+                        'github': GitHubModelsAdapter,
+                        'grok': GrokAdapter,
+                        'perplexity': PerplexityAdapter,
+                        'gemini': GeminiAdapter,
+                        'mistral': MistralAdapter,
+                    }
+                    adapter_cls = _adapters.get(request.provider)
+                    if adapter_cls:
+                        adapter = adapter_cls(key)
+                        is_valid = await adapter.validate_credentials()
+                        error = None if is_valid else "Validation failed"
+                    else:
+                        is_valid = False
+                        error = "Provider not supported"
+                except Exception as e:
+                    is_valid = False
+                    error = str(e)
+            
+            return {
+                "success": True,
+                "provider": request.provider,
+                "available": True,
+                "valid": is_valid,
+                "error": error
+            }
+        except Exception as e:
+            logger.error(f"Failed to test provider: {e}")
+            raise HTTPException(500, f"Failed to test provider: {str(e)}")
     
     @router.get("/compression")
     async def get_compression_settings():

@@ -500,6 +500,17 @@
                     <p class="settings-description">Choose how Polly routes queries between local and cloud models by default.</p>
                   </div>
                   
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">LiteLLM Provider System</label>
+                      <div class="toggle-switch">
+                        <input type="checkbox" id="settings-use-litellm" checked>
+                        <label for="settings-use-litellm" class="toggle-label"></label>
+                      </div>
+                    </div>
+                    <p class="settings-description">Enable LiteLLM for access to 100+ AI providers with automatic fallbacks and health monitoring. <strong>Recommended for best experience.</strong> Required for Provider Management.</p>
+                  </div>
+                  
                   <p class="form-hint" style="margin-top: 16px;">
                     <i data-lucide="info" style="width: 14px; height: 14px;"></i>
                     To configure API keys for cloud models, go to Settings → API Keys
@@ -509,14 +520,37 @@
               
               <!-- Section: API Keys (will be populated from existing tab) -->
               <div class="settings-section-content hidden" id="settings-section-api-keys">
-                <h2 class="settings-page-title">API Keys</h2>
+                <h2 class="settings-page-title">API Keys & Budget</h2>
+                
+                <div class="settings-info-banner" style="margin-bottom: 24px; padding: 12px 16px; background: rgba(240, 144, 59, 0.1); border-left: 3px solid var(--accent); border-radius: 4px;">
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <i data-lucide="info" style="width: 20px; height: 20px; color: var(--accent); flex-shrink: 0;"></i>
+                    <div style="font-size: 13px; line-height: 1.5;">
+                      <strong>API Keys manage credentials and spending limits.</strong> Once you've added keys here, go to <a href="#" class="settings-link" data-goto-tab="providers" style="color: var(--accent); text-decoration: underline;">Provider Management</a> to enable/disable providers for routing.
+                    </div>
+                  </div>
+                </div>
                 
                 <div class="settings-section">
                   <h3>Cloud Provider API Keys</h3>
-                  <p class="section-description">Configure API keys for cloud AI providers (GitHub, OpenAI, Anthropic).</p>
+                  <p class="section-description">Add, test, and manage API keys for cloud AI providers. Keys are stored securely in your system keychain. Click the "Get Key" link next to each provider to obtain your API key.</p>
                   
                   <!-- Content will be moved from tab-api-keys -->
                   <div id="settings-api-keys-content"></div>
+                </div>
+              </div>
+              
+              <!-- Section: Providers -->
+              <div class="settings-section-content hidden" id="settings-section-providers">
+                <h2 class="settings-page-title">Provider Management</h2>
+                
+                <div class="settings-section">
+                  <h3>Provider Configuration</h3>
+                  <p class="section-description">Enable or disable cloud AI providers for intelligent routing. Test connectivity and monitor provider health. Providers require API keys to function — <a href="#" class="settings-link" data-goto-tab="api-keys" style="color: var(--accent); text-decoration: underline;">manage API keys here</a>.</p>
+                  
+                  <div id="providers-list" style="margin-top: 16px;">
+                    <div class="loading-spinner">Loading providers...</div>
+                  </div>
                 </div>
               </div>
               
