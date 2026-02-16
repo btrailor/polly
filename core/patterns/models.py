@@ -107,6 +107,12 @@ class Pattern:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Pattern":
         """Create Pattern from dict, handling datetime parsing and enum conversion."""
+        # Validate required fields
+        required_fields = ['id', 'name']
+        missing = [f for f in required_fields if f not in data]
+        if missing:
+            raise ValueError(f"Missing required fields: {missing}")
+        
         # Parse datetimes
         for dt_field in ("first_seen", "last_seen"):
             val = data.get(dt_field)
@@ -125,6 +131,10 @@ class Pattern:
                 data["pattern_type"] = PatternType(pt)
             except ValueError:
                 data["pattern_type"] = PatternType.QUERY
+        
+        # Ensure description exists (use name as fallback)
+        if "description" not in data or not data["description"]:
+            data["description"] = data.get("name", "Unknown pattern")
 
         # Only pass known fields to constructor
         known_fields = {f.name for f in cls.__dataclass_fields__.values()}

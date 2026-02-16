@@ -178,7 +178,7 @@ class JSONBackend:
                 pattern = Pattern.from_dict(p_data)
                 self._patterns[pattern.id] = pattern
             except Exception as e:
-                logger.warning(f"Skipping malformed pattern: {e}")
+                logger.warning(f"Skipping malformed unified pattern: {e} | Data keys: {list(p_data.keys())[:5]}")
 
         # Load query→chunk patterns
         for qcp_data in raw.get("query_chunk_patterns", []):

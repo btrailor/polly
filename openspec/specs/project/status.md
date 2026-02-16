@@ -1,7 +1,7 @@
 # Polly Project Status (OpenSpec)
 
 **Authority:** This file is the single source of truth for "where we are now."  
-**Last Updated:** February 14, 2026  
+**Last Updated:** February 15, 2026  
 **Full history:** [docs/status/CHANGELOG.md](../../../docs/status/CHANGELOG.md)
 
 ---
@@ -10,23 +10,24 @@
 
 | | |
 |---|---|
-| **Overall** | ~82% Tier 1 complete, production-ready |
-| **Completed** | 15.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22 ~75%, 23) |
-| **Current priority** | Phase 22 frontend (Teaching Mode) or Phase 24 (Agent Swarms) |
-| **Next recommended** | Phase 22 frontend (~1–2 days) or Core Framework #15–#16 (Provider UI, "Polly" mode) |
+| **Overall** | ~85% Tier 1 complete, production-ready |
+| **Completed** | 15.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22 ~75%, 23) + Core Framework Waves 1–3 |
+| **Current priority** | Phase 22 frontend (Teaching Mode), Phase 24 (Agent Swarms), or Core Framework Wave 4 |
+| **Next recommended** | Phase 22 frontend (~1–2 days) or Core Framework Wave 4 (Progressive Autonomy + PIL) |
 | **Spec integration** | Feb 2026 — Knowledge management, DRM, BAD Canvas, knowledge quality specs integrated into OpenSpec |
 
 ---
 
 ## Current Priority (Active Work)
 
-### Core Framework Refinement 🧠
-- **Status:** Wave 2 complete (Feb 2026) — Provider Management UI + "Polly" Mode implemented; Wave 3 (Query Decomposition → Split Routing → Synthesis) pending
+### Core Framework Refinement 🧠 ✅ Waves 1–3 COMPLETE (Feb 2026)
+- **Status:** Wave 3 complete (Feb 2026) — Full intelligent routing pipeline (Query Decomposition → Split Routing → Synthesis) now operational
 - **OpenSpec:** [openspec/changes/core-framework-refinement/](../../changes/core-framework-refinement/)
 - **Wave 1 Complete (Feb 2026):** LiteLLM adapter integration, LLMLingua compression, Mem0 memory layer
 - **Wave 2 Complete (Feb 2026):** Provider Management UI (Settings → Providers page with toggles, status, test buttons), "Polly" mode in model selector (3 tiers: Fast/Balanced/Thorough with routing explanations)
-- **Completed:** Knowledge Writer (`core/knowledge_writer.py`), Autonomy Metrics (`core/autonomy_metrics.py`), Incremental RAG indexing, Scribe standalone enrich, AI Features config + settings UI, save-message frontend component, settings API endpoints, provider management API + UI, "Polly" model selector with routing transparency
-- **Next:** Wave 3 — Query Decomposition → Split Routing → Synthesis pipeline
+- **Wave 3 Complete (Feb 2026):** Query Decomposition Engine (`core/query_decomposition.py`, 467 lines), Split Router (`core/split_router.py`, 453 lines, parallel execution with dependency graphs), Synthesis Layer (`core/synthesis.py`, 380 lines), integrated into Polly core via `_init_wave3_pipeline()`, all tests passing (9/9 in `tests/test_wave3_pipeline.py`)
+- **Completed:** Knowledge Writer (`core/knowledge_writer.py`), Autonomy Metrics (`core/autonomy_metrics.py`), Incremental RAG indexing, Scribe standalone enrich, AI Features config + settings UI, save-message frontend component, settings API endpoints, provider management API + UI, "Polly" model selector with routing transparency, query decomposition, split routing, response synthesis
+- **Next:** Wave 4 — Progressive Autonomy Feedback Loop + PIL Expansion (knowledge enrichment)
 
 ### Phase 23.5: Security Hardening 🔐 ✅
 - **Status:** Substantially complete (Feb 2026 analysis). Implemented: Capability Broker, Pyodide sandbox, package allowlist + approval dialog, CORS from security policy, audit logging. Config only: content sanitization (prompt injection/PII), API key context managers.
@@ -75,7 +76,7 @@
 
 | Phase | Status | Notes |
 |-------|--------|--------|
-| **Core Framework** | 🔄 ~50% | Waves 1–2 complete (LiteLLM, LLMLingua, Mem0, Provider UI, "Polly" mode); Wave 3 (Routing pipeline) pending |
+| **Core Framework** | 🔄 ~75% | Waves 1–3 complete (LiteLLM, LLMLingua, Mem0, Provider UI, "Polly" mode, Query Decomposition, Split Routing, Synthesis); Wave 4 (Progressive Autonomy + PIL) pending |
 | **16c** | Backend ready, frontend pending | AI Note Creation; ~4 weeks remaining |
 | **22** | Backend 100%, frontend ~40% | Teaching Mode; 1–2 days to finish UI; deferred until after 23.5 |
 | **12a** | Ready to start | Knowledge Graph — extended scope per spec integration (see Tier 3) |

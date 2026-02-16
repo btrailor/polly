@@ -1134,6 +1134,24 @@ async function addMessageToConversation(role, content) {
     }
     currentConversation.messages.push(message);
     currentConversation.message_count++;
+    
+    // Update timestamp to current time (matches database update)
+    const now = Date.now();
+    currentConversation.updated_at = now;
+    currentConversation.last_message_at = now;
+    
+    // Update the conversation in the conversations array so timestamps refresh in sidebar
+    const convIndex = conversations.findIndex(c => c.id === currentConversationId);
+    if (convIndex !== -1) {
+      conversations[convIndex].updated_at = now;
+      conversations[convIndex].last_message_at = now;
+      conversations[convIndex].message_count = currentConversation.message_count;
+      
+      // Re-render conversation list to update timestamps
+      if (typeof renderConversationList === "function") {
+        renderConversationList();
+      }
+    }
 
     // Check if needs auto-titling (after 3 messages)
     if (
@@ -1753,7 +1771,20 @@ function createConversationItemHTML(conv) {
  * Format conversation date for display
  */
 function formatConversationDate(timestamp) {
+  // Debug: Log the incoming timestamp to understand the issue
+  if (timestamp === undefined || timestamp === null) {
+    console.warn('[formatConversationDate] Undefined or null timestamp, using current time');
+    return "just now";
+  }
+  
   const date = new Date(timestamp);
+  
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    console.warn('[formatConversationDate] Invalid timestamp:', timestamp);
+    return "just now";
+  }
+  
   const now = new Date();
   const diff = now - date;
 

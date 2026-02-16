@@ -365,29 +365,38 @@ class UnifiedRAG:
             }
             
             # Discover and add any integration collections
-            # CRITICAL: This operation can hang! Add timeout protection
+            # Use threading.Timer for timeout since signal doesn't work in background threads
             try:
-                import signal
+                import threading
                 
-                def timeout_handler(signum, frame):
-                    raise TimeoutError("ChromaDB list_collections() timed out")
+                integration_collections = []
+                timeout_occurred = [False]  # Use list to allow modification in nested function
                 
-                # Set 5 second timeout for list_collections
-                signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(5)
+                def discover_collections():
+                    """Discover integration collections with timeout protection."""
+                    try:
+                        all_collections = self.client.list_collections()
+                        for collection in all_collections:
+                            if collection.name.startswith('integration_'):
+                                integration_collections.append(collection)
+                    except Exception as e:
+                        if not timeout_occurred[0]:
+                            logger.warning(f"Error discovering collections: {e}")
                 
-                try:
-                    all_collections = self.client.list_collections()
-                    signal.alarm(0)  # Cancel alarm
-                    
-                    for collection in all_collections:
-                        if collection.name.startswith('integration_'):
-                            # Extract the integration name (e.g., 'integration_github' -> 'integration_github')
-                            self.collections[collection.name] = collection
-                            logger.info(f"Discovered integration collection: {collection.name}")
-                except TimeoutError as e:
-                    signal.alarm(0)  # Cancel alarm
-                    logger.error(f"ChromaDB list_collections() timed out - skipping integration discovery")
+                # Run discovery in a separate thread with timeout
+                discovery_thread = threading.Thread(target=discover_collections)
+                discovery_thread.daemon = True
+                discovery_thread.start()
+                discovery_thread.join(timeout=5.0)  # 5 second timeout
+                
+                if discovery_thread.is_alive():
+                    timeout_occurred[0] = True
+                    logger.warning("ChromaDB list_collections() timed out - skipping integration discovery")
+                else:
+                    # Add discovered collections
+                    for collection in integration_collections:
+                        self.collections[collection.name] = collection
+                        logger.info(f"Discovered integration collection: {collection.name}")
                     
             except Exception as e:
                 logger.warning(f"Could not discover integration collections: {e}")

@@ -91,7 +91,7 @@ class SkillManager:
                 )
                 
             except Exception as e:
-                logger.error(f"Failed to load skill metadata from {skill_file}: {e}")
+                logger.warning(f"Failed to load skill metadata from {skill_file}: {e}")
         
         logger.info(f"Discovered {len(self.metadata_cache)} skills")
     
