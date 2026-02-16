@@ -2112,12 +2112,12 @@
                   <div class="learning-section">
                     <h3>
                       <i data-lucide="target" style="width: 18px; height: 18px;"></i>
-                      Start Learning
+                      Socratic Dialogue
                     </h3>
-                    <p>Ask me about any topic in the chat. I'll help you understand through guided questions rather than direct answers.</p>
+                    <p>Ask me about any topic. I'll guide your understanding through questions and discovery rather than direct answers.</p>
                     <button class="btn btn-primary" id="btn-open-chat">
                       <i data-lucide="message-circle" style="width: 16px; height: 16px;"></i>
-                      Open Chat
+                      Start Socratic Session
                     </button>
                   </div>
                   
@@ -2136,7 +2136,7 @@
                       <i data-lucide="book-open" style="width: 18px; height: 18px;"></i>
                       Learning Notes
                     </h3>
-                    <p>Create structured notes from your learning sessions to build your knowledge base.</p>
+                    <p>Structured notes capturing what you've learned through teaching sessions.</p>
                     <div id="recent-learning-notes">
                       <!-- Populated dynamically -->
                     </div>
@@ -2356,7 +2356,8 @@
             </div>
           </div>
           
-          <!-- Hidden controls for backward compatibility (synced with floating chat) -->
+           <!-- Hidden controls for backward compatibility -->
+
           <div style="display: none;">
             <select id="model-select" class="model-selector">
               <option value="auto:balanced">Polly (Auto) — Balanced</option>
@@ -2882,90 +2883,7 @@
     </div>
   </div>
 
-  <!-- Floating Chat Bar -->
-  <div class="floating-chat-container" id="floating-chat-container">
-    <!-- Chat Controls Row -->
-    <div class="floating-chat-controls">
-      <div class="control-group">
-        <label class="control-label">Model:</label>
-        <select id="floating-model-select" class="model-selector">
-          <option value="auto:balanced">Polly (Auto) — Balanced</option>
-        </select>
-      </div>
-      
-      <div class="control-group">
-        <label class="control-label">Persona:</label>
-        <select id="floating-persona-select" class="persona-selector">
-          <option value="">Default</option>
-          <option value="architect">Architect</option>
-          <option value="scribe">Scribe</option>
-          <option value="professor">Professor</option>
-        </select>
-      </div>
-      
-      <!-- Teaching Mode Indicator (kept for Professor persona feedback) -->
-      <div id="teaching-mode-indicator" class="teaching-mode-indicator hidden">
-        <i data-lucide="graduation-cap" class="mode-icon"></i>
-        <span id="teaching-mode-text">Socratic</span>
-      </div>
-      
-      <div class="orchestrator-toggle-container">
-        <label class="orchestrator-toggle-label">Orchestrate</label>
-        <div class="orchestrator-toggle" id="floating-orchestrator-toggle" role="switch" aria-checked="false" title="Enable auto-collaboration between personas"></div>
-      </div>
-    </div>
-    
-    <!-- Chat Input Row -->
-    <div class="floating-chat-input-wrapper">
-      <!-- Context Pills -->
-      <div class="context-pills-container">
-        <div class="context-pills" id="floating-context-pills"></div>
-        <button class="context-picker-btn" id="floating-context-picker-btn" title="Add context">
-          <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>
-        </button>
-      </div>
-      
-      <!-- Normal text input mode -->
-      <div class="floating-chat-input" id="floating-chat-normal-input" style="position: relative; flex: 1;">
-        <textarea 
-          id="floating-query-input" 
-          class="floating-textarea"
-          placeholder="Ask anything... or /teach, /learning-path, /save for modes"
-          rows="2"
-        ></textarea>
-        <div id="floating-slash-command-autocomplete" class="slash-command-autocomplete hidden"></div>
-      </div>
-      
-      <!-- Structured input mode (hidden by default) -->
-      <div id="floating-structured-input" class="floating-structured-input hidden">
-        <div class="structured-command-container">
-          <!-- Command tag -->
-          <div class="command-tag-wrapper" id="floating-command-tag"></div>
-          
-          <!-- Argument chips -->
-          <div class="argument-chips" id="floating-argument-chips"></div>
-          
-          <!-- Argument selectors -->
-          <div class="argument-selectors" id="floating-argument-selectors"></div>
-          
-          <!-- Preview -->
-          <div class="command-preview hidden" id="floating-command-preview">
-            <div class="preview-label">Will send:</div>
-            <div class="preview-content" id="floating-preview-content"></div>
-          </div>
-        </div>
-      </div>
-      
-      <button class="floating-btn-send" id="floating-btn-send">
-        <i data-lucide="send"></i>
-      </button>
-    </div>
-    
-    <!-- Cost Estimate Display -->
-    <div id="floating-cost-estimate" class="floating-cost-estimate hidden">
-      <span>Estimated cost: <span id="floating-cost-value">-</span></span>
-    </div>
-  </div>
+
 
   <!-- Chat Overlay Modal -->
   <div class="chat-overlay hidden" id="chat-overlay">

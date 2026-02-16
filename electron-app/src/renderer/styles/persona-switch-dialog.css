@@ -15,7 +15,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 300; /* Above floating chat (250) and chat overlay (200) */
+  z-index: 300; /* Above chat overlay (200) */
   animation: fadeIn 0.2s ease-out;
 }
 

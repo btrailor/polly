@@ -6779,3 +6779,246 @@ body {
 .feedback-hint strong {
   color: #00d9ff;
 }
+
+/* ==================== Review Topics (Phase 22) ==================== */
+
+.review-topic-card {
+  background: #151515;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 8px;
+}
+
+.review-topic-card:hover {
+  border-color: #ffa500;
+  background: #1a1a1a;
+}
+
+.review-topic-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.review-topic-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.review-overdue {
+  color: #ffa500;
+  font-weight: 500;
+}
+
+.review-topic-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+/* ==================== Learning Note Cards (Phase 22) ==================== */
+
+.learning-note-card {
+  background: #151515;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 8px;
+}
+
+.learning-note-card:hover {
+  border-color: #00d9ff;
+  background: #1a1a1a;
+}
+
+.learning-note-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.learning-note-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #e0e0e0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.learning-note-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #666;
+}
+
+/* ==================== Topics Browser Sidebar (Phase 22) ==================== */
+
+.learning-topics-browser {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.topics-browser-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.topics-browser-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.topics-browser-filter {
+  display: flex;
+  gap: 6px;
+}
+
+.topics-filter-select {
+  flex: 1;
+  padding: 4px 6px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.topics-filter-select:hover {
+  border-color: #3a3a3a;
+}
+
+.topics-filter-select:focus {
+  border-color: #00d9ff;
+  outline: none;
+}
+
+.topics-browser-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  max-height: calc(100vh - 300px);
+}
+
+.topic-concepts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.concept-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  background: rgba(0, 217, 255, 0.1);
+  color: #00d9ff;
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+.concept-tag.concept-more {
+  background: rgba(160, 160, 160, 0.1);
+  color: #a0a0a0;
+}
+
+/* ==================== Learning Note Modal (Phase 22) ==================== */
+
+#learning-note-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+}
+
+#learning-note-modal.show {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#learning-note-modal .modal-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+#learning-note-modal .modal-content {
+  position: relative;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  max-width: 600px;
+  width: 90%;
+  z-index: 1;
+}
+
+#learning-note-modal .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+#learning-note-modal .modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+#learning-note-modal .modal-close {
+  background: transparent;
+  border: none;
+  color: #a0a0a0;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+#learning-note-modal .modal-close:hover {
+  color: #e0e0e0;
+  background: #2a2a2a;
+}
+
+#learning-note-modal .modal-body {
+  padding: 20px;
+}
+
+#learning-note-modal .modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid #2a2a2a;
+}

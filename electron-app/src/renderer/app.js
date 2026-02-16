@@ -105,7 +105,6 @@ async function fetchSlashCommands() {
 function setupSlashCommandAutocomplete() {
   const configs = [
     { inputId: "chat-input", dropdownId: "slash-command-autocomplete" },
-    { inputId: "floating-query-input", dropdownId: "floating-slash-command-autocomplete" },
   ];
 
   for (const { inputId, dropdownId } of configs) {
@@ -3169,21 +3168,33 @@ function setupSidebarRibbonHandlers(view) {
 }
 
 /**
- * Switch Learning left sidebar between Curricula and Progress panels
+ * Switch Learning left sidebar between Curricula, Progress, and Topics panels
  */
 function switchLearningSidebarPanel(tab) {
   const curriculaPanel = document.getElementById("learning-sidebar-curricula");
   const progressPanel = document.getElementById("learning-sidebar-progress");
+  const topicsPanel = document.getElementById("learning-sidebar-topics");
   if (!curriculaPanel || !progressPanel) return;
-  const showProgress = tab === "progress" || tab === "topics";
-  if (showProgress) {
-    curriculaPanel.classList.add("hidden");
+
+  // Hide all panels
+  curriculaPanel.classList.add("hidden");
+  progressPanel.classList.add("hidden");
+  if (topicsPanel) topicsPanel.classList.add("hidden");
+
+  // Show the selected panel
+  if (tab === "progress") {
     progressPanel.classList.remove("hidden");
-    if (typeof lucide !== "undefined") lucide.createIcons();
+  } else if (tab === "topics") {
+    if (topicsPanel) {
+      topicsPanel.classList.remove("hidden");
+      loadTopicsBrowser();
+    }
   } else {
+    // Default: curricula
     curriculaPanel.classList.remove("hidden");
-    progressPanel.classList.add("hidden");
   }
+
+  if (typeof lucide !== "undefined") lucide.createIcons();
 }
 
 /**
@@ -3353,9 +3364,31 @@ function updateLeftSidebar(view) {
               <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
               Refresh Stats
             </button>
-            <div class="topics-list" id="topics-list">
-              <h4 class="topics-header">Recent Topics</h4>
-              <div class="topics-content" id="topics-content"></div>
+          </div>
+        </div>
+        <div id="learning-sidebar-topics" class="learning-sidebar-panel hidden">
+          <div class="learning-topics-browser">
+            <div class="topics-browser-header">
+              <i data-lucide="book-open" style="width: 16px; height: 16px;"></i>
+              <h3>All Topics</h3>
+            </div>
+            <div class="topics-browser-filter">
+              <select id="topics-domain-filter" class="topics-filter-select">
+                <option value="">All Domains</option>
+              </select>
+              <select id="topics-mastery-filter" class="topics-filter-select">
+                <option value="">All Levels</option>
+                <option value="1">L1 - Introduced</option>
+                <option value="2">L2 - Learning</option>
+                <option value="3">L3 - Understood</option>
+                <option value="4">L4 - Proficient</option>
+                <option value="5">L5 - Mastered</option>
+              </select>
+            </div>
+            <div class="topics-browser-list" id="topics-browser-list">
+              <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
+                Loading topics...
+              </div>
             </div>
           </div>
         </div>
@@ -3883,22 +3916,7 @@ function reattachChatEventListeners() {
     console.log("[Init] Attached mode-select event listener");
   }
 
-  // Persona controls (floating chat)
-  const floatingPersonaSelect = document.getElementById(
-    "floating-persona-select",
-  );
-  if (floatingPersonaSelect) {
-    floatingPersonaSelect.addEventListener("change", handlePersonaChange);
-    console.log("[Init] Attached floating-persona-select event listener");
-  }
-
-  const floatingModeSelect = document.getElementById("floating-mode-select");
-  if (floatingModeSelect) {
-    floatingModeSelect.addEventListener("change", handleModeChange);
-    console.log("[Init] Attached floating-mode-select event listener");
-  }
-
-  // Model selector: populate all three dropdowns (chat, hidden, floating) and wire change
+  // Model selector: populate dropdowns (chat panel + hidden) and wire change
   populateModelSelectors();
   const modelSelect = document.getElementById("model-select");
   if (modelSelect) {
@@ -3907,10 +3925,6 @@ function reattachChatEventListeners() {
   const chatModelSelect = document.getElementById("chat-model-select");
   if (chatModelSelect) {
     chatModelSelect.addEventListener("change", handleModelChange);
-  }
-  const floatingModelSelect = document.getElementById("floating-model-select");
-  if (floatingModelSelect) {
-    floatingModelSelect.addEventListener("change", handleModelChange);
   }
 
   // Orchestrator toggle (TODO: implement multi-persona orchestration)
@@ -4519,23 +4533,18 @@ async function autoCategorizeConversation(conversationId) {
 async function handlePersonaChange(e) {
   const personaName = e.target.value;
   const modeSelect = document.getElementById("mode-select");
-  const floatingModeSelect = document.getElementById("floating-mode-select");
   const personaSelect = document.getElementById("persona-select");
-  const floatingPersonaSelect = document.getElementById(
-    "floating-persona-select",
-  );
+  const chatPersonaSelect = document.getElementById("chat-persona-select");
 
   console.log("[Persona] handlePersonaChange called with:", personaName);
   console.log("[Persona] Event triggered from:", e.target.id);
-  console.log("[Persona] modeSelect element:", modeSelect);
-  console.log("[Persona] floatingModeSelect element:", floatingModeSelect);
 
-  // Keep both persona selects in sync
+  // Keep persona selects in sync
   if (personaSelect && personaSelect.value !== personaName) {
     personaSelect.value = personaName;
   }
-  if (floatingPersonaSelect && floatingPersonaSelect.value !== personaName) {
-    floatingPersonaSelect.value = personaName;
+  if (chatPersonaSelect && chatPersonaSelect.value !== personaName) {
+    chatPersonaSelect.value = personaName;
   }
 
   if (!personaName) {
@@ -4550,10 +4559,6 @@ async function handlePersonaChange(e) {
       if (modeSelect) {
         modeSelect.disabled = true;
         modeSelect.innerHTML = "<option>Select persona first</option>";
-      }
-      if (floatingModeSelect) {
-        floatingModeSelect.disabled = true;
-        floatingModeSelect.innerHTML = "<option>Select persona first</option>";
       }
 
       // Hide teaching mode indicator
@@ -4604,13 +4609,6 @@ async function handlePersonaChange(e) {
 
       if (persona && persona.available_modes) {
         // Populate mode selector
-        console.log("[Persona] About to populate mode selectors");
-        console.log("[Persona] modeSelect before:", modeSelect?.innerHTML);
-        console.log(
-          "[Persona] floatingModeSelect before:",
-          floatingModeSelect?.innerHTML,
-        );
-
         const modeOptionsHTML = persona.available_modes
           .map(
             (mode) =>
@@ -4622,22 +4620,6 @@ async function handlePersonaChange(e) {
         if (modeSelect) {
           modeSelect.disabled = false;
           modeSelect.innerHTML = modeOptionsHTML;
-          console.log("[Persona] modeSelect after:", modeSelect.innerHTML);
-          console.log("[Persona] modeSelect.disabled:", modeSelect.disabled);
-        }
-
-        // Update floating mode select
-        if (floatingModeSelect) {
-          floatingModeSelect.disabled = false;
-          floatingModeSelect.innerHTML = modeOptionsHTML;
-          console.log(
-            "[Persona] floatingModeSelect after:",
-            floatingModeSelect.innerHTML,
-          );
-          console.log(
-            "[Persona] floatingModeSelect.disabled:",
-            floatingModeSelect.disabled,
-          );
         }
 
         console.log(
@@ -4670,17 +4652,13 @@ async function handlePersonaChange(e) {
     // Reset persona selects
     e.target.value = "";
     if (personaSelect && personaSelect !== e.target) personaSelect.value = "";
-    if (floatingPersonaSelect && floatingPersonaSelect !== e.target)
-      floatingPersonaSelect.value = "";
+    if (chatPersonaSelect && chatPersonaSelect !== e.target)
+      chatPersonaSelect.value = "";
 
     // Reset mode selects
     if (modeSelect) {
       modeSelect.disabled = true;
       modeSelect.innerHTML = "<option>Select persona first</option>";
-    }
-    if (floatingModeSelect) {
-      floatingModeSelect.disabled = true;
-      floatingModeSelect.innerHTML = "<option>Select persona first</option>";
     }
   }
 }
@@ -4693,10 +4671,8 @@ async function handleModeChange(e) {
 
   // Check if a persona is active first
   const personaSelect = document.getElementById("persona-select");
-  const floatingPersonaSelect = document.getElementById(
-    "floating-persona-select",
-  );
-  const activePersona = personaSelect?.value || floatingPersonaSelect?.value;
+  const chatPersonaSelect = document.getElementById("chat-persona-select");
+  const activePersona = chatPersonaSelect?.value || personaSelect?.value;
 
   if (!activePersona) {
     console.warn("[Persona] Cannot switch mode - no persona active");
@@ -4881,7 +4857,6 @@ function populateModelSelectors() {
   const selectIds = [
     "chat-model-select",
     "model-select",
-    "floating-model-select",
   ];
   const confidence = sessionStorage.getItem("model-confidence") || "balanced";
   const providerOverride = sessionStorage.getItem("model-provider");
@@ -4925,11 +4900,10 @@ function handleModelChange(e) {
     sessionStorage.setItem("model-provider", provider);
     console.log(`[Model] ${provider} provider with ${tier} tier`);
   }
-  // Keep all three selects in sync
+  // Keep selects in sync
   const selectIds = [
     "chat-model-select",
     "model-select",
-    "floating-model-select",
   ];
   for (const id of selectIds) {
     const el = document.getElementById(id);
@@ -15498,29 +15472,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ========================================
-  // FLOATING CHAT INITIALIZATION
+  // CHAT PANEL INITIALIZATION
   // ========================================
-  initializeFloatingChat();
-});
 
-// ========================================
-// FLOATING CHAT SYSTEM
-// ========================================
-
-/**
- * Initialize floating chat bar
- */
-function initializeFloatingChat() {
-  console.log("[Floating Chat] Initializing...");
-
-  // Sync controls with old chat controls
-  syncFloatingChatControls();
-
-  // Set up event listeners
-  setupFloatingChatListeners();
-
-  // Set up keyboard shortcuts
-  setupFloatingChatShortcuts();
+  // Set up overlay event handlers
+  setupChatOverlayListeners();
 
   // Set up sidebar resize functionality
   setupSidebarResize();
@@ -15528,134 +15484,42 @@ function initializeFloatingChat() {
   // Set up center resize (conversation pane vs main content)
   setupCenterResizeHandle();
 
-  console.log("[Floating Chat] Initialized");
-}
+  // Cmd+K / Ctrl+K to focus chat input (unless in CodeMirror editor)
+  document.addEventListener("keydown", (e) => {
+    const activeElement = document.activeElement;
+    const isInEditor =
+      activeElement &&
+      (activeElement.classList.contains("cm-content") ||
+        activeElement.closest(".cm-editor"));
 
-/**
- * Sync floating chat controls with existing chat controls
- */
-function syncFloatingChatControls() {
-  const floatingModelSelect = document.getElementById("floating-model-select");
-  const floatingPersonaSelect = document.getElementById(
-    "floating-persona-select",
-  );
-  const floatingModeSelect = document.getElementById("floating-mode-select");
-  const floatingOrchestratorToggle = document.getElementById(
-    "floating-orchestrator-toggle",
-  );
-
-  const modelSelect = document.getElementById("model-select");
-  const personaSelect = document.getElementById("persona-select");
-  const modeSelect = document.getElementById("mode-select");
-  const orchestratorToggle = document.getElementById("orchestrator-toggle");
-
-  // Sync model selection
-  if (floatingModelSelect && modelSelect) {
-    floatingModelSelect.value = modelSelect.value;
-    floatingModelSelect.addEventListener("change", () => {
-      modelSelect.value = floatingModelSelect.value;
-      modelSelect.dispatchEvent(new Event("change"));
-    });
-    modelSelect.addEventListener("change", () => {
-      floatingModelSelect.value = modelSelect.value;
-    });
-  }
-
-  // Sync persona selection
-  if (floatingPersonaSelect && personaSelect) {
-    floatingPersonaSelect.value = personaSelect.value;
-    floatingPersonaSelect.addEventListener("change", () => {
-      personaSelect.value = floatingPersonaSelect.value;
-      personaSelect.dispatchEvent(new Event("change"));
-
-      // Enable/disable mode selector
-      if (floatingModeSelect) {
-        if (floatingPersonaSelect.value) {
-          floatingModeSelect.disabled = false;
-        } else {
-          floatingModeSelect.disabled = true;
-          floatingModeSelect.innerHTML =
-            '<option value="">Select persona first</option>';
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if (!isInEditor) {
+        e.preventDefault();
+        const chatInput = document.getElementById("chat-input");
+        if (chatInput) {
+          chatInput.focus();
         }
       }
-    });
-    personaSelect.addEventListener("change", () => {
-      floatingPersonaSelect.value = personaSelect.value;
-    });
-  }
-
-  // Sync mode selection
-  if (floatingModeSelect && modeSelect) {
-    floatingModeSelect.disabled = modeSelect.disabled;
-    floatingModeSelect.innerHTML = modeSelect.innerHTML;
-    floatingModeSelect.value = modeSelect.value;
-
-    floatingModeSelect.addEventListener("change", () => {
-      modeSelect.value = floatingModeSelect.value;
-      modeSelect.dispatchEvent(new Event("change"));
-    });
-    modeSelect.addEventListener("change", () => {
-      if (!modeSelect.disabled) {
-        floatingModeSelect.disabled = false;
-        floatingModeSelect.innerHTML = modeSelect.innerHTML;
-        floatingModeSelect.value = modeSelect.value;
-      }
-    });
-  }
-
-  // Sync orchestrator toggle
-  if (floatingOrchestratorToggle && orchestratorToggle) {
-    const isActive = orchestratorToggle.getAttribute("aria-checked") === "true";
-    floatingOrchestratorToggle.setAttribute("aria-checked", isActive);
-    if (isActive) {
-      floatingOrchestratorToggle.classList.add("active");
     }
 
-    floatingOrchestratorToggle.addEventListener("click", () => {
-      orchestratorToggle.click();
-    });
+    // Escape to close overlay
+    if (e.key === "Escape") {
+      const overlay = document.getElementById("chat-overlay");
+      if (overlay && !overlay.classList.contains("hidden")) {
+        closeChatOverlay();
+      }
+    }
+  });
+});
 
-    orchestratorToggle.addEventListener("click", () => {
-      const isNowActive =
-        orchestratorToggle.getAttribute("aria-checked") === "true";
-      floatingOrchestratorToggle.setAttribute("aria-checked", isNowActive);
-      floatingOrchestratorToggle.classList.toggle("active", isNowActive);
-    });
-  }
-}
+// ========================================
+// CHAT OVERLAY & PANEL SUPPORT
+// ========================================
 
 /**
- * Set up floating chat event listeners
+ * Set up chat overlay event listeners (close button, backdrop, expand)
  */
-function setupFloatingChatListeners() {
-  const floatingTextarea = document.getElementById("floating-query-input");
-  const floatingSendBtn = document.getElementById("floating-btn-send");
-
-  // Auto-resize textarea (addEventListener works fine for input events)
-  if (floatingTextarea) {
-    floatingTextarea.addEventListener("input", () => {
-      floatingTextarea.style.height = "auto";
-      floatingTextarea.style.height =
-        Math.min(floatingTextarea.scrollHeight, 180) + "px";
-    });
-
-    // Send on Enter (without Shift) (keydown events work fine)
-    floatingTextarea.addEventListener("keydown", async (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        await sendFloatingMessage();
-      }
-    });
-  }
-
-  // Send button click (use direct assignment for click events)
-  if (floatingSendBtn) {
-    floatingSendBtn.onclick = async function (e) {
-      await sendFloatingMessage();
-      e.preventDefault();
-    };
-  }
-
+function setupChatOverlayListeners() {
   // Overlay close button
   const overlayCloseBtn = document.getElementById("chat-overlay-close");
   if (overlayCloseBtn) {
@@ -15675,267 +15539,20 @@ function setupFloatingChatListeners() {
     };
   }
 
-  // Split view button (TODO: implement split view)
-  const splitViewBtn = document.getElementById("chat-overlay-split-view");
-  if (splitViewBtn) {
-    splitViewBtn.onclick = function (e) {
-      console.log("[Floating Chat] Split view not yet implemented");
-      e.preventDefault();
-    };
-  }
-
   // Expand button (opens full-screen overlay from sidebar)
-  // Use setTimeout to ensure DOM is fully ready (same issue as resize handle)
   setTimeout(() => {
     const expandBtn = document.getElementById("chat-expand-btn");
-    console.log("[Floating Chat] Expand button found:", !!expandBtn, expandBtn);
     if (expandBtn) {
       expandBtn.onclick = function (e) {
-        console.log("[Floating Chat] Expand button clicked!");
-        console.log(
-          "[Floating Chat] Current conversation ID:",
-          currentConversationId,
-        );
         if (currentConversationId) {
           openChatOverlay(currentConversationId);
-        } else {
-          console.log(
-            "[Floating Chat] No conversation ID, cannot open overlay",
-          );
         }
         e.preventDefault();
         e.stopPropagation();
         return false;
       };
-      console.log("[Floating Chat] Expand button onclick handler attached");
-    } else {
-      console.error("[Floating Chat] Expand button NOT FOUND!");
     }
   }, 500);
-}
-
-/**
- * Set up keyboard shortcuts
- */
-function setupFloatingChatShortcuts() {
-  document.addEventListener("keydown", (e) => {
-    // Check if focus is inside CodeMirror editor (don't interfere with editor shortcuts)
-    const activeElement = document.activeElement;
-    const isInEditor =
-      activeElement &&
-      (activeElement.classList.contains("cm-content") ||
-        activeElement.closest(".cm-editor"));
-
-    // Cmd+K or Ctrl+K to focus chat (unless in editor where it's used for wiki links)
-    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-      if (!isInEditor) {
-        e.preventDefault();
-        const floatingTextarea = document.getElementById(
-          "floating-query-input",
-        );
-        if (floatingTextarea) {
-          floatingTextarea.focus();
-        }
-      }
-    }
-
-    // Escape to close overlay
-    if (e.key === "Escape") {
-      const overlay = document.getElementById("chat-overlay");
-      if (overlay && !overlay.classList.contains("hidden")) {
-        closeChatOverlay();
-      }
-    }
-  });
-}
-
-/**
- * Send message from floating chat
- */
-async function sendFloatingMessage() {
-  if (_sendQueryInProgress) return;
-  _sendQueryInProgress = true;
-
-  try {
-    const floatingTextarea = document.getElementById("floating-query-input");
-    const query = floatingTextarea?.value.trim();
-    if (!query) return;
-
-    await sendFloatingMessageCore(query);
-  } finally {
-    _sendQueryInProgress = false;
-  }
-}
-
-async function sendFloatingMessageCore(query) {
-  console.log("[Floating Chat] Sending message:", query);
-
-  // Slash command: parse and route directly to persona+mode
-  const parsed = parseSlashCommand(query);
-  if (parsed) {
-    await fetchSlashCommands();
-    await sendFloatingMessageInternal(query, parsed.userMessage, {
-      personaOverride: parsed.persona,
-      modeOverride: parsed.mode,
-    });
-    return;
-  }
-
-  // Check for persona intent and handle switch if needed
-  await checkAndHandlePersonaSwitch(query, async () => {
-    await sendFloatingMessageInternal(query, query, null);
-  });
-}
-
-/**
- * Internal function to send message after persona check
- * @param {string} displayQuery - Message to show in UI
- * @param {string} apiQuery - Message to send to backend
- * @param {{ personaOverride?: string, modeOverride?: string }|null} overrides - From slash command
- */
-async function sendFloatingMessageInternal(displayQuery, apiQuery, overrides) {
-  // Ensure we have a conversation
-  if (!currentConversationId) {
-    console.log("[Floating Chat] No conversation, creating new one...");
-    await createNewConversation();
-  }
-
-  // Clear input (find it again since this is called from callback)
-  const floatingTextarea = document.getElementById("floating-query-input");
-  if (floatingTextarea) {
-    floatingTextarea.value = "";
-    floatingTextarea.style.height = "auto";
-  }
-
-  // Add user message to sidebar (NOT overlay)
-  addMessageToUI("user", displayQuery);
-
-  // Add to conversation in database
-  await addMessageToConversation("user", displayQuery);
-
-  // Show typing indicator in sidebar
-  const loadingId = addTypingIndicator();
-
-  try {
-    // Persona: from slash command overrides or dropdown
-    const personaSelect = document.getElementById("floating-persona-select");
-    const activePersona = overrides?.personaOverride ?? (personaSelect ? personaSelect.value : null);
-    const activeMode = overrides?.modeOverride ?? null;
-
-    // Get conversation history
-    const messages = getCurrentConversationMessages();
-    const conversationHistory = messages.slice(0, -1).map((msg) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
-
-    console.log(
-      "[Floating Chat] Sending query with",
-      conversationHistory.length,
-      "messages of history",
-    );
-
-    // Route through persona if active (or from slash command)
-    if (activePersona) {
-      const result = await sendToPersona(
-        apiQuery,
-        conversationHistory,
-        loadingId,
-        activePersona,
-        activeMode,
-      );
-      if (result) {
-        if (overrides?.personaOverride) {
-          const sel = document.getElementById("floating-persona-select");
-          if (sel && sel.value !== activePersona) {
-            sel.value = activePersona;
-            sel.dispatchEvent(new Event("change"));
-          }
-        }
-        return; // Persona handled the request
-      }
-      if (overrides?.personaOverride) {
-        removeMessage(loadingId);
-        addMessageToUI(
-          "system",
-          "The persona request failed. Make sure the Polly server is running and the persona system is enabled (Router v2).",
-        );
-        return;
-      }
-    }
-
-    // Get router v2 settings
-    const confidence = sessionStorage.getItem("model-confidence") || "balanced";
-    const providerOverride = sessionStorage.getItem("model-provider") || null;
-
-    // Get mental models override
-    const mentalModelsOverride = getMentalModelsOverride(currentConversationId);
-    const queryOptions = {
-      mode: currentMode,
-      conversation_history: conversationHistory,
-      page: getEffectivePage(), // Resolved page for mental models & RAG filtering
-      confidence: confidence,
-      provider_override: providerOverride,
-    };
-
-    // Add mental models override if present (per-conversation or global defaults)
-    if (mentalModelsOverride && !mentalModelsOverride.useDefaults) {
-      queryOptions.mental_models_override = mentalModelsOverride.modelIds;
-    } else {
-      // Check for global default models
-      const globalDefaults = getGlobalDefaultModels();
-      if (globalDefaults && globalDefaults.enabled && globalDefaults.modelIds.length > 0) {
-        queryOptions.mental_models_override = globalDefaults.modelIds;
-      }
-    }
-
-    const result = await window.polly.query(apiQuery, queryOptions);
-
-    // Remove loading indicator
-    removeMessage(loadingId);
-
-    if (result.success) {
-      const response = formatResponse(result.result.response);
-      let messageContent = response;
-
-      // Add router v2 metadata if available
-      const metadata = result.result.metadata;
-      if (metadata) {
-        const costStr = metadata.cost ? `$${metadata.cost.toFixed(4)}` : "-";
-        const tokensStr =
-          metadata.tokens_in && metadata.tokens_out
-            ? `${metadata.tokens_in + metadata.tokens_out} tokens`
-            : "-";
-        const providerStr = metadata.provider || "-";
-        const modelStr = metadata.model || "-";
-        const estimatedStr = metadata.estimated ? " (estimated)" : "";
-
-        messageContent += `
-          <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #2a2a2a; font-size: 11px; color: #808080; font-family: monospace;">
-            ✓ ${providerStr} (${modelStr}) • ${costStr} • ${tokensStr}${estimatedStr}
-          </div>
-        `;
-      }
-
-      addMessageToUI("assistant", messageContent);
-      await addMessageToConversation("assistant", result.result.response);
-
-      // Update conversation list
-      renderConversationList();
-    } else {
-      addMessageToUI(
-        "assistant",
-        `<div class="error">Error: ${result.error}</div>`,
-      );
-    }
-  } catch (error) {
-    console.error("[Floating Chat] Error sending message:", error);
-    removeMessage(loadingId);
-    addMessageToUI(
-      "assistant",
-      `<div class="error">Error: ${error.message}</div>`,
-    );
-  }
 }
 
 // ========================================
@@ -16007,13 +15624,11 @@ function detectPersonaIntent(query) {
  * @returns {string|null} - Current persona slug or null
  */
 function getCurrentPersona() {
+  const chatPersonaSelect = document.getElementById("chat-persona-select");
   const personaSelect = document.getElementById("persona-select");
-  const floatingPersonaSelect = document.getElementById(
-    "floating-persona-select",
-  );
 
-  // Check both dropdowns, prefer main one
-  return personaSelect?.value || floatingPersonaSelect?.value || null;
+  // Prefer chat panel persona selector
+  return chatPersonaSelect?.value || personaSelect?.value || null;
 }
 
 /**
@@ -16112,22 +15727,19 @@ function showPersonaSwitchDialog(suggestedPersona, query, onConfirm, onCancel) {
 async function switchToPersona(personaSlug) {
   try {
     const personaSelect = document.getElementById("persona-select");
-    const floatingPersonaSelect = document.getElementById(
-      "floating-persona-select",
-    );
+    const chatPersonaSelect = document.getElementById("chat-persona-select");
 
-    if (!personaSelect && !floatingPersonaSelect) return false;
+    if (!personaSelect && !chatPersonaSelect) return false;
 
-    // Update both dropdowns
+    // Update persona selects and trigger activation
     if (personaSelect) {
       personaSelect.value = personaSlug;
-      // Trigger change event to activate persona
       const event = new Event("change", { bubbles: true });
       personaSelect.dispatchEvent(event);
     }
 
-    if (floatingPersonaSelect) {
-      floatingPersonaSelect.value = personaSlug;
+    if (chatPersonaSelect) {
+      chatPersonaSelect.value = personaSlug;
     }
 
     console.log("[Persona Switch] Switched to:", personaSlug);
@@ -16283,7 +15895,7 @@ async function openChatOverlay(conversationId) {
   overlay.classList.remove("hidden");
 
   console.log(
-    "[Floating Chat] Overlay opened for conversation:",
+    "[Chat] Overlay opened for conversation:",
     conversationId,
   );
 }
@@ -16295,7 +15907,7 @@ function closeChatOverlay() {
   const overlay = document.getElementById("chat-overlay");
   if (overlay) {
     overlay.classList.add("hidden");
-    console.log("[Floating Chat] Overlay closed");
+    console.log("[Chat] Overlay closed");
   }
 }
 
@@ -16559,9 +16171,6 @@ function setupCenterResizeHandle() {
 // STRUCTURED INPUT BUILDER (Phase 2)
 // ========================================
 // TODO: Implement structured input system for quick actions
-// This will be added in Phase 2 after basic floating chat works
-
-console.log("[Floating Chat] Module loaded");
 
 // ========================================
 // LEARNING VISUALIZATION TOOLS
@@ -17205,7 +16814,8 @@ async function initLearningPage() {
 
   // Load learning stats and dashboard
   await loadLearningStats();
-  await loadRecentTopics();
+  await loadReviewTopics();
+  await loadRecentLearningNotes();
 
   // Setup event listeners
   setupLearningEventListeners();
@@ -17226,15 +16836,20 @@ function setupLearningEventListeners() {
     refreshBtn.addEventListener("click", () => loadLearningStats());
   }
 
-  // Open chat button
+  // Open chat button - opens chat with Socratic mode ready
   const openChatBtn = document.getElementById("btn-open-chat");
   if (openChatBtn) {
     openChatBtn.addEventListener("click", () => {
-      // Open floating chat
-      const floatingChat = document.getElementById("floating-chat");
-      if (floatingChat && floatingChat.classList.contains("hidden")) {
-        floatingChat.classList.remove("hidden");
-        document.getElementById("floating-query-input")?.focus();
+      // Auto-select Professor persona
+      selectProfessorPersona();
+
+      // Pre-fill right-panel chat input with /socratic prefix and focus
+      const input = document.getElementById("chat-input");
+      if (input) {
+        input.value = "/socratic ";
+        input.focus();
+        // Place cursor at end
+        input.setSelectionRange(input.value.length, input.value.length);
       }
     });
   }
@@ -17251,22 +16866,18 @@ function setupLearningEventListeners() {
 }
 
 /**
- * Auto-select Professor persona in chat float
+ * Auto-select Professor persona in chat panel
  */
 function selectProfessorPersona() {
-  // Select Professor in both persona selectors
-  const floatingPersonaSelect = document.getElementById(
-    "floating-persona-select",
-  );
+  // Select Professor in persona selectors
+  const chatPersonaSelect = document.getElementById("chat-persona-select");
   const mainPersonaSelect = document.getElementById("persona-select");
 
-  if (floatingPersonaSelect) {
-    floatingPersonaSelect.value = "professor";
+  if (chatPersonaSelect) {
+    chatPersonaSelect.value = "professor";
     // Trigger change event to update modes
-    floatingPersonaSelect.dispatchEvent(new Event("change"));
-  }
-
-  if (mainPersonaSelect) {
+    chatPersonaSelect.dispatchEvent(new Event("change"));
+  } else if (mainPersonaSelect) {
     mainPersonaSelect.value = "professor";
     mainPersonaSelect.dispatchEvent(new Event("change"));
   }
@@ -17301,28 +16912,10 @@ async function loadLearningStats() {
 }
 
 /**
- * Load recent learning topics
- */
-async function loadRecentTopics() {
-  try {
-    const response = await fetch(`${API_URL}/polly/learning/topics`);
-
-    if (!response.ok) {
-      throw new Error("Failed to load topics");
-    }
-
-    const data = await response.json();
-    updateTopicsUI(data.topics || []);
-  } catch (error) {
-    console.error("[Learning] Error loading topics:", error);
-  }
-}
-
-/**
- * Update topics list UI
+ * Update topics list UI (used by topics browser sidebar panel)
  */
 function updateTopicsUI(topics) {
-  const topicsContent = document.getElementById("topics-content");
+  const topicsContent = document.getElementById("topics-browser-list");
   if (!topicsContent) return;
 
   if (topics.length === 0) {
@@ -17334,19 +16927,27 @@ function updateTopicsUI(topics) {
   topicsContent.innerHTML = topics
     .map(
       (topic) => `
-    <div class="topic-card" data-topic="${topic.title}">
+    <div class="topic-card" data-topic="${escapeHtml(topic.title)}">
       <div class="topic-header">
-        <span class="topic-name">${topic.title}</span>
+        <span class="topic-name">${escapeHtml(topic.title)}</span>
         <span class="mastery-badge mastery-${topic.mastery_level}">L${topic.mastery_level}</span>
       </div>
       <div class="topic-meta">
-        <span class="topic-domain">${topic.domain || "General"}</span>
+        <span class="topic-domain">${escapeHtml(topic.domain || "General")}</span>
         <span class="topic-updated">${formatDate(topic.last_reviewed)}</span>
       </div>
     </div>
   `,
     )
     .join("");
+
+  // Add click handlers for topic cards
+  topicsContent.querySelectorAll(".topic-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const topicTitle = card.dataset.topic;
+      startTopicReview(topicTitle);
+    });
+  });
 }
 
 /**
@@ -17576,13 +17177,339 @@ async function createLearningNote(topic, concepts) {
     if (result.status === "success") {
       showNotification(`Learning note created: ${result.note_path}`, "success");
 
-      // Reload stats and topics
+      // Reload stats, topics, and notes
       await loadLearningStats();
-      await loadRecentTopics();
+      await loadRecentLearningNotes();
     }
   } catch (error) {
     console.error("[Learning] Error creating note:", error);
     showNotification("Failed to create learning note", "error");
+  }
+}
+
+/**
+ * Load and display all topics in the Topics sidebar browser panel
+ */
+let allLearningTopics = []; // Cache for filtering
+
+async function loadTopicsBrowser() {
+  const listEl = document.getElementById("topics-browser-list");
+  if (!listEl) return;
+
+  try {
+    const response = await fetch(`${API_URL}/polly/learning/topics`);
+
+    if (!response.ok) {
+      throw new Error("Failed to load topics");
+    }
+
+    const data = await response.json();
+    allLearningTopics = data.topics || [];
+
+    // Populate domain filter options
+    populateTopicsDomainFilter(allLearningTopics);
+
+    // Render all topics
+    renderTopicsBrowser(allLearningTopics);
+
+    // Setup filter handlers
+    setupTopicsFilterHandlers();
+  } catch (error) {
+    console.error("[Learning] Error loading topics browser:", error);
+    if (listEl) {
+      listEl.innerHTML =
+        '<p class="no-topics">Failed to load topics</p>';
+    }
+  }
+}
+
+/**
+ * Populate domain filter dropdown from topics data
+ */
+function populateTopicsDomainFilter(topics) {
+  const filter = document.getElementById("topics-domain-filter");
+  if (!filter) return;
+
+  const domains = [...new Set(topics.map((t) => t.domain).filter(Boolean))];
+
+  // Keep the "All Domains" option, add unique domains
+  filter.innerHTML = '<option value="">All Domains</option>';
+  domains.sort().forEach((domain) => {
+    const option = document.createElement("option");
+    option.value = domain;
+    option.textContent = domain;
+    filter.appendChild(option);
+  });
+}
+
+/**
+ * Setup filter change handlers for topics browser
+ */
+function setupTopicsFilterHandlers() {
+  const domainFilter = document.getElementById("topics-domain-filter");
+  const masteryFilter = document.getElementById("topics-mastery-filter");
+
+  const applyFilters = () => {
+    const domain = domainFilter ? domainFilter.value : "";
+    const mastery = masteryFilter ? masteryFilter.value : "";
+
+    let filtered = allLearningTopics;
+
+    if (domain) {
+      filtered = filtered.filter((t) => t.domain === domain);
+    }
+
+    if (mastery) {
+      filtered = filtered.filter(
+        (t) => t.mastery_level === parseInt(mastery),
+      );
+    }
+
+    renderTopicsBrowser(filtered);
+  };
+
+  if (domainFilter) {
+    domainFilter.addEventListener("change", applyFilters);
+  }
+  if (masteryFilter) {
+    masteryFilter.addEventListener("change", applyFilters);
+  }
+}
+
+/**
+ * Render topics in the browser panel
+ */
+function renderTopicsBrowser(topics) {
+  const listEl = document.getElementById("topics-browser-list");
+  if (!listEl) return;
+
+  if (topics.length === 0) {
+    listEl.innerHTML =
+      '<p class="no-topics">No topics match the current filters</p>';
+    return;
+  }
+
+  listEl.innerHTML = topics
+    .map(
+      (topic) => `
+    <div class="topic-card" data-topic="${escapeHtml(topic.title)}">
+      <div class="topic-header">
+        <span class="topic-name">${escapeHtml(topic.title)}</span>
+        <span class="mastery-badge mastery-${topic.mastery_level}">L${topic.mastery_level}</span>
+      </div>
+      <div class="topic-meta">
+        <span class="topic-domain">${escapeHtml(topic.domain || "General")}</span>
+        <span class="topic-updated">${formatDate(topic.last_reviewed)}</span>
+      </div>
+      ${topic.concepts && topic.concepts.length > 0 ? `
+      <div class="topic-concepts">
+        ${topic.concepts.slice(0, 3).map((c) => `<span class="concept-tag">${escapeHtml(c)}</span>`).join("")}
+        ${topic.concepts.length > 3 ? `<span class="concept-tag concept-more">+${topic.concepts.length - 3}</span>` : ""}
+      </div>
+      ` : ""}
+    </div>
+  `,
+    )
+    .join("");
+
+  // Add click handlers for topic cards
+  listEl.querySelectorAll(".topic-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const topicTitle = card.dataset.topic;
+      startTopicReview(topicTitle);
+    });
+  });
+
+  // Re-initialize icons
+  if (typeof lucide !== "undefined") {
+    lucide.createIcons();
+  }
+}
+
+/**
+ * Load topics that need review (spaced repetition)
+ */
+async function loadReviewTopics() {
+  try {
+    const response = await fetch(`${API_URL}/polly/learning/review`);
+
+    if (!response.ok) {
+      throw new Error("Failed to load review topics");
+    }
+
+    const data = await response.json();
+    updateReviewTopicsUI(data.topics || []);
+  } catch (error) {
+    console.error("[Learning] Error loading review topics:", error);
+  }
+}
+
+/**
+ * Update review topics UI in the dashboard
+ */
+function updateReviewTopicsUI(topics) {
+  const reviewList = document.getElementById("review-topics-list");
+  const reviewSection = document.getElementById("review-section");
+  if (!reviewList) return;
+
+  if (topics.length === 0) {
+    if (reviewSection) reviewSection.style.display = "none";
+    return;
+  }
+
+  // Show the review section
+  if (reviewSection) reviewSection.style.display = "block";
+
+  reviewList.innerHTML = topics
+    .map(
+      (topic) => `
+    <div class="review-topic-card" data-topic="${escapeHtml(topic.title)}">
+      <div class="review-topic-header">
+        <span class="topic-name">${escapeHtml(topic.title)}</span>
+        <span class="mastery-badge mastery-${topic.mastery_level}">L${topic.mastery_level}</span>
+      </div>
+      <div class="review-topic-meta">
+        <span class="topic-domain">${escapeHtml(topic.domain || "General")}</span>
+        <span class="review-overdue">${topic.days_since_review} days since review</span>
+      </div>
+      <button class="btn btn-sm btn-secondary review-topic-btn" data-topic="${escapeHtml(topic.title)}">
+        <i data-lucide="refresh-cw" style="width: 12px; height: 12px;"></i>
+        Review Now
+      </button>
+    </div>
+  `,
+    )
+    .join("");
+
+  // Attach click handlers to review buttons
+  reviewList.querySelectorAll(".review-topic-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const topicTitle = btn.dataset.topic;
+      startTopicReview(topicTitle);
+    });
+  });
+
+  // Attach click handlers to review cards
+  reviewList.querySelectorAll(".review-topic-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const topicTitle = card.dataset.topic;
+      startTopicReview(topicTitle);
+    });
+  });
+
+  // Re-initialize icons
+  if (typeof lucide !== "undefined") {
+    lucide.createIcons();
+  }
+}
+
+/**
+ * Start a review session for a topic via chat
+ */
+function startTopicReview(topicTitle) {
+  // Auto-select Professor persona
+  selectProfessorPersona();
+
+  // Set the right-panel chat input to a review query and focus
+  const input = document.getElementById("chat-input");
+  if (input) {
+    input.value = `/socratic Review: ${topicTitle} - test my understanding and help me reinforce what I've learned`;
+    input.focus();
+    // Dispatch input event so any auto-resize triggers
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  console.log("[Learning] Starting review for topic:", topicTitle);
+}
+
+/**
+ * Load recent learning notes for dashboard display
+ */
+async function loadRecentLearningNotes() {
+  try {
+    // Fetch learning topics which include notes_created paths
+    const response = await fetch(`${API_URL}/polly/learning/topics`);
+
+    if (!response.ok) {
+      throw new Error("Failed to load learning topics for notes");
+    }
+
+    const data = await response.json();
+    const topics = data.topics || [];
+
+    // Collect all notes from topics
+    const learningNotes = [];
+    for (const topic of topics) {
+      if (topic.notes_created && topic.notes_created.length > 0) {
+        for (const notePath of topic.notes_created) {
+          learningNotes.push({
+            path: notePath,
+            topic: topic.title,
+            domain: topic.domain,
+            mastery_level: topic.mastery_level,
+            last_reviewed: topic.last_reviewed,
+          });
+        }
+      }
+    }
+
+    updateLearningNotesUI(learningNotes);
+  } catch (error) {
+    console.error("[Learning] Error loading learning notes:", error);
+  }
+}
+
+/**
+ * Update learning notes section in dashboard
+ */
+function updateLearningNotesUI(notes) {
+  const notesContainer = document.getElementById("recent-learning-notes");
+  if (!notesContainer) return;
+
+  if (notes.length === 0) {
+    notesContainer.innerHTML =
+      '<p class="no-topics" style="font-size: 12px; color: #666;">No learning notes yet. Complete a teaching session and create notes to capture your learning.</p>';
+    return;
+  }
+
+  // Show most recent first, limit to 5
+  const recentNotes = notes.slice(0, 5);
+
+  notesContainer.innerHTML = recentNotes
+    .map(
+      (note) => `
+    <div class="learning-note-card" data-path="${escapeHtml(note.path || "")}" data-topic="${escapeHtml(note.topic)}">
+      <div class="learning-note-header">
+        <i data-lucide="file-text" style="width: 14px; height: 14px; color: #00d9ff;"></i>
+        <span class="learning-note-title">${escapeHtml(note.topic)}</span>
+      </div>
+      <div class="learning-note-meta">
+        <span class="topic-domain">${escapeHtml(note.domain || "General")}</span>
+        <span class="mastery-badge mastery-${note.mastery_level}">L${note.mastery_level}</span>
+      </div>
+    </div>
+  `,
+    )
+    .join("");
+
+  // Click handler for learning note cards
+  notesContainer.querySelectorAll(".learning-note-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const notePath = card.dataset.path;
+      if (notePath && window.notesManager) {
+        // Switch to notes view and open this note
+        showView("notes");
+        setTimeout(() => {
+          window.notesManager.openNote(notePath);
+        }, 200);
+      }
+    });
+  });
+
+  // Re-initialize icons
+  if (typeof lucide !== "undefined") {
+    lucide.createIcons();
   }
 }
 

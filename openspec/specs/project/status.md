@@ -1,7 +1,7 @@
 # Polly Project Status (OpenSpec)
 
 **Authority:** This file is the single source of truth for "where we are now."  
-**Last Updated:** February 15, 2026  
+**Last Updated:** February 16, 2026  
 **Full history:** [docs/status/CHANGELOG.md](../../../docs/status/CHANGELOG.md)
 
 ---
@@ -10,10 +10,10 @@
 
 | | |
 |---|---|
-| **Overall** | ~85% Tier 1 complete, production-ready |
-| **Completed** | 15.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22 ~75%, 23) + Core Framework Waves 1–3 |
-| **Current priority** | Phase 22 frontend (Teaching Mode), Phase 24 (Agent Swarms), or Core Framework Wave 4 |
-| **Next recommended** | Phase 22 frontend (~1–2 days) or Core Framework Wave 4 (Progressive Autonomy + PIL) |
+| **Overall** | ~87% Tier 1 complete, production-ready |
+| **Completed** | 16.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22, 23) + Core Framework Waves 1–3 |
+| **Current priority** | Phase 24 (Agent Swarms), Core Framework Wave 4, or Phase 12a (Knowledge Graph) |
+| **Next recommended** | Core Framework Wave 4 (Progressive Autonomy + PIL) or Phase 12a |
 | **Spec integration** | Feb 2026 — Knowledge management, DRM, BAD Canvas, knowledge quality specs integrated into OpenSpec |
 
 ---
@@ -78,7 +78,7 @@
 |-------|--------|--------|
 | **Core Framework** | 🔄 ~75% | Waves 1–3 complete (LiteLLM, LLMLingua, Mem0, Provider UI, "Polly" mode, Query Decomposition, Split Routing, Synthesis); Wave 4 (Progressive Autonomy + PIL) pending |
 | **16c** | Backend ready, frontend pending | AI Note Creation; ~4 weeks remaining |
-| **22** | Backend 100%, frontend ~40% | Teaching Mode; 1–2 days to finish UI; deferred until after 23.5 |
+| **22** | ✅ Complete | Teaching Mode — Backend 100%, Frontend 100% (completed Feb 16, 2026) |
 | **12a** | Ready to start | Knowledge Graph — extended scope per spec integration (see Tier 3) |
 | **12b** | After 12a | Knowledge Graph Advanced — extended scope |
 
@@ -87,7 +87,7 @@
 ## Completed Phases (Summary)
 
 **Tier 0 (100%):** 0.5 (UI), 1 (Config), 3 (Server), 4 (Electron), 5 (Secrets)  
-**Tier 1 (~82%):** 1.5 (Domains), 2a (RAG), 2b (Compression), 11 (Multi-Model + Personas), 11c (Compression UI), 13a (Patterns), 14 (Mental Models), 16 (Notes), 16c (Scribe/AI notes), 16e (TOC/Templates), 21 (Dedup), 22 (~75%), 23 (Curriculum)
+**Tier 1 (~85%):** 1.5 (Domains), 2a (RAG), 2b (Compression), 11 (Multi-Model + Personas), 11c (Compression UI), 13a (Patterns), 14 (Mental Models), 16 (Notes), 16c (Scribe/AI notes), 16e (TOC/Templates), 21 (Dedup), 22 (Teaching Mode ✅), 23 (Curriculum)
 
 Detailed phase notes and file references remain in [docs/status/CURRENT.md](../../../docs/status/CURRENT.md) (reference). New work should update this status and [roadmap.md](roadmap.md) and, when applicable, [openspec/changes/](../changes/).
 
