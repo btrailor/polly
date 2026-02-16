@@ -223,6 +223,7 @@ Respond with ONLY a JSON object (no markdown code blocks):
         - Multiple sentences or clauses (and, then, also)
         - Multiple question words (what, how, why)
         - Both retrieval and generation aspects
+        - Semantically complex topics (requires structural/historical analysis)
         """
         query_lower = query.lower()
         
@@ -247,17 +248,125 @@ Respond with ONLY a JSON object (no markdown code blocks):
             question_count >= 2
         )
         
+        # Semantic complexity: topics that require structural/historical analysis
+        # regardless of syntactic simplicity. A simple declarative sentence about
+        # a complex topic still needs analytical depth.
+        semantic_score = self._semantic_complexity_score(query_lower)
+        
         complexity_score = (
             sum(complexity_indicators) * 0.25 +
             min(question_count * 0.15, 0.4) +
-            (0.3 if has_multiple_questions else 0.0)  # Bonus for multiple questions
+            (0.3 if has_multiple_questions else 0.0) +  # Bonus for multiple questions
+            semantic_score  # Semantic/topic complexity boost
         )
         
         is_complex = complexity_score >= self.min_complexity_score
-        print(f"[Complexity] Query: '{query[:60]}...' score={complexity_score:.2f}, threshold={self.min_complexity_score}, complex={is_complex}, qcount={question_count}, multi_q={has_multiple_questions}", flush=True)
-        logger.debug(f"Complexity check: score={complexity_score:.2f}, threshold={self.min_complexity_score}, complex={is_complex}, question_count={question_count}, has_multiple_questions={has_multiple_questions}")
+        print(f"[Complexity] Query: '{query[:60]}...' score={complexity_score:.2f} (semantic={semantic_score:.2f}), threshold={self.min_complexity_score}, complex={is_complex}, qcount={question_count}, multi_q={has_multiple_questions}", flush=True)
+        logger.debug(f"Complexity check: score={complexity_score:.2f}, semantic={semantic_score:.2f}, threshold={self.min_complexity_score}, complex={is_complex}, question_count={question_count}, has_multiple_questions={has_multiple_questions}")
         
         return is_complex
+    
+    def _semantic_complexity_score(self, query_lower: str) -> float:
+        """
+        Score semantic/topic complexity independent of syntactic structure.
+        
+        A query like "Tell me about the Somali problem in Minneapolis" is
+        syntactically simple but semantically complex — it touches on
+        immigration, demographics, political framing, and structural causes.
+        
+        This doesn't block or filter anything. It just tells the decomposer
+        "this topic needs analytical depth, not a simple factual lookup."
+        
+        Returns a score between 0.0 and 0.65.
+        """
+        score = 0.0
+        
+        # --- Scapegoat narrative patterns ---
+        # Structural pattern: "things are bad because of [outgroup]"
+        # Reuses patterns from core/hardened/validator.py:407-436
+        scapegoat_indicators = [
+            "because of immigrants",
+            "because of foreigners",
+            "they're taking our",
+            "they're ruining",
+            "they're destroying",
+            "invasion of",
+            "replace us",
+            "great replacement",
+        ]
+        if any(indicator in query_lower for indicator in scapegoat_indicators):
+            score += 0.5
+        
+        # --- Essentialist claim patterns ---
+        # Attributes problems to inherent group qualities
+        # Reuses patterns from core/hardened/validator.py:438-465
+        essentialist_indicators = [
+            "inherently violent",
+            "naturally inferior",
+            "biologically determined",
+            "genetically predisposed to crime",
+            "racial iq",
+            "born criminals",
+        ]
+        if any(indicator in query_lower for indicator in essentialist_indicators):
+            score += 0.5
+        
+        # --- "Problem" + group/place framing ---
+        # "the [group] problem" or "[group] problem in [place]" is a historically
+        # loaded framing that benefits from structural analysis. This catches
+        # patterns like "the Somali problem" or "the immigrant problem".
+        problem_framing_groups = [
+            "immigrant", "refugee", "migrant", "muslim", "somali", "mexican",
+            "hispanic", "latino", "arab", "jewish", "black", "african",
+            "chinese", "asian", "roma", "gypsy", "indigenous", "native",
+            "homeless", "welfare",
+        ]
+        if "problem" in query_lower or "issue" in query_lower or "crisis" in query_lower:
+            if any(group in query_lower for group in problem_framing_groups):
+                score += 0.45
+        
+        # --- Cui bono signals ---
+        # Questions about who benefits, power dynamics, systemic causes
+        # These are analytically complex even when simply stated
+        cui_bono_patterns = [
+            "who benefits",
+            "who profits",
+            "follow the money",
+            "real reason",
+            "actually behind",
+            "power structure",
+            "systemic",
+            "structural cause",
+            "root cause",
+        ]
+        if any(pattern in query_lower for pattern in cui_bono_patterns):
+            score += 0.35
+        
+        # --- Topic sensitivity signals ---
+        # Topics that are inherently multi-causal and need analytical depth
+        # Not because they're taboo, but because simple answers are wrong answers
+        sensitive_topic_pairs = [
+            # (topic_keyword, context_keyword) — both must be present
+            ("crime", "race"),
+            ("crime", "ethnic"),
+            ("crime", "immigrant"),
+            ("poverty", "race"),
+            ("poverty", "culture"),
+            ("intelligence", "race"),
+            ("welfare", "race"),
+            ("terrorism", "muslim"),
+            ("terrorism", "islam"),
+            ("crime", "neighborhood"),
+            ("gentrification", "displacement"),
+        ]
+        for topic, context in sensitive_topic_pairs:
+            if topic in query_lower and context in query_lower:
+                score += 0.4
+                break  # Only count once
+        
+        # Cap at 0.65 — semantic complexity alone can push past threshold (0.6)
+        # but shouldn't dominate when combined with syntactic complexity
+        return min(score, 0.65)
     
     def _simple_query_result(self, query: str) -> DecompositionResult:
         """Create a DecompositionResult for a simple (non-decomposed) query."""
@@ -295,8 +404,15 @@ Respond with ONLY a JSON object (no markdown code blocks):
         if any(keyword in query_lower for keyword in ['write a blog', 'write an article', 'create a story', 'draft a', 'blog post', 'article']):
             return SubQueryType.CREATIVE
         
-        # Analysis indicators
+        # Analysis indicators (explicit keywords)
         if any(keyword in query_lower for keyword in ['analyze', 'compare', 'evaluate', 'assess']):
+            return SubQueryType.ANALYSIS
+        
+        # Semantic complexity check: topics requiring analytical depth should
+        # be classified as ANALYSIS, not FACTUAL, even when stated simply.
+        # "I want to talk about the Somali problem in Minneapolis" needs
+        # analysis, not a factual lookup.
+        if self._semantic_complexity_score(query_lower) > 0.0:
             return SubQueryType.ANALYSIS
         
         # Reasoning indicators

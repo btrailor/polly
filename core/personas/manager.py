@@ -32,6 +32,7 @@ from .implementations.professor import ProfessorPersona
 from core.router_v2 import IntelligentRouterV2
 from core.user_journey import get_journey_tracker
 from core.pedagogy.coaching_templates import get_persona_introduction
+from core.constitutional import get_constitutional_layer
 
 logger = logging.getLogger(__name__)
 
@@ -507,11 +508,15 @@ class PersonaManager:
     
     def get_system_prompt(self, include_metadata: bool = True) -> str:
         """
-        Get system prompt that includes active persona and metadata.
+        Get system prompt that includes constitutional layer, active persona, and metadata.
         
-        This method constructs a system prompt that includes:
-        1. Active persona's mode-specific prompt (if any)
-        2. Metadata about all available personas (for routing/suggestions)
+        This method constructs a system prompt with the following hierarchy:
+        1. Constitutional epistemology (deepest layer, always present)
+        2. Active persona's mode-specific prompt (if any)
+        3. Metadata about all available personas (for routing/suggestions)
+        
+        The constitutional layer shapes how Polly thinks about everything, while
+        persona prompts define task-specific behavior.
         
         Args:
             include_metadata: Whether to include metadata about available personas
@@ -521,7 +526,11 @@ class PersonaManager:
         """
         prompt_parts = []
         
-        # Add active persona prompt if available
+        # 1. CONSTITUTIONAL LAYER (deepest, non-negotiable)
+        # This must come first — it shapes how all other prompts operate
+        prompt_parts.append(get_constitutional_layer())
+        
+        # 2. Add active persona prompt if available
         if self.active_persona and self.active_persona_name:
             current_mode = self.active_persona.state.current_mode
             
@@ -536,7 +545,7 @@ class PersonaManager:
                     if current_mode in mode_prompts:
                         prompt_parts.append(mode_prompts[current_mode])
         
-        # Add metadata section for routing (Phase 21 - Orchestrator)
+        # 3. Add metadata section for routing (Phase 21 - Orchestrator)
         if include_metadata and self.metadata_cache:
             metadata_section = "\n\n## Available Personas\n\n"
             metadata_section += "You have access to these specialized personas:\n\n"

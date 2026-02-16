@@ -1,0 +1,149 @@
+# Constitutional Epistemology — RAG Knowledge Priorities
+#
+# Guidance for knowledge base seeding priorities. The constitutional layer is
+# most effective when Polly has genuinely better answers available — not because
+# she's been told to avoid bad ones, but because her knowledge base contains the
+# actual history, economics, and social analysis.
+#
+# This isn't a separate database — it's guidance for what knowledge gets priority
+# when building the RAG collection.
+#
+# See: openspec/specs/ethics/spec.md
+# See: openspec/changes/constitutional-epistemology/design.md
+
+priority_knowledge:
+  economic_structure:
+    topics:
+      - deindustrialization
+      - financialization
+      - housing_policy
+      - wage_history
+      - union_history
+      - debt_as_power
+      - structural_adjustment
+      - neoliberalism
+      - policy_capture
+      - shareholder_primacy
+    rationale: "Better economic analysis makes scapegoat economics look shallow"
+    importance: "high"
+    reasoning: "Most fascist recruitment exploits economic grievance"
+
+  historical_construction:
+    topics:
+      - racial_formation
+      - colonial_history
+      - immigration_policy_history
+      - criminal_justice_history
+      - redlining
+      - segregation_mechanisms
+      - eugenics_history
+      - construction_of_whiteness
+    rationale: "Essentialist claims dissolve under historical examination"
+    importance: "high"
+    reasoning: "Shows how group categories were constructed and what they served"
+
+  power_analysis:
+    topics:
+      - corporate_consolidation
+      - regulatory_capture
+      - policy_influence
+      - media_ownership
+      - lobbying_mechanisms
+      - revolving_door
+      - think_tank_funding
+      - astroturf_movements
+    rationale: "Cui bono requires knowledge of actual power structures"
+    importance: "high"
+    reasoning: "Enables tracing who benefits from specific framings"
+
+  movement_analysis:
+    topics:
+      - fascist_recruitment
+      - propaganda_techniques
+      - authoritarian_patterns
+      - deradicalization
+      - cult_dynamics
+      - radicalization_pipelines
+      - grievance_exploitation
+      - scapegoat_mechanisms
+    rationale: "Inoculation requires understanding the disease"
+    importance: "high"
+    reasoning: "Understanding how recruitment works builds durable resistance"
+
+  critical_methodology:
+    topics:
+      - source_evaluation
+      - statistical_literacy
+      - research_methods
+      - framing_effects
+      - logical_fallacies_as_analysis
+      - media_literacy
+      - narrative_construction
+      - attention_economy
+    rationale: "How to evaluate claims is more durable than which claims are correct"
+    importance: "high"
+    reasoning: "Transferable critical thinking skills"
+
+  labor_history:
+    topics:
+      - union_movements
+      - labor_organizing
+      - strike_history
+      - labor_law_changes
+      - worker_power_decline
+      - platform_labor
+      - gig_economy
+      - worker_misclassification
+    rationale: "Understanding how worker power was systematically dismantled"
+    importance: "medium"
+    reasoning: "Economic anxiety often stems from loss of worker power"
+
+  institutional_analysis:
+    topics:
+      - how_institutions_work
+      - bureaucracy_as_power
+      - state_capacity
+      - institutional_capture
+      - administrative_violence
+      - legibility_and_control
+      - resistance_to_management
+    rationale: "Understanding systems enables better structural analysis"
+    importance: "medium"
+    reasoning: "Supports horizontal over hierarchical analysis"
+
+  colonialism_and_imperialism:
+    topics:
+      - colonial_extraction
+      - neocolonialism
+      - resource_curse
+      - structural_adjustment_programs
+      - debt_as_imperial_tool
+      - military_intervention_history
+      - trade_policy_as_power
+    rationale: "Global power structures and wealth distribution"
+    importance: "medium"
+    reasoning: "Essential for cui bono analysis of global economic narratives"
+
+  social_reproduction:
+    topics:
+      - care_work
+      - domestic_labor
+      - reproductive_labor
+      - gender_and_labor
+      - welfare_state_history
+      - privatization_of_care
+      - feminist_economics
+    rationale: "Understanding work that's made invisible by essentialist framings"
+    importance: "medium"
+    reasoning: "Counters naturalizing narratives about gender and care"
+
+# Implementation Notes:
+#
+# - These priorities don't create a separate RAG collection
+# - They guide what knowledge should be in the unified knowledge base
+# - They suggest sources for user captures, library imports, and skill content
+# - They inform which mental models and skills to develop
+# - They can guide future BookLore library recommendations
+#
+# The goal: when a user encounters a shallow explanation (including fascist ones),
+# Polly has the depth available to offer genuinely better analysis.

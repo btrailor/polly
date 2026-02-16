@@ -17,7 +17,9 @@ import asyncio
 import logging
 
 from .config import PollyConfig, get_config
+from .constitutional import get_constitutional_layer
 from .domains import DomainEngine, DOMAIN_PROMPTS
+from .hardened.classifier import RetrievalClassifier, RetrievalTier
 from .rag import UnifiedRAG
 from .router import IntelligentRouter, UnifiedLLM, RoutingMode, ModelTier
 from .router_v2 import IntelligentRouterV2, ConfidenceLevel, create_router_v2, AllProvidersFailed
@@ -624,8 +626,14 @@ class Polly:
             self.synthesizer = None
 
     def _build_system_prompt(self) -> str:
-        """Build the base system prompt."""
-        return f"""You are Polly, {self.user_name}'s personal AI assistant.
+        """Build the base system prompt with constitutional epistemology layer."""
+        constitutional = get_constitutional_layer()
+        
+        return f"""{constitutional}
+
+---
+
+You are Polly, {self.user_name}'s personal AI assistant.
 
 You have deep knowledge of {self.user_name}'s work across five domains:
 
@@ -937,7 +945,8 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         self, 
         query: str, 
         rag_results: List, 
-        provider_override: Optional[str] = None
+        provider_override: Optional[str] = None,
+        retrieval_tier: Optional['RetrievalTier'] = None,
     ) -> bool:
         """
         Decide whether to use local Ollama model or cloud providers.
@@ -946,16 +955,19 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         1. Good RAG context exists (high-scoring results)
         2. Query is straightforward retrieval/summarization
         3. No explicit cloud provider override
+        4. Retrieval tier is DIRECT (if tier classification is available)
         
         Cloud providers preferred when:
         1. Weak or no RAG context
         2. Complex reasoning required
         3. User explicitly selects cloud provider
+        4. Retrieval tier is ADJACENT or ABSENT (topic needs analytical depth)
         
         Args:
             query: User's query
             rag_results: List of RAG search results
             provider_override: Explicit provider selection
+            retrieval_tier: Result of three-tier retrieval classification
             
         Returns:
             True to use local, False to use cloud
@@ -963,6 +975,21 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         # Rule 1: If user explicitly selected a cloud provider, use cloud
         if provider_override and provider_override != 'local':
             logger.info(f"Using cloud: provider override = {provider_override}")
+            return False
+        
+        # Rule 1.5: If retrieval tier says content is not directly relevant,
+        # use cloud — the query needs analytical depth that local models
+        # can't provide. A 7B model can't do nuanced structural analysis.
+        if retrieval_tier is not None and retrieval_tier != RetrievalTier.DIRECT:
+            logger.info(
+                f"Using cloud: retrieval tier is {retrieval_tier.value} "
+                f"(not DIRECT) — query needs analytical depth"
+            )
+            print(
+                f"[Model Routing] Using CLOUD: retrieval tier is {retrieval_tier.value} "
+                f"(not DIRECT)",
+                flush=True,
+            )
             return False
         
         # Rule 2: Check RAG context quality
@@ -1726,6 +1753,37 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                 self._debug_query = query_lower
             logger.info(f"Debug info written to {debug_file}")
 
+        # 2.5. Classify retrieval quality using three-tier system (DIRECT/ADJACENT/ABSENT)
+        # This determines how strongly the LLM should rely on RAG results
+        retrieval_classifier = RetrievalClassifier()
+        classifier_results_dicts = [
+            {
+                "score": r.score,
+                "content": r.chunk.content,
+                "domain": r.domain or r.chunk.source_type or "",
+            }
+            for r in filtered_search_results
+        ]
+        retrieval_tier = retrieval_classifier.classify(
+            query=query,
+            results=classifier_results_dicts,
+            validations=None,  # TODO: integrate DualValidator when available
+            query_domains=domain_names,
+        )
+        print(
+            f"[Retrieval Tier] {retrieval_tier.tier.value.upper()} "
+            f"(confidence={retrieval_tier.confidence:.3f}, "
+            f"results={len(retrieval_tier.results)}, "
+            f"reason={retrieval_tier.reason})",
+            flush=True,
+        )
+        logger.info(
+            f"Retrieval tier: {retrieval_tier.tier.value} "
+            f"(confidence={retrieval_tier.confidence:.3f}, "
+            f"results={len(retrieval_tier.results)}, "
+            f"reason={retrieval_tier.reason})"
+        )
+
         # 3. Gather context from all contributors (integration-contracts: ContextContributor)
         gathered_context = self._gather_context(
             query,
@@ -1797,19 +1855,61 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
 
 If you suggest an exercise, copy the description directly from the context above."""
 
+        # Build tier-aware RAG instructions based on retrieval classification
+        if retrieval_tier.tier == RetrievalTier.DIRECT:
+            # High-confidence matches — trust and prioritize RAG content
+            rag_header = f"## Context from {self.user_name}'s Knowledge Base{integration_note}"
+            rag_instruction = (
+                f"**IMPORTANT**: The context below contains information from {self.user_name}'s "
+                f"actual notes and knowledge base. You MUST reference and use this specific "
+                f"information when answering questions. If the user asks about a topic covered "
+                f"in the context, draw directly from those notes."
+            )
+            rag_footer = (
+                "When answering questions, prioritize information from the knowledge base "
+                "context above. Cite specific notes and details when available."
+            )
+        elif retrieval_tier.tier == RetrievalTier.ADJACENT:
+            # Tangential matches — present as related context, don't constrain the LLM
+            rag_header = f"## Related Context from {self.user_name}'s Knowledge Base{integration_note}"
+            rag_instruction = (
+                f"The context below contains information from {self.user_name}'s notes that is "
+                f"**related but not directly on-topic** for this query. Use it as background "
+                f"if relevant, but this topic may require broader analysis beyond what's in "
+                f"the knowledge base."
+            )
+            rag_footer = (
+                "Draw on your general knowledge and training to answer this question thoroughly. "
+                "Reference the knowledge base context where it's genuinely relevant, but don't "
+                "force connections that aren't there."
+            )
+        else:
+            # ABSENT — no relevant matches, free the LLM to use its own knowledge
+            rag_header = f"## {self.user_name}'s Knowledge Base"
+            rag_instruction = (
+                f"No directly relevant notes were found in {self.user_name}'s knowledge base "
+                f"for this query."
+            )
+            rag_footer = (
+                "Answer this question using your general knowledge and training. "
+                "Be thorough and analytical."
+            )
+
+        rag_content = rag_context if rag_context else "No directly relevant notes found."
+
         augmented_system = f"""{self._build_system_prompt()}
 
 {domain_prompt}
 
-## Context from {self.user_name}'s Knowledge Base{integration_note}
+{rag_header}
 
-**IMPORTANT**: The context below contains information from {self.user_name}'s actual notes and knowledge base. You MUST reference and use this specific information when answering questions. If the user asks about a topic covered in the context, draw directly from those notes.
+{rag_instruction}
 
-{rag_context if rag_context else "No directly relevant notes found."}
+{rag_content}
 
 {gathered_context}
 
-When answering questions, prioritize information from the knowledge base context above. Cite specific notes and details when available.{practices_instruction}
+{rag_footer}{practices_instruction}
 """
 
         # Debug: Save the full augmented system prompt for GitHub queries
@@ -1941,7 +2041,8 @@ When answering questions, prioritize information from the knowledge base context
                 use_local = self._should_use_local_model(
                     query=query,
                     rag_results=filtered_search_results,
-                    provider_override=provider_override
+                    provider_override=provider_override,
+                    retrieval_tier=retrieval_tier.tier,
                 )
                 
                 if use_local:

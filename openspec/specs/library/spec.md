@@ -362,6 +362,58 @@ New page in ribbon navigation:
 - Remarkable Cloud integration
 - Reading progress tracking
 
+---
+
+## Deferred Enhancements
+
+### Constitutional RAG Knowledge Seeding
+
+**Status:** DEFERRED to Phase 25 implementation  
+**Cross-reference:** [ethics spec](../ethics/spec.md) — Constitutional Epistemology  
+**Implemented:** February 15, 2026 — `core/constitutional/knowledge_priorities.yml`
+
+When implementing BookLore, integrate constitutional knowledge priorities for RAG seeding:
+
+**What to implement:**
+1. **Priority-based recommendations** — Suggest books from 9 constitutional priority domains:
+   - economic_structure (deindustrialization, financialization, union history, housing policy)
+   - historical_construction (racial formation, colonial history, redlining, eugenics history)
+   - power_analysis (regulatory capture, lobbying, media ownership, corporate consolidation)
+   - movement_analysis (fascist recruitment, propaganda techniques, deradicalization)
+   - critical_methodology (source evaluation, statistical literacy, media literacy)
+   - labor_history, institutional_analysis, colonialism_and_imperialism, social_reproduction
+
+2. **Coverage analysis** — Track which priority domains are covered by user's library:
+   ```python
+   coverage = {
+       "economic_structure": 0.6,  # 6/10 topics covered
+       "historical_construction": 0.3,  # 3/10 topics covered
+       # ...
+   }
+   ```
+
+3. **Automatic tagging** — Tag imported books with constitutional priority topics
+   - Add `constitutional_priority_topics` field to book metadata
+   - Enable filtering: "Show me books about power_analysis"
+
+4. **Seeding suggestions** — UI prompts: "Your knowledge base is weak on economic history. Consider adding: [curated book list]"
+
+**Implementation location:**
+- `core/constitutional/knowledge_seeding.py` — ConstitutionalKnowledgeSeeder class
+- Integrate with Phase 25a (Book Management) import flow
+- Display coverage dashboard on Library page
+
+**Why deferred:**
+Constitutional epistemology is implemented and working (February 2026). Knowledge seeding makes most sense when:
+1. BookLore infrastructure exists for easy library ingestion
+2. User has larger knowledge base to analyze coverage
+3. Book recommendation system is in place
+
+**Reference:**
+- Knowledge priorities defined: `core/constitutional/knowledge_priorities.yml`
+- Constitutional principles: `core/constitutional/principles.py`
+- Implementation discussion: Development log, February 15, 2026
+
 ## Performance Considerations
 
 ### Scale

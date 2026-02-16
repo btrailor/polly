@@ -13,6 +13,8 @@ from datetime import datetime
 from enum import Enum
 import logging
 
+from core.constitutional import get_constitutional_layer
+
 logger = logging.getLogger(__name__)
 
 
@@ -341,9 +343,12 @@ class AgentPersona(ABC):
         """
         Build message array for LLM call.
         
+        Includes constitutional epistemology layer as the deepest system prompt,
+        followed by the persona-specific system prompt.
+        
         Args:
             context: Persona context
-            system_prompt: System prompt (defaults to current mode's prompt)
+            system_prompt: Persona-specific system prompt (defaults to current mode's prompt)
             include_history: Whether to include conversation history
         
         Returns:
@@ -351,12 +356,23 @@ class AgentPersona(ABC):
         """
         messages = []
         
-        # Add system prompt
+        # Build complete system prompt with constitutional layer + persona prompt
+        complete_system_prompt_parts = []
+        
+        # 1. CONSTITUTIONAL LAYER (deepest, always present)
+        complete_system_prompt_parts.append(get_constitutional_layer())
+        
+        # 2. Add persona-specific system prompt
         if system_prompt is None:
             system_prompt = self.get_system_prompt()
         
         if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+            complete_system_prompt_parts.append(system_prompt)
+        
+        # Combine into single system message
+        if complete_system_prompt_parts:
+            complete_system_prompt = "\n\n---\n\n".join(complete_system_prompt_parts)
+            messages.append({"role": "system", "content": complete_system_prompt})
         
         # Add conversation history
         if include_history and context.conversation_history:

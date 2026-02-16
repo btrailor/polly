@@ -121,6 +121,65 @@ See [ethics spec](../ethics/spec.md) for the full constitutional epistemology sy
 
 ---
 
+## Deferred Enhancements
+
+### Critical Consciousness as Teachable Skills
+
+**Status:** DEFERRED to Phase 22 meta-pedagogy implementation  
+**Cross-reference:** [ethics spec](../ethics/spec.md) — Constitutional Epistemology  
+**Implemented:** February 15, 2026 — Constitutional layer is active in all system prompts
+
+When implementing meta-pedagogy (Wave 2 of learning-and-administrator-profiles), add constitutional critical consciousness as explicit teachable skills:
+
+**What to implement:**
+1. **Four constitutional thinking skills** with 5-level progression (0-4):
+   - **Cui Bono Analysis** — Learning to ask "who benefits from this framing?"
+   - **Scapegoat Pattern Recognition** — Identifying when blame is misdirected to outgroups
+   - **Historical Construction Analysis** — Seeing how ideas were constructed over time
+   - **Structural vs Essentialist Thinking** — Distinguishing systems from group qualities
+
+2. **Competency tracking** — Extend learning tracker with:
+   ```python
+   constitutional_competency = {
+       "cui_bono_analysis": 2,  # Level 0-4
+       "scapegoat_recognition": 1,
+       "historical_construction": 3,
+       "structural_vs_essentialist": 2
+   }
+   ```
+
+3. **Professor persona teaching methods:**
+   - Socratic questioning that develops constitutional consciousness
+   - Inoculation pedagogy: teach ABOUT harmful ideologies analytically
+   - Examples from user's knowledge base
+   - Progressive scaffolding that fades as competency grows
+
+4. **Skill progression indicators** in Learning page Review tab:
+   - Track growth in constitutional thinking skills
+   - Suggest practice opportunities
+   - Celebrate milestones (e.g., "You're now independently applying cui bono!")
+
+**Implementation location:**
+- `core/pedagogy/constitutional_skills.py` — Skill definitions with level progressions
+- `core/personas/implementations/professor.py` — Teaching methods for constitutional skills
+- Extend `LearningTracker` with constitutional competency fields
+- Learning page UI for skill progression display
+
+**Why deferred:**
+Constitutional epistemology is implemented and active (February 2026). Making it explicitly teachable makes most sense when:
+1. Meta-pedagogy infrastructure is built (prompt coaching, competency tracking)
+2. Professor persona is actively used for teaching
+3. Learning page has Review tab for progression display
+
+The constitutional layer already shapes all of Polly's analysis. This enhancement would make those analytical moves explicitly teachable as transferable thinking skills.
+
+**Reference:**
+- Constitutional principles: `core/constitutional/principles.py`
+- Constitutional layer prompt: `core/constitutional/layer.py`
+- Implementation discussion: Development log, February 15, 2026
+
+---
+
 ## Implementation
 
 - **Backend:** `core/pedagogy/prompt_coach.py`, `core/pedagogy/competency_tracker.py`, `core/pedagogy/coaching_templates.py`

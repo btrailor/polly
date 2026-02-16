@@ -170,10 +170,131 @@ The meta-pedagogy system gains constitutional dimensions:
 
 ## Implementation
 
-- **Backend:** `core/constitutional/layer.py` (prompt constant), `core/constitutional/principles.py` (principle definitions), `core/constitutional/knowledge_priorities.yml` (RAG guidance)
-- **Persona integration:** Modify `core/personas/manager.py` to inject constitutional layer as first system prompt element
-- **Mental models:** Add constitutional tier to `~/.polly/mental_models.yaml` (non-toggleable)
-- **Frontend:** None. No UI, no settings, no toggles. The constitutional layer is invisible infrastructure.
+**Status:** ✅ **IMPLEMENTED** (February 15, 2026)
+
+### Backend Implementation
+
+- **`core/constitutional/layer.py`** ✅ — Constitutional epistemology prompt constant (2,051 characters)
+  - Implements CONSTITUTIONAL_EPISTEMOLOGY prompt text
+  - Provides `get_constitutional_layer()` function for injection
+  - Contains the three core principles and derived commitments
+  - Includes conduct rules for "not wearing it on the sleeve"
+
+- **`core/constitutional/principles.py`** ✅ — Principle definitions and programmatic access
+  - Defines the three core principles as dataclasses:
+    - `MATERIAL_ANALYSIS` — Material Analysis over Essentialism
+    - `CUI_BONO` — Cui Bono as Default Heuristic
+    - `SCAPEGOAT_SUSPICION` — Suspicion of Scapegoat Narratives
+  - Defines four derived commitments:
+    - `HORIZONTAL_OVER_HIERARCHICAL`
+    - `SELF_ACTIVITY_OVER_OBEDIENCE`
+    - `PLURAL_WORLDS`
+    - `DEFAMILIARIZATION`
+  - Provides utility functions for accessing principles by slug
+
+- **`core/constitutional/knowledge_priorities.yml`** ✅ — RAG knowledge seeding priorities
+  - Defines 9 priority knowledge domains:
+    - economic_structure (high importance)
+    - historical_construction (high importance)
+    - power_analysis (high importance)
+    - movement_analysis (high importance)
+    - critical_methodology (high importance)
+    - labor_history (medium importance)
+    - institutional_analysis (medium importance)
+    - colonialism_and_imperialism (medium importance)
+    - social_reproduction (medium importance)
+  - Each domain includes topics list, rationale, and reasoning
+
+### Persona Integration
+
+- **`core/personas/base.py`** ✅ **CRITICAL FIX** (February 15, 2026)
+  - Modified `BasePersona._build_messages()` to inject constitutional layer
+  - Constitutional layer now prepended to ALL persona system prompts before LLM calls
+  - Import added: `from core.constitutional import get_constitutional_layer`
+  - **This is the actual integration point** — all personas use _build_messages()
+
+- **`core/personas/manager.py`** ✅ (Initial implementation)
+  - Modified PersonaManager.get_system_prompt()
+  - Constitutional layer injected as first element in prompt hierarchy
+  - System prompt now structured as:
+    1. Constitutional epistemology (deepest, non-negotiable)
+    2. Active persona mode prompt (task-specific behavior)
+    3. Persona metadata (for routing/orchestration)
+  - Import added: `from core.constitutional import get_constitutional_layer`
+
+### Remaining Work
+
+- **Mental models:** ~~Add constitutional tier to `~/.polly/mental_models.yaml` (non-toggleable)~~ — **SKIPPED** (redundant with constitutional layer)
+- **Frontend:** None needed. No UI, no settings, no toggles. The constitutional layer is invisible infrastructure.
+
+### Testing
+
+Constitutional layer successfully:
+- ✅ Imports without errors
+- ✅ Provides 2,051 character prompt text
+- ✅ Exposes 3 core principles programmatically
+- ✅ Exposes 4 derived commitments programmatically
+- ✅ Integrates into PersonaManager system prompt hierarchy
+- ⏳ Real-world testing with constitutional trigger queries — **IN PROGRESS**
+
+---
+
+## Deferred Enhancements
+
+The core constitutional epistemology implementation is **complete and active** as of February 15, 2026. The following enhancements have been deferred to appropriate future phases:
+
+### 1. Mental Models Integration — **SKIPPED**
+
+Originally proposed to add constitutional models (Cui Bono, Historical Construction, Structural Analysis) to the mental models system as non-toggleable models.
+
+**Decision:** Skipped as redundant. The constitutional layer already injects these principles at the deepest prompt level. Adding them as mental models would duplicate functionality and create confusion about what's truly non-configurable.
+
+**Status:** Not implementing.
+
+### 2. RAG Knowledge Base Seeding — **DEFERRED to Phase 25 (BookLore)**
+
+Use `core/constitutional/knowledge_priorities.yml` to guide knowledge base seeding with priority sources (economic history, racial formation history, power analysis, etc.).
+
+**What was deferred:**
+- Priority-based book recommendations from 9 constitutional domains
+- Coverage analysis showing which domains are well-represented
+- Automatic tagging of content with constitutional priority topics
+- Seeding suggestions UI prompts
+
+**Why deferred:** Makes most sense when BookLore infrastructure exists for library management and ingestion. Knowledge priorities are documented and ready to use.
+
+**Cross-reference:** See [library spec](../library/spec.md) → Deferred Enhancements → Constitutional RAG Knowledge Seeding
+
+**Status:** Deferred to Phase 25 implementation (2026 Q2-Q3)
+
+### 3. Teaching Integration — **DEFERRED to Phase 22 Meta-Pedagogy (Wave 2)**
+
+Make constitutional critical consciousness explicitly teachable through Professor persona with competency tracking and progressive scaffolding.
+
+**What was deferred:**
+- Four constitutional thinking skills with 5-level progression (0-4)
+- Competency tracking in learning system
+- Professor teaching methods for constitutional skills
+- Inoculation pedagogy: teaching ABOUT harmful ideologies
+- Skill progression UI in Learning page Review tab
+
+**Why deferred:** Constitutional layer already shapes all analysis. Making it explicitly teachable makes most sense when meta-pedagogy infrastructure is built (prompt coaching, competency tracking).
+
+**Cross-reference:** See [teaching spec](../teaching/spec.md) → Deferred Enhancements → Critical Consciousness as Teachable Skills
+
+**Status:** Deferred to learning-and-administrator-profiles change (Wave 2)
+
+### 4. Real-World Testing — **IN PROGRESS**
+
+Test constitutional layer with queries that trigger principles (material analysis, cui bono, scapegoat suspicion) to verify:
+- Provides better analysis without moralizing
+- Follows conduct rules (no labeling, no lecturing)
+- Acknowledges legitimate grievances before redirecting
+- Makes shallow explanations look shallow through depth
+
+**Status:** Next immediate task (February 15, 2026)
+
+---
 
 ## Reference
 
