@@ -18362,8 +18362,199 @@ function hideGraphTooltip() {
  * Show graph context menu
  */
 function showGraphContextMenu(event, data) {
-  // TODO: Implement context menu in future commit
-  console.log("[Graph] Context menu requested for:", data);
+  event.preventDefault();
+  
+  // Remove any existing context menu
+  const existing = document.getElementById('graph-context-menu');
+  if (existing) existing.remove();
+  
+  // Create context menu
+  const menu = document.createElement('div');
+  menu.id = 'graph-context-menu';
+  menu.style.cssText = `
+    position: fixed;
+    left: ${event.clientX}px;
+    top: ${event.clientY}px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 10000;
+    min-width: 180px;
+    padding: 4px 0;
+    font-size: 13px;
+  `;
+  
+  const menuItems = [
+    {
+      icon: 'external-link',
+      label: 'Open',
+      action: () => {
+        // Open the node based on type
+        if (data.nodeType === 'note' && window.notesManager) {
+          window.notesManager.openNoteByName(data.nodeName);
+          showView('notes');
+          showBackToGraphButton();
+        }
+      }
+    },
+    {
+      icon: 'git-branch',
+      label: 'Explore From Here',
+      action: () => {
+        exploreFromNode(data.nodeId);
+      }
+    },
+    { separator: true },
+    {
+      icon: 'copy',
+      label: 'Copy Link',
+      action: () => {
+        // TODO: Implement copy link functionality
+        console.log('[Graph] Copy link:', data.nodeId);
+      }
+    }
+  ];
+  
+  menuItems.forEach(item => {
+    if (item.separator) {
+      const sep = document.createElement('div');
+      sep.style.cssText = 'height: 1px; background: var(--border-primary); margin: 4px 0;';
+      menu.appendChild(sep);
+    } else {
+      const menuItem = document.createElement('div');
+      menuItem.style.cssText = `
+        padding: 8px 12px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-primary);
+        transition: background 0.15s;
+      `;
+      menuItem.innerHTML = `
+        <i data-lucide="${item.icon}" style="width: 14px; height: 14px;"></i>
+        <span>${item.label}</span>
+      `;
+      menuItem.addEventListener('mouseenter', () => {
+        menuItem.style.background = 'var(--bg-hover)';
+      });
+      menuItem.addEventListener('mouseleave', () => {
+        menuItem.style.background = 'transparent';
+      });
+      menuItem.addEventListener('click', () => {
+        item.action();
+        menu.remove();
+      });
+      menu.appendChild(menuItem);
+    }
+  });
+  
+  document.body.appendChild(menu);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  
+  // Close menu on click outside
+  const closeMenu = (e) => {
+    if (!menu.contains(e.target)) {
+      menu.remove();
+      document.removeEventListener('click', closeMenu);
+    }
+  };
+  setTimeout(() => {
+    document.addEventListener('click', closeMenu);
+  }, 10);
+}
+
+/**
+ * Explore from a specific node - expand its neighborhood
+ */
+async function exploreFromNode(nodeId) {
+  if (!cytoscapeInstance) {
+    console.error('[Graph] Cannot explore: cytoscape instance not initialized');
+    return;
+  }
+  
+  console.log('[Graph] Exploring from node:', nodeId);
+  
+  try {
+    // Fetch expanded neighborhood from backend
+    const response = await fetch(`http://127.0.0.1:11436/polly/graph/nodes?center_node=${encodeURIComponent(nodeId)}&hops=2&limit=50`);
+    const data = await response.json();
+    
+    if (!data.nodes || data.nodes.length === 0) {
+      console.log('[Graph] No new nodes found in neighborhood');
+      return;
+    }
+    
+    // Get domain colors for consistency
+    const existingDomains = new Set(cytoscapeInstance.nodes().map(n => n.data('domain')));
+    const newDomains = data.nodes.map(n => n.domain).filter(d => d && !existingDomains.has(d));
+    const domainColors = buildDomainPalette([...existingDomains, ...newDomains]);
+    
+    // Track which nodes are new
+    const existingNodeIds = new Set(cytoscapeInstance.nodes().map(n => n.data('id')));
+    let newNodesCount = 0;
+    let newEdgesCount = 0;
+    
+    // Add new nodes
+    data.nodes.forEach(node => {
+      if (!existingNodeIds.has(node.id)) {
+        cytoscapeInstance.add({
+          group: 'nodes',
+          data: {
+            id: node.id,
+            label: node.name,
+            type: node.type || 'note',
+            domain: node.domain,
+            authority: node.authority || 0.5,
+            connectionCount: node.connection_count || 0,
+            isGhost: node.is_ghost || false
+          }
+        });
+        newNodesCount++;
+      }
+    });
+    
+    // Add new edges
+    const existingEdgeIds = new Set(cytoscapeInstance.edges().map(e => e.data('id')));
+    data.edges.forEach(edge => {
+      const edgeId = `${edge.source}-${edge.target}`;
+      if (!existingEdgeIds.has(edgeId)) {
+        cytoscapeInstance.add({
+          group: 'edges',
+          data: {
+            id: edgeId,
+            source: edge.source,
+            target: edge.target,
+            weight: edge.strength || 1,
+            relationshipType: edge.type || 'references',
+            isGhost: edge.is_ghost || false
+          }
+        });
+        newEdgesCount++;
+      }
+    });
+    
+    console.log(`[Graph] Added ${newNodesCount} new nodes and ${newEdgesCount} new edges`);
+    
+    // Re-apply current layout to incorporate new nodes
+    const currentLayout = graphState.layout || 'cose';
+    const layoutConfig = getLayoutConfig(currentLayout);
+    const layout = cytoscapeInstance.layout(layoutConfig);
+    layout.run();
+    
+    // Update label visibility after layout
+    setTimeout(() => {
+      updateGraphLabelVisibility(cytoscapeInstance);
+    }, 600);
+    
+    // Mark this node as expanded
+    graphState.expandedNodes.add(nodeId);
+    saveGraphState();
+    
+  } catch (error) {
+    console.error('[Graph] Failed to explore from node:', error);
+  }
 }
 
 /**
