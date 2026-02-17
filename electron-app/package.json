@@ -75,6 +75,8 @@
     "@codemirror/view": "^6.39.12",
     "better-sqlite3": "^12.6.2",
     "codemirror": "^6.0.2",
+    "cytoscape": "^3.33.1",
+    "cytoscape-cose-bilkent": "^4.1.0",
     "electron-store": "^8.1.0",
     "fix-path": "^3.0.0",
     "keytar": "^7.9.0",

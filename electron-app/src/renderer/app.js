@@ -17532,18 +17532,15 @@ function updateLearningNotesUI(notes) {
  */
 function renderGraphSidebar() {
   return `
-    <div id="graph-sidebar-browse" class="graph-sidebar-panel">
-      <div id="graph-browse-list" style="padding: 0 12px;">
-        <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
-          Loading graph...
-        </div>
+    <div id="graph-browse-list" style="flex: 1; overflow-y: auto; padding: 0 12px;">
+      <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
+        Loading graph...
       </div>
     </div>
-    <div id="graph-sidebar-garden" class="graph-sidebar-panel hidden">
-      <div style="padding: 16px; color: #808080; font-size: 13px;">
-        Digital garden view coming soon
-      </div>
-    </div>
+    ${renderLowerPanel("graph", [
+      {id: "filters", label: "Filters"},
+      {id: "details", label: "Details"}
+    ])}
   `;
 }
 
@@ -17702,13 +17699,590 @@ function setupLowerPanel(view) {
 function initGraphPage() {
   console.log("[Graph] Initializing graph page");
   
-  // Load initial graph data
-  // TODO: Implement in Task 11
+  // Import Cytoscape if not already loaded
+  if (typeof cytoscape === 'undefined') {
+    console.error("[Graph] Cytoscape.js not loaded");
+    return;
+  }
+  
+  // Initialize the graph canvas
+  initGraphCanvas();
+  
+  // Load graph browse list (reuse browse list component)
+  loadGraphBrowseList();
+  
+  // Setup lower panel for graph view
+  setupLowerPanel("graph");
+  
+  // Setup lower panel tab change event listener
+  document.addEventListener('lower-panel-tab-change', (e) => {
+    if (e.detail.view === 'graph') {
+      const tabId = e.detail.tabId;
+      console.log(`[Graph] Lower panel tab changed to: ${tabId}`);
+      
+      // Render content for the selected tab
+      switch (tabId) {
+        case 'filters':
+          renderGraphFiltersPanel();
+          break;
+        case 'details':
+          renderGraphDetailsPanel();
+          break;
+      }
+    }
+  });
   
   // Re-initialize icons
   if (typeof lucide !== "undefined") {
     setTimeout(() => lucide.createIcons(), 100);
   }
+}
+
+/**
+ * Initialize the Cytoscape.js graph canvas
+ */
+let cytoscapeInstance = null;
+let graphState = {
+  centerNode: null,
+  expandedNodes: new Set(),
+  filters: {},
+  layout: 'cose-bilkent'
+};
+
+async function initGraphCanvas() {
+  const container = document.getElementById('graph-canvas');
+  if (!container) {
+    console.error("[Graph] Canvas container not found");
+    return;
+  }
+  
+  // Restore previous graph state if it exists
+  const savedState = sessionStorage.getItem('graph-state');
+  if (savedState) {
+    try {
+      graphState = JSON.parse(savedState);
+      graphState.expandedNodes = new Set(graphState.expandedNodes || []);
+    } catch (e) {
+      console.error("[Graph] Failed to restore graph state:", e);
+    }
+  }
+  
+  // Fetch graph data from backend
+  let graphData;
+  try {
+    const response = await fetch('http://127.0.0.1:11436/polly/graph/nodes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        center_node: graphState.centerNode,
+        filters: graphState.filters,
+        limit: 100
+      })
+    });
+    graphData = await response.json();
+  } catch (error) {
+    console.error("[Graph] Failed to fetch graph data:", error);
+    // Show empty state
+    container.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-secondary); flex-direction: column; gap: 12px;">
+        <i data-lucide="network" style="width: 48px; height: 48px; opacity: 0.3;"></i>
+        <p>Failed to load graph data</p>
+      </div>
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+  
+  // Check if we have data
+  if (!graphData.nodes || graphData.nodes.length === 0) {
+    container.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-secondary); flex-direction: column; gap: 12px;">
+        <i data-lucide="network" style="width: 48px; height: 48px; opacity: 0.3;"></i>
+        <p>No graph data available</p>
+        <p style="font-size: 11px; opacity: 0.7;">Create notes with entities to see them in the graph</p>
+      </div>
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+  
+  // Build domain color palette
+  const domains = [...new Set(graphData.nodes.map(n => n.domain).filter(Boolean))];
+  const domainColors = buildDomainPalette(domains);
+  
+  // Transform nodes for Cytoscape
+  const elements = {
+    nodes: graphData.nodes.map(node => ({
+      data: {
+        id: node.id,
+        label: node.name,
+        type: node.type,
+        domain: node.domain,
+        authority: node.authority_score || 0.5,
+        connectionCount: node.connection_count || 0,
+        isGhost: node.is_ghost || false
+      }
+    })),
+    edges: graphData.edges.map(edge => ({
+      data: {
+        id: `${edge.source}-${edge.target}`,
+        source: edge.source,
+        target: edge.target,
+        weight: edge.weight || 1,
+        relationshipType: edge.relationship_type || 'references'
+      }
+    }))
+  };
+  
+  // Initialize Cytoscape
+  cytoscapeInstance = cytoscape({
+    container: container,
+    elements: elements,
+    style: buildGraphStyle(domainColors),
+    layout: {
+      name: graphState.layout === 'cose-bilkent' ? 'cose-bilkent' : 'cose',
+      animate: true,
+      animationDuration: 500,
+      fit: true,
+      padding: 30
+    },
+    minZoom: 0.1,
+    maxZoom: 3,
+    wheelSensitivity: 0.2
+  });
+  
+  // Setup event handlers
+  setupGraphEventHandlers(cytoscapeInstance, domainColors);
+  
+  console.log("[Graph] Initialized with", graphData.nodes.length, "nodes and", graphData.edges.length, "edges");
+}
+
+/**
+ * Build the visual style for the graph
+ */
+function buildGraphStyle(domainColors) {
+  return [
+    // Base node style
+    {
+      selector: 'node',
+      style: {
+        'label': 'data(label)',
+        'text-valign': 'center',
+        'text-halign': 'center',
+        'font-size': '10px',
+        'font-weight': '500',
+        'text-outline-width': 2,
+        'text-outline-color': '#1a1a1a',
+        'color': '#ffffff',
+        'width': ele => 20 + (ele.data('authority') * 30),
+        'height': ele => 20 + (ele.data('authority') * 30),
+        'background-color': ele => {
+          const domain = ele.data('domain');
+          return domainColors[domain] || '#666666';
+        },
+        'border-width': 2,
+        'border-color': '#ffffff',
+        'border-opacity': 0.3
+      }
+    },
+    // Node shapes by type
+    {
+      selector: 'node[type="note"]',
+      style: { 'shape': 'ellipse' }
+    },
+    {
+      selector: 'node[type="conversation"]',
+      style: { 'shape': 'diamond' }
+    },
+    {
+      selector: 'node[type="book"]',
+      style: { 'shape': 'hexagon' }
+    },
+    {
+      selector: 'node[type="capture"]',
+      style: { 'shape': 'triangle' }
+    },
+    {
+      selector: 'node[type="code"]',
+      style: { 'shape': 'rectangle' }
+    },
+    {
+      selector: 'node[type="canvas"]',
+      style: { 'shape': 'round-rectangle' }
+    },
+    // Ghost nodes
+    {
+      selector: 'node[isGhost]',
+      style: {
+        'opacity': 0.15,
+        'border-style': 'dotted'
+      }
+    },
+    // Hover state
+    {
+      selector: 'node:active',
+      style: {
+        'overlay-color': '#ffffff',
+        'overlay-padding': 6,
+        'overlay-opacity': 0.2
+      }
+    },
+    // Base edge style
+    {
+      selector: 'edge',
+      style: {
+        'width': ele => 1 + (ele.data('weight') * 2),
+        'line-color': '#555555',
+        'target-arrow-color': '#555555',
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier',
+        'opacity': 0.6
+      }
+    },
+    // Edge styles by relationship type
+    {
+      selector: 'edge[relationshipType="relates_to"]',
+      style: {
+        'line-style': 'dashed'
+      }
+    },
+    {
+      selector: 'edge[relationshipType="co_occurs_with"]',
+      style: {
+        'line-style': 'dotted'
+      }
+    },
+    // Edges connected to ghost nodes
+    {
+      selector: 'edge[isGhost]',
+      style: {
+        'opacity': 0.1,
+        'line-style': 'dotted'
+      }
+    },
+    // Selected state
+    {
+      selector: ':selected',
+      style: {
+        'border-width': 4,
+        'border-color': '#00aaff',
+        'border-opacity': 1
+      }
+    }
+  ];
+}
+
+/**
+ * Build domain color palette
+ */
+function buildDomainPalette(domains) {
+  const palette = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+    '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788'
+  ];
+  const colors = {};
+  domains.forEach((domain, idx) => {
+    colors[domain] = palette[idx % palette.length];
+  });
+  return colors;
+}
+
+/**
+ * Setup graph event handlers
+ */
+function setupGraphEventHandlers(cy, domainColors) {
+  // Node hover - show tooltip
+  cy.on('mouseover', 'node', (evt) => {
+    const node = evt.target;
+    const data = node.data();
+    
+    showGraphTooltip(evt.originalEvent, {
+      name: data.label,
+      type: data.type,
+      domain: data.domain,
+      connections: data.connectionCount,
+      authority: data.authority
+    });
+  });
+  
+  cy.on('mouseout', 'node', () => {
+    hideGraphTooltip();
+  });
+  
+  // Node click - open item
+  cy.on('tap', 'node', (evt) => {
+    const node = evt.target;
+    const data = node.data();
+    
+    // Save graph state
+    saveGraphState();
+    
+    // Open the item based on type
+    if (data.type === 'note') {
+      // Open note
+      if (window.notesManager) {
+        window.notesManager.openNoteByName(data.label);
+      }
+      showView('notes');
+      
+      // Show "Back to Graph" button
+      showBackToGraphButton();
+    }
+  });
+  
+  // Node right-click - context menu
+  cy.on('cxttap', 'node', (evt) => {
+    const node = evt.target;
+    const data = node.data();
+    
+    showGraphContextMenu(evt.originalEvent, {
+      nodeId: data.id,
+      nodeName: data.label,
+      nodeType: data.type
+    });
+  });
+  
+  // Pan/zoom - save state (debounced)
+  let saveTimeout;
+  cy.on('viewport', () => {
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+      saveGraphState();
+    }, 500);
+  });
+}
+
+/**
+ * Save graph state to sessionStorage
+ */
+function saveGraphState() {
+  if (!cytoscapeInstance) return;
+  
+  graphState.centerNode = graphState.centerNode; // Keep existing
+  graphState.position = cytoscapeInstance.pan();
+  graphState.zoom = cytoscapeInstance.zoom();
+  
+  sessionStorage.setItem('graph-state', JSON.stringify({
+    ...graphState,
+    expandedNodes: Array.from(graphState.expandedNodes)
+  }));
+}
+
+/**
+ * Load graph browse list (reuses browse list component from Task 8)
+ */
+async function loadGraphBrowseList() {
+  const container = document.getElementById('graph-browse-list');
+  if (!container) {
+    console.error("[Graph] Browse list container not found");
+    return;
+  }
+  
+  try {
+    const response = await fetch('http://127.0.0.1:11436/polly/graph/list');
+    const data = await response.json();
+    
+    if (!data.items || data.items.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 20px; color: var(--text-secondary); font-size: 13px;">
+          No items found
+        </div>
+      `;
+      return;
+    }
+    
+    // Render browse items
+    let html = '';
+    data.items.forEach(item => {
+      const icon = getTypeIcon(item.type);
+      const date = new Date(item.modified_at).toLocaleDateString();
+      html += `
+        <div class="browse-item" data-item-id="${item.id}" data-item-type="${item.type}">
+          <i data-lucide="${icon}" class="browse-item-icon"></i>
+          <div class="browse-item-content">
+            <div class="browse-item-title">${item.name}</div>
+            <div class="browse-item-metadata">
+              <span class="browse-item-domain">${item.domain || 'General'}</span>
+              <span class="browse-item-date">${date}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    
+    container.innerHTML = html;
+    
+    // Re-initialize icons
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+    
+    // Setup click handlers
+    container.querySelectorAll('.browse-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const itemId = item.dataset.itemId;
+        const itemType = item.dataset.itemType;
+        
+        // Highlight and center in graph if visible
+        if (cytoscapeInstance) {
+          const node = cytoscapeInstance.$(`#${itemId}`);
+          if (node.length > 0) {
+            cytoscapeInstance.animate({
+              center: { eles: node },
+              zoom: 1.5
+            }, {
+              duration: 300
+            });
+            node.select();
+          }
+        }
+      });
+    });
+    
+  } catch (error) {
+    console.error("[Graph] Failed to load browse list:", error);
+    container.innerHTML = `
+      <div style="text-align: center; padding: 20px; color: var(--text-error); font-size: 13px;">
+        Failed to load items
+      </div>
+    `;
+  }
+}
+
+/**
+ * Get icon for item type
+ */
+function getTypeIcon(type) {
+  const icons = {
+    'note': 'file-text',
+    'conversation': 'message-circle',
+    'book': 'book',
+    'capture': 'camera',
+    'code': 'code',
+    'canvas': 'layout'
+  };
+  return icons[type] || 'file';
+}
+
+/**
+ * Show graph tooltip
+ */
+let tooltipElement = null;
+function showGraphTooltip(event, data) {
+  if (!tooltipElement) {
+    tooltipElement = document.createElement('div');
+    tooltipElement.className = 'graph-node-tooltip';
+    tooltipElement.style.cssText = `
+      position: fixed;
+      background: rgba(0, 0, 0, 0.9);
+      color: #ffffff;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      pointer-events: none;
+      z-index: 10000;
+      max-width: 200px;
+    `;
+    document.body.appendChild(tooltipElement);
+  }
+  
+  tooltipElement.innerHTML = `
+    <div style="font-weight: 600; margin-bottom: 4px;">${data.name}</div>
+    <div style="opacity: 0.8; font-size: 10px;">
+      <div>Type: ${data.type}</div>
+      <div>Domain: ${data.domain || 'None'}</div>
+      <div>Connections: ${data.connections}</div>
+      <div>Authority: ${(data.authority * 100).toFixed(0)}%</div>
+    </div>
+  `;
+  
+  tooltipElement.style.left = (event.pageX + 10) + 'px';
+  tooltipElement.style.top = (event.pageY + 10) + 'px';
+  tooltipElement.style.display = 'block';
+}
+
+function hideGraphTooltip() {
+  if (tooltipElement) {
+    tooltipElement.style.display = 'none';
+  }
+}
+
+/**
+ * Show graph context menu
+ */
+function showGraphContextMenu(event, data) {
+  // TODO: Implement context menu in future commit
+  console.log("[Graph] Context menu requested for:", data);
+}
+
+/**
+ * Show "Back to Graph" button
+ */
+function showBackToGraphButton() {
+  let btn = document.getElementById('back-to-graph-btn');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'back-to-graph-btn';
+    btn.className = 'back-to-graph-button';
+    btn.innerHTML = '<i data-lucide="arrow-left"></i> Back to Graph';
+    btn.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      z-index: 1000;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-primary);
+      color: var(--text-primary);
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    `;
+    btn.addEventListener('click', () => {
+      showView('graph');
+      btn.remove();
+    });
+    document.body.appendChild(btn);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+}
+
+/**
+ * Render graph filters panel
+ */
+function renderGraphFiltersPanel() {
+  const content = document.querySelector('.lower-panel[data-view="graph"] .lower-panel-content');
+  if (!content) return;
+  
+  content.innerHTML = `
+    <div class="lower-panel-empty">
+      <i data-lucide="filter" style="width: 20px; height: 20px; opacity: 0.3; margin-bottom: 8px;"></i>
+      <p style="font-size: 12px; color: var(--text-secondary);">Graph filters coming soon</p>
+    </div>
+  `;
+  
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+/**
+ * Render graph details panel
+ */
+function renderGraphDetailsPanel() {
+  const content = document.querySelector('.lower-panel[data-view="graph"] .lower-panel-content');
+  if (!content) return;
+  
+  content.innerHTML = `
+    <div class="lower-panel-empty">
+      <i data-lucide="info" style="width: 20px; height: 20px; opacity: 0.3; margin-bottom: 8px;"></i>
+      <p style="font-size: 12px; color: var(--text-secondary);">Select a node to see details</p>
+    </div>
+  `;
+  
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 // ==================== End Graph Page ====================

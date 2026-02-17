@@ -7169,3 +7169,130 @@ body {
 }
 
 /* ==================== End Lower Collapsible Panel ==================== */
+
+/* ==================== Graph View Styles ==================== */
+
+#view-graph {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.graph-container {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-primary);
+}
+
+.graph-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.graph-controls {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+}
+
+.graph-controls button {
+  width: 36px;
+  height: 36px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.graph-controls button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+
+.graph-controls button i {
+  width: 18px;
+  height: 18px;
+}
+
+/* Browse list items for graph */
+.browse-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-bottom: 4px;
+}
+
+.browse-item:hover {
+  background: var(--bg-hover);
+}
+
+.browse-item.active {
+  background: var(--bg-selected);
+  border: 1px solid var(--border-selected);
+}
+
+.browse-item-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.browse-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.browse-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.browse-item-metadata {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.browse-item-domain {
+  opacity: 0.7;
+}
+
+.browse-item-date {
+  opacity: 0.5;
+}
+
+/* Back to Graph button */
+.back-to-graph-button:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-hover) !important;
+}
+
+.back-to-graph-button i {
+  width: 16px;
+  height: 16px;
+}
+
+/* ==================== End Graph View Styles ==================== */
