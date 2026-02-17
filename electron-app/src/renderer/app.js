@@ -17775,15 +17775,25 @@ async function initGraphCanvas() {
   // Fetch graph data from backend
   let graphData;
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/graph/nodes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        center_node: graphState.centerNode,
-        filters: graphState.filters,
-        limit: 100
-      })
+    // Build query parameters
+    const params = new URLSearchParams({
+      limit: '100',
+      include_ghosts: 'true'
     });
+    
+    if (graphState.centerNode) {
+      params.append('center_node', graphState.centerNode);
+      params.append('hops', '2');
+    }
+    
+    // Add filter parameters if they exist
+    if (graphState.filters) {
+      if (graphState.filters.type) params.append('type', graphState.filters.type);
+      if (graphState.filters.domain) params.append('domain', graphState.filters.domain);
+      if (graphState.filters.authority_min) params.append('authority_min', graphState.filters.authority_min);
+    }
+    
+    const response = await fetch(`http://127.0.0.1:11436/polly/graph/nodes?${params.toString()}`);
     graphData = await response.json();
   } catch (error) {
     console.error("[Graph] Failed to fetch graph data:", error);
@@ -17812,7 +17822,7 @@ async function initGraphCanvas() {
   }
   
   // Build domain color palette
-  const domains = [...new Set(graphData.nodes.map(n => n.domain).filter(Boolean))];
+  const domains = [...new Set(graphData.nodes.flatMap(n => n.domains || []).filter(Boolean))];
   const domainColors = buildDomainPalette(domains);
   
   // Transform nodes for Cytoscape
@@ -17822,8 +17832,9 @@ async function initGraphCanvas() {
         id: node.id,
         label: node.name,
         type: node.type,
-        domain: node.domain,
-        authority: node.authority_score || 0.5,
+        domain: (node.domains && node.domains.length > 0) ? node.domains[0] : null,
+        domains: node.domains || [],
+        authority: node.authority || 0.5,
         connectionCount: node.connection_count || 0,
         isGhost: node.is_ghost || false
       }
@@ -17833,8 +17844,9 @@ async function initGraphCanvas() {
         id: `${edge.source}-${edge.target}`,
         source: edge.source,
         target: edge.target,
-        weight: edge.weight || 1,
-        relationshipType: edge.relationship_type || 'references'
+        weight: edge.strength || 1,
+        relationshipType: edge.type || 'references',
+        isGhost: edge.is_ghost || false
       }
     }))
   };
