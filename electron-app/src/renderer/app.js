@@ -17868,8 +17868,8 @@ async function initGraphCanvas() {
       minTemp: 1.0
     },
     minZoom: 0.1,
-    maxZoom: 3,
-    wheelSensitivity: 0.1  // Reduce sensitivity to avoid warning
+    maxZoom: 3
+    // Use default wheelSensitivity to avoid cross-platform issues
   });
   
   // Setup event handlers
@@ -18146,8 +18146,9 @@ async function loadGraphBrowseList() {
         
         // Highlight and center in graph if visible
         if (cytoscapeInstance) {
-          const node = cytoscapeInstance.$(`#${itemId}`);
-          if (node.length > 0) {
+          // Use getElementById() instead of CSS selector to avoid escaping issues
+          const node = cytoscapeInstance.getElementById(itemId);
+          if (node && node.length > 0) {
             cytoscapeInstance.animate({
               center: { eles: node },
               zoom: 1.5
