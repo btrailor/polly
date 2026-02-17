@@ -490,6 +490,27 @@ def create_app(polly_instance=None) -> FastAPI:
                         
                         print(f"[Background] ✅ Notes index rebuilt: {stats['notes_indexed']} notes indexed", flush=True)
                         logger.info(f"Background: Notes index rebuilt with {stats['notes_indexed']} notes")
+                        
+                        # Build backlinks, tags, and mentions indices alongside notes
+                        try:
+                            from core.backlinks import get_backlinks_index
+                            from core.tags_index import get_tags_index
+                            from core.unlinked_mentions import get_unlinked_mentions_index
+                            
+                            backlinks_idx = get_backlinks_index(notes_idx)
+                            bl_stats = backlinks_idx.build_backlinks(notes_path)
+                            print(f"[Background] ✅ Backlinks index: {bl_stats.get('backlinks_found', 0)} links", flush=True)
+                            
+                            tags_idx = get_tags_index(notes_idx)
+                            tag_stats = tags_idx.build_tags_index(notes_path)
+                            print(f"[Background] ✅ Tags index: {tag_stats.get('unique_tags', 0)} unique tags", flush=True)
+                            
+                            mentions_idx = get_unlinked_mentions_index(notes_idx)
+                            m_stats = mentions_idx.build(notes_path)
+                            print(f"[Background] ✅ Mentions index: {m_stats.get('mentions_found', 0)} mentions", flush=True)
+                        except Exception as e:
+                            print(f"[Background] ⚠️ Graph index build failed: {e}", flush=True)
+                            logger.error(f"Background: Graph index build failed: {e}", exc_info=True)
                 except Exception as e:
                     print(f"[Background] ⚠️ Notes index rebuild failed: {e}", flush=True)
                     logger.error(f"Background: Notes index rebuild failed: {e}", exc_info=True)
@@ -3420,18 +3441,21 @@ def create_app(polly_instance=None) -> FastAPI:
             backlinks_idx = get_backlinks_index(notes_idx)
             mentions_idx = get_unlinked_mentions_index(notes_idx)
             
-            # Lazy-init: ensure indices are built
+            # Lazy-init: build indices if not yet built (fallback for early requests)
             if not backlinks_idx._last_build or not mentions_idx._last_build:
-                manager = NotesSourceManager()
-                notes_path = manager.get_notes_path()
-                
-                if not backlinks_idx._last_build:
-                    logger.info("Graph list: lazy-building backlinks index")
-                    backlinks_idx.build_backlinks(notes_path)
-                
-                if not mentions_idx._last_build:
-                    logger.info("Graph list: lazy-building unlinked mentions index")
-                    mentions_idx.build(notes_path)
+                try:
+                    manager = NotesSourceManager()
+                    notes_path = manager.get_notes_path()
+                    
+                    if not backlinks_idx._last_build:
+                        logger.info("Graph list: lazy-building backlinks index")
+                        backlinks_idx.build_backlinks(notes_path)
+                    
+                    if not mentions_idx._last_build:
+                        logger.info("Graph list: lazy-building unlinked mentions index")
+                        mentions_idx.build(notes_path)
+                except Exception as e:
+                    logger.warning(f"Graph list: lazy-init failed, proceeding with available data: {e}")
             
             # Get all notes
             all_notes = notes_idx.get_all_notes()
@@ -3652,23 +3676,26 @@ def create_app(polly_instance=None) -> FastAPI:
             tags_idx = get_tags_index(notes_idx)
             mentions_idx = get_unlinked_mentions_index(notes_idx)
             
-            # Lazy-init: ensure all indices are built
-            notes_path = None
+            # Lazy-init: build indices if not yet built (e.g., startup build hasn't finished)
+            # This is a fallback — normally these are built at startup in the background thread
             if not backlinks_idx._last_build or not tags_idx._last_build or not mentions_idx._last_build:
-                manager = NotesSourceManager()
-                notes_path = manager.get_notes_path()
-            
-            if not backlinks_idx._last_build:
-                logger.info("Graph nodes: lazy-building backlinks index")
-                backlinks_idx.build_backlinks(notes_path)
-            
-            if not tags_idx._last_build:
-                logger.info("Graph nodes: lazy-building tags index")
-                tags_idx.build_tags_index(notes_path)
-            
-            if not mentions_idx._last_build:
-                logger.info("Graph nodes: lazy-building unlinked mentions index")
-                mentions_idx.build(notes_path)
+                try:
+                    manager = NotesSourceManager()
+                    notes_path = manager.get_notes_path()
+                    
+                    if not backlinks_idx._last_build:
+                        logger.info("Graph nodes: lazy-building backlinks index")
+                        backlinks_idx.build_backlinks(notes_path)
+                    
+                    if not tags_idx._last_build:
+                        logger.info("Graph nodes: lazy-building tags index")
+                        tags_idx.build_tags_index(notes_path)
+                    
+                    if not mentions_idx._last_build:
+                        logger.info("Graph nodes: lazy-building unlinked mentions index")
+                        mentions_idx.build(notes_path)
+                except Exception as e:
+                    logger.warning(f"Graph nodes: lazy-init failed, proceeding with available data: {e}")
             
             nodes = []
             edges = []
