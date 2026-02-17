@@ -17905,12 +17905,15 @@ async function initGraphCanvas() {
       animate: true,
       animationDuration: 500,
       fit: true,
-      padding: 30,
-      nodeRepulsion: 400000,
-      idealEdgeLength: 100,
+      padding: 50,
+      // Increased repulsion for better spacing
+      nodeRepulsion: 800000,
+      // Longer ideal edge length to spread nodes out
+      idealEdgeLength: 150,
       edgeElasticity: 100,
       nestingFactor: 5,
-      gravity: 80,
+      // Reduced gravity to allow more spreading
+      gravity: 40,
       numIter: 1000,
       initialTemp: 200,
       coolingFactor: 0.95,
@@ -17939,20 +17942,23 @@ function buildGraphStyle(domainColors) {
         'label': 'data(label)',
         'text-valign': 'center',
         'text-halign': 'center',
-        'font-size': '10px',
+        'font-size': '9px',
         'font-weight': '500',
         'text-outline-width': 2,
         'text-outline-color': '#1a1a1a',
         'color': '#ffffff',
-        'width': ele => 20 + (ele.data('authority') * 30),
-        'height': ele => 20 + (ele.data('authority') * 30),
+        // Smaller base size: 12px base + up to 24px based on authority (12-36px range)
+        'width': ele => 12 + (ele.data('authority') * 24),
+        'height': ele => 12 + (ele.data('authority') * 24),
         'background-color': ele => {
           const domain = ele.data('domain');
           return domainColors[domain] || '#666666';
         },
         'border-width': 2,
         'border-color': '#ffffff',
-        'border-opacity': 0.3
+        'border-opacity': 0.3,
+        // Label visibility controlled dynamically by zoom level
+        'text-opacity': 0
       }
     },
     // Node shapes by type
@@ -18112,13 +18118,48 @@ function setupGraphEventHandlers(cy, domainColors) {
     });
   });
   
-  // Pan/zoom - save state (debounced)
+  // Pan/zoom - save state (debounced) and update label visibility
   let saveTimeout;
   cy.on('viewport', () => {
+    updateGraphLabelVisibility(cy);
+    
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(() => {
       saveGraphState();
     }, 500);
+  });
+  
+  // Initial label visibility update
+  updateGraphLabelVisibility(cy);
+}
+
+/**
+ * Update label visibility based on zoom level
+ * - Low zoom (< 0.5): No labels
+ * - Medium zoom (0.5 - 1.5): Only high-authority nodes (> 0.6)
+ * - High zoom (> 1.5): All labels
+ */
+function updateGraphLabelVisibility(cy) {
+  if (!cy) return;
+  
+  const zoom = cy.zoom();
+  
+  cy.nodes().forEach(node => {
+    const authority = node.data('authority') || 0.5;
+    let opacity = 0;
+    
+    if (zoom < 0.5) {
+      // Low zoom: no labels
+      opacity = 0;
+    } else if (zoom < 1.5) {
+      // Medium zoom: only high-authority nodes
+      opacity = authority > 0.6 ? 1 : 0;
+    } else {
+      // High zoom: all labels
+      opacity = 1;
+    }
+    
+    node.style('text-opacity', opacity);
   });
 }
 
