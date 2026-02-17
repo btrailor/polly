@@ -3241,11 +3241,36 @@ def create_app(polly_instance=None) -> FastAPI:
             # Re-index the note
             from core.notes_index import get_notes_index
             notes_idx = get_notes_index()
+            note_obj = None
             try:
                 notes_idx.index_single_file(note_path)
+                # Get the indexed note for entity extraction
+                note_name = note_path.stem
+                note_obj = notes_idx.find_note_by_name(note_name)
             except Exception as idx_error:
                 logger.warning(f"Failed to re-index note after update: {idx_error}")
                 # Don't fail the save if re-indexing fails
+            
+            # Extract entities from note content (fire-and-forget background task)
+            async def extract_entities_background():
+                try:
+                    polly = get_polly()
+                    if polly and polly.entity_extractor and note_obj:
+                        domains = [note_obj.domain] if note_obj.domain else []
+                        polly.entity_extractor.extract_and_store(
+                            content,
+                            source_type="note",
+                            source_id=note_obj.name,
+                            domains=domains,
+                            extract_relationships=True
+                        )
+                        logger.debug(f"Entity extraction completed for note: {note_obj.name}")
+                except Exception as e:
+                    logger.debug(f"Entity extraction failed for note (non-critical): {e}")
+            
+            # Fire background task
+            import asyncio
+            asyncio.create_task(extract_entities_background())
             
             # Return note metadata so UI can update modified time
             stat = note_path.stat()
@@ -3265,6 +3290,71 @@ def create_app(polly_instance=None) -> FastAPI:
         except Exception as e:
             logger.error(f"Update note failed: {e}")
             raise HTTPException(500, f"Failed to update note: {str(e)}")
+    
+    @app.post("/polly/graph/backfill")
+    async def backfill_graph_entities():
+        """
+        One-time backfill: Extract entities from all indexed notes.
+        
+        This populates entity_mentions for existing notes that were saved
+        before entity extraction was wired into the save path.
+        
+        Response: {
+            "success": true,
+            "processed": 42,
+            "failed": 1,
+            "message": "Processed 42 notes, 1 failed"
+        }
+        """
+        try:
+            polly = get_polly()
+            if not polly or not polly.entity_extractor:
+                raise HTTPException(503, "Entity extraction not available")
+            
+            from core.notes_index import get_notes_index
+            notes_idx = get_notes_index()
+            all_notes = notes_idx.get_all_notes()
+            
+            processed = 0
+            failed = 0
+            
+            for note in all_notes:
+                try:
+                    # Read note content
+                    content = note.path.read_text(encoding='utf-8')
+                    domains = [note.domain] if note.domain else []
+                    
+                    # Extract and store entities
+                    polly.entity_extractor.extract_and_store(
+                        content,
+                        source_type="note",
+                        source_id=note.name,
+                        domains=domains,
+                        extract_relationships=True
+                    )
+                    processed += 1
+                    
+                    if processed % 10 == 0:
+                        logger.info(f"Graph backfill: processed {processed}/{len(all_notes)} notes")
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to extract entities from {note.name}: {e}")
+                    failed += 1
+            
+            logger.info(f"Graph backfill complete: {processed} processed, {failed} failed")
+            
+            return {
+                "success": True,
+                "processed": processed,
+                "failed": failed,
+                "message": f"Processed {processed} notes, {failed} failed"
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Graph backfill failed: {e}")
+            raise HTTPException(500, f"Failed to backfill graph: {str(e)}")
     
     @app.get("/polly/notes/{note_name}/backlinks")
     async def get_note_backlinks(note_name: str):
