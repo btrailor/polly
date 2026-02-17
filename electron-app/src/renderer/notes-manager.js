@@ -501,15 +501,12 @@ class NotesManager {
           this.hasUnsavedChanges = true;
           this.updateSaveStatus('unsaved');
           
-          // Update TOC with debounce (only if TOC view is active)
+          // Update TOC with debounce
           if (this.tocUpdateTimeout) {
             clearTimeout(this.tocUpdateTimeout);
           }
           this.tocUpdateTimeout = setTimeout(() => {
-            const tocView = document.querySelector('.notes-sidebar-view[data-view-content="toc"]');
-            if (tocView && tocView.classList.contains('active')) {
-              this.updateTOCPanel();
-            }
+            this.updateTOCPanel();
           }, 500); // Update TOC 500ms after user stops typing
         },
         onSave: async (content) => {
@@ -1380,44 +1377,6 @@ class NotesManager {
   }
 
 
-
-  /**
-   * Switch between sidebar views (backlinks, tags, toc)
-   */
-  switchSidebarView(viewName) {
-    console.log('[TOC] Switching to view:', viewName);
-    
-    // Update button states
-    document.querySelectorAll('.sidebar-view-btn').forEach(btn => {
-      if (btn.dataset.view === viewName) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
-    });
-    
-    // Update view visibility
-    document.querySelectorAll('.notes-sidebar-view').forEach(view => {
-      if (view.dataset.viewContent === viewName) {
-        view.classList.add('active');
-      } else {
-        view.classList.remove('active');
-      }
-    });
-    
-    // If switching to TOC, update it immediately
-    if (viewName === 'toc') {
-      // Use setTimeout to ensure DOM is ready
-      setTimeout(() => {
-        this.updateTOCPanel();
-      }, 100);
-    }
-    
-    // Re-initialize Lucide icons
-    if (typeof lucide !== 'undefined') {
-      lucide.createIcons();
-    }
-  }
 
   /**
    * Extract headings from CodeMirror document and build TOC

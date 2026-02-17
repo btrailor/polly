@@ -105,123 +105,6 @@
   overflow: hidden;
 }
 
-/* File Tree (rendered in left sidebar) */
-#notes-file-tree-container {
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-#notes-file-tree-container > *:not(.browser-ribbon) {
-  padding: 8px 0;
-}
-
-.file-tree-folder {
-  margin-bottom: 4px;
-}
-
-.file-tree-flat {
-  padding: 0;
-}
-
-.file-tree-folder-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.15s;
-}
-
-.file-tree-folder-header:hover {
-  background: var(--hover-bg);
-}
-
-.folder-icon {
-  width: 14px;
-  height: 14px;
-  color: var(--text-secondary);
-  transition: transform 0.2s;
-}
-
-.file-tree-folder.collapsed .folder-icon {
-  transform: rotate(-90deg);
-}
-
-.domain-icon {
-  width: 14px;
-  height: 14px;
-  color: var(--accent);
-}
-
-.folder-name {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.folder-count {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.file-tree-folder-content {
-  margin-left: 20px;
-  transition: max-height 0.2s, opacity 0.2s;
-}
-
-.file-tree-folder.collapsed .file-tree-folder-content {
-  display: none;
-}
-
-.file-tree-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
-  cursor: pointer;
-  transition: background 0.15s;
-  border-left: 2px solid transparent;
-}
-
-.file-tree-item:hover {
-  background: var(--hover-bg);
-  border-left-color: var(--accent);
-}
-
-.file-tree-item.active {
-  background: var(--hover-bg);
-  border-left-color: var(--accent);
-}
-
-.file-icon {
-  width: 14px;
-  height: 14px;
-  color: var(--text-secondary);
-}
-
-.file-name {
-  font-size: 13px;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.file-tree-rename-input {
-  flex: 1;
-  font-size: 13px;
-  color: var(--text-primary);
-  background: var(--bg-primary);
-  border: 1px solid var(--accent);
-  border-radius: 3px;
-  padding: 2px 4px;
-  outline: none;
-  min-width: 0;
-}
-
 /* Editor Area */
 .notes-editor-container {
   flex: 1;
@@ -654,46 +537,6 @@
   overflow: hidden;
 }
 
-/* View Toggle Buttons */
-.notes-sidebar-view-toggle {
-  display: flex;
-  gap: 4px;
-  padding: 8px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-primary);
-  flex-shrink: 0;
-}
-
-.sidebar-view-btn {
-  flex: 1;
-  padding: 6px 8px;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.sidebar-view-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-normal);
-}
-
-.sidebar-view-btn.active {
-  background: var(--accent-color);
-  color: var(--text-on-accent);
-  border-color: var(--accent-color);
-}
-
-.sidebar-view-btn i {
-  width: 16px;
-  height: 16px;
-}
-
 /* View Container */
 .notes-sidebar-views {
   position: relative;
@@ -910,33 +753,6 @@
 #notes-add-btn:hover {
   background: var(--bg-secondary) !important;
   border-color: var(--accent) !important;
-}
-
-/* Drag and drop styles */
-.file-tree-item[draggable="true"] {
-  cursor: grab;
-}
-
-.file-tree-item[draggable="true"]:active {
-  cursor: grabbing;
-}
-
-.file-tree-item.dragging {
-  opacity: 0.5;
-  background: var(--bg-tertiary);
-}
-
-.file-tree-folder-header.drag-over {
-  background: var(--accent) !important;
-  color: var(--bg-primary) !important;
-  border-radius: 4px;
-}
-
-.file-tree-folder-header.drag-over .folder-icon,
-.file-tree-folder-header.drag-over .domain-icon,
-.file-tree-folder-header.drag-over .folder-name,
-.file-tree-folder-header.drag-over .folder-count {
-  color: var(--bg-primary) !important;
 }
 
 /* Note Embeds */
