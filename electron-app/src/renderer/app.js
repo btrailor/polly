@@ -17756,6 +17756,11 @@ async function initGraphCanvas() {
     return;
   }
   
+  // Register cose-bilkent layout extension if available
+  if (typeof cytoscapeCoseBilkent !== 'undefined') {
+    cytoscape.use(cytoscapeCoseBilkent);
+  }
+  
   // Restore previous graph state if it exists
   const savedState = sessionStorage.getItem('graph-state');
   if (savedState) {
