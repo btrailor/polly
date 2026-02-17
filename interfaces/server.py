@@ -3876,6 +3876,374 @@ def create_app(polly_instance=None) -> FastAPI:
             logger.error(f"Save graph state failed: {e}")
             raise HTTPException(500, f"Failed to save graph state: {str(e)}")
     
+    @app.get("/polly/notes/search")
+    async def search_notes(q: str, limit: int = 50):
+        """
+        Search notes by text query.
+        
+        Query params:
+        - q: Search query (matches title and content)
+        - limit: Max results to return (default 50)
+        
+        Response: {
+            "results": [{
+                "name": "note-name",
+                "title": "Note Title",
+                "path": "/path/to/note.md",
+                "domain": "sigils",
+                "snippet": "...matching text..."
+            }]
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            notes_idx = get_notes_index()
+            
+            # Use NotesIndex.search_notes() method
+            results = notes_idx.search_notes(q, limit=limit)
+            
+            return {
+                "results": [
+                    {
+                        "name": note.name,
+                        "title": note.title,
+                        "path": str(note.path),
+                        "domain": note.domain or "",
+                        "snippet": ""  # TODO: Extract matching snippet from content
+                    }
+                    for note in results
+                ]
+            }
+            
+        except Exception as e:
+            logger.error(f"Note search failed: {e}")
+            raise HTTPException(500, f"Failed to search notes: {str(e)}")
+    
+    @app.get("/polly/notes/tags")
+    async def get_all_tags():
+        """
+        Get all tags used across notes with counts.
+        
+        Response: {
+            "tags": [{
+                "name": "docker",
+                "count": 12
+            }]
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            from core.tags_index import get_tags_index
+            
+            notes_idx = get_notes_index()
+            tags_idx = get_tags_index(notes_idx)
+            
+            # Get all tags with counts
+            all_tags = tags_idx.get_all_tags()
+            
+            return {
+                "tags": [
+                    {"name": tag, "count": count}
+                    for tag, count in all_tags
+                ]
+            }
+            
+        except Exception as e:
+            logger.error(f"Get tags failed: {e}")
+            raise HTTPException(500, f"Failed to get tags: {str(e)}")
+    
+    @app.get("/polly/notes/tags/{tag}")
+    async def get_notes_for_tag(tag: str):
+        """
+        Get all notes with a specific tag.
+        
+        Response: {
+            "tag": "docker",
+            "notes": [{
+                "name": "note-name",
+                "title": "Note Title",
+                "path": "/path/to/note.md",
+                "domain": "sigils"
+            }]
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            from core.tags_index import get_tags_index
+            
+            notes_idx = get_notes_index()
+            tags_idx = get_tags_index(notes_idx)
+            
+            # Get notes for this tag
+            notes = tags_idx.get_notes_for_tag(tag)
+            
+            return {
+                "tag": tag,
+                "notes": [
+                    {
+                        "name": note.name,
+                        "title": note.title,
+                        "path": str(note.path),
+                        "domain": note.domain or ""
+                    }
+                    for note in notes
+                ]
+            }
+            
+        except Exception as e:
+            logger.error(f"Get notes for tag failed: {e}")
+            raise HTTPException(500, f"Failed to get notes for tag: {str(e)}")
+    
+    @app.get("/polly/notes/folders")
+    async def get_note_folders():
+        """
+        Get list of domain folders (subdirectories in notes root).
+        
+        Response: {
+            "folders": ["01-Signals", "02-Sigils", "03-Systems"]
+        }
+        """
+        try:
+            from core.config import get_config
+            config = get_config()
+            
+            notes_root = Path(config.notes_dir)
+            if not notes_root.exists():
+                return {"folders": []}
+            
+            # Get subdirectories
+            folders = [
+                d.name for d in notes_root.iterdir()
+                if d.is_dir() and not d.name.startswith('.')
+            ]
+            folders.sort()
+            
+            return {"folders": folders}
+            
+        except Exception as e:
+            logger.error(f"Get folders failed: {e}")
+            raise HTTPException(500, f"Failed to get folders: {str(e)}")
+    
+    @app.post("/polly/notes/append")
+    async def append_to_note(request: Dict[str, Any]):
+        """
+        Append content to an existing note.
+        
+        Request: {
+            "path": "/path/to/note.md",
+            "content": "\\n\\nNew content to append"
+        }
+        
+        Response: {
+            "success": true,
+            "message": "Content appended successfully"
+        }
+        """
+        try:
+            note_path_str = request.get("path")
+            content = request.get("content")
+            
+            if not note_path_str:
+                raise HTTPException(400, "Note path is required")
+            if content is None:
+                raise HTTPException(400, "Content is required")
+            
+            note_path = Path(note_path_str)
+            
+            if not note_path.exists():
+                raise HTTPException(404, f"Note not found: {note_path}")
+            
+            # Append content
+            with open(note_path, 'a', encoding='utf-8') as f:
+                f.write(content)
+            
+            logger.info(f"Appended content to note: {note_path}")
+            
+            # Re-index the note
+            from core.notes_index import get_notes_index
+            notes_idx = get_notes_index()
+            try:
+                notes_idx.index_single_file(note_path)
+            except Exception as idx_error:
+                logger.warning(f"Failed to re-index note after append: {idx_error}")
+            
+            return {
+                "success": True,
+                "message": "Content appended successfully"
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Append to note failed: {e}")
+            raise HTTPException(500, f"Failed to append to note: {str(e)}")
+    
+    @app.post("/polly/notes/move")
+    async def move_note(request: Dict[str, Any]):
+        """
+        Move a note to a different folder/domain.
+        
+        Request: {
+            "path": "/path/to/note.md",
+            "destination": "/new/path/note.md"
+        }
+        
+        Response: {
+            "success": true,
+            "message": "Note moved successfully",
+            "new_path": "/new/path/note.md"
+        }
+        """
+        try:
+            source_path_str = request.get("path")
+            dest_path_str = request.get("destination")
+            
+            if not source_path_str or not dest_path_str:
+                raise HTTPException(400, "Source path and destination are required")
+            
+            source_path = Path(source_path_str)
+            dest_path = Path(dest_path_str)
+            
+            if not source_path.exists():
+                raise HTTPException(404, f"Note not found: {source_path}")
+            
+            if dest_path.exists():
+                raise HTTPException(400, f"Destination already exists: {dest_path}")
+            
+            # Ensure destination directory exists
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Move file
+            import shutil
+            shutil.move(str(source_path), str(dest_path))
+            
+            logger.info(f"Moved note from {source_path} to {dest_path}")
+            
+            # Update indexes
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+            
+            notes_idx = get_notes_index()
+            backlinks_idx = get_backlinks_index(notes_idx)
+            
+            try:
+                # Remove old path from index
+                notes_idx.remove_note(source_path)
+                # Add new path to index
+                notes_idx.index_single_file(dest_path)
+                # Rebuild backlinks
+                backlinks_idx.rebuild_index()
+            except Exception as idx_error:
+                logger.warning(f"Failed to update indexes after move: {idx_error}")
+            
+            return {
+                "success": True,
+                "message": "Note moved successfully",
+                "new_path": str(dest_path)
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Move note failed: {e}")
+            raise HTTPException(500, f"Failed to move note: {str(e)}")
+    
+    @app.post("/polly/notes/rename")
+    async def rename_note(request: Dict[str, Any]):
+        """
+        Rename a note and update all wiki-link references.
+        
+        Request: {
+            "path": "/path/to/old-name.md",
+            "new_name": "new-name"
+        }
+        
+        Response: {
+            "success": true,
+            "message": "Note renamed successfully",
+            "new_path": "/path/to/new-name.md",
+            "updated_references": 5
+        }
+        """
+        try:
+            old_path_str = request.get("path")
+            new_name = request.get("new_name")
+            
+            if not old_path_str or not new_name:
+                raise HTTPException(400, "Path and new_name are required")
+            
+            old_path = Path(old_path_str)
+            
+            if not old_path.exists():
+                raise HTTPException(404, f"Note not found: {old_path}")
+            
+            # Construct new path
+            new_path = old_path.parent / f"{new_name}.md"
+            
+            if new_path.exists():
+                raise HTTPException(400, f"A note with name '{new_name}' already exists")
+            
+            old_name = old_path.stem
+            
+            # Update all wiki-link references in other notes
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+            
+            notes_idx = get_notes_index()
+            backlinks_idx = get_backlinks_index(notes_idx)
+            
+            # Find all notes that link to this note
+            backlinks = backlinks_idx.get_backlinks(old_name)
+            updated_count = 0
+            
+            import re
+            for backlink in backlinks:
+                try:
+                    source_note = notes_idx.find_note_by_name(backlink.source_name)
+                    if source_note:
+                        content = source_note.path.read_text(encoding='utf-8')
+                        
+                        # Replace wiki-links: [[old-name]] -> [[new-name]]
+                        # Handle both [[old-name]] and [[old-name|display text]]
+                        updated_content = re.sub(
+                            r'\[\[' + re.escape(old_name) + r'(\|[^\]]+)?\]\]',
+                            f'[[{new_name}\\1]]',
+                            content
+                        )
+                        
+                        if updated_content != content:
+                            source_note.path.write_text(updated_content, encoding='utf-8')
+                            updated_count += 1
+                            logger.debug(f"Updated references in {source_note.name}")
+                            
+                except Exception as e:
+                    logger.warning(f"Failed to update references in {backlink.source_name}: {e}")
+            
+            # Rename the file
+            old_path.rename(new_path)
+            logger.info(f"Renamed note from {old_name} to {new_name}")
+            
+            # Update indexes
+            try:
+                notes_idx.remove_note(old_path)
+                notes_idx.index_single_file(new_path)
+                backlinks_idx.rebuild_index()
+            except Exception as idx_error:
+                logger.warning(f"Failed to update indexes after rename: {idx_error}")
+            
+            return {
+                "success": True,
+                "message": "Note renamed successfully",
+                "new_path": str(new_path),
+                "updated_references": updated_count
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Rename note failed: {e}")
+            raise HTTPException(500, f"Failed to rename note: {str(e)}")
+    
     @app.get("/polly/notes/{note_name}/backlinks")
     async def get_note_backlinks(note_name: str):
         """
