@@ -86,6 +86,9 @@
       <button class="ribbon-item" data-view="notes" title="Notes">
         <i data-lucide="book-open"></i>
       </button>
+      <button class="ribbon-item" data-view="graph" title="Graph">
+        <i data-lucide="git-graph"></i>
+      </button>
       <button class="ribbon-item" data-view="learning" title="Learning">
         <i data-lucide="graduation-cap"></i>
       </button>
@@ -2173,6 +2176,22 @@
             <i data-lucide="folder-tree" class="empty-state-icon"></i>
             <h2>Domains</h2>
             <p>Domain management interface coming soon</p>
+          </div>
+        </div>
+
+        <!-- Graph View -->
+        <div class="view hidden" id="view-graph">
+          <div class="graph-container">
+            <!-- Cytoscape canvas -->
+            <div id="graph-canvas" class="graph-canvas"></div>
+            
+            <!-- Graph controls overlay -->
+            <div class="graph-controls">
+              <button id="graph-zoom-in" title="Zoom In"><i data-lucide="zoom-in"></i></button>
+              <button id="graph-zoom-out" title="Zoom Out"><i data-lucide="zoom-out"></i></button>
+              <button id="graph-fit" title="Fit to View"><i data-lucide="maximize-2"></i></button>
+              <button id="graph-reset" title="Reset Layout"><i data-lucide="refresh-cw"></i></button>
+            </div>
           </div>
         </div>
 

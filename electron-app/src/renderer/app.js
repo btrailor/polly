@@ -2963,6 +2963,9 @@ function showView(view) {
     } else if (view === "learning") {
       // Initialize Learning page (Phase 22)
       initLearningPage();
+    } else if (view === "graph") {
+      // Initialize Graph page
+      initGraphPage();
     }
   } catch (error) {
     console.error(`[showView] Error loading view data for ${view}:`, error);
@@ -3057,6 +3060,14 @@ const sidebarRibbonConfigs = {
     buttons: [
       { id: "all", icon: "folder-tree", label: "All", default: true },
       { id: "active", icon: "zap", label: "Active" },
+    ],
+  },
+  graph: {
+    containerClass: "graph-ribbon-buttons",
+    btnClass: "graph-ribbon-btn",
+    buttons: [
+      { id: "browse", icon: "list", label: "Browse", default: true },
+      { id: "garden", icon: "sparkles", label: "Garden" },
     ],
   },
   settings: {
@@ -3402,6 +3413,10 @@ function updateLeftSidebar(view) {
       content:
         '<div style="padding: 16px; color: #808080; font-size: 13px;">Domain list coming soon</div>',
     },
+    graph: {
+      title: "Graph",
+      content: renderGraphSidebar(),
+    },
   };
 
   const config = sidebarConfigs[view] || { title: "Navigation", content: "" };
@@ -3599,10 +3614,13 @@ function updateLeftSidebar(view) {
           } else if (tab === "advanced") {
             loadDedupSettings();
           } else if (tab === "providers") {
-            loadProviderSettings();
-          }
-        });
+          loadProviderSettings();
+        }
       });
+    });
+    } else if (view === "graph") {
+      // Graph page event handlers will be set up in initGraphPage()
+      console.log("[Graph] Sidebar initialized, waiting for initGraphPage()");
     }
   }, 100);
 }
@@ -17507,3 +17525,42 @@ function updateLearningNotesUI(notes) {
 }
 
 // ==================== End Learning (Phase 22) ====================
+
+// ==================== Graph Page (knowledge-graph-navigation) ====================
+
+/**
+ * Render the Graph page sidebar
+ */
+function renderGraphSidebar() {
+  return `
+    <div id="graph-sidebar-browse" class="graph-sidebar-panel">
+      <div id="graph-browse-list" style="padding: 0 12px;">
+        <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
+          Loading graph...
+        </div>
+      </div>
+    </div>
+    <div id="graph-sidebar-garden" class="graph-sidebar-panel hidden">
+      <div style="padding: 16px; color: #808080; font-size: 13px;">
+        Digital garden view coming soon
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Initialize the Graph page
+ */
+function initGraphPage() {
+  console.log("[Graph] Initializing graph page");
+  
+  // Load initial graph data
+  // TODO: Implement in Task 11
+  
+  // Re-initialize icons
+  if (typeof lucide !== "undefined") {
+    setTimeout(() => lucide.createIcons(), 100);
+  }
+}
+
+// ==================== End Graph Page ====================
