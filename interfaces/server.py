@@ -3356,6 +3356,207 @@ def create_app(polly_instance=None) -> FastAPI:
             logger.error(f"Graph backfill failed: {e}")
             raise HTTPException(500, f"Failed to backfill graph: {str(e)}")
     
+    @app.get("/polly/graph/list")
+    async def get_graph_list(
+        type: str = None,          # comma-separated: "note,conversation"
+        domain: str = None,        # matches primary or secondary
+        maturity: int = None,      # 10, 20, 30
+        sort: str = "recent",      # authority, recent, alpha, created
+        connection_status: str = None,  # hub, bridge, isolated, all
+        q: str = None,             # text search
+        limit: int = 100,
+        offset: int = 0
+    ):
+        """
+        Primary endpoint for graph-based navigation.
+        Powers both Notes sidebar and Graph Browse tab.
+        
+        Returns enriched list of notes with entity connections, authority scores,
+        cross-domain relationships, and connection patterns.
+        
+        Query params:
+        - type: Content type filter (currently only "note" supported)
+        - domain: Domain filter (matches primary OR secondary domains)
+        - maturity: Maturity level filter (10, 20, or 30)
+        - sort: Sort order (authority, recent, alpha, created)
+        - connection_status: Connection pattern filter (hub, bridge, isolated, all)
+        - q: Text search in note title/content
+        - limit: Max results to return
+        - offset: Pagination offset
+        
+        Response: {
+            "items": [{
+                "id": "note_name",
+                "name": "Note Display Title",
+                "type": "note",
+                "primary_domain": "sigils",
+                "secondary_domains": ["signals"],
+                "authority_score": 0.82,
+                "connection_count": 17,
+                "inbound_count": 12,
+                "outbound_count": 5,
+                "connection_status": "hub",
+                "maturity": 20,
+                "tags": ["docker", "deployment"],
+                "updated_at": "2026-02-15T...",
+                "created_at": "2026-01-10T...",
+                "path": "/path/to/note.md",
+                "preview_snippet": "First 100 chars..."
+            }],
+            "total_count": 45,
+            "domain_counts": {"sigils": 12, "signals": 8}
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+            from core.entities.store import EntityStore
+            
+            polly = get_polly()
+            notes_idx = get_notes_index()
+            backlinks_idx = get_backlinks_index(notes_idx)
+            
+            # Get all notes
+            all_notes = notes_idx.get_all_notes()
+            
+            # Build enriched items
+            items = []
+            domain_counts = {}
+            
+            for note in all_notes:
+                # Get backlink counts
+                inbound = backlinks_idx.get_backlinks(note.name)
+                outbound = backlinks_idx.get_outgoing_links(note.name)
+                connection_count = len(inbound) + len(outbound)
+                
+                # Compute connection status
+                if connection_count > 10:
+                    conn_status = "hub"
+                elif connection_count <= 2:
+                    conn_status = "isolated"
+                else:
+                    conn_status = "normal"
+                
+                # Get entity-based authority score (if available)
+                authority_score = 0.0
+                secondary_domains = []
+                if polly and polly.entity_store:
+                    try:
+                        # Query entity_mentions for this note
+                        conn = polly.entity_store._conn()
+                        cur = conn.execute(
+                            "SELECT DISTINCT entity_id FROM entity_mentions WHERE source_type='note' AND source_id=?",
+                            (note.name,)
+                        )
+                        entity_ids = [row[0] for row in cur.fetchall()]
+                        
+                        if entity_ids:
+                            # Get average authority of connected entities
+                            placeholders = ','.join(['?'] * len(entity_ids))
+                            cur = conn.execute(
+                                f"SELECT AVG(authority_score) FROM entities WHERE id IN ({placeholders})",
+                                entity_ids
+                            )
+                            avg_auth = cur.fetchone()[0]
+                            if avg_auth is not None:
+                                authority_score = float(avg_auth)
+                            
+                            # Get secondary domains from connected entities
+                            cur = conn.execute(
+                                f"SELECT domains FROM entities WHERE id IN ({placeholders})",
+                                entity_ids
+                            )
+                            import json
+                            all_domains = set()
+                            for row in cur.fetchall():
+                                domains_json = row[0]
+                                if domains_json:
+                                    doms = json.loads(domains_json)
+                                    all_domains.update(doms)
+                            
+                            # Secondary domains = all connected domains except primary
+                            if note.domain:
+                                all_domains.discard(note.domain)
+                            secondary_domains = list(all_domains)
+                            
+                    except Exception as e:
+                        logger.debug(f"Failed to compute authority/secondary domains for {note.name}: {e}")
+                
+                # Build item
+                item = {
+                    "id": note.name,
+                    "name": note.title or note.name,
+                    "type": "note",
+                    "primary_domain": note.domain or "",
+                    "secondary_domains": secondary_domains,
+                    "authority_score": authority_score,
+                    "connection_count": connection_count,
+                    "inbound_count": len(inbound),
+                    "outbound_count": len(outbound),
+                    "connection_status": conn_status,
+                    "maturity": 20,  # TODO: Extract from frontmatter or metadata
+                    "tags": note.tags or [],
+                    "updated_at": note.modified.isoformat() if note.modified else "",
+                    "created_at": note.created.isoformat() if note.created else "",
+                    "path": str(note.path),
+                    "preview_snippet": ""  # TODO: Read first 100 chars of content
+                }
+                
+                # Apply filters
+                # Type filter
+                if type and "note" not in type.split(","):
+                    continue
+                
+                # Domain filter (matches primary or secondary)
+                if domain:
+                    if note.domain != domain and domain not in secondary_domains:
+                        continue
+                
+                # Maturity filter
+                if maturity and item["maturity"] != maturity:
+                    continue
+                
+                # Connection status filter
+                if connection_status and connection_status != "all":
+                    if conn_status != connection_status:
+                        continue
+                
+                # Text search filter
+                if q:
+                    q_lower = q.lower()
+                    if q_lower not in (note.title or "").lower() and q_lower not in note.name.lower():
+                        continue
+                
+                items.append(item)
+                
+                # Count domains
+                if note.domain:
+                    domain_counts[note.domain] = domain_counts.get(note.domain, 0) + 1
+            
+            # Sort items
+            if sort == "authority":
+                items.sort(key=lambda x: x["authority_score"], reverse=True)
+            elif sort == "recent":
+                items.sort(key=lambda x: x["updated_at"], reverse=True)
+            elif sort == "alpha":
+                items.sort(key=lambda x: x["name"].lower())
+            elif sort == "created":
+                items.sort(key=lambda x: x["created_at"], reverse=True)
+            
+            # Apply pagination
+            total_count = len(items)
+            items = items[offset:offset + limit]
+            
+            return {
+                "items": items,
+                "total_count": total_count,
+                "domain_counts": domain_counts
+            }
+            
+        except Exception as e:
+            logger.error(f"Graph list failed: {e}")
+            raise HTTPException(500, f"Failed to get graph list: {str(e)}")
+    
     @app.get("/polly/notes/{note_name}/backlinks")
     async def get_note_backlinks(note_name: str):
         """
