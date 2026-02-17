@@ -2972,10 +2972,30 @@ function showView(view) {
     } else if (view === "graph") {
       // Initialize Graph page, or restore existing instance
       if (cytoscapeInstance) {
-        // Instance already exists — just resize and restore highlights
+        // Canvas already exists — skip initGraphCanvas() but reload sidebar
+        // (updateLeftSidebar rebuilt the DOM so browse list is gone)
         console.log("[Graph] Restoring existing graph instance");
         cytoscapeInstance.resize();
         cytoscapeInstance.fit(undefined, 30);
+        
+        // Reload sidebar content that was wiped by updateLeftSidebar
+        loadGraphBrowseList();
+        setupLowerPanel("graph");
+        
+        // Re-attach lower panel tab handler (DOM was rebuilt)
+        if (graphTabChangeHandler) {
+          document.removeEventListener('lower-panel-tab-change', graphTabChangeHandler);
+        }
+        graphTabChangeHandler = (e) => {
+          if (e.detail.view === 'graph') {
+            const tabId = e.detail.tabId;
+            switch (tabId) {
+              case 'filters': renderGraphFiltersPanel(); break;
+              case 'details': renderGraphDetailsPanel(); break;
+            }
+          }
+        };
+        document.addEventListener('lower-panel-tab-change', graphTabChangeHandler);
         
         // Cross-highlight source node if returning from notes
         if (graphState.sourceNode) {
