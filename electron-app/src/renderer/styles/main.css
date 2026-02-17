@@ -7296,3 +7296,120 @@ body {
 }
 
 /* ==================== End Graph View Styles ==================== */
+
+/* Graph sidebar ribbon buttons */
+.graph-ribbon-buttons {
+  display: flex;
+  flex-direction: row;
+  padding: 0;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  gap: 0;
+  height: 48px;
+  min-height: 48px;
+  flex-shrink: 0;
+  align-items: stretch;
+}
+
+.graph-ribbon-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  font-size: 10px;
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.graph-ribbon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.graph-ribbon-btn.active {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.graph-ribbon-btn.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-primary);
+}
+
+.graph-ribbon-btn i,
+.graph-ribbon-btn svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.graph-ribbon-btn span {
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Graph sidebar panels */
+.graph-sidebar-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.graph-sidebar-panel.hidden {
+  display: none;
+}
+
+/* Garden view styles */
+.garden-section {
+  margin-bottom: 24px;
+}
+
+.garden-isolated-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.garden-isolated-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.garden-isolated-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+
+.garden-isolated-info {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ==================== End Graph Ribbon & Garden Styles ==================== */

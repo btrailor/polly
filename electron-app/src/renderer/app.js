@@ -3163,6 +3163,11 @@ function setupSidebarRibbonHandlers(view) {
       if (view === "learning") {
         switchLearningSidebarPanel(tab);
       }
+      
+      // Graph view: switch between Browse and Garden panels
+      if (view === "graph") {
+        switchGraphSidebarPanel(tab);
+      }
     });
   });
 }
@@ -3192,6 +3197,30 @@ function switchLearningSidebarPanel(tab) {
   } else {
     // Default: curricula
     curriculaPanel.classList.remove("hidden");
+  }
+
+  if (typeof lucide !== "undefined") lucide.createIcons();
+}
+
+/**
+ * Switch Graph left sidebar between Browse and Garden panels
+ */
+function switchGraphSidebarPanel(tab) {
+  const browsePanel = document.getElementById("graph-sidebar-browse");
+  const gardenPanel = document.getElementById("graph-sidebar-garden");
+  if (!browsePanel || !gardenPanel) return;
+
+  // Hide all panels
+  browsePanel.classList.add("hidden");
+  gardenPanel.classList.add("hidden");
+
+  // Show the selected panel
+  if (tab === "garden") {
+    gardenPanel.classList.remove("hidden");
+    loadGardenView();
+  } else {
+    // Default: browse
+    browsePanel.classList.remove("hidden");
   }
 
   if (typeof lucide !== "undefined") lucide.createIcons();
@@ -17532,9 +17561,29 @@ function updateLearningNotesUI(notes) {
  */
 function renderGraphSidebar() {
   return `
-    <div id="graph-browse-list" style="flex: 1; overflow-y: auto; padding: 0 12px;">
-      <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
-        Loading graph...
+    <div id="graph-sidebar-browse" class="graph-sidebar-panel">
+      <div id="graph-browse-list" style="flex: 1; overflow-y: auto; padding: 0 12px;">
+        <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
+          Loading graph...
+        </div>
+      </div>
+    </div>
+    <div id="graph-sidebar-garden" class="graph-sidebar-panel hidden">
+      <div id="graph-garden-content" style="padding: 16px;">
+        <div class="garden-section">
+          <h3 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">
+            <i data-lucide="sprout" style="width: 14px; height: 14px; margin-right: 6px;"></i>
+            Digital Garden
+          </h3>
+          <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px;">
+            Isolated notes that need more connections to grow.
+          </p>
+          <div id="garden-isolated-notes">
+            <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 11px;">
+              Loading isolated notes...
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     ${renderLowerPanel("graph", [
@@ -18305,6 +18354,84 @@ function renderGraphDetailsPanel() {
   `;
   
   if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+/**
+ * Load Garden view - shows isolated notes and maintenance stats
+ */
+async function loadGardenView() {
+  const container = document.getElementById('garden-isolated-notes');
+  if (!container) return;
+  
+  try {
+    // Fetch isolated notes from /polly/graph/list with connection_status filter
+    const response = await fetch('http://127.0.0.1:11436/polly/graph/list?connection_status=isolated&limit=50');
+    const data = await response.json();
+    
+    if (!data.items || data.items.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 20px; color: var(--text-success);">
+          <i data-lucide="check-circle" style="width: 32px; height: 32px; opacity: 0.5; margin-bottom: 8px;"></i>
+          <p style="font-size: 12px; margin: 0;">No isolated notes found!</p>
+          <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">Your knowledge graph is well connected.</p>
+        </div>
+      `;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      return;
+    }
+    
+    // Render isolated notes
+    let html = '<div class="garden-isolated-list">';
+    data.items.forEach(item => {
+      const icon = getTypeIcon(item.type);
+      html += `
+        <div class="garden-isolated-item" data-item-id="${item.id}">
+          <i data-lucide="${icon}" style="width: 14px; height: 14px; opacity: 0.5;"></i>
+          <div class="garden-isolated-info">
+            <div style="font-size: 12px; font-weight: 500; color: var(--text-primary);">${item.name}</div>
+            <div style="font-size: 10px; color: var(--text-secondary); margin-top: 2px;">
+              ${item.connection_count || 0} connections
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+    
+    // Re-initialize icons
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    
+    // Setup click handlers
+    container.querySelectorAll('.garden-isolated-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const itemId = item.dataset.itemId;
+        
+        // Center on this node in the graph
+        if (cytoscapeInstance) {
+          const node = cytoscapeInstance.getElementById(itemId);
+          if (node && node.length > 0) {
+            cytoscapeInstance.animate({
+              center: { eles: node },
+              zoom: 2
+            }, {
+              duration: 300
+            });
+            node.select();
+          }
+        }
+      });
+    });
+    
+  } catch (error) {
+    console.error("[Garden] Failed to load isolated notes:", error);
+    container.innerHTML = `
+      <div style="text-align: center; padding: 20px; color: var(--text-error); font-size: 11px;">
+        Failed to load isolated notes
+      </div>
+    `;
+  }
 }
 
 // ==================== End Graph Page ====================
