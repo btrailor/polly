@@ -3410,11 +3410,28 @@ def create_app(polly_instance=None) -> FastAPI:
         try:
             from core.notes_index import get_notes_index
             from core.backlinks import get_backlinks_index
+            from core.tags_index import get_tags_index
+            from core.unlinked_mentions import get_unlinked_mentions_index
+            from core.notes_source_manager import NotesSourceManager
             from core.entities.store import EntityStore
             
             polly = get_polly()
             notes_idx = get_notes_index()
             backlinks_idx = get_backlinks_index(notes_idx)
+            mentions_idx = get_unlinked_mentions_index(notes_idx)
+            
+            # Lazy-init: ensure indices are built
+            if not backlinks_idx._last_build or not mentions_idx._last_build:
+                manager = NotesSourceManager()
+                notes_path = manager.get_notes_path()
+                
+                if not backlinks_idx._last_build:
+                    logger.info("Graph list: lazy-building backlinks index")
+                    backlinks_idx.build_backlinks(notes_path)
+                
+                if not mentions_idx._last_build:
+                    logger.info("Graph list: lazy-building unlinked mentions index")
+                    mentions_idx.build(notes_path)
             
             # Get all notes
             all_notes = notes_idx.get_all_notes()
@@ -3427,7 +3444,16 @@ def create_app(polly_instance=None) -> FastAPI:
                 # Get backlink counts
                 inbound = backlinks_idx.get_backlinks(note.name)
                 outbound = backlinks_idx.get_outgoing_links(note.name)
-                connection_count = len(inbound) + len(outbound)
+                
+                # Get mention counts
+                mention_inbound = mentions_idx.get_mentions_of(note.name)
+                mention_outbound = mentions_idx.get_mentions_from(note.name)
+                
+                # Total connections = backlinks + unique mention pairs
+                backlink_count = len(inbound) + len(outbound)
+                mention_count = len(set((m.source_name, m.target_name) for m in mention_inbound)) + \
+                                len(set((m.source_name, m.target_name) for m in mention_outbound))
+                connection_count = backlink_count + mention_count
                 
                 # Compute connection status
                 if connection_count > 10:
@@ -3481,6 +3507,11 @@ def create_app(polly_instance=None) -> FastAPI:
                             
                     except Exception as e:
                         logger.debug(f"Failed to compute authority/secondary domains for {note.name}: {e}")
+                
+                # Fallback: if no entity-based authority, compute from backlinks + mentions
+                if authority_score == 0.0 and connection_count > 0:
+                    inbound_total = len(inbound) + len(mention_inbound) * 0.5
+                    authority_score = min(1.0, inbound_total / 10.0)
                 
                 # Build item
                 item = {
@@ -3612,9 +3643,32 @@ def create_app(polly_instance=None) -> FastAPI:
         try:
             from core.notes_index import get_notes_index
             from core.backlinks import get_backlinks_index
+            from core.tags_index import get_tags_index
+            from core.unlinked_mentions import get_unlinked_mentions_index
+            from core.notes_source_manager import NotesSourceManager
             
             notes_idx = get_notes_index()
             backlinks_idx = get_backlinks_index(notes_idx)
+            tags_idx = get_tags_index(notes_idx)
+            mentions_idx = get_unlinked_mentions_index(notes_idx)
+            
+            # Lazy-init: ensure all indices are built
+            notes_path = None
+            if not backlinks_idx._last_build or not tags_idx._last_build or not mentions_idx._last_build:
+                manager = NotesSourceManager()
+                notes_path = manager.get_notes_path()
+            
+            if not backlinks_idx._last_build:
+                logger.info("Graph nodes: lazy-building backlinks index")
+                backlinks_idx.build_backlinks(notes_path)
+            
+            if not tags_idx._last_build:
+                logger.info("Graph nodes: lazy-building tags index")
+                tags_idx.build_tags_index(notes_path)
+            
+            if not mentions_idx._last_build:
+                logger.info("Graph nodes: lazy-building unlinked mentions index")
+                mentions_idx.build(notes_path)
             
             nodes = []
             edges = []
@@ -3644,19 +3698,38 @@ def create_app(polly_instance=None) -> FastAPI:
                 if not center_note:
                     raise HTTPException(404, f"Center node not found: {center_node}")
                 
-                # BFS traversal through backlinks to find N-hop neighborhood
+                # BFS traversal through backlinks, mentions, and shared tags
                 visited = {center_note.name}
                 current_level = {center_note.name}
                 all_neighborhood = {center_note.name: center_note}
                 
+                # Pre-build shared-tag neighbor lookup for BFS
+                # tag -> set of note names that have this tag
+                tag_to_note_names = {}
+                for tag, paths in tags_idx._tags_to_notes.items():
+                    names = set()
+                    for p in paths:
+                        note_info = notes_idx._notes_by_path.get(p)
+                        if note_info:
+                            names.add(note_info.name)
+                    if len(names) > 1:  # Only useful if shared
+                        tag_to_note_names[tag] = names
+                
+                # note_name -> set of note names connected via shared tags
+                shared_tag_neighbors = {}
+                for tag, names in tag_to_note_names.items():
+                    for n in names:
+                        if n not in shared_tag_neighbors:
+                            shared_tag_neighbors[n] = set()
+                        shared_tag_neighbors[n].update(names - {n})
+                
                 for hop in range(hops):
                     next_level = set()
                     for note_name in current_level:
-                        # Get both inbound and outbound links
+                        # 1. Backlink connections (inbound + outbound)
                         inbound = backlinks_idx.get_backlinks(note_name)
                         outbound = backlinks_idx.get_outgoing_links(note_name)
                         
-                        # Add linked notes to next level
                         for backlink in inbound:
                             if backlink.source_name not in visited:
                                 visited.add(backlink.source_name)
@@ -3672,6 +3745,35 @@ def create_app(polly_instance=None) -> FastAPI:
                                 target_note = notes_idx.find_note_by_name_or_alias(backlink.target_name)
                                 if target_note:
                                     all_neighborhood[target_note.name] = target_note
+                        
+                        # 2. Unlinked mention connections
+                        mention_targets = mentions_idx.get_mentions_from(note_name)
+                        for mention in mention_targets:
+                            if mention.target_name not in visited:
+                                visited.add(mention.target_name)
+                                next_level.add(mention.target_name)
+                                target_note = notes_by_name.get(mention.target_name)
+                                if target_note:
+                                    all_neighborhood[target_note.name] = target_note
+                        
+                        mention_sources = mentions_idx.get_mentions_of(note_name)
+                        for mention in mention_sources:
+                            if mention.source_name not in visited:
+                                visited.add(mention.source_name)
+                                next_level.add(mention.source_name)
+                                source_note = notes_by_name.get(mention.source_name)
+                                if source_note:
+                                    all_neighborhood[source_note.name] = source_note
+                        
+                        # 3. Shared tag connections
+                        tag_neighbors = shared_tag_neighbors.get(note_name, set())
+                        for neighbor_name in tag_neighbors:
+                            if neighbor_name not in visited:
+                                visited.add(neighbor_name)
+                                next_level.add(neighbor_name)
+                                neighbor_note = notes_by_name.get(neighbor_name)
+                                if neighbor_note:
+                                    all_neighborhood[neighbor_name] = neighbor_note
                     
                     current_level = next_level
                     if not current_level:
@@ -3738,8 +3840,10 @@ def create_app(polly_instance=None) -> FastAPI:
                 # Build nodes list
                 for note in filtered_visible.values():
                     inbound_count = len(backlinks_idx.get_backlinks(note.name))
+                    mention_inbound = len(mentions_idx.get_mentions_of(note.name))
                     outbound_count = len(backlinks_idx.get_outgoing_links(note.name))
-                    authority = min(1.0, inbound_count / 10.0)
+                    # Authority: backlinks count fully, mentions at 0.5 weight
+                    authority = min(1.0, (inbound_count + mention_inbound * 0.5) / 10.0)
                     
                     nodes.append({
                         "id": note.name,
@@ -3747,14 +3851,15 @@ def create_app(polly_instance=None) -> FastAPI:
                         "type": "note",
                         "domain": note.domain or "",
                         "authority": authority,
-                        "connection_count": inbound_count + outbound_count,
+                        "connection_count": 0,  # Updated after edges are built
                         "is_ghost": False
                     })
                 
                 for note in ghosts.values():
                     inbound_count = len(backlinks_idx.get_backlinks(note.name))
+                    mention_inbound = len(mentions_idx.get_mentions_of(note.name))
                     outbound_count = len(backlinks_idx.get_outgoing_links(note.name))
-                    authority = min(1.0, inbound_count / 10.0)
+                    authority = min(1.0, (inbound_count + mention_inbound * 0.5) / 10.0)
                     
                     nodes.append({
                         "id": note.name,
@@ -3762,19 +3867,19 @@ def create_app(polly_instance=None) -> FastAPI:
                         "type": "note",
                         "domain": note.domain or "",
                         "authority": authority,
-                        "connection_count": inbound_count + outbound_count,
+                        "connection_count": 0,  # Updated after edges are built
                         "is_ghost": True
                     })
                 
-                # Build edges list (backlinks between visible + ghost nodes)
+                # Build edges list (backlinks + mentions + shared tags between visible + ghost nodes)
                 all_node_names = set(filtered_visible.keys()) | set(ghosts.keys())
                 seen_edges = set()
                 
+                # 1. Backlink edges (type: "references", strength: 1.0)
                 for note_name in all_node_names:
                     outbound = backlinks_idx.get_outgoing_links(note_name)
                     for backlink in outbound:
                         if backlink.target_name in all_node_names:
-                            # Avoid duplicate edges
                             edge_key = tuple(sorted([note_name, backlink.target_name]))
                             if edge_key in seen_edges:
                                 continue
@@ -3789,6 +3894,64 @@ def create_app(polly_instance=None) -> FastAPI:
                                 "strength": 1.0,
                                 "is_ghost": is_ghost_edge
                             })
+                
+                # 2. Unlinked mention edges (type: "mention", strength: 0.8)
+                # Only add if no backlink edge already exists for this pair
+                for source, target, count in mentions_idx.get_all_mention_pairs():
+                    if source in all_node_names and target in all_node_names:
+                        edge_key = tuple(sorted([source, target]))
+                        if edge_key in seen_edges:
+                            continue  # Already has a backlink edge
+                        seen_edges.add(edge_key)
+                        
+                        is_ghost_edge = (source in ghosts) or (target in ghosts)
+                        
+                        edges.append({
+                            "source": source,
+                            "target": target,
+                            "type": "mention",
+                            "strength": 0.8,
+                            "is_ghost": is_ghost_edge
+                        })
+                
+                # 3. Shared tag edges (type: "shared_tag", strength weighted by tag selectivity)
+                # Connect notes that share the same tag, with rarer tags = stronger edges
+                for tag, names in tag_to_note_names.items():
+                    visible_in_tag = [n for n in names if n in all_node_names]
+                    if len(visible_in_tag) < 2:
+                        continue
+                    
+                    # Tag selectivity: fewer notes sharing = stronger connection
+                    # 2 notes sharing = 0.7, 5+ notes sharing = 0.3
+                    selectivity = max(0.3, min(0.7, 1.0 - (len(names) - 2) * 0.1))
+                    
+                    # Create edges between all pairs sharing this tag
+                    for i, name_a in enumerate(visible_in_tag):
+                        for name_b in visible_in_tag[i + 1:]:
+                            edge_key = tuple(sorted([name_a, name_b]))
+                            if edge_key in seen_edges:
+                                continue  # Already has a stronger edge
+                            seen_edges.add(edge_key)
+                            
+                            is_ghost_edge = (name_a in ghosts) or (name_b in ghosts)
+                            
+                            edges.append({
+                                "source": name_a,
+                                "target": name_b,
+                                "type": "shared_tag",
+                                "strength": selectivity,
+                                "label": tag,
+                                "is_ghost": is_ghost_edge
+                            })
+                
+                # Update connection_count on nodes to reflect all edge types
+                edge_counts = {}
+                for edge in edges:
+                    edge_counts[edge["source"]] = edge_counts.get(edge["source"], 0) + 1
+                    edge_counts[edge["target"]] = edge_counts.get(edge["target"], 0) + 1
+                
+                for node in nodes:
+                    node["connection_count"] = edge_counts.get(node["id"], 0)
                 
             else:
                 # FULL-GRAPH MODE: Get all notes matching filters
@@ -3810,10 +3973,11 @@ def create_app(polly_instance=None) -> FastAPI:
                         # TODO: Extract maturity from frontmatter
                         pass
                     
-                    # Authority filter
+                    # Authority filter (includes backlinks + weighted mentions)
                     if authority_min:
                         inbound_count = len(backlinks_idx.get_backlinks(note.name))
-                        note_authority = min(1.0, inbound_count / 10.0)
+                        mention_count = len(mentions_idx.get_mentions_of(note.name))
+                        note_authority = min(1.0, (inbound_count + mention_count * 0.5) / 10.0)
                         if note_authority < authority_min:
                             continue
                     
@@ -3827,8 +3991,9 @@ def create_app(polly_instance=None) -> FastAPI:
                 visible_note_names = set()
                 for note in filtered_notes:
                     inbound_count = len(backlinks_idx.get_backlinks(note.name))
+                    mention_inbound = len(mentions_idx.get_mentions_of(note.name))
                     outbound_count = len(backlinks_idx.get_outgoing_links(note.name))
-                    authority = min(1.0, inbound_count / 10.0)
+                    authority = min(1.0, (inbound_count + mention_inbound * 0.5) / 10.0)
                     
                     nodes.append({
                         "id": note.name,
@@ -3836,19 +4001,19 @@ def create_app(polly_instance=None) -> FastAPI:
                         "type": "note",
                         "domain": note.domain or "",
                         "authority": authority,
-                        "connection_count": inbound_count + outbound_count,
+                        "connection_count": 0,  # Updated after edges are built
                         "is_ghost": False
                     })
                     visible_note_names.add(note.name)
                 
-                # Build edges between visible notes
+                # Build edges between visible notes (backlinks + mentions + shared tags)
                 seen_edges = set()
                 
+                # 1. Backlink edges (type: "references", strength: 1.0)
                 for note in filtered_notes:
                     outbound = backlinks_idx.get_outgoing_links(note.name)
                     for backlink in outbound:
                         if backlink.target_name in visible_note_names:
-                            # Avoid duplicate edges
                             edge_key = tuple(sorted([note.name, backlink.target_name]))
                             if edge_key in seen_edges:
                                 continue
@@ -3861,6 +4026,64 @@ def create_app(polly_instance=None) -> FastAPI:
                                 "strength": 1.0,
                                 "is_ghost": False
                             })
+                
+                # 2. Unlinked mention edges (type: "mention", strength: 0.8)
+                for source, target, count in mentions_idx.get_all_mention_pairs():
+                    if source in visible_note_names and target in visible_note_names:
+                        edge_key = tuple(sorted([source, target]))
+                        if edge_key in seen_edges:
+                            continue  # Already has a backlink edge
+                        seen_edges.add(edge_key)
+                        
+                        edges.append({
+                            "source": source,
+                            "target": target,
+                            "type": "mention",
+                            "strength": 0.8,
+                            "is_ghost": False
+                        })
+                
+                # 3. Shared tag edges (type: "shared_tag", strength weighted by selectivity)
+                # Build tag -> note_names lookup for visible notes
+                tag_to_visible = {}
+                for tag, paths in tags_idx._tags_to_notes.items():
+                    names_in_tag = set()
+                    for p in paths:
+                        note_info = notes_idx._notes_by_path.get(p)
+                        if note_info and note_info.name in visible_note_names:
+                            names_in_tag.add(note_info.name)
+                    if len(names_in_tag) >= 2:
+                        tag_to_visible[tag] = names_in_tag
+                
+                for tag, names in tag_to_visible.items():
+                    total_notes_with_tag = len(tags_idx._tags_to_notes.get(tag, []))
+                    selectivity = max(0.3, min(0.7, 1.0 - (total_notes_with_tag - 2) * 0.1))
+                    
+                    sorted_names = sorted(names)
+                    for i, name_a in enumerate(sorted_names):
+                        for name_b in sorted_names[i + 1:]:
+                            edge_key = tuple(sorted([name_a, name_b]))
+                            if edge_key in seen_edges:
+                                continue
+                            seen_edges.add(edge_key)
+                            
+                            edges.append({
+                                "source": name_a,
+                                "target": name_b,
+                                "type": "shared_tag",
+                                "strength": selectivity,
+                                "label": tag,
+                                "is_ghost": False
+                            })
+                
+                # Update connection_count on nodes to reflect all edge types
+                edge_counts = {}
+                for edge in edges:
+                    edge_counts[edge["source"]] = edge_counts.get(edge["source"], 0) + 1
+                    edge_counts[edge["target"]] = edge_counts.get(edge["target"], 0) + 1
+                
+                for node in nodes:
+                    node["connection_count"] = edge_counts.get(node["id"], 0)
             
             return {
                 "nodes": nodes,

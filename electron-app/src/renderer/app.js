@@ -17908,6 +17908,7 @@ async function initGraphCanvas() {
         target: edge.target,
         weight: edge.strength || 1,
         relationshipType: edge.type || 'references',
+        edgeLabel: edge.label || '',
         isGhost: edge.is_ghost || false
       }
     }))
@@ -18073,6 +18074,30 @@ function buildGraphStyle(domainColors) {
       }
     },
     // Edge styles by relationship type
+    {
+      selector: 'edge[relationshipType="references"]',
+      style: {
+        'line-color': '#888888',
+        'target-arrow-color': '#888888',
+        'line-style': 'solid'
+      }
+    },
+    {
+      selector: 'edge[relationshipType="mention"]',
+      style: {
+        'line-color': '#45B7D1',
+        'target-arrow-color': '#45B7D1',
+        'line-style': 'dashed'
+      }
+    },
+    {
+      selector: 'edge[relationshipType="shared_tag"]',
+      style: {
+        'line-color': '#52B788',
+        'target-arrow-color': '#52B788',
+        'line-style': 'dotted'
+      }
+    },
     {
       selector: 'edge[relationshipType="relates_to"]',
       style: {
