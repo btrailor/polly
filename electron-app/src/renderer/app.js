@@ -17549,6 +17549,155 @@ function renderGraphSidebar() {
 }
 
 /**
+ * Render the lower collapsible panel component
+ * @param {string} view - The view context ("notes" or "graph")
+ * @param {Array} tabs - Array of tab objects [{id: 'filters', label: 'Filters'}, ...]
+ * @returns {string} HTML string for the lower panel
+ */
+function renderLowerPanel(view, tabs) {
+  const collapsed = localStorage.getItem(`lowerPanel_${view}_collapsed`) === 'true';
+  const height = localStorage.getItem(`lowerPanel_${view}_height`) || '250';
+  const activeTab = localStorage.getItem(`lowerPanel_${view}_activeTab`) || tabs[0]?.id || 'filters';
+  
+  const tabsHTML = tabs.map(tab => 
+    `<button class="lower-panel-tab ${tab.id === activeTab ? 'active' : ''}" data-tab="${tab.id}">
+      ${tab.label}
+    </button>`
+  ).join('');
+  
+  return `
+    <div class="lower-panel" data-view="${view}" data-collapsed="${collapsed}" style="height: ${collapsed ? '32' : height}px;">
+      <div class="lower-panel-header">
+        <div class="lower-panel-handle" title="${collapsed ? 'Expand panel' : 'Collapse panel'}">
+          <i data-lucide="${collapsed ? 'chevron-up' : 'chevron-down'}" style="width: 14px; height: 14px;"></i>
+        </div>
+        <div class="lower-panel-resize-handle"></div>
+      </div>
+      <div class="lower-panel-ribbon" style="${collapsed ? 'display: none;' : ''}">
+        ${tabsHTML}
+      </div>
+      <div class="lower-panel-content" data-active-tab="${activeTab}" style="${collapsed ? 'display: none;' : ''}">
+        <!-- Tab content will be rendered here -->
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Setup event handlers for the lower collapsible panel
+ * @param {string} view - The view context ("notes" or "graph")
+ */
+function setupLowerPanel(view) {
+  const panel = document.querySelector(`.lower-panel[data-view="${view}"]`);
+  if (!panel) {
+    console.warn(`[LowerPanel] Panel not found for view: ${view}`);
+    return;
+  }
+  
+  const header = panel.querySelector('.lower-panel-header');
+  const handle = panel.querySelector('.lower-panel-handle');
+  const resizeHandle = panel.querySelector('.lower-panel-resize-handle');
+  const ribbon = panel.querySelector('.lower-panel-ribbon');
+  const content = panel.querySelector('.lower-panel-content');
+  const tabs = panel.querySelectorAll('.lower-panel-tab');
+  
+  // Toggle collapse/expand on header click
+  handle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isCollapsed = panel.dataset.collapsed === 'true';
+    const newCollapsed = !isCollapsed;
+    
+    panel.dataset.collapsed = newCollapsed;
+    localStorage.setItem(`lowerPanel_${view}_collapsed`, newCollapsed);
+    
+    if (newCollapsed) {
+      // Collapse
+      const currentHeight = panel.offsetHeight;
+      localStorage.setItem(`lowerPanel_${view}_height`, currentHeight);
+      panel.style.height = '32px';
+      ribbon.style.display = 'none';
+      content.style.display = 'none';
+      handle.innerHTML = '<i data-lucide="chevron-up" style="width: 14px; height: 14px;"></i>';
+      handle.title = 'Expand panel';
+    } else {
+      // Expand
+      const savedHeight = localStorage.getItem(`lowerPanel_${view}_height`) || '250';
+      panel.style.height = `${savedHeight}px`;
+      ribbon.style.display = '';
+      content.style.display = '';
+      handle.innerHTML = '<i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>';
+      handle.title = 'Collapse panel';
+    }
+    
+    // Re-render icons
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  });
+  
+  // Drag to resize panel height
+  let isResizing = false;
+  let startY = 0;
+  let startHeight = 0;
+  
+  resizeHandle.addEventListener('mousedown', (e) => {
+    if (panel.dataset.collapsed === 'true') return;
+    
+    isResizing = true;
+    startY = e.clientY;
+    startHeight = panel.offsetHeight;
+    
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+    
+    e.preventDefault();
+  });
+  
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+    
+    const deltaY = startY - e.clientY; // Inverted because panel grows upward
+    const newHeight = Math.max(100, Math.min(600, startHeight + deltaY));
+    
+    panel.style.height = `${newHeight}px`;
+  });
+  
+  document.addEventListener('mouseup', () => {
+    if (isResizing) {
+      isResizing = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      
+      // Save height to localStorage
+      localStorage.setItem(`lowerPanel_${view}_height`, panel.offsetHeight);
+    }
+  });
+  
+  // Tab switching
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const tabId = tab.dataset.tab;
+      
+      // Update active tab
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      
+      // Update content area
+      content.dataset.activeTab = tabId;
+      localStorage.setItem(`lowerPanel_${view}_activeTab`, tabId);
+      
+      // Trigger tab content render (will be handled by specific view implementations)
+      const event = new CustomEvent('lower-panel-tab-change', {
+        detail: { view, tabId }
+      });
+      document.dispatchEvent(event);
+    });
+  });
+  
+  console.log(`[LowerPanel] Setup complete for view: ${view}`);
+}
+
+/**
  * Initialize the Graph page
  */
 function initGraphPage() {
