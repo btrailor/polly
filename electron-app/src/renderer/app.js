@@ -3000,10 +3000,7 @@ const sidebarRibbonConfigs = {
     containerClass: "notes-ribbon-buttons",
     btnClass: "notes-ribbon-btn",
     buttons: [
-      { id: "files", icon: "files", label: "Files", default: true },
-      { id: "backlinks", icon: "link", label: "Backlinks" },
-      { id: "tags", icon: "tag", label: "Tags" },
-      { id: "toc", icon: "list", label: "TOC" },
+      { id: "browse", icon: "list", label: "Browse", default: true },
     ],
   },
   code: {
@@ -3305,33 +3302,17 @@ function updateLeftSidebar(view) {
     notes: {
       title: "Notes",
       content: `
-        <div style="padding: 0 12px 12px 12px;">
-          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-            <select id="notes-sort-select" style="flex: 1; padding: 6px 8px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 12px;">
-              <option value="folder">By Folder</option>
-              <option value="name-asc">Name (A-Z)</option>
-              <option value="name-desc">Name (Z-A)</option>
-              <option value="modified-desc">Recently Modified</option>
-              <option value="created-desc">Recently Created</option>
-            </select>
-            <div style="position: relative;">
-              <button id="notes-add-btn" style="padding: 6px 8px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; display: flex; align-items: center; justify-content: center; min-width: 32px;" title="Add new...">
-                <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
-              </button>
-              <div id="notes-add-menu" class="notes-add-dropdown" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; min-width: 140px;">
-                <button id="notes-menu-new-note" class="notes-menu-item" style="width: 100%; padding: 8px 12px; background: transparent; border: none; color: var(--text-primary); cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; text-align: left;">
-                  <i data-lucide="file-plus" style="width: 14px; height: 14px;"></i>
-                  <span>New Note</span>
-                </button>
-                <button id="notes-menu-new-folder" class="notes-menu-item" style="width: 100%; padding: 8px 12px; background: transparent; border: none; color: var(--text-primary); cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; text-align: left;">
-                  <i data-lucide="folder-plus" style="width: 14px; height: 14px;"></i>
-                  <span>New Folder</span>
-                </button>
-              </div>
-            </div>
+        <div id="notes-browse-list" style="flex: 1; overflow-y: auto; padding: 0 12px;">
+          <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
+            Loading notes...
           </div>
         </div>
-        <div id="notes-file-tree-container"></div>
+        ${renderLowerPanel("notes", [
+          {id: "filters", label: "Filters"},
+          {id: "backlinks", label: "Backlinks"},
+          {id: "tags", label: "Tags"},
+          {id: "toc", label: "TOC"}
+        ])}
       `,
     },
     learning: {
@@ -3442,19 +3423,47 @@ function updateLeftSidebar(view) {
   // Setup sidebar ribbon handlers
   setupSidebarRibbonHandlers(view);
 
-  // Insert browser sub-ribbon into file tree containers
+  // Setup lower panel for notes view
   if (view === "notes") {
-    const treeContainer = document.getElementById("notes-file-tree-container");
-    if (treeContainer) {
-      treeContainer.insertAdjacentHTML(
-        "afterbegin",
-        createBrowserRibbon("notes"),
-      );
-      setupBrowserRibbonHandlers("notes");
-      // Re-initialize icons for browser ribbon
-      if (typeof lucide !== "undefined") {
-        setTimeout(() => lucide.createIcons(), 60);
+    setupLowerPanel("notes");
+    
+    // Setup lower panel tab change event listener
+    document.addEventListener('lower-panel-tab-change', (e) => {
+      if (e.detail.view === 'notes' && window.notesManager) {
+        const tabId = e.detail.tabId;
+        console.log(`[Notes] Lower panel tab changed to: ${tabId}`);
+        
+        // Render content for the selected tab
+        switch (tabId) {
+          case 'backlinks':
+            window.notesManager.updateBacklinksPanel();
+            break;
+          case 'tags':
+            window.notesManager.updateTagsPanel();
+            break;
+          case 'toc':
+            window.notesManager.updateTOCPanel();
+            break;
+          case 'filters':
+            // TODO: Implement filters panel in future task
+            const content = document.querySelector('.lower-panel[data-view="notes"] .lower-panel-content');
+            if (content) {
+              content.innerHTML = `
+                <div class="lower-panel-empty">
+                  <i data-lucide="filter" style="width: 24px; height: 24px;"></i>
+                  <p>Filters coming soon</p>
+                </div>
+              `;
+              if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+            break;
+        }
       }
+    });
+    
+    // Re-initialize icons for lower panel
+    if (typeof lucide !== "undefined") {
+      setTimeout(() => lucide.createIcons(), 60);
     }
   }
 
