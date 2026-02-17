@@ -1031,6 +1031,188 @@ class NotesManager {
   }
 
   /**
+   * Update the browse list (graph-based flat list) -  replaces updateFileTree()
+   * 
+   * @param {HTMLElement} container - Target container element
+   * @param {Object} options - Configuration options
+   * @param {string} options.sort - Sort mode ('authority', 'recent', 'alpha', 'created')
+   * @param {string} options.domain - Domain filter
+   * @param {string} options.type - Type filter (comma-separated: "note,conversation")
+   * @param {number} options.maturity - Maturity filter (10, 20, 30)
+   * @param {string} options.connectionStatus - Connection status filter ('hub', 'bridge', 'isolated', 'all')
+   * @param {string} options.q - Search query
+   * @param {Function} options.onItemClick - Click handler for items
+   */
+  async updateBrowseList(container, options = {}) {
+    if (!container) {
+      console.error('[Notes] updateBrowseList: container not provided');
+      return;
+    }
+
+    const {
+      sort = 'recent',
+      domain = null,
+      type = null,
+      maturity = null,
+      connectionStatus = null,
+      q = null,
+      onItemClick = null
+    } = options;
+
+    // Show loading state
+    container.innerHTML = `
+      <div class="browse-list-loading" style="padding: 24px; text-align: center; color: var(--text-secondary);">
+        <div class="loading-spinner" style="font-size: 13px;">Loading...</div>
+      </div>
+    `;
+
+    try {
+      // Build query params
+      const params = new URLSearchParams();
+      params.append('sort', sort);
+      params.append('limit', '100');
+      
+      if (domain) params.append('domain', domain);
+      if (type) params.append('type', type);
+      if (maturity) params.append('maturity', maturity.toString());
+      if (connectionStatus) params.append('connection_status', connectionStatus);
+      if (q) params.append('q', q);
+
+      // Fetch from /polly/graph/list
+      const response = await fetch(`/polly/graph/list?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const items = data.items || [];
+
+      // Handle empty state
+      if (items.length === 0) {
+        container.innerHTML = `
+          <div class="browse-list-empty" style="padding: 24px; text-align: center; color: var(--text-secondary);">
+            <i data-lucide="search-x" style="width: 48px; height: 48px; margin: 0 auto 16px; opacity: 0.3; display: block;"></i>
+            <p style="font-size: 13px; margin: 0;">No items match filters</p>
+            ${(domain || type || maturity || connectionStatus || q) ? 
+              '<button class="btn-reset-filters" style="margin-top: 12px; padding: 6px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 12px;">Reset Filters</button>' : 
+              '<p style="font-size: 11px; margin: 8px 0 0; opacity: 0.7;">No notes found in the index.</p>'}
+          </div>
+        `;
+        
+        // Re-initialize icons
+        if (typeof lucide !== 'undefined') {
+          lucide.createIcons();
+        }
+        
+        // Wire reset filters button
+        const resetBtn = container.querySelector('.btn-reset-filters');
+        if (resetBtn) {
+          resetBtn.addEventListener('click', () => {
+            this.updateBrowseList(container, { sort });
+          });
+        }
+        
+        return;
+      }
+
+      // Render items
+      let html = '<div class="browse-list">';
+      
+      for (const item of items) {
+        const typeIcon = this.getTypeIcon(item.type);
+        const date = item.updated_at ? new Date(item.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+        const authorityBadge = item.authority_score >= 0.7 ? '⭐' : (item.authority_score >= 0.4 ? '✦' : '');
+        const secondaryDomainDots = item.secondary_domains && item.secondary_domains.length > 0 
+          ? item.secondary_domains.slice(0, 3).map(d => `<span class="domain-dot" title="${d}">●</span>`).join('')
+          : '';
+
+        html += `
+          <div class="browse-list-item" data-note-name="${item.id}" data-path="${item.path}" data-type="${item.type}">
+            <div class="browse-item-main">
+              <span class="browse-item-icon ${item.type}">${typeIcon}</span>
+              <span class="browse-item-title">${item.name}</span>
+              <span class="browse-item-date">${date}</span>
+            </div>
+            <div class="browse-item-meta">
+              ${authorityBadge ? `<span class="browse-item-authority" title="High authority">${authorityBadge}</span>` : ''}
+              ${item.connection_count > 0 ? `<span class="browse-item-connections" title="${item.connection_count} connections">${item.connection_count}⇄</span>` : ''}
+              ${secondaryDomainDots ? `<span class="browse-item-domains">${secondaryDomainDots}</span>` : ''}
+            </div>
+          </div>
+        `;
+      }
+      
+      html += '</div>';
+      container.innerHTML = html;
+
+      // Wire click handlers
+      const listItems = container.querySelectorAll('.browse-list-item');
+      listItems.forEach((itemEl, index) => {
+        itemEl.addEventListener('click', () => {
+          if (onItemClick) {
+            onItemClick(itemEl, items[index]);
+          } else {
+            // Default: open note
+            const noteName = itemEl.dataset.noteName;
+            if (noteName) {
+              this.openNote(noteName);
+            }
+          }
+        });
+
+        // Keyboard navigation
+        itemEl.setAttribute('tabindex', '0');
+        itemEl.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            itemEl.click();
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const next = itemEl.nextElementSibling;
+            if (next) next.focus();
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prev = itemEl.previousElementSibling;
+            if (prev) prev.focus();
+          }
+        });
+      });
+
+      // Re-initialize icons
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+
+    } catch (error) {
+      console.error('[Notes] updateBrowseList failed:', error);
+      container.innerHTML = `
+        <div class="browse-list-error" style="padding: 24px; text-align: center; color: var(--text-error);">
+          <i data-lucide="alert-circle" style="width: 32px; height: 32px; margin: 0 auto 12px; display: block;"></i>
+          <p style="font-size: 13px; margin: 0;">Failed to load items</p>
+          <p style="font-size: 11px; margin: 8px 0 0; opacity: 0.7;">${error.message}</p>
+        </div>
+      `;
+      
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+    }
+  }
+
+  /**
+   * Get icon for content type
+   */
+  getTypeIcon(type) {
+    const icons = {
+      'note': '●',           // circle
+      'conversation': '◆',   // diamond
+      'book': '⬢',          // hexagon
+      'capture': '▲',       // triangle
+      'code': '■'           // square
+    };
+    return icons[type] || '●';
+  }
+
+  /**
    * Start inline rename in file tree
    */
   startInlineRename(item) {
