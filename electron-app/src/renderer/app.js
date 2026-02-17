@@ -17900,25 +17900,7 @@ async function initGraphCanvas() {
     container: container,
     elements: elements,
     style: buildGraphStyle(domainColors),
-    layout: {
-      name: 'cose',  // Use built-in force-directed layout
-      animate: true,
-      animationDuration: 500,
-      fit: true,
-      padding: 50,
-      // Increased repulsion for better spacing
-      nodeRepulsion: 800000,
-      // Longer ideal edge length to spread nodes out
-      idealEdgeLength: 150,
-      edgeElasticity: 100,
-      nestingFactor: 5,
-      // Reduced gravity to allow more spreading
-      gravity: 40,
-      numIter: 1000,
-      initialTemp: 200,
-      coolingFactor: 0.95,
-      minTemp: 1.0
-    },
+    layout: getLayoutConfig(graphState.layout || 'cose'),
     minZoom: 0.1,
     maxZoom: 3
     // Use default wheelSensitivity to avoid cross-platform issues
@@ -17928,6 +17910,63 @@ async function initGraphCanvas() {
   setupGraphEventHandlers(cytoscapeInstance, domainColors);
   
   console.log("[Graph] Initialized with", graphData.nodes.length, "nodes and", graphData.edges.length, "edges");
+}
+
+/**
+ * Get layout configuration by name
+ */
+function getLayoutConfig(layoutName) {
+  switch (layoutName) {
+    case 'concentric':
+      return {
+        name: 'concentric',
+        animate: true,
+        animationDuration: 500,
+        fit: true,
+        padding: 50,
+        concentric: (node) => node.data('authority') || 0.5,
+        levelWidth: () => 2,
+        minNodeSpacing: 80,
+        startAngle: Math.PI / 4,
+        sweep: Math.PI * 2,
+        clockwise: true,
+        equidistant: false
+      };
+      
+    case 'breadthfirst':
+      return {
+        name: 'breadthfirst',
+        animate: true,
+        animationDuration: 500,
+        fit: true,
+        padding: 50,
+        directed: false,
+        spacingFactor: 1.5,
+        nodeDimensionsIncludeLabels: true,
+        avoidOverlap: true,
+        maximal: false,
+        grid: false
+      };
+      
+    case 'cose':
+    default:
+      return {
+        name: 'cose',
+        animate: true,
+        animationDuration: 500,
+        fit: true,
+        padding: 50,
+        nodeRepulsion: 800000,
+        idealEdgeLength: 150,
+        edgeElasticity: 100,
+        nestingFactor: 5,
+        gravity: 40,
+        numIter: 1000,
+        initialTemp: 200,
+        coolingFactor: 0.95,
+        minTemp: 1.0
+      };
+  }
 }
 
 /**
@@ -18371,13 +18410,91 @@ function renderGraphFiltersPanel() {
   if (!content) return;
   
   content.innerHTML = `
-    <div class="lower-panel-empty">
-      <i data-lucide="filter" style="width: 20px; height: 20px; opacity: 0.3; margin-bottom: 8px;"></i>
-      <p style="font-size: 12px; color: var(--text-secondary);">Graph filters coming soon</p>
+    <div style="padding: 16px;">
+      <!-- Layout Options -->
+      <div class="filter-section" style="margin-bottom: 20px;">
+        <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+          <i data-lucide="layout-grid" style="width: 12px; height: 12px; margin-right: 4px;"></i>
+          Layout
+        </label>
+        <select id="graph-layout-select" style="width: 100%; padding: 6px 8px; font-size: 12px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary);">
+          <option value="cose">Force-Directed (Default)</option>
+          <option value="concentric">Concentric (By Authority)</option>
+          <option value="breadthfirst">Hierarchical (By Domain)</option>
+        </select>
+      </div>
+      
+      <!-- Ghost Node Toggle -->
+      <div class="filter-section" style="margin-bottom: 20px;">
+        <label style="display: flex; align-items: center; font-size: 12px; color: var(--text-primary); cursor: pointer;">
+          <input type="checkbox" id="graph-show-ghosts" checked style="margin-right: 8px;">
+          <span>Show filtered nodes as ghosts</span>
+        </label>
+        <p style="font-size: 10px; color: var(--text-secondary); margin: 4px 0 0 20px;">
+          Keep filtered nodes visible at low opacity within 2 hops
+        </p>
+      </div>
+      
+      <!-- Domain Filter (placeholder for future) -->
+      <div class="filter-section" style="margin-bottom: 12px;">
+        <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+          <i data-lucide="folder" style="width: 12px; height: 12px; margin-right: 4px;"></i>
+          Domain Filter
+        </label>
+        <select id="graph-domain-filter" disabled style="width: 100%; padding: 6px 8px; font-size: 12px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-secondary); opacity: 0.5;">
+          <option value="">All Domains</option>
+        </select>
+        <p style="font-size: 10px; color: var(--text-secondary); margin: 4px 0 0 0; font-style: italic;">
+          Coming soon
+        </p>
+      </div>
     </div>
   `;
   
   if (typeof lucide !== 'undefined') lucide.createIcons();
+  
+  // Restore saved layout selection
+  const layoutSelect = document.getElementById('graph-layout-select');
+  if (layoutSelect && graphState.layout) {
+    layoutSelect.value = graphState.layout;
+  }
+  
+  // Setup layout selector handler
+  if (layoutSelect) {
+    layoutSelect.addEventListener('change', (e) => {
+      applyGraphLayout(e.target.value);
+    });
+  }
+  
+  // Setup ghost toggle handler (placeholder for now)
+  const ghostToggle = document.getElementById('graph-show-ghosts');
+  if (ghostToggle) {
+    ghostToggle.addEventListener('change', (e) => {
+      console.log('[Graph] Ghost nodes toggle:', e.target.checked);
+      // TODO: Implement ghost node filtering
+    });
+  }
+}
+
+/**
+ * Apply a layout to the graph
+ */
+function applyGraphLayout(layoutName) {
+  if (!cytoscapeInstance) {
+    console.error('[Graph] Cannot apply layout: cytoscape instance not initialized');
+    return;
+  }
+  
+  console.log('[Graph] Applying layout:', layoutName);
+  
+  // Get layout config and apply it
+  const layoutConfig = getLayoutConfig(layoutName);
+  const layout = cytoscapeInstance.layout(layoutConfig);
+  layout.run();
+  
+  // Save the current layout preference
+  graphState.layout = layoutName;
+  saveGraphState();
 }
 
 /**
