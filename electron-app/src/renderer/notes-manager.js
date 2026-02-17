@@ -886,175 +886,6 @@ class NotesManager {
   }
 
   /**
-   * Update file tree
-   */
-  updateFileTree() {
-    console.log('[Notes] updateFileTree called');
-    console.log('[Notes] Notes array:', this.notes);
-    console.log('[Notes] Notes count:', this.notes?.length || 0);
-    
-    // Use left sidebar if available, otherwise fall back to internal container
-    let treeContainer = document.getElementById('notes-file-tree-container');
-    
-    if (!treeContainer) {
-      console.log('[Notes] notes-file-tree-container not found, trying notes-file-tree');
-      treeContainer = document.getElementById('notes-file-tree');
-    }
-    
-    if (!treeContainer) {
-      console.error('[Notes] File tree container not found!');
-      console.error('[Notes] Available elements:', {
-        'notes-file-tree-container': !!document.getElementById('notes-file-tree-container'),
-        'notes-file-tree': !!document.getElementById('notes-file-tree'),
-        'left-sidebar-content': !!document.getElementById('left-sidebar-content')
-      });
-      return;
-    }
-    
-    console.log('[Notes] Tree container found:', treeContainer);
-    
-    // Preserve the ribbon if it exists
-    const ribbon = treeContainer.querySelector('.browser-ribbon');
-    const ribbonHTML = ribbon ? ribbon.outerHTML : '';
-    
-    // Show empty state if no notes
-    if (!this.notes || this.notes.length === 0) {
-      console.log('[Notes] No notes to display, showing empty state');
-      treeContainer.innerHTML = ribbonHTML + `
-        <div class="file-tree-content" style="padding: 24px; text-align: center; color: var(--text-secondary);">
-          <i data-lucide="file-text" style="width: 48px; height: 48px; margin: 0 auto 16px; opacity: 0.3; display: block;"></i>
-          <p style="font-size: 13px; margin: 0;">No notes found</p>
-          <p style="font-size: 11px; margin: 8px 0 0; opacity: 0.7;">The notes index may be empty or still building.</p>
-          <p style="font-size: 11px; margin: 8px 0 0; opacity: 0.7;">Check the browser console (F12) for details.</p>
-        </div>
-      `;
-      if (typeof lucide !== 'undefined') {
-        lucide.createIcons({ attrs: { 'stroke-width': 2 } });
-      }
-      return;
-    }
-    
-    console.log('[Notes] Building file tree with', this.notes.length, 'notes');
-    
-    let html = '';
-    
-    if (this.sortMode === 'folder') {
-      // Group notes by domain (folder)
-      const byDomain = {};
-      this.notes.forEach(note => {
-        const domain = note.domain || 'Other';
-        if (!byDomain[domain]) {
-          byDomain[domain] = [];
-        }
-        byDomain[domain].push(note);
-      });
-      
-      // Sort domains alphabetically
-      const sortedDomains = Object.keys(byDomain).sort();
-      
-      // Build tree HTML with folders
-      console.log('[Notes] Building folder view with', sortedDomains.length, 'domains');
-      html = '<div class="file-tree-content">';
-      for (const domain of sortedDomains) {
-        const notes = byDomain[domain];
-        // Sort notes within folder by name
-        notes.sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
-        
-        console.log(`[Notes] Domain "${domain}": ${notes.length} notes`);
-        
-        html += `
-          <div class="file-tree-folder">
-            <div class="file-tree-folder-header" data-domain="${domain}">
-              <i data-lucide="chevron-down" class="folder-icon"></i>
-              <i data-lucide="folder" class="domain-icon"></i>
-              <span class="folder-name">${domain}</span>
-              <span class="folder-count">${notes.length}</span>
-            </div>
-            <div class="file-tree-folder-content">
-              ${notes.map(note => `
-                <div class="file-tree-item" data-note-name="${note.name}">
-                  <i data-lucide="file-text" class="file-icon"></i>
-                  <span class="file-name">${note.title || note.name}</span>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        `;
-      }
-      html += '</div>';
-      
-      console.log('[Notes] Generated HTML length:', html.length, 'characters');
-    } else {
-      // Flat list with sorting
-      let sortedNotes = [...this.notes];
-      
-      switch (this.sortMode) {
-        case 'name-asc':
-          sortedNotes.sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name));
-          break;
-        case 'name-desc':
-          sortedNotes.sort((a, b) => (b.title || b.name).localeCompare(a.title || a.name));
-          break;
-        case 'modified-desc':
-          sortedNotes.sort((a, b) => new Date(b.modified) - new Date(a.modified));
-          break;
-        case 'created-desc':
-          sortedNotes.sort((a, b) => new Date(b.created) - new Date(a.created));
-          break;
-      }
-      
-      // Build flat list HTML
-      html = '<div class="file-tree-content"><div class="file-tree-flat">';
-      sortedNotes.forEach(note => {
-        html += `
-          <div class="file-tree-item" data-note-name="${note.name}">
-            <i data-lucide="file-text" class="file-icon"></i>
-            <span class="file-name">${note.title || note.name}</span>
-          </div>
-        `;
-      });
-      html += '</div></div>';
-    }
-    
-    // Render the tree, preserving the ribbon
-    treeContainer.innerHTML = ribbonHTML + html;
-    
-    // Re-initialize lucide icons
-    if (typeof lucide !== 'undefined') {
-      lucide.createIcons({ attrs: { 'stroke-width': 2 } });
-    }
-    
-    // Add click handlers
-    treeContainer.querySelectorAll('.file-tree-item').forEach(item => {
-      item.addEventListener('click', (e) => {
-        // Don't open note if clicking on input field
-        if (e.target.tagName === 'INPUT') return;
-        
-        const noteName = item.dataset.noteName;
-        this.openNote(noteName);
-      });
-      
-      // Double-click to rename (or right-click in future)
-      item.addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        this.startInlineRename(item);
-      });
-    });
-    
-    // Add folder toggle handlers (only for folder view)
-    if (this.sortMode === 'folder') {
-      treeContainer.querySelectorAll('.file-tree-folder-header').forEach(header => {
-        header.addEventListener('click', () => {
-          header.parentElement.classList.toggle('collapsed');
-        });
-      });
-      
-      // Setup drag and drop for folder view
-      this.setupDragAndDrop(treeContainer);
-    }
-  }
-
-  /**
    * Update the browse list (graph-based flat list) -  replaces updateFileTree()
    * 
    * @param {HTMLElement} container - Target container element
@@ -1275,26 +1106,31 @@ class NotesManager {
   /**
    * Start inline rename in file tree
    */
+  /**
+   * Start inline rename in browse list
+   */
   startInlineRename(item) {
     const noteName = item.dataset.noteName;
     const note = this.notes.find(n => n.name === noteName);
     
     if (!note) return;
     
-    const fileNameSpan = item.querySelector('.file-name');
-    if (!fileNameSpan) return;
+    // Try both old (.file-name) and new (.browse-item-title) DOM structures
+    const titleSpan = item.querySelector('.browse-item-title') || item.querySelector('.file-name');
+    if (!titleSpan) return;
     
-    const originalText = fileNameSpan.textContent;
+    const originalText = titleSpan.textContent;
     
     // Create input
     const input = document.createElement('input');
     input.type = 'text';
     input.value = note.title || note.name;
-    input.className = 'file-tree-rename-input';
+    input.className = 'browse-rename-input';
+    input.style.cssText = 'flex: 1; background: #2a2a2a; border: 1px solid #4a9eff; padding: 2px 4px; color: #e0e0e0; font-size: 13px;';
     
     // Replace span with input
-    fileNameSpan.style.display = 'none';
-    fileNameSpan.parentNode.insertBefore(input, fileNameSpan.nextSibling);
+    titleSpan.style.display = 'none';
+    titleSpan.parentNode.insertBefore(input, titleSpan.nextSibling);
     input.focus();
     input.select();
     
@@ -1309,7 +1145,7 @@ class NotesManager {
       
       // Remove input and show span again
       input.remove();
-      fileNameSpan.style.display = '';
+      titleSpan.style.display = '';
     };
     
     // Enter to save, Escape to cancel
@@ -1330,77 +1166,6 @@ class NotesManager {
     // Stop click from bubbling to prevent opening note
     input.addEventListener('click', (e) => {
       e.stopPropagation();
-    });
-  }
-
-  /**
-   * Setup drag and drop for file tree
-   */
-  setupDragAndDrop(container) {
-    // Make notes draggable
-    container.querySelectorAll('.file-tree-item').forEach(item => {
-      item.setAttribute('draggable', 'true');
-      
-      item.addEventListener('dragstart', (e) => {
-        const noteName = item.dataset.noteName;
-        const note = this.notes.find(n => n.name === noteName);
-        
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', noteName);
-        e.dataTransfer.setData('application/x-note-name', noteName);
-        e.dataTransfer.setData('application/x-note-domain', note?.domain || '');
-        
-        // Add dragging class for visual feedback
-        item.classList.add('dragging');
-        
-        // Store reference for cleanup
-        this._draggingElement = item;
-      });
-      
-      item.addEventListener('dragend', (e) => {
-        item.classList.remove('dragging');
-        this._draggingElement = null;
-      });
-    });
-    
-    // Make folder headers droppable
-    container.querySelectorAll('.file-tree-folder-header').forEach(header => {
-      header.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        
-        // Add visual feedback
-        header.classList.add('drag-over');
-      });
-      
-      header.addEventListener('dragleave', (e) => {
-        header.classList.remove('drag-over');
-      });
-      
-      header.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        header.classList.remove('drag-over');
-        
-        const noteName = e.dataTransfer.getData('application/x-note-name');
-        const sourceDomain = e.dataTransfer.getData('application/x-note-domain');
-        const targetDomain = header.dataset.domain;
-        
-        if (!noteName || !targetDomain) {
-          console.error('[Notes] Invalid drag data');
-          return;
-        }
-        
-        // Don't move if dropping on same folder
-        if (sourceDomain === targetDomain) {
-          console.log('[Notes] Note is already in this folder');
-          return;
-        }
-        
-        // Move the note
-        await this.moveNote(noteName, targetDomain, sourceDomain);
-      });
     });
   }
 
@@ -2468,10 +2233,11 @@ class NotesManager {
         folderSelect.appendChild(option);
       });
       
-      // Pre-select a reasonable default (e.g., 30-Ideas)
-      if (data.folders.includes('30-Ideas')) {
-        folderSelect.value = '30-Ideas';
+      // Pre-select default: use activeDomainFilter if set, otherwise first folder
+      if (this.activeDomainFilter && data.folders.includes(this.activeDomainFilter)) {
+        folderSelect.value = this.activeDomainFilter;
       } else if (data.folders.length > 0) {
+        // Default to first folder alphabetically
         folderSelect.value = data.folders[0];
       }
       

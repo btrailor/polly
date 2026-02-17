@@ -3113,7 +3113,6 @@ function createBrowserRibbon(view) {
     buttons.push(
       { icon: "file-plus", title: "New Note", action: "new-note" },
       { icon: "folder-plus", title: "New Folder", action: "new-folder" },
-      { icon: "fold-vertical", title: "Collapse All", action: "collapse-all" },
       { icon: "arrow-up-down", title: "Sort", action: "sort" },
       { icon: "refresh-cw", title: "Refresh", action: "refresh" },
     );
@@ -3223,13 +3222,6 @@ function setupBrowserRibbonHandlers(view) {
             if (window.notesManager)
               window.notesManager.showCreateFolderModal();
             break;
-          case "collapse-all":
-            container
-              .querySelectorAll(".file-tree-folder")
-              .forEach((folder) => {
-                folder.classList.add("collapsed");
-              });
-            break;
           case "sort":
             // Toggle sort select visibility or cycle through sort modes
             const sortSelect = document.getElementById("notes-sort-select");
@@ -3237,9 +3229,7 @@ function setupBrowserRibbonHandlers(view) {
             break;
           case "refresh":
             if (window.notesManager) {
-              window.notesManager.loadNotesIndex().then(() => {
-                window.notesManager.updateFileTree();
-              });
+              window.notesManager.loadNotesIndex();
             }
             break;
         }
