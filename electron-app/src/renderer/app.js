@@ -17884,7 +17884,7 @@ async function initGraphCanvas() {
   }
   
   // Build domain color palette
-  const domains = [...new Set(graphData.nodes.flatMap(n => n.domains || []).filter(Boolean))];
+  const domains = [...new Set(graphData.nodes.map(n => n.domain).filter(Boolean))];
   const domainColors = buildDomainPalette(domains);
   
   // Transform nodes for Cytoscape
@@ -17894,8 +17894,8 @@ async function initGraphCanvas() {
         id: node.id,
         label: node.name,
         type: node.type,
-        domain: (node.domains && node.domains.length > 0) ? node.domains[0] : null,
-        domains: node.domains || [],
+        domain: node.domain || null,
+        domains: node.domain ? [node.domain] : [],
         authority: node.authority || 0.5,
         connectionCount: node.connection_count || 0,
         isGhost: node.is_ghost || false
@@ -18152,9 +18152,9 @@ function setupGraphEventHandlers(cy, domainColors) {
     
     // Open the item based on type
     if (data.type === 'note') {
-      // Open note
+      // Open note (data.id is the note name)
       if (window.notesManager) {
-        window.notesManager.openNoteByName(data.label);
+        window.notesManager.openNote(data.id);
       }
       showView('notes');
       
@@ -18408,9 +18408,9 @@ function showGraphContextMenu(event, data) {
       icon: 'external-link',
       label: 'Open',
       action: () => {
-        // Open the node based on type
+        // Open the node based on type (data.nodeId is the note name)
         if (data.nodeType === 'note' && window.notesManager) {
-          window.notesManager.openNoteByName(data.nodeName);
+          window.notesManager.openNote(data.nodeId);
           showView('notes');
           showBackToGraphButton();
         }
