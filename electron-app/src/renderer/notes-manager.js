@@ -14,8 +14,24 @@ class NotesManager {
     // State
     this.isLoading = false;
     this.syncStatus = 'idle';
-    this.sortMode = 'folder'; // Default sort mode
     this.fileWatcherStarted = false; // Track if file watcher has been started
+    
+    // Browse list state (replaces sortMode)
+    this.browseFilters = {
+      domain: null,
+      type: null,
+      maturity: null,
+      sort: 'recent',
+      connectionStatus: null,
+      tag: null
+    };
+    this.activeDomainFilter = null;
+    
+    // Lower panel state
+    this.lowerPanelState = {
+      collapsed: true,
+      activeTab: 'filters'
+    };
     
     // Auto-save state
     this.saveStatus = 'saved'; // 'saved', 'saving', 'unsaved'
@@ -138,8 +154,14 @@ class NotesManager {
         console.warn('[Notes] Check server logs for index build messages.');
       }
       
-      // Update file tree
-      this.updateFileTree();
+      // Update browse list (replaces updateFileTree)
+      const container = document.querySelector('#notes-browse-list');
+      if (container) {
+        this.updateBrowseList(container, {
+          filters: this.browseFilters,
+          onItemClick: (item) => this.openNote(item.path)
+        });
+      }
       
     } catch (error) {
       console.error('[Notes] Error loading notes:', error);
@@ -1448,15 +1470,21 @@ class NotesManager {
    * Update backlinks panel
    */
   updateBacklinksPanel() {
-    const panel = document.getElementById('notes-backlinks-panel');
+    // Target lower panel content area when backlinks tab is active
+    const lowerPanel = document.querySelector('.lower-panel[data-view="notes"]');
+    if (!lowerPanel) return;
     
-    if (!panel) return;
+    const content = lowerPanel.querySelector('.lower-panel-content');
+    const activeTab = content?.dataset.activeTab;
+    
+    // Only render if backlinks tab is active
+    if (!content || activeTab !== 'backlinks') return;
     
     if (this.backlinks.length === 0) {
-      panel.innerHTML = `
-        <div class="empty-state-small">
-          <i data-lucide="link" class="empty-icon"></i>
-          <p>No backlinks</p>
+      content.innerHTML = `
+        <div class="lower-panel-empty">
+          <i data-lucide="link" style="width: 24px; height: 24px;"></i>
+          <p>No backlinks to this note</p>
         </div>
       `;
     } else {
@@ -1475,10 +1503,10 @@ class NotesManager {
       });
       
       html += '</div>';
-      panel.innerHTML = html;
+      content.innerHTML = html;
       
       // Add click handlers
-      panel.querySelectorAll('.backlink-item').forEach(item => {
+      content.querySelectorAll('.backlink-item').forEach(item => {
         item.addEventListener('click', () => {
           const noteName = item.dataset.noteName;
           this.openNote(noteName);
@@ -1496,15 +1524,21 @@ class NotesManager {
    * Update tags panel
    */
   updateTagsPanel() {
-    const panel = document.getElementById('notes-tags-panel');
+    // Target lower panel content area when tags tab is active
+    const lowerPanel = document.querySelector('.lower-panel[data-view="notes"]');
+    if (!lowerPanel) return;
     
-    if (!panel) return;
+    const content = lowerPanel.querySelector('.lower-panel-content');
+    const activeTab = content?.dataset.activeTab;
+    
+    // Only render if tags tab is active
+    if (!content || activeTab !== 'tags') return;
     
     if (this.tags.length === 0) {
-      panel.innerHTML = `
-        <div class="empty-state-small">
-          <i data-lucide="tag" class="empty-icon"></i>
-          <p>No tags</p>
+      content.innerHTML = `
+        <div class="lower-panel-empty">
+          <i data-lucide="tag" style="width: 24px; height: 24px;"></i>
+          <p>No tags in current notes</p>
         </div>
       `;
     } else {
@@ -1523,10 +1557,10 @@ class NotesManager {
       });
       
       html += '</div>';
-      panel.innerHTML = html;
+      content.innerHTML = html;
       
       // Add click handlers
-      panel.querySelectorAll('.tag-item').forEach(item => {
+      content.querySelectorAll('.tag-item').forEach(item => {
         item.addEventListener('click', async () => {
           const tag = item.dataset.tag;
           await this.filterByTag(tag);
@@ -1585,24 +1619,32 @@ class NotesManager {
    */
   updateTOCPanel() {
     console.log('[TOC] updateTOCPanel called');
-    const tocList = document.getElementById('notes-toc-list');
-    if (!tocList) return;
+    
+    // Target lower panel content area when TOC tab is active
+    const lowerPanel = document.querySelector('.lower-panel[data-view="notes"]');
+    if (!lowerPanel) return;
+    
+    const content = lowerPanel.querySelector('.lower-panel-content');
+    const activeTab = content?.dataset.activeTab;
+    
+    // Only render if TOC tab is active
+    if (!content || activeTab !== 'toc') return;
     
     // Extract headings from CodeMirror document text
     if (!this.editor || !this.cm6Editor) {
-      this.renderEmptyTOC(tocList);
+      this.renderEmptyTOC(content);
       return;
     }
     
     // Get document content from CodeMirror
-    const content = this.editor.getValue();
-    if (!content) {
-      this.renderEmptyTOC(tocList);
+    const docContent = this.editor.getValue();
+    if (!docContent) {
+      this.renderEmptyTOC(content);
       return;
     }
     
     // Parse markdown for headings
-    const lines = content.split('\n');
+    const lines = docContent.split('\n');
     const headings = [];
     
     lines.forEach((line, index) => {
@@ -1619,12 +1661,12 @@ class NotesManager {
     console.log('[TOC] Found headings:', headings.length);
     
     if (headings.length === 0) {
-      this.renderEmptyTOC(tocList);
+      this.renderEmptyTOC(content);
       return;
     }
     
     // Build TOC items
-    let html = '';
+    let html = '<div id="notes-toc-list">';
     headings.forEach(heading => {
       html += `
         <div class="toc-item level-${heading.level}" data-heading-id="${heading.id}" data-line="${heading.lineNumber}">
@@ -1632,11 +1674,12 @@ class NotesManager {
         </div>
       `;
     });
+    html += '</div>';
     
-    tocList.innerHTML = html;
+    content.innerHTML = html;
     
     // Attach click handlers
-    tocList.querySelectorAll('.toc-item').forEach(item => {
+    content.querySelectorAll('.toc-item').forEach(item => {
       item.addEventListener('click', () => {
         const lineNumber = parseInt(item.dataset.line);
         this.scrollToLine(lineNumber);
@@ -1647,10 +1690,10 @@ class NotesManager {
   /**
    * Render empty state for TOC
    */
-  renderEmptyTOC(tocList) {
-    tocList.innerHTML = `
-      <div class="toc-empty">
-        <i data-lucide="list"></i>
+  renderEmptyTOC(container) {
+    container.innerHTML = `
+      <div class="lower-panel-empty">
+        <i data-lucide="list" style="width: 24px; height: 24px;"></i>
         <div>No headings in this note</div>
       </div>
     `;
@@ -1705,13 +1748,17 @@ class NotesManager {
    */
   async filterByTag(tag) {
     try {
-      const response = await fetch(
-        `http://127.0.0.1:11436/polly/notes/tags/${encodeURIComponent(tag)}`
-      );
-      const data = await response.json();
+      // Update browse filters
+      this.browseFilters.tag = tag;
       
-      this.notes = data.notes || [];
-      this.updateFileTree();
+      // Update browse list with tag filter
+      const container = document.querySelector('#notes-browse-list');
+      if (container) {
+        await this.updateBrowseList(container, {
+          filters: this.browseFilters,
+          onItemClick: (item) => this.openNote(item.path)
+        });
+      }
       
       // Show filter indicator
       this.showFilterIndicator(`#${tag}`);
