@@ -3391,6 +3391,7 @@ def create_app(polly_instance=None) -> FastAPI:
         sort: str = "recent",      # authority, recent, alpha, created
         connection_status: str = None,  # hub, bridge, isolated, all
         q: str = None,             # text search
+        tag: str = None,           # filter by tag
         limit: int = 100,
         offset: int = 0
     ):
@@ -3408,6 +3409,7 @@ def create_app(polly_instance=None) -> FastAPI:
         - sort: Sort order (authority, recent, alpha, created)
         - connection_status: Connection pattern filter (hub, bridge, isolated, all)
         - q: Text search in note title/content
+        - tag: Filter by tag name
         - limit: Max results to return
         - offset: Pagination offset
         
@@ -3575,6 +3577,12 @@ def create_app(polly_instance=None) -> FastAPI:
                 if q:
                     q_lower = q.lower()
                     if q_lower not in (note.title or "").lower() and q_lower not in note.name.lower():
+                        continue
+                
+                # Tag filter
+                if tag:
+                    note_tags = [t.lower() for t in (note.tags or [])]
+                    if tag.lower().lstrip('#') not in note_tags:
                         continue
                 
                 items.append(item)
@@ -4246,8 +4254,8 @@ def create_app(polly_instance=None) -> FastAPI:
             notes_idx = get_notes_index()
             tags_idx = get_tags_index(notes_idx)
             
-            # Get all tags with counts
-            all_tags = tags_idx.get_all_tags()
+            # Get all tags with counts (use high limit to get all)
+            all_tags = tags_idx.get_most_used_tags(limit=1000)
             
             return {
                 "tags": [
@@ -4283,7 +4291,7 @@ def create_app(polly_instance=None) -> FastAPI:
             tags_idx = get_tags_index(notes_idx)
             
             # Get notes for this tag
-            notes = tags_idx.get_notes_for_tag(tag)
+            notes = tags_idx.get_notes_by_tag(tag)
             
             return {
                 "tag": tag,
@@ -4312,10 +4320,9 @@ def create_app(polly_instance=None) -> FastAPI:
         }
         """
         try:
-            from core.config import get_config
-            config = get_config()
+            from core.notes_source_manager import NotesSourceManager
             
-            notes_root = Path(config.notes_dir)
+            notes_root = NotesSourceManager().get_notes_path()
             if not notes_root.exists():
                 return {"folders": []}
             
@@ -4369,9 +4376,11 @@ def create_app(polly_instance=None) -> FastAPI:
             
             # Re-index the note
             from core.notes_index import get_notes_index
+            from core.notes_source_manager import NotesSourceManager
             notes_idx = get_notes_index()
             try:
-                notes_idx.index_single_file(note_path)
+                root_path = NotesSourceManager().get_notes_path()
+                notes_idx.update_note(note_path, root_path)
             except Exception as idx_error:
                 logger.warning(f"Failed to re-index note after append: {idx_error}")
             
@@ -4389,11 +4398,11 @@ def create_app(polly_instance=None) -> FastAPI:
     @app.post("/polly/notes/move")
     async def move_note(request: Dict[str, Any]):
         """
-        Move a note to a different folder/domain.
+        Move a note to a different domain folder.
         
         Request: {
-            "path": "/path/to/note.md",
-            "destination": "/new/path/note.md"
+            "name": "note-name",
+            "target_domain": "02-Signals"
         }
         
         Response: {
@@ -4403,23 +4412,35 @@ def create_app(polly_instance=None) -> FastAPI:
         }
         """
         try:
-            source_path_str = request.get("path")
-            dest_path_str = request.get("destination")
+            note_name = request.get("name")
+            target_domain = request.get("target_domain")
             
-            if not source_path_str or not dest_path_str:
-                raise HTTPException(400, "Source path and destination are required")
+            if not note_name or not target_domain:
+                raise HTTPException(400, "Note name and target_domain are required")
             
-            source_path = Path(source_path_str)
-            dest_path = Path(dest_path_str)
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+            from core.notes_source_manager import NotesSourceManager
             
+            notes_idx = get_notes_index()
+            
+            # Look up the note by name
+            note = notes_idx.find_note_by_name(note_name)
+            if not note:
+                raise HTTPException(404, f"Note not found: {note_name}")
+            
+            source_path = note.path
             if not source_path.exists():
-                raise HTTPException(404, f"Note not found: {source_path}")
+                raise HTTPException(404, f"Note file not found: {source_path}")
+            
+            # Build destination path
+            notes_root = NotesSourceManager().get_notes_path()
+            dest_dir = notes_root / target_domain
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest_path = dest_dir / source_path.name
             
             if dest_path.exists():
-                raise HTTPException(400, f"Destination already exists: {dest_path}")
-            
-            # Ensure destination directory exists
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
+                raise HTTPException(400, f"A note already exists at destination: {dest_path.name}")
             
             # Move file
             import shutil
@@ -4428,19 +4449,12 @@ def create_app(polly_instance=None) -> FastAPI:
             logger.info(f"Moved note from {source_path} to {dest_path}")
             
             # Update indexes
-            from core.notes_index import get_notes_index
-            from core.backlinks import get_backlinks_index
-            
-            notes_idx = get_notes_index()
             backlinks_idx = get_backlinks_index(notes_idx)
             
             try:
-                # Remove old path from index
                 notes_idx.remove_note(source_path)
-                # Add new path to index
-                notes_idx.index_single_file(dest_path)
-                # Rebuild backlinks
-                backlinks_idx.rebuild_index()
+                notes_idx.update_note(dest_path, notes_root)
+                backlinks_idx.build_backlinks(notes_root)
             except Exception as idx_error:
                 logger.warning(f"Failed to update indexes after move: {idx_error}")
             
@@ -4462,45 +4476,51 @@ def create_app(polly_instance=None) -> FastAPI:
         Rename a note and update all wiki-link references.
         
         Request: {
-            "path": "/path/to/old-name.md",
-            "new_name": "new-name"
+            "old_name": "old-note-name",
+            "new_name": "new-note-name"
         }
         
         Response: {
             "success": true,
-            "message": "Note renamed successfully",
-            "new_path": "/path/to/new-name.md",
-            "updated_references": 5
+            "note": {
+                "new_name": "new-note-name",
+                "title": "New Note Name",
+                "references_updated": 5
+            }
         }
         """
         try:
-            old_path_str = request.get("path")
+            old_name = request.get("old_name")
             new_name = request.get("new_name")
             
-            if not old_path_str or not new_name:
-                raise HTTPException(400, "Path and new_name are required")
+            if not old_name or not new_name:
+                raise HTTPException(400, "old_name and new_name are required")
             
-            old_path = Path(old_path_str)
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+            from core.notes_source_manager import NotesSourceManager
             
+            notes_idx = get_notes_index()
+            
+            # Look up note by name
+            note = notes_idx.find_note_by_name(old_name)
+            if not note:
+                raise HTTPException(404, f"Note not found: {old_name}")
+            
+            old_path = note.path
             if not old_path.exists():
-                raise HTTPException(404, f"Note not found: {old_path}")
+                raise HTTPException(404, f"Note file not found: {old_path}")
             
-            # Construct new path
+            # Construct new path (same directory, new filename)
             new_path = old_path.parent / f"{new_name}.md"
             
             if new_path.exists():
                 raise HTTPException(400, f"A note with name '{new_name}' already exists")
             
-            old_name = old_path.stem
+            backlinks_idx = get_backlinks_index(notes_idx)
+            notes_root = NotesSourceManager().get_notes_path()
             
             # Update all wiki-link references in other notes
-            from core.notes_index import get_notes_index
-            from core.backlinks import get_backlinks_index
-            
-            notes_idx = get_notes_index()
-            backlinks_idx = get_backlinks_index(notes_idx)
-            
-            # Find all notes that link to this note
             backlinks = backlinks_idx.get_backlinks(old_name)
             updated_count = 0
             
@@ -4534,16 +4554,21 @@ def create_app(polly_instance=None) -> FastAPI:
             # Update indexes
             try:
                 notes_idx.remove_note(old_path)
-                notes_idx.index_single_file(new_path)
-                backlinks_idx.rebuild_index()
+                notes_idx.update_note(new_path, notes_root)
+                backlinks_idx.build_backlinks(notes_root)
             except Exception as idx_error:
                 logger.warning(f"Failed to update indexes after rename: {idx_error}")
             
+            # Derive a title from the new name
+            new_title = new_name.replace('-', ' ').replace('_', ' ').title()
+            
             return {
                 "success": True,
-                "message": "Note renamed successfully",
-                "new_path": str(new_path),
-                "updated_references": updated_count
+                "note": {
+                    "new_name": new_name,
+                    "title": new_title,
+                    "references_updated": updated_count
+                }
             }
             
         except HTTPException:

@@ -913,6 +913,7 @@ class NotesManager {
       maturity = null,
       connectionStatus = null,
       q = null,
+      tag = null,
       onItemClick = null
     } = options;
 
@@ -934,6 +935,7 @@ class NotesManager {
       if (maturity) params.append('maturity', maturity.toString());
       if (connectionStatus) params.append('connection_status', connectionStatus);
       if (q) params.append('q', q);
+      if (tag) params.append('tag', tag);
 
       console.log('[Notes] updateBrowseList: fetching from /polly/graph/list with params:', params.toString());
 
