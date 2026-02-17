@@ -17746,7 +17746,7 @@ let graphState = {
   centerNode: null,
   expandedNodes: new Set(),
   filters: {},
-  layout: 'cose-bilkent'
+  layout: 'cose'  // Use built-in cose layout (cose-bilkent requires additional deps)
 };
 
 async function initGraphCanvas() {
@@ -17754,11 +17754,6 @@ async function initGraphCanvas() {
   if (!container) {
     console.error("[Graph] Canvas container not found");
     return;
-  }
-  
-  // Register cose-bilkent layout extension if available
-  if (typeof cytoscapeCoseBilkent !== 'undefined') {
-    cytoscape.use(cytoscapeCoseBilkent);
   }
   
   // Restore previous graph state if it exists
@@ -17857,15 +17852,24 @@ async function initGraphCanvas() {
     elements: elements,
     style: buildGraphStyle(domainColors),
     layout: {
-      name: graphState.layout === 'cose-bilkent' ? 'cose-bilkent' : 'cose',
+      name: 'cose',  // Use built-in force-directed layout
       animate: true,
       animationDuration: 500,
       fit: true,
-      padding: 30
+      padding: 30,
+      nodeRepulsion: 400000,
+      idealEdgeLength: 100,
+      edgeElasticity: 100,
+      nestingFactor: 5,
+      gravity: 80,
+      numIter: 1000,
+      initialTemp: 200,
+      coolingFactor: 0.95,
+      minTemp: 1.0
     },
     minZoom: 0.1,
     maxZoom: 3,
-    wheelSensitivity: 0.2
+    wheelSensitivity: 0.1  // Reduce sensitivity to avoid warning
   });
   
   // Setup event handlers
