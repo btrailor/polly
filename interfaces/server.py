@@ -3559,11 +3559,11 @@ def create_app(polly_instance=None) -> FastAPI:
     
     @app.get("/polly/graph/nodes")
     async def get_graph_nodes(
-        type: str = None,          # Entity type filter (concept, tool, etc.)
+        type: str = None,          # Content type filter (note, conversation, book)
         domain: str = None,        # Domain filter
-        maturity: int = None,      # Maturity filter (unused for entities currently)
-        authority_min: float = None,  # Minimum authority score
-        confidence_min: float = None,  # Minimum relationship strength
+        maturity: int = None,      # Maturity filter
+        authority_min: float = None,  # Minimum authority score (based on backlinks)
+        confidence_min: float = None,  # Unused (kept for compatibility)
         center_node: str = None,   # "Explore From Here" — return N-hop neighborhood
         hops: int = 2,             # Max hops from center_node
         include_ghosts: bool = True,  # Include filtered-out nodes within 1-2 hops
@@ -3572,36 +3572,37 @@ def create_app(polly_instance=None) -> FastAPI:
     ):
         """
         Powers the Cytoscape.js graph canvas.
+        Returns notes, conversations, and books as nodes with backlinks as edges.
         
         Two modes:
-        1. Full-graph mode (no center_node): Returns all entities matching filters
+        1. Full-graph mode (no center_node): Returns all content matching filters
         2. Center-node mode (center_node set): Returns N-hop neighborhood from center
         
         Query params:
-        - type: Entity type filter (comma-separated: "concept,tool")
-        - domain: Domain filter (matches entities with this domain)
-        - authority_min: Minimum authority score (0.0-1.0)
-        - confidence_min: Minimum relationship strength (0.0-1.0)
-        - center_node: Entity ID to explore from (enables neighborhood mode)
+        - type: Content type filter (comma-separated: "note,conversation")
+        - domain: Domain filter (matches note domain)
+        - authority_min: Minimum authority score (0.0-1.0, based on inbound links)
+        - center_node: Note name to explore from (enables neighborhood mode)
         - hops: Max hops from center_node (default 2)
-        - include_ghosts: Include filtered-out nodes within 1-2 hops (default true)
+        - include_ghosts: Include filtered-out nodes within hops (default true)
         - limit: Max nodes to return
         - offset: Pagination offset
         
         Response: {
             "nodes": [{
-                "id": "entity_id",
-                "name": "Entity Name",
-                "type": "concept",
-                "domains": ["sigils"],
+                "id": "note_name",
+                "name": "Note Title",
+                "type": "note",
+                "domain": "sigils",
                 "authority": 0.85,
+                "connection_count": 12,
                 "is_ghost": false
             }],
             "edges": [{
-                "source": "entity_id_1",
-                "target": "entity_id_2",
-                "type": "related_to",
-                "strength": 0.7,
+                "source": "note_a",
+                "target": "note_b",
+                "type": "references",
+                "strength": 1.0,
                 "is_ghost": false
             }],
             "total_node_count": 150,
@@ -3609,179 +3610,255 @@ def create_app(polly_instance=None) -> FastAPI:
         }
         """
         try:
-            polly = get_polly()
-            if not polly or not polly.entity_store:
-                raise HTTPException(503, "Entity store not available")
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
             
-            from core.entities.models import EntityQuery, EntityType
+            notes_idx = get_notes_index()
+            backlinks_idx = get_backlinks_index(notes_idx)
             
-            store = polly.entity_store
             nodes = []
             edges = []
             ghost_count = 0
             
-            # Build entity filters
-            entity_types = []
+            # Parse filters
+            type_filters = []
             if type:
-                for t in type.split(","):
-                    try:
-                        entity_types.append(EntityType(t.strip()))
-                    except ValueError:
-                        pass
+                type_filters = [t.strip() for t in type.split(",")]
             
             domains_filter = []
             if domain:
                 domains_filter = [d.strip() for d in domain.split(",")]
             
+            # Get all notes
+            all_notes = notes_idx.get_all_notes()
+            
+            # Build a map of note_name -> note_info for fast lookup
+            notes_by_name = {note.name: note for note in all_notes}
+            
             if center_node:
-                # CENTER-NODE MODE: Get N-hop neighborhood
-                logger.debug(f"Graph nodes: center_node mode, entity={center_node}, hops={hops}")
+                # CENTER-NODE MODE: Get N-hop neighborhood through backlinks
+                logger.debug(f"Graph nodes: center_node mode, note={center_node}, hops={hops}")
                 
-                # Get center entity
-                center_entity = store.get_entity(center_node)
-                if not center_entity:
+                # Get center note
+                center_note = notes_idx.find_note_by_name_or_alias(center_node)
+                if not center_note:
                     raise HTTPException(404, f"Center node not found: {center_node}")
                 
-                # Use EntityStore.get_related() for BFS traversal
-                min_strength = confidence_min if confidence_min else 0.0
-                related = store.get_related(center_node, max_hops=hops, min_strength=min_strength)
+                # BFS traversal through backlinks to find N-hop neighborhood
+                visited = {center_note.name}
+                current_level = {center_note.name}
+                all_neighborhood = {center_note.name: center_note}
                 
-                # Build visible entities set
-                visible_entities = {center_node: center_entity}
-                for ent, rel in related:
-                    visible_entities[ent.id] = ent
+                for hop in range(hops):
+                    next_level = set()
+                    for note_name in current_level:
+                        # Get both inbound and outbound links
+                        inbound = backlinks_idx.get_backlinks(note_name)
+                        outbound = backlinks_idx.get_outgoing_links(note_name)
+                        
+                        # Add linked notes to next level
+                        for backlink in inbound:
+                            if backlink.source_name not in visited:
+                                visited.add(backlink.source_name)
+                                next_level.add(backlink.source_name)
+                                source_note = notes_idx.find_note_by_name_or_alias(backlink.source_name)
+                                if source_note:
+                                    all_neighborhood[source_note.name] = source_note
+                        
+                        for backlink in outbound:
+                            if backlink.target_name not in visited:
+                                visited.add(backlink.target_name)
+                                next_level.add(backlink.target_name)
+                                target_note = notes_idx.find_note_by_name_or_alias(backlink.target_name)
+                                if target_note:
+                                    all_neighborhood[target_note.name] = target_note
+                    
+                    current_level = next_level
+                    if not current_level:
+                        break
                 
-                # Apply filters to visible entities
+                # Apply filters to neighborhood notes
                 filtered_visible = {}
                 filtered_out = {}
                 
-                for ent_id, ent in visible_entities.items():
+                for note_name, note in all_neighborhood.items():
                     passes_filter = True
                     
-                    # Type filter
-                    if entity_types and ent.entity_type not in entity_types:
+                    # Type filter (currently only "note" supported)
+                    if type_filters and "note" not in type_filters:
                         passes_filter = False
                     
                     # Domain filter
-                    if domains_filter:
-                        if not any(d in ent.domains for d in domains_filter):
-                            passes_filter = False
-                    
-                    # Authority filter
-                    if authority_min and ent.authority_score < authority_min:
+                    if domains_filter and note.domain not in domains_filter:
                         passes_filter = False
                     
+                    # Maturity filter
+                    if maturity:
+                        # TODO: Extract maturity from frontmatter
+                        pass
+                    
+                    # Authority filter (based on inbound backlink count)
+                    if authority_min:
+                        inbound_count = len(backlinks_idx.get_backlinks(note.name))
+                        # Normalize authority: 0 links = 0.0, 10+ links = 1.0
+                        note_authority = min(1.0, inbound_count / 10.0)
+                        if note_authority < authority_min:
+                            passes_filter = False
+                    
                     if passes_filter:
-                        filtered_visible[ent_id] = ent
+                        filtered_visible[note_name] = note
                     else:
-                        filtered_out[ent_id] = ent
+                        filtered_out[note_name] = note
                 
-                # Ghost computation: include filtered-out nodes within 1-2 hops of visible nodes
+                # Ghost computation: include filtered-out notes within 1 hop of visible notes
                 ghosts = {}
-                if include_ghosts and filtered_out and len(filtered_visible) < 100:  # Performance cap
-                    for vis_id in list(filtered_visible.keys())[:20]:  # Limit ghost computation
+                if include_ghosts and filtered_out and len(filtered_visible) < 100:
+                    for vis_name in list(filtered_visible.keys())[:20]:  # Limit ghost computation
                         try:
-                            ghost_candidates = store.get_related(vis_id, max_hops=1, min_strength=0.0)
-                            for ghost_ent, _ in ghost_candidates[:10]:  # Max 10 ghosts per visible
-                                if ghost_ent.id in filtered_out and ghost_ent.id not in ghosts:
-                                    ghosts[ghost_ent.id] = ghost_ent
-                                    if len(ghosts) >= 100:  # Max 100 total ghosts
+                            # Get 1-hop neighbors
+                            inbound = backlinks_idx.get_backlinks(vis_name)
+                            outbound = backlinks_idx.get_outgoing_links(vis_name)
+                            
+                            for backlink in inbound[:5]:  # Max 5 ghosts per visible
+                                if backlink.source_name in filtered_out and backlink.source_name not in ghosts:
+                                    ghosts[backlink.source_name] = filtered_out[backlink.source_name]
+                                    if len(ghosts) >= 100:
+                                        break
+                            
+                            for backlink in outbound[:5]:
+                                if backlink.target_name in filtered_out and backlink.target_name not in ghosts:
+                                    ghosts[backlink.target_name] = filtered_out[backlink.target_name]
+                                    if len(ghosts) >= 100:
                                         break
                         except Exception as e:
-                            logger.debug(f"Ghost computation failed for {vis_id}: {e}")
+                            logger.debug(f"Ghost computation failed for {vis_name}: {e}")
                 
                 ghost_count = len(ghosts)
                 
                 # Build nodes list
-                for ent in filtered_visible.values():
+                for note in filtered_visible.values():
+                    inbound_count = len(backlinks_idx.get_backlinks(note.name))
+                    outbound_count = len(backlinks_idx.get_outgoing_links(note.name))
+                    authority = min(1.0, inbound_count / 10.0)
+                    
                     nodes.append({
-                        "id": ent.id,
-                        "name": ent.name,
-                        "type": ent.entity_type.value,
-                        "domains": ent.domains,
-                        "authority": ent.authority_score,
+                        "id": note.name,
+                        "name": note.title or note.name,
+                        "type": "note",
+                        "domain": note.domain or "",
+                        "authority": authority,
+                        "connection_count": inbound_count + outbound_count,
                         "is_ghost": False
                     })
                 
-                for ent in ghosts.values():
+                for note in ghosts.values():
+                    inbound_count = len(backlinks_idx.get_backlinks(note.name))
+                    outbound_count = len(backlinks_idx.get_outgoing_links(note.name))
+                    authority = min(1.0, inbound_count / 10.0)
+                    
                     nodes.append({
-                        "id": ent.id,
-                        "name": ent.name,
-                        "type": ent.entity_type.value,
-                        "domains": ent.domains,
-                        "authority": ent.authority_score,
+                        "id": note.name,
+                        "name": note.title or note.name,
+                        "type": "note",
+                        "domain": note.domain or "",
+                        "authority": authority,
+                        "connection_count": inbound_count + outbound_count,
                         "is_ghost": True
                     })
                 
-                # Build edges list (relationships between visible + ghost nodes)
-                all_node_ids = set(filtered_visible.keys()) | set(ghosts.keys())
-                for ent_id in all_node_ids:
-                    neighbor_rels = store._get_neighbor_rels(ent_id)
-                    for rel, other_id in neighbor_rels:
-                        if other_id in all_node_ids:
-                            # Check if edge already added (avoid duplicates for bidirectional)
-                            edge_key = tuple(sorted([rel.source_id, rel.target_id]))
-                            is_ghost_edge = (rel.source_id in ghosts) or (rel.target_id in ghosts)
+                # Build edges list (backlinks between visible + ghost nodes)
+                all_node_names = set(filtered_visible.keys()) | set(ghosts.keys())
+                seen_edges = set()
+                
+                for note_name in all_node_names:
+                    outbound = backlinks_idx.get_outgoing_links(note_name)
+                    for backlink in outbound:
+                        if backlink.target_name in all_node_names:
+                            # Avoid duplicate edges
+                            edge_key = tuple(sorted([note_name, backlink.target_name]))
+                            if edge_key in seen_edges:
+                                continue
+                            seen_edges.add(edge_key)
+                            
+                            is_ghost_edge = (note_name in ghosts) or (backlink.target_name in ghosts)
                             
                             edges.append({
-                                "source": rel.source_id,
-                                "target": rel.target_id,
-                                "type": rel.relationship_type.value,
-                                "strength": rel.strength,
+                                "source": note_name,
+                                "target": backlink.target_name,
+                                "type": "references",
+                                "strength": 1.0,
                                 "is_ghost": is_ghost_edge
                             })
                 
             else:
-                # FULL-GRAPH MODE: Get all entities matching filters
+                # FULL-GRAPH MODE: Get all notes matching filters
                 logger.debug(f"Graph nodes: full-graph mode, filters: type={type}, domain={domain}")
                 
-                query = EntityQuery(
-                    entity_types=entity_types if entity_types else None,
-                    domains=domains_filter if domains_filter else None,
-                    min_authority=authority_min if authority_min else 0.0,
-                    limit=limit + offset  # Get more for pagination
-                )
+                filtered_notes = []
                 
-                entities = store.search(query)
+                for note in all_notes:
+                    # Type filter
+                    if type_filters and "note" not in type_filters:
+                        continue
+                    
+                    # Domain filter
+                    if domains_filter and note.domain not in domains_filter:
+                        continue
+                    
+                    # Maturity filter
+                    if maturity:
+                        # TODO: Extract maturity from frontmatter
+                        pass
+                    
+                    # Authority filter
+                    if authority_min:
+                        inbound_count = len(backlinks_idx.get_backlinks(note.name))
+                        note_authority = min(1.0, inbound_count / 10.0)
+                        if note_authority < authority_min:
+                            continue
+                    
+                    filtered_notes.append(note)
                 
                 # Apply pagination
-                total_count = len(entities)
-                entities = entities[offset:offset + limit]
+                total_count = len(filtered_notes)
+                filtered_notes = filtered_notes[offset:offset + limit]
                 
                 # Build nodes
-                for ent in entities:
+                visible_note_names = set()
+                for note in filtered_notes:
+                    inbound_count = len(backlinks_idx.get_backlinks(note.name))
+                    outbound_count = len(backlinks_idx.get_outgoing_links(note.name))
+                    authority = min(1.0, inbound_count / 10.0)
+                    
                     nodes.append({
-                        "id": ent.id,
-                        "name": ent.name,
-                        "type": ent.entity_type.value,
-                        "domains": ent.domains,
-                        "authority": ent.authority_score,
+                        "id": note.name,
+                        "name": note.title or note.name,
+                        "type": "note",
+                        "domain": note.domain or "",
+                        "authority": authority,
+                        "connection_count": inbound_count + outbound_count,
                         "is_ghost": False
                     })
+                    visible_note_names.add(note.name)
                 
-                # Build edges between visible nodes
-                entity_ids = {ent.id for ent in entities}
+                # Build edges between visible notes
                 seen_edges = set()
                 
-                for ent in entities:
-                    neighbor_rels = store._get_neighbor_rels(ent.id)
-                    for rel, other_id in neighbor_rels:
-                        if other_id in entity_ids:
-                            # Apply confidence filter
-                            if confidence_min and rel.strength < confidence_min:
-                                continue
-                            
+                for note in filtered_notes:
+                    outbound = backlinks_idx.get_outgoing_links(note.name)
+                    for backlink in outbound:
+                        if backlink.target_name in visible_note_names:
                             # Avoid duplicate edges
-                            edge_key = tuple(sorted([rel.source_id, rel.target_id, rel.relationship_type.value]))
+                            edge_key = tuple(sorted([note.name, backlink.target_name]))
                             if edge_key in seen_edges:
                                 continue
                             seen_edges.add(edge_key)
                             
                             edges.append({
-                                "source": rel.source_id,
-                                "target": rel.target_id,
-                                "type": rel.relationship_type.value,
-                                "strength": rel.strength,
+                                "source": note.name,
+                                "target": backlink.target_name,
+                                "type": "references",
+                                "strength": 1.0,
                                 "is_ghost": False
                             })
             
@@ -3795,7 +3872,7 @@ def create_app(polly_instance=None) -> FastAPI:
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Graph nodes failed: {e}")
+            logger.error(f"Graph nodes failed: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to get graph nodes: {str(e)}")
     
     @app.get("/polly/graph/state")
