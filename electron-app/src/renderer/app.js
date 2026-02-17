@@ -3150,13 +3150,6 @@ function setupSidebarRibbonHandlers(view) {
         .forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
 
-      // Emit custom event for view-specific handling
-      document.dispatchEvent(
-        new CustomEvent("sidebar-ribbon-change", {
-          detail: { view, tab },
-        }),
-      );
-
       console.log(`[Sidebar Ribbon] ${view} -> ${tab}`);
 
       // Learning view: switch between Curricula and Progress panels
@@ -3236,7 +3229,7 @@ function setupBrowserRibbonHandlers(view) {
             break;
           case "refresh":
             if (window.notesManager) {
-              window.notesManager.loadNotes().then(() => {
+              window.notesManager.loadNotesIndex().then(() => {
                 window.notesManager.updateFileTree();
               });
             }

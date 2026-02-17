@@ -1084,6 +1084,18 @@ def create_app(polly_instance=None) -> FastAPI:
         # TODO: Make RAG stats truly async by running ChromaDB in a separate process or
         # using an async ChromaDB client.
         
+        # Get graph stats if entity_store is available
+        graph_stats = {'entities': '?', 'relationships': '?'}
+        if polly and polly.entity_store:
+            try:
+                stats = polly.entity_store.get_stats()
+                graph_stats = {
+                    'entities': stats.get('entities', '?'),
+                    'relationships': stats.get('relationships', '?')
+                }
+            except Exception as e:
+                logger.warning(f"Failed to get entity store stats: {e}")
+        
         return {
             'status': 'ready' if polly else ('error' if error else ('initializing' if initializing else 'not_started')),
             'user': config.user_name,
@@ -1093,7 +1105,7 @@ def create_app(polly_instance=None) -> FastAPI:
                 'codebase': {'count': '?', 'files': '?'}
             },
             'patterns': '?',
-            'graph': {'entities': '?', 'relationships': '?'}
+            'graph': graph_stats
         }
     
     @app.get("/polly/patterns")
@@ -3275,8 +3287,10 @@ def create_app(polly_instance=None) -> FastAPI:
         """
         try:
             from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
             
             notes_idx = get_notes_index()
+            backlinks_idx = get_backlinks_index(notes_idx)
             
             # Find the target note
             target_note = notes_idx.find_note_by_name(note_name)
@@ -3287,22 +3301,20 @@ def create_app(polly_instance=None) -> FastAPI:
                     "count": 0
                 }
             
-            # Find all notes that link to this note
-            backlinks = []
-            all_notes = notes_idx.get_all_notes()
+            # Get backlinks from BacklinksIndex
+            backlink_objects = backlinks_idx.get_backlinks(note_name)
             
-            for note in all_notes:
-                # Skip the target note itself
-                if note.name == note_name:
-                    continue
-                
-                # Check if this note links to the target
-                if note.links and note_name in note.links:
+            # Convert Backlink objects to response format
+            backlinks = []
+            for backlink in backlink_objects:
+                # Resolve source note info
+                source_note = notes_idx.find_note_by_name(backlink.source_name)
+                if source_note:
                     backlinks.append({
-                        "name": note.name,
-                        "title": note.title,
-                        "path": str(note.path),
-                        "domain": note.domain
+                        "name": source_note.name,
+                        "title": source_note.title,
+                        "path": str(source_note.path),
+                        "domain": source_note.domain
                     })
             
             return {

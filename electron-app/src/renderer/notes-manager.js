@@ -1999,7 +1999,9 @@ class NotesManager {
 
   showError(message) {
     console.error(`[Notes] ${message}`);
-    // TODO: Show error toast/notification
+    if (typeof showToast === 'function') {
+      showToast(message, 'error');
+    }
   }
 
   showFilterIndicator(filter) {
