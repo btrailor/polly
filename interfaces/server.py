@@ -457,6 +457,7 @@ def create_app(polly_instance=None) -> FastAPI:
         # Track initialization state
         app.state.polly_initializing = True
         app.state.polly_init_error = None
+        app.state.graph_indices_ready = False
         
         def initialize_polly_background():
             """Initialize Polly in background thread."""
@@ -474,46 +475,51 @@ def create_app(polly_instance=None) -> FastAPI:
                 print("✅ [Background] Polly initialization complete!", flush=True)
                 logger.info("Background: Polly initialized successfully")
                 
-                # Auto-rebuild notes index if empty
+                # Build notes index if empty, then always build graph indices
                 try:
                     from core.notes_index import get_notes_index
                     from core.notes_source_manager import NotesSourceManager
+                    from core.backlinks import get_backlinks_index
+                    from core.tags_index import get_tags_index
+                    from core.unlinked_mentions import get_unlinked_mentions_index
                     
                     notes_idx = get_notes_index()
+                    manager = NotesSourceManager()
+                    notes_path = manager.get_notes_path()
+                    
                     if len(notes_idx._notes_by_path) == 0:
                         print("[Background] Notes index is empty, rebuilding...", flush=True)
                         logger.info("Background: Auto-rebuilding notes index")
-                        
-                        manager = NotesSourceManager()
-                        notes_path = manager.get_notes_path()
                         stats = notes_idx.build_index(notes_path, recursive=True)
-                        
                         print(f"[Background] ✅ Notes index rebuilt: {stats['notes_indexed']} notes indexed", flush=True)
                         logger.info(f"Background: Notes index rebuilt with {stats['notes_indexed']} notes")
+                    else:
+                        print(f"[Background] Notes index already has {len(notes_idx._notes_by_path)} notes", flush=True)
+                    
+                    # Always build graph indices at startup (backlinks, tags, mentions)
+                    # These are needed for the graph page and must be ready before requests arrive
+                    try:
+                        backlinks_idx = get_backlinks_index(notes_idx)
+                        bl_stats = backlinks_idx.build_backlinks(notes_path)
+                        print(f"[Background] ✅ Backlinks index: {bl_stats.get('backlinks_found', 0)} links", flush=True)
                         
-                        # Build backlinks, tags, and mentions indices alongside notes
-                        try:
-                            from core.backlinks import get_backlinks_index
-                            from core.tags_index import get_tags_index
-                            from core.unlinked_mentions import get_unlinked_mentions_index
-                            
-                            backlinks_idx = get_backlinks_index(notes_idx)
-                            bl_stats = backlinks_idx.build_backlinks(notes_path)
-                            print(f"[Background] ✅ Backlinks index: {bl_stats.get('backlinks_found', 0)} links", flush=True)
-                            
-                            tags_idx = get_tags_index(notes_idx)
-                            tag_stats = tags_idx.build_tags_index(notes_path)
-                            print(f"[Background] ✅ Tags index: {tag_stats.get('unique_tags', 0)} unique tags", flush=True)
-                            
-                            mentions_idx = get_unlinked_mentions_index(notes_idx)
-                            m_stats = mentions_idx.build(notes_path)
-                            print(f"[Background] ✅ Mentions index: {m_stats.get('mentions_found', 0)} mentions", flush=True)
-                        except Exception as e:
-                            print(f"[Background] ⚠️ Graph index build failed: {e}", flush=True)
-                            logger.error(f"Background: Graph index build failed: {e}", exc_info=True)
+                        tags_idx = get_tags_index(notes_idx)
+                        tag_stats = tags_idx.build_tags_index(notes_path)
+                        print(f"[Background] ✅ Tags index: {tag_stats.get('unique_tags', 0)} unique tags", flush=True)
+                        
+                        mentions_idx = get_unlinked_mentions_index(notes_idx)
+                        m_stats = mentions_idx.build(notes_path)
+                        print(f"[Background] ✅ Mentions index: {m_stats.get('mentions_found', 0)} mentions", flush=True)
+                        
+                        # Signal that graph indices are ready for serving
+                        app.state.graph_indices_ready = True
+                        print("[Background] ✅ All graph indices ready", flush=True)
+                    except Exception as e:
+                        print(f"[Background] ⚠️ Graph index build failed: {e}", flush=True)
+                        logger.error(f"Background: Graph index build failed: {e}", exc_info=True)
                 except Exception as e:
-                    print(f"[Background] ⚠️ Notes index rebuild failed: {e}", flush=True)
-                    logger.error(f"Background: Notes index rebuild failed: {e}", exc_info=True)
+                    print(f"[Background] ⚠️ Notes/graph index build failed: {e}", flush=True)
+                    logger.error(f"Background: Notes/graph index build failed: {e}", exc_info=True)
                 
             except Exception as e:
                 print(f"❌ [Background] Polly initialization failed: {e}", flush=True)
@@ -3433,7 +3439,6 @@ def create_app(polly_instance=None) -> FastAPI:
             from core.backlinks import get_backlinks_index
             from core.tags_index import get_tags_index
             from core.unlinked_mentions import get_unlinked_mentions_index
-            from core.notes_source_manager import NotesSourceManager
             from core.entities.store import EntityStore
             
             polly = get_polly()
@@ -3441,21 +3446,11 @@ def create_app(polly_instance=None) -> FastAPI:
             backlinks_idx = get_backlinks_index(notes_idx)
             mentions_idx = get_unlinked_mentions_index(notes_idx)
             
-            # Lazy-init: build indices if not yet built (fallback for early requests)
-            if not backlinks_idx._last_build or not mentions_idx._last_build:
-                try:
-                    manager = NotesSourceManager()
-                    notes_path = manager.get_notes_path()
-                    
-                    if not backlinks_idx._last_build:
-                        logger.info("Graph list: lazy-building backlinks index")
-                        backlinks_idx.build_backlinks(notes_path)
-                    
-                    if not mentions_idx._last_build:
-                        logger.info("Graph list: lazy-building unlinked mentions index")
-                        mentions_idx.build(notes_path)
-                except Exception as e:
-                    logger.warning(f"Graph list: lazy-init failed, proceeding with available data: {e}")
+            # If graph indices aren't ready yet (background thread still building),
+            # connection counts will be zero — that's fine, the UI will update on refresh
+            indices_ready = getattr(app.state, 'graph_indices_ready', False)
+            if not indices_ready:
+                logger.info("Graph list: indices not ready yet, serving with partial data")
             
             # Get all notes
             all_notes = notes_idx.get_all_notes()
@@ -3669,33 +3664,17 @@ def create_app(polly_instance=None) -> FastAPI:
             from core.backlinks import get_backlinks_index
             from core.tags_index import get_tags_index
             from core.unlinked_mentions import get_unlinked_mentions_index
-            from core.notes_source_manager import NotesSourceManager
             
             notes_idx = get_notes_index()
             backlinks_idx = get_backlinks_index(notes_idx)
             tags_idx = get_tags_index(notes_idx)
             mentions_idx = get_unlinked_mentions_index(notes_idx)
             
-            # Lazy-init: build indices if not yet built (e.g., startup build hasn't finished)
-            # This is a fallback — normally these are built at startup in the background thread
-            if not backlinks_idx._last_build or not tags_idx._last_build or not mentions_idx._last_build:
-                try:
-                    manager = NotesSourceManager()
-                    notes_path = manager.get_notes_path()
-                    
-                    if not backlinks_idx._last_build:
-                        logger.info("Graph nodes: lazy-building backlinks index")
-                        backlinks_idx.build_backlinks(notes_path)
-                    
-                    if not tags_idx._last_build:
-                        logger.info("Graph nodes: lazy-building tags index")
-                        tags_idx.build_tags_index(notes_path)
-                    
-                    if not mentions_idx._last_build:
-                        logger.info("Graph nodes: lazy-building unlinked mentions index")
-                        mentions_idx.build(notes_path)
-                except Exception as e:
-                    logger.warning(f"Graph nodes: lazy-init failed, proceeding with available data: {e}")
+            # Check if graph indices are ready (built by background thread at startup).
+            # If not ready yet, serve nodes without edges rather than blocking the event loop.
+            indices_ready = getattr(app.state, 'graph_indices_ready', False)
+            if not indices_ready:
+                logger.info("Graph nodes: indices not ready yet, serving nodes without edges")
             
             nodes = []
             edges = []
