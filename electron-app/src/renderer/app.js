@@ -17570,6 +17570,24 @@ function renderGraphSidebar() {
     </div>
     <div id="graph-sidebar-garden" class="graph-sidebar-panel hidden">
       <div id="graph-garden-content" style="padding: 16px;">
+        <!-- Graph Initialization Section -->
+        <div class="garden-section" style="margin-bottom: 24px;">
+          <h3 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">
+            <i data-lucide="database" style="width: 14px; height: 14px; margin-right: 6px;"></i>
+            Graph Data
+          </h3>
+          <div id="graph-data-status" style="margin-bottom: 12px;">
+            <div class="loading-spinner" style="text-align: center; padding: 12px; color: #808080; font-size: 11px;">
+              Checking graph data...
+            </div>
+          </div>
+          <button id="graph-backfill-btn" class="btn btn-primary" style="width: 100%; display: none; font-size: 12px;">
+            <i data-lucide="zap" style="width: 14px; height: 14px; margin-right: 6px;"></i>
+            Populate Graph from Notes
+          </button>
+        </div>
+        
+        <!-- Isolated Notes Section -->
         <div class="garden-section">
           <h3 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">
             <i data-lucide="sprout" style="width: 14px; height: 14px; margin-right: 6px;"></i>
@@ -18709,6 +18727,9 @@ function renderGraphDetailsPanel() {
  * Load Garden view - shows isolated notes and maintenance stats
  */
 async function loadGardenView() {
+  // Check graph data status first
+  await checkGraphDataStatus();
+  
   const container = document.getElementById('garden-isolated-notes');
   if (!container) return;
   
@@ -18778,6 +18799,98 @@ async function loadGardenView() {
     container.innerHTML = `
       <div style="text-align: center; padding: 20px; color: var(--text-error); font-size: 11px;">
         Failed to load isolated notes
+      </div>
+    `;
+  }
+}
+
+/**
+ * Check graph data status and show backfill button if needed
+ */
+async function checkGraphDataStatus() {
+  const statusContainer = document.getElementById('graph-data-status');
+  const backfillBtn = document.getElementById('graph-backfill-btn');
+  if (!statusContainer || !backfillBtn) return;
+  
+  try {
+    // Check if we have any graph data
+    const response = await fetch('http://127.0.0.1:11436/polly/graph/nodes?limit=1');
+    const data = await response.json();
+    
+    if (!data.nodes || data.nodes.length === 0) {
+      // No graph data - show backfill button
+      statusContainer.innerHTML = `
+        <div style="background: var(--bg-warning, #FFF3CD); border: 1px solid var(--border-warning, #FFE69C); border-radius: 6px; padding: 12px; font-size: 11px; color: var(--text-warning, #856404);">
+          <i data-lucide="alert-triangle" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+          <strong>No graph data found.</strong> Extract entities from your notes to build the knowledge graph.
+        </div>
+      `;
+      backfillBtn.style.display = 'flex';
+      
+      // Setup backfill button handler
+      backfillBtn.onclick = async () => {
+        backfillBtn.disabled = true;
+        backfillBtn.innerHTML = '<i data-lucide="loader" class="spin" style="width: 14px; height: 14px; margin-right: 6px;"></i> Extracting entities...';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        
+        try {
+          const backfillResponse = await fetch('http://127.0.0.1:11436/polly/graph/backfill', {
+            method: 'POST'
+          });
+          const result = await backfillResponse.json();
+          
+          if (result.success) {
+            statusContainer.innerHTML = `
+              <div style="background: var(--bg-success, #D4EDDA); border: 1px solid var(--border-success, #C3E6CB); border-radius: 6px; padding: 12px; font-size: 11px; color: var(--text-success, #155724);">
+                <i data-lucide="check-circle" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+                <strong>Success!</strong> Processed ${result.processed} notes. Refresh the graph to see your data.
+              </div>
+            `;
+            backfillBtn.style.display = 'none';
+            
+            // Refresh graph canvas after backfill
+            setTimeout(() => {
+              if (cytoscapeInstance) {
+                initGraphCanvas();
+              }
+            }, 1000);
+          } else {
+            throw new Error('Backfill failed');
+          }
+          
+        } catch (error) {
+          console.error('[Garden] Backfill failed:', error);
+          statusContainer.innerHTML = `
+            <div style="background: var(--bg-error, #F8D7DA); border: 1px solid var(--border-error, #F5C6CB); border-radius: 6px; padding: 12px; font-size: 11px; color: var(--text-error, #721C24);">
+              <i data-lucide="x-circle" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+              <strong>Failed to extract entities.</strong> Check console for details.
+            </div>
+          `;
+          backfillBtn.disabled = false;
+          backfillBtn.innerHTML = '<i data-lucide="zap" style="width: 14px; height: 14px; margin-right: 6px;"></i> Retry';
+        }
+        
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      };
+      
+    } else {
+      // Have graph data - show success
+      statusContainer.innerHTML = `
+        <div style="background: var(--bg-success, #D4EDDA); border: 1px solid var(--border-success, #C3E6CB); border-radius: 6px; padding: 12px; font-size: 11px; color: var(--text-success, #155724);">
+          <i data-lucide="check-circle" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+          Graph contains ${data.nodes.length === 1 ? '1+ node' : `${data.nodes.length}+ nodes`}
+        </div>
+      `;
+      backfillBtn.style.display = 'none';
+    }
+    
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    
+  } catch (error) {
+    console.error('[Garden] Failed to check graph status:', error);
+    statusContainer.innerHTML = `
+      <div style="font-size: 11px; color: var(--text-error); text-align: center; padding: 12px;">
+        Failed to check graph status
       </div>
     `;
   }
