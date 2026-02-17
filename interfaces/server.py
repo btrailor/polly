@@ -3798,6 +3798,84 @@ def create_app(polly_instance=None) -> FastAPI:
             logger.error(f"Graph nodes failed: {e}")
             raise HTTPException(500, f"Failed to get graph nodes: {str(e)}")
     
+    @app.get("/polly/graph/state")
+    async def get_graph_state():
+        """
+        Get saved graph view state (position, zoom, filters, layout).
+        
+        Response: {
+            "position": {"x": 0, "y": 0},
+            "zoom": 1.0,
+            "filters": {"domain": "sigils", "type": "concept", "maturity": 20},
+            "expanded_nodes": ["entity_id_1", "entity_id_2"],
+            "layout": "force-directed"
+        }
+        
+        Returns null if no state saved.
+        """
+        try:
+            from core.config import get_config
+            config = get_config()
+            
+            # State stored in ~/.polly/graph_state.json
+            polly_dir = Path.home() / ".polly"
+            state_file = polly_dir / "graph_state.json"
+            
+            if not state_file.exists():
+                return None
+            
+            import json
+            with open(state_file, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+            
+            return state
+            
+        except Exception as e:
+            logger.error(f"Get graph state failed: {e}")
+            raise HTTPException(500, f"Failed to get graph state: {str(e)}")
+    
+    @app.post("/polly/graph/state")
+    async def save_graph_state(body: Dict[str, Any]):
+        """
+        Save graph view state for persistence.
+        
+        Request body: {
+            "position": {"x": 0, "y": 0},
+            "zoom": 1.0,
+            "filters": {"domain": "sigils", "type": "concept", "maturity": 20},
+            "expanded_nodes": ["entity_id_1", "entity_id_2"],
+            "layout": "force-directed"
+        }
+        
+        Response: {
+            "success": true,
+            "message": "Graph state saved"
+        }
+        """
+        try:
+            from core.config import get_config
+            config = get_config()
+            
+            # State stored in ~/.polly/graph_state.json
+            polly_dir = Path.home() / ".polly"
+            polly_dir.mkdir(exist_ok=True)
+            state_file = polly_dir / "graph_state.json"
+            
+            import json
+            with open(state_file, 'w', encoding='utf-8') as f:
+                json.dump(body, f, indent=2)
+            
+            logger.debug(f"Graph state saved to {state_file}")
+            
+            return {
+                "success": True,
+                "message": "Graph state saved"
+            }
+            
+        except Exception as e:
+            logger.error(f"Save graph state failed: {e}")
+            raise HTTPException(500, f"Failed to save graph state: {str(e)}")
+    
     @app.get("/polly/notes/{note_name}/backlinks")
     async def get_note_backlinks(note_name: str):
         """
