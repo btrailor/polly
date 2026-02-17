@@ -158,9 +158,11 @@ class NotesManager {
       const container = document.querySelector('#notes-browse-list');
       if (container) {
         this.updateBrowseList(container, {
-          filters: this.browseFilters,
-          onItemClick: (item) => this.openNote(item.path)
+          ...this.browseFilters,
+          onItemClick: (itemEl, item) => this.openNote(item.id)
         });
+      } else {
+        console.error('[Notes] Could not find #notes-browse-list container');
       }
       
     } catch (error) {
@@ -1071,6 +1073,8 @@ class NotesManager {
       return;
     }
 
+    console.log('[Notes] updateBrowseList: starting with options:', options);
+
     const {
       sort = 'recent',
       domain = null,
@@ -1100,13 +1104,40 @@ class NotesManager {
       if (connectionStatus) params.append('connection_status', connectionStatus);
       if (q) params.append('q', q);
 
+      console.log('[Notes] updateBrowseList: fetching from /polly/graph/list with params:', params.toString());
+
       // Fetch from /polly/graph/list
-      const response = await fetch(`/polly/graph/list?${params.toString()}`);
+      const response = await fetch(`http://127.0.0.1:11436/polly/graph/list?${params.toString()}`);
+      console.log('[Notes] updateBrowseList: fetch completed with status:', response.status);
+      
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        console.warn('[Notes] /polly/graph/list returned', response.status, '- falling back to notes list');
+        // Fallback: use the notes list we already have
+        const items = this.notes.map(note => ({
+          id: note.name,
+          name: note.title || note.name,
+          type: 'note',
+          primary_domain: note.domain || '',
+          secondary_domains: [],
+          authority_score: 0,
+          connection_count: 0,
+          inbound_count: 0,
+          outbound_count: 0,
+          connection_status: 'normal',
+          maturity: 20,
+          tags: note.tags || [],
+          updated_at: note.modified,
+          created_at: note.created,
+          path: note.path,
+          preview_snippet: ''
+        }));
+        console.log('[Notes] Using fallback notes list:', items.length, 'items');
+        this.renderBrowseItems(container, items, onItemClick);
+        return;
       }
 
       const data = await response.json();
+      console.log('[Notes] updateBrowseList: received', data.items?.length || 0, 'items');
       const items = data.items || [];
 
       // Handle empty state
@@ -1138,71 +1169,7 @@ class NotesManager {
       }
 
       // Render items
-      let html = '<div class="browse-list">';
-      
-      for (const item of items) {
-        const typeIcon = this.getTypeIcon(item.type);
-        const date = item.updated_at ? new Date(item.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-        const authorityBadge = item.authority_score >= 0.7 ? '⭐' : (item.authority_score >= 0.4 ? '✦' : '');
-        const secondaryDomainDots = item.secondary_domains && item.secondary_domains.length > 0 
-          ? item.secondary_domains.slice(0, 3).map(d => `<span class="domain-dot" title="${d}">●</span>`).join('')
-          : '';
-
-        html += `
-          <div class="browse-list-item" data-note-name="${item.id}" data-path="${item.path}" data-type="${item.type}">
-            <div class="browse-item-main">
-              <span class="browse-item-icon ${item.type}">${typeIcon}</span>
-              <span class="browse-item-title">${item.name}</span>
-              <span class="browse-item-date">${date}</span>
-            </div>
-            <div class="browse-item-meta">
-              ${authorityBadge ? `<span class="browse-item-authority" title="High authority">${authorityBadge}</span>` : ''}
-              ${item.connection_count > 0 ? `<span class="browse-item-connections" title="${item.connection_count} connections">${item.connection_count}⇄</span>` : ''}
-              ${secondaryDomainDots ? `<span class="browse-item-domains">${secondaryDomainDots}</span>` : ''}
-            </div>
-          </div>
-        `;
-      }
-      
-      html += '</div>';
-      container.innerHTML = html;
-
-      // Wire click handlers
-      const listItems = container.querySelectorAll('.browse-list-item');
-      listItems.forEach((itemEl, index) => {
-        itemEl.addEventListener('click', () => {
-          if (onItemClick) {
-            onItemClick(itemEl, items[index]);
-          } else {
-            // Default: open note
-            const noteName = itemEl.dataset.noteName;
-            if (noteName) {
-              this.openNote(noteName);
-            }
-          }
-        });
-
-        // Keyboard navigation
-        itemEl.setAttribute('tabindex', '0');
-        itemEl.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            itemEl.click();
-          } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            const next = itemEl.nextElementSibling;
-            if (next) next.focus();
-          } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            const prev = itemEl.previousElementSibling;
-            if (prev) prev.focus();
-          }
-        });
-      });
-
-      // Re-initialize icons
-      if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-      }
+      this.renderBrowseItems(container, items, onItemClick);
 
     } catch (error) {
       console.error('[Notes] updateBrowseList failed:', error);
@@ -1232,6 +1199,77 @@ class NotesManager {
       'code': '■'           // square
     };
     return icons[type] || '●';
+  }
+
+  /**
+   * Render browse items to container
+   */
+  renderBrowseItems(container, items, onItemClick = null) {
+    let html = '<div class="browse-list">';
+    
+    for (const item of items) {
+      const typeIcon = this.getTypeIcon(item.type);
+      const date = item.updated_at ? new Date(item.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+      const authorityBadge = item.authority_score >= 0.7 ? '⭐' : (item.authority_score >= 0.4 ? '✦' : '');
+      const secondaryDomainDots = item.secondary_domains && item.secondary_domains.length > 0 
+        ? item.secondary_domains.slice(0, 3).map(d => `<span class="domain-dot" title="${d}">●</span>`).join('')
+        : '';
+
+      html += `
+        <div class="browse-list-item" data-note-name="${item.id}" data-path="${item.path}" data-type="${item.type}">
+          <div class="browse-item-main">
+            <span class="browse-item-icon ${item.type}">${typeIcon}</span>
+            <span class="browse-item-title">${item.name}</span>
+            <span class="browse-item-date">${date}</span>
+          </div>
+          <div class="browse-item-meta">
+            ${authorityBadge ? `<span class="browse-item-authority" title="High authority">${authorityBadge}</span>` : ''}
+            ${item.connection_count > 0 ? `<span class="browse-item-connections" title="${item.connection_count} connections">${item.connection_count}⇄</span>` : ''}
+            ${secondaryDomainDots ? `<span class="browse-item-domains">${secondaryDomainDots}</span>` : ''}
+          </div>
+        </div>
+      `;
+    }
+    
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Wire click handlers
+    const listItems = container.querySelectorAll('.browse-list-item');
+    listItems.forEach((itemEl, index) => {
+      itemEl.addEventListener('click', () => {
+        if (onItemClick) {
+          onItemClick(itemEl, items[index]);
+        } else {
+          // Default: open note
+          const noteName = itemEl.dataset.noteName;
+          if (noteName) {
+            this.openNote(noteName);
+          }
+        }
+      });
+
+      // Keyboard navigation
+      itemEl.setAttribute('tabindex', '0');
+      itemEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          itemEl.click();
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          const next = itemEl.nextElementSibling;
+          if (next) next.focus();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          const prev = itemEl.previousElementSibling;
+          if (prev) prev.focus();
+        }
+      });
+    });
+
+    // Re-initialize icons
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
   }
 
   /**
@@ -1755,9 +1793,11 @@ class NotesManager {
       const container = document.querySelector('#notes-browse-list');
       if (container) {
         await this.updateBrowseList(container, {
-          filters: this.browseFilters,
-          onItemClick: (item) => this.openNote(item.path)
+          ...this.browseFilters,
+          onItemClick: (itemEl, item) => this.openNote(item.id)
         });
+      } else {
+        console.error('[Notes] Could not find #notes-browse-list container for tag filter');
       }
       
       // Show filter indicator
@@ -2394,6 +2434,8 @@ class NotesManager {
         statusEl.style.color = 'var(--error-color, #e06c75)';
         break;
     }
+  }
+
   /**
    * Show note creation modal
    */
