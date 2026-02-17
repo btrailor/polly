@@ -2970,8 +2970,26 @@ function showView(view) {
       // Initialize Learning page (Phase 22)
       initLearningPage();
     } else if (view === "graph") {
-      // Initialize Graph page
-      initGraphPage();
+      // Initialize Graph page, or restore existing instance
+      if (cytoscapeInstance) {
+        // Instance already exists — just resize and restore highlights
+        console.log("[Graph] Restoring existing graph instance");
+        cytoscapeInstance.resize();
+        cytoscapeInstance.fit(undefined, 30);
+        
+        // Cross-highlight source node if returning from notes
+        if (graphState.sourceNode) {
+          const node = cytoscapeInstance.getElementById(graphState.sourceNode);
+          if (node && node.length > 0) {
+            cytoscapeInstance.nodes().unselect();
+            node.select();
+          }
+          graphState.sourceNode = null;
+          saveGraphState();
+        }
+      } else {
+        initGraphPage();
+      }
     }
   } catch (error) {
     console.error(`[showView] Error loading view data for ${view}:`, error);
@@ -17787,8 +17805,11 @@ function initGraphPage() {
   // Setup lower panel for graph view
   setupLowerPanel("graph");
   
-  // Setup lower panel tab change event listener
-  document.addEventListener('lower-panel-tab-change', (e) => {
+  // Setup lower panel tab change event listener (remove previous to avoid leaks)
+  if (graphTabChangeHandler) {
+    document.removeEventListener('lower-panel-tab-change', graphTabChangeHandler);
+  }
+  graphTabChangeHandler = (e) => {
     if (e.detail.view === 'graph') {
       const tabId = e.detail.tabId;
       console.log(`[Graph] Lower panel tab changed to: ${tabId}`);
@@ -17803,7 +17824,8 @@ function initGraphPage() {
           break;
       }
     }
-  });
+  };
+  document.addEventListener('lower-panel-tab-change', graphTabChangeHandler);
   
   // Re-initialize icons
   if (typeof lucide !== "undefined") {
@@ -17815,6 +17837,9 @@ function initGraphPage() {
  * Initialize the Cytoscape.js graph canvas
  */
 let cytoscapeInstance = null;
+let graphRetryInterval = null;
+let graphTabChangeHandler = null;
+let graphDomainColors = {}; // Module-level domain color assignments (persists across explore calls)
 let graphState = {
   centerNode: null,
   expandedNodes: new Set(),
@@ -17830,6 +17855,12 @@ async function initGraphCanvas() {
   if (!container) {
     console.error("[Graph] Canvas container not found");
     return;
+  }
+  
+  // Clear any existing retry interval from previous initialization
+  if (graphRetryInterval) {
+    clearInterval(graphRetryInterval);
+    graphRetryInterval = null;
   }
   
   // Clean up previous Cytoscape instance if re-initializing
@@ -17871,6 +17902,7 @@ async function initGraphCanvas() {
     }
     
     const response = await fetch(`http://127.0.0.1:11436/polly/graph/nodes?${params.toString()}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     graphData = await response.json();
   } catch (error) {
     console.error("[Graph] Failed to fetch graph data:", error);
@@ -17900,7 +17932,7 @@ async function initGraphCanvas() {
   
   // Build domain color palette
   const domains = [...new Set(graphData.nodes.map(n => n.domain).filter(Boolean))];
-  const domainColors = buildDomainPalette(domains);
+  graphDomainColors = buildDomainPalette(domains);
   
   // Transform nodes for Cytoscape
   const elements = {
@@ -17918,7 +17950,7 @@ async function initGraphCanvas() {
     })),
     edges: graphData.edges.map(edge => ({
       data: {
-        id: `${edge.source}-${edge.target}`,
+        id: `${edge.source}-${edge.target}-${edge.type || 'references'}`,
         source: edge.source,
         target: edge.target,
         weight: edge.strength || 1,
@@ -17933,7 +17965,7 @@ async function initGraphCanvas() {
   cytoscapeInstance = cytoscape({
     container: container,
     elements: elements,
-    style: buildGraphStyle(domainColors),
+    style: buildGraphStyle(graphDomainColors),
     layout: getLayoutConfig(graphState.layout || 'cose'),
     minZoom: 0.1,
     maxZoom: 3
@@ -17951,11 +17983,10 @@ async function initGraphCanvas() {
     }
     
     // Cross-highlight: if returning from a note, highlight the source node
-    const highlightNodeId = graphState.sourceNode || 
-      (window.notesManager && window.notesManager.currentNote ? window.notesManager.currentNote.name : null);
-    
-    if (highlightNodeId) {
-      const node = cytoscapeInstance.getElementById(highlightNodeId);
+    // Only use sourceNode (explicitly set when navigating away) — never fall back
+    // to currentNote, which can highlight the wrong node if user browsed elsewhere.
+    if (graphState.sourceNode) {
+      const node = cytoscapeInstance.getElementById(graphState.sourceNode);
       if (node && node.length > 0) {
         node.select();
         // If no saved position, center on the source node
@@ -17968,11 +17999,12 @@ async function initGraphCanvas() {
       }
       // Clear sourceNode after restoring — it was a one-time return action
       graphState.sourceNode = null;
+      saveGraphState();
     }
   });
   
   // Setup event handlers
-  setupGraphEventHandlers(cytoscapeInstance, domainColors);
+  setupGraphEventHandlers(cytoscapeInstance, graphDomainColors);
   
   console.log("[Graph] Initialized with", graphData.nodes.length, "nodes and", graphData.edges.length, "edges");
   
@@ -17980,7 +18012,7 @@ async function initGraphCanvas() {
   // poll every 5 seconds and reload when they become available
   if (!graphData.indices_ready) {
     console.log("[Graph] Indices not ready yet, will auto-refresh when available...");
-    const retryInterval = setInterval(async () => {
+    graphRetryInterval = setInterval(async () => {
       try {
         const retryParams = new URLSearchParams({ limit: '100', include_ghosts: 'true' });
         if (graphState.centerNode) {
@@ -17993,10 +18025,12 @@ async function initGraphCanvas() {
           if (graphState.filters.authority_min) retryParams.append('authority_min', graphState.filters.authority_min);
         }
         const retryResp = await fetch(`http://127.0.0.1:11436/polly/graph/nodes?${retryParams.toString()}`);
+        if (!retryResp.ok) throw new Error(`HTTP ${retryResp.status}`);
         const retryData = await retryResp.json();
         
         if (retryData.indices_ready && retryData.edges && retryData.edges.length > 0) {
-          clearInterval(retryInterval);
+          clearInterval(graphRetryInterval);
+          graphRetryInterval = null;
           console.log("[Graph] Indices ready! Reloading with", retryData.nodes.length, "nodes and", retryData.edges.length, "edges");
           // Rebuild the graph with full data
           initGraphCanvas();
@@ -18009,7 +18043,12 @@ async function initGraphCanvas() {
     }, 5000);
     
     // Stop polling after 2 minutes to avoid infinite loops
-    setTimeout(() => clearInterval(retryInterval), 120000);
+    setTimeout(() => {
+      if (graphRetryInterval) {
+        clearInterval(graphRetryInterval);
+        graphRetryInterval = null;
+      }
+    }, 120000);
   }
 }
 
@@ -18128,7 +18167,7 @@ function buildGraphStyle(domainColors) {
     },
     // Ghost nodes
     {
-      selector: 'node[isGhost]',
+      selector: 'node[?isGhost]',
       style: {
         'opacity': 0.15,
         'border-style': 'dotted'
@@ -18194,7 +18233,7 @@ function buildGraphStyle(domainColors) {
     },
     // Edges connected to ghost nodes
     {
-      selector: 'edge[isGhost]',
+      selector: 'edge[?isGhost]',
       style: {
         'opacity': 0.1,
         'line-style': 'dotted'
@@ -18254,6 +18293,9 @@ function setupGraphEventHandlers(cy, domainColors) {
     const node = evt.target;
     const data = node.data();
     
+    // Hide tooltip before navigating
+    hideGraphTooltip();
+    
     // Track which node was clicked for cross-highlighting on return
     graphState.sourceNode = data.id;
     
@@ -18298,6 +18340,31 @@ function setupGraphEventHandlers(cy, domainColors) {
   
   // Initial label visibility update
   updateGraphLabelVisibility(cy);
+  
+  // Wire up graph control buttons
+  document.getElementById('graph-zoom-in')?.addEventListener('click', () => {
+    if (cytoscapeInstance) cytoscapeInstance.animate({ zoom: cytoscapeInstance.zoom() * 1.2, duration: 200 });
+  });
+  document.getElementById('graph-zoom-out')?.addEventListener('click', () => {
+    if (cytoscapeInstance) cytoscapeInstance.animate({ zoom: cytoscapeInstance.zoom() / 1.2, duration: 200 });
+  });
+  document.getElementById('graph-fit')?.addEventListener('click', () => {
+    if (cytoscapeInstance) cytoscapeInstance.animate({ fit: { padding: 50 }, duration: 300 });
+  });
+  document.getElementById('graph-reset')?.addEventListener('click', () => {
+    if (cytoscapeInstance) {
+      const layout = cytoscapeInstance.layout({
+        name: 'cose',
+        animate: true,
+        animationDuration: 500,
+        nodeRepulsion: () => 8000,
+        idealEdgeLength: () => 80,
+        gravity: 0.3,
+        padding: 50
+      });
+      layout.run();
+    }
+  });
 }
 
 /**
@@ -18336,7 +18403,6 @@ function updateGraphLabelVisibility(cy) {
 function saveGraphState() {
   if (!cytoscapeInstance) return;
   
-  graphState.centerNode = graphState.centerNode; // Keep existing
   graphState.position = cytoscapeInstance.pan();
   graphState.zoom = cytoscapeInstance.zoom();
   
@@ -18358,6 +18424,7 @@ async function loadGraphBrowseList() {
   
   try {
     const response = await fetch('http://127.0.0.1:11436/polly/graph/list');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     
     if (!data.items || data.items.length === 0) {
@@ -18375,12 +18442,12 @@ async function loadGraphBrowseList() {
       const icon = getTypeIcon(item.type);
       const date = new Date(item.modified_at).toLocaleDateString();
       html += `
-        <div class="browse-item" data-item-id="${item.id}" data-item-type="${item.type}">
-          <i data-lucide="${icon}" class="browse-item-icon"></i>
+        <div class="browse-item" data-item-id="${escapeHtml(item.id)}" data-item-type="${escapeHtml(item.type)}">
+          <i data-lucide="${escapeHtml(icon)}" class="browse-item-icon"></i>
           <div class="browse-item-content">
-            <div class="browse-item-title">${item.name}</div>
+            <div class="browse-item-title">${escapeHtml(item.name)}</div>
             <div class="browse-item-metadata">
-              <span class="browse-item-domain">${item.domain || 'General'}</span>
+              <span class="browse-item-domain">${escapeHtml(item.domain || 'General')}</span>
               <span class="browse-item-date">${date}</span>
             </div>
           </div>
@@ -18487,17 +18554,17 @@ function showGraphTooltip(event, data) {
   }
   
   tooltipElement.innerHTML = `
-    <div style="font-weight: 600; margin-bottom: 4px;">${data.name}</div>
+    <div style="font-weight: 600; margin-bottom: 4px;">${escapeHtml(data.name)}</div>
     <div style="opacity: 0.8; font-size: 10px;">
-      <div>Type: ${data.type}</div>
-      <div>Domain: ${data.domain || 'None'}</div>
+      <div>Type: ${escapeHtml(data.type)}</div>
+      <div>Domain: ${escapeHtml(data.domain || 'None')}</div>
       <div>Connections: ${data.connections}</div>
       <div>Authority: ${(data.authority * 100).toFixed(0)}%</div>
     </div>
   `;
   
-  tooltipElement.style.left = (event.pageX + 10) + 'px';
-  tooltipElement.style.top = (event.pageY + 10) + 'px';
+  tooltipElement.style.left = (event.clientX + 10) + 'px';
+  tooltipElement.style.top = (event.clientY + 10) + 'px';
   tooltipElement.style.display = 'block';
 }
 
@@ -18541,6 +18608,8 @@ function showGraphContextMenu(event, data) {
       action: () => {
         // Open the node based on type (data.nodeId is the note name)
         if (data.nodeType === 'note' && window.notesManager) {
+          graphState.sourceNode = data.nodeId;
+          saveGraphState();
           window.notesManager.openNote(data.nodeId);
           showView('notes');
           showBackToGraphButton();
@@ -18628,6 +18697,7 @@ async function exploreFromNode(nodeId) {
   try {
     // Fetch expanded neighborhood from backend
     const response = await fetch(`http://127.0.0.1:11436/polly/graph/nodes?center_node=${encodeURIComponent(nodeId)}&hops=2&limit=50`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     
     if (!data.nodes || data.nodes.length === 0) {
@@ -18635,10 +18705,19 @@ async function exploreFromNode(nodeId) {
       return;
     }
     
-    // Get domain colors for consistency
-    const existingDomains = new Set(cytoscapeInstance.nodes().map(n => n.data('domain')));
+    // Extend domain colors for any new domains (preserves existing assignments)
+    const existingDomains = new Set(Object.keys(graphDomainColors));
     const newDomains = data.nodes.map(n => n.domain).filter(d => d && !existingDomains.has(d));
-    const domainColors = buildDomainPalette([...existingDomains, ...newDomains]);
+    if (newDomains.length > 0) {
+      const palette = [
+        '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+        '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788'
+      ];
+      const startIdx = existingDomains.size;
+      newDomains.forEach((domain, idx) => {
+        graphDomainColors[domain] = palette[(startIdx + idx) % palette.length];
+      });
+    }
     
     // Track which nodes are new
     const existingNodeIds = new Set(cytoscapeInstance.nodes().map(n => n.data('id')));
@@ -18655,6 +18734,7 @@ async function exploreFromNode(nodeId) {
             label: node.name,
             type: node.type || 'note',
             domain: node.domain,
+            domains: node.domain ? [node.domain] : [],
             authority: node.authority || 0.5,
             connectionCount: node.connection_count || 0,
             isGhost: node.is_ghost || false
@@ -18667,7 +18747,7 @@ async function exploreFromNode(nodeId) {
     // Add new edges
     const existingEdgeIds = new Set(cytoscapeInstance.edges().map(e => e.data('id')));
     data.edges.forEach(edge => {
-      const edgeId = `${edge.source}-${edge.target}`;
+      const edgeId = `${edge.source}-${edge.target}-${edge.type || 'references'}`;
       if (!existingEdgeIds.has(edgeId)) {
         cytoscapeInstance.add({
           group: 'edges',
@@ -18677,6 +18757,7 @@ async function exploreFromNode(nodeId) {
             target: edge.target,
             weight: edge.strength || 1,
             relationshipType: edge.type || 'references',
+            edgeLabel: edge.label || '',
             isGhost: edge.is_ghost || false
           }
         });
@@ -18867,6 +18948,7 @@ async function loadGardenView() {
   try {
     // Fetch isolated notes from /polly/graph/list with connection_status filter
     const response = await fetch('http://127.0.0.1:11436/polly/graph/list?connection_status=isolated&limit=50');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     
     if (!data.items || data.items.length === 0) {
@@ -18886,10 +18968,10 @@ async function loadGardenView() {
     data.items.forEach(item => {
       const icon = getTypeIcon(item.type);
       html += `
-        <div class="garden-isolated-item" data-item-id="${item.id}">
-          <i data-lucide="${icon}" style="width: 14px; height: 14px; opacity: 0.5;"></i>
+        <div class="garden-isolated-item" data-item-id="${escapeHtml(item.id)}">
+          <i data-lucide="${escapeHtml(icon)}" style="width: 14px; height: 14px; opacity: 0.5;"></i>
           <div class="garden-isolated-info">
-            <div style="font-size: 12px; font-weight: 500; color: var(--text-primary);">${item.name}</div>
+            <div style="font-size: 12px; font-weight: 500; color: var(--text-primary);">${escapeHtml(item.name)}</div>
             <div style="font-size: 10px; color: var(--text-secondary); margin-top: 2px;">
               ${item.connection_count || 0} connections
             </div>
@@ -18946,6 +19028,7 @@ async function checkGraphDataStatus() {
   try {
     // Check if we have any graph data
     const response = await fetch('http://127.0.0.1:11436/polly/graph/nodes?limit=1');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     
     if (!data.nodes || data.nodes.length === 0) {
@@ -18968,6 +19051,7 @@ async function checkGraphDataStatus() {
           const backfillResponse = await fetch('http://127.0.0.1:11436/polly/graph/backfill', {
             method: 'POST'
           });
+          if (!backfillResponse.ok) throw new Error(`HTTP ${backfillResponse.status}`);
           const result = await backfillResponse.json();
           
           if (result.success) {
