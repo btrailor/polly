@@ -3557,6 +3557,247 @@ def create_app(polly_instance=None) -> FastAPI:
             logger.error(f"Graph list failed: {e}")
             raise HTTPException(500, f"Failed to get graph list: {str(e)}")
     
+    @app.get("/polly/graph/nodes")
+    async def get_graph_nodes(
+        type: str = None,          # Entity type filter (concept, tool, etc.)
+        domain: str = None,        # Domain filter
+        maturity: int = None,      # Maturity filter (unused for entities currently)
+        authority_min: float = None,  # Minimum authority score
+        confidence_min: float = None,  # Minimum relationship strength
+        center_node: str = None,   # "Explore From Here" — return N-hop neighborhood
+        hops: int = 2,             # Max hops from center_node
+        include_ghosts: bool = True,  # Include filtered-out nodes within 1-2 hops
+        limit: int = 500,
+        offset: int = 0
+    ):
+        """
+        Powers the Cytoscape.js graph canvas.
+        
+        Two modes:
+        1. Full-graph mode (no center_node): Returns all entities matching filters
+        2. Center-node mode (center_node set): Returns N-hop neighborhood from center
+        
+        Query params:
+        - type: Entity type filter (comma-separated: "concept,tool")
+        - domain: Domain filter (matches entities with this domain)
+        - authority_min: Minimum authority score (0.0-1.0)
+        - confidence_min: Minimum relationship strength (0.0-1.0)
+        - center_node: Entity ID to explore from (enables neighborhood mode)
+        - hops: Max hops from center_node (default 2)
+        - include_ghosts: Include filtered-out nodes within 1-2 hops (default true)
+        - limit: Max nodes to return
+        - offset: Pagination offset
+        
+        Response: {
+            "nodes": [{
+                "id": "entity_id",
+                "name": "Entity Name",
+                "type": "concept",
+                "domains": ["sigils"],
+                "authority": 0.85,
+                "is_ghost": false
+            }],
+            "edges": [{
+                "source": "entity_id_1",
+                "target": "entity_id_2",
+                "type": "related_to",
+                "strength": 0.7,
+                "is_ghost": false
+            }],
+            "total_node_count": 150,
+            "ghost_count": 12
+        }
+        """
+        try:
+            polly = get_polly()
+            if not polly or not polly.entity_store:
+                raise HTTPException(503, "Entity store not available")
+            
+            from core.entities.models import EntityQuery, EntityType
+            
+            store = polly.entity_store
+            nodes = []
+            edges = []
+            ghost_count = 0
+            
+            # Build entity filters
+            entity_types = []
+            if type:
+                for t in type.split(","):
+                    try:
+                        entity_types.append(EntityType(t.strip()))
+                    except ValueError:
+                        pass
+            
+            domains_filter = []
+            if domain:
+                domains_filter = [d.strip() for d in domain.split(",")]
+            
+            if center_node:
+                # CENTER-NODE MODE: Get N-hop neighborhood
+                logger.debug(f"Graph nodes: center_node mode, entity={center_node}, hops={hops}")
+                
+                # Get center entity
+                center_entity = store.get_entity(center_node)
+                if not center_entity:
+                    raise HTTPException(404, f"Center node not found: {center_node}")
+                
+                # Use EntityStore.get_related() for BFS traversal
+                min_strength = confidence_min if confidence_min else 0.0
+                related = store.get_related(center_node, max_hops=hops, min_strength=min_strength)
+                
+                # Build visible entities set
+                visible_entities = {center_node: center_entity}
+                for ent, rel in related:
+                    visible_entities[ent.id] = ent
+                
+                # Apply filters to visible entities
+                filtered_visible = {}
+                filtered_out = {}
+                
+                for ent_id, ent in visible_entities.items():
+                    passes_filter = True
+                    
+                    # Type filter
+                    if entity_types and ent.entity_type not in entity_types:
+                        passes_filter = False
+                    
+                    # Domain filter
+                    if domains_filter:
+                        if not any(d in ent.domains for d in domains_filter):
+                            passes_filter = False
+                    
+                    # Authority filter
+                    if authority_min and ent.authority_score < authority_min:
+                        passes_filter = False
+                    
+                    if passes_filter:
+                        filtered_visible[ent_id] = ent
+                    else:
+                        filtered_out[ent_id] = ent
+                
+                # Ghost computation: include filtered-out nodes within 1-2 hops of visible nodes
+                ghosts = {}
+                if include_ghosts and filtered_out and len(filtered_visible) < 100:  # Performance cap
+                    for vis_id in list(filtered_visible.keys())[:20]:  # Limit ghost computation
+                        try:
+                            ghost_candidates = store.get_related(vis_id, max_hops=1, min_strength=0.0)
+                            for ghost_ent, _ in ghost_candidates[:10]:  # Max 10 ghosts per visible
+                                if ghost_ent.id in filtered_out and ghost_ent.id not in ghosts:
+                                    ghosts[ghost_ent.id] = ghost_ent
+                                    if len(ghosts) >= 100:  # Max 100 total ghosts
+                                        break
+                        except Exception as e:
+                            logger.debug(f"Ghost computation failed for {vis_id}: {e}")
+                
+                ghost_count = len(ghosts)
+                
+                # Build nodes list
+                for ent in filtered_visible.values():
+                    nodes.append({
+                        "id": ent.id,
+                        "name": ent.name,
+                        "type": ent.entity_type.value,
+                        "domains": ent.domains,
+                        "authority": ent.authority_score,
+                        "is_ghost": False
+                    })
+                
+                for ent in ghosts.values():
+                    nodes.append({
+                        "id": ent.id,
+                        "name": ent.name,
+                        "type": ent.entity_type.value,
+                        "domains": ent.domains,
+                        "authority": ent.authority_score,
+                        "is_ghost": True
+                    })
+                
+                # Build edges list (relationships between visible + ghost nodes)
+                all_node_ids = set(filtered_visible.keys()) | set(ghosts.keys())
+                for ent_id in all_node_ids:
+                    neighbor_rels = store._get_neighbor_rels(ent_id)
+                    for rel, other_id in neighbor_rels:
+                        if other_id in all_node_ids:
+                            # Check if edge already added (avoid duplicates for bidirectional)
+                            edge_key = tuple(sorted([rel.source_id, rel.target_id]))
+                            is_ghost_edge = (rel.source_id in ghosts) or (rel.target_id in ghosts)
+                            
+                            edges.append({
+                                "source": rel.source_id,
+                                "target": rel.target_id,
+                                "type": rel.relationship_type.value,
+                                "strength": rel.strength,
+                                "is_ghost": is_ghost_edge
+                            })
+                
+            else:
+                # FULL-GRAPH MODE: Get all entities matching filters
+                logger.debug(f"Graph nodes: full-graph mode, filters: type={type}, domain={domain}")
+                
+                query = EntityQuery(
+                    entity_types=entity_types if entity_types else None,
+                    domains=domains_filter if domains_filter else None,
+                    min_authority=authority_min if authority_min else 0.0,
+                    limit=limit + offset  # Get more for pagination
+                )
+                
+                entities = store.search(query)
+                
+                # Apply pagination
+                total_count = len(entities)
+                entities = entities[offset:offset + limit]
+                
+                # Build nodes
+                for ent in entities:
+                    nodes.append({
+                        "id": ent.id,
+                        "name": ent.name,
+                        "type": ent.entity_type.value,
+                        "domains": ent.domains,
+                        "authority": ent.authority_score,
+                        "is_ghost": False
+                    })
+                
+                # Build edges between visible nodes
+                entity_ids = {ent.id for ent in entities}
+                seen_edges = set()
+                
+                for ent in entities:
+                    neighbor_rels = store._get_neighbor_rels(ent.id)
+                    for rel, other_id in neighbor_rels:
+                        if other_id in entity_ids:
+                            # Apply confidence filter
+                            if confidence_min and rel.strength < confidence_min:
+                                continue
+                            
+                            # Avoid duplicate edges
+                            edge_key = tuple(sorted([rel.source_id, rel.target_id, rel.relationship_type.value]))
+                            if edge_key in seen_edges:
+                                continue
+                            seen_edges.add(edge_key)
+                            
+                            edges.append({
+                                "source": rel.source_id,
+                                "target": rel.target_id,
+                                "type": rel.relationship_type.value,
+                                "strength": rel.strength,
+                                "is_ghost": False
+                            })
+            
+            return {
+                "nodes": nodes,
+                "edges": edges,
+                "total_node_count": len(nodes),
+                "ghost_count": ghost_count
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Graph nodes failed: {e}")
+            raise HTTPException(500, f"Failed to get graph nodes: {str(e)}")
+    
     @app.get("/polly/notes/{note_name}/backlinks")
     async def get_note_backlinks(note_name: str):
         """
