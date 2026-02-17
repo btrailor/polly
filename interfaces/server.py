@@ -3600,7 +3600,8 @@ def create_app(polly_instance=None) -> FastAPI:
             return {
                 "items": items,
                 "total_count": total_count,
-                "domain_counts": domain_counts
+                "domain_counts": domain_counts,
+                "indices_ready": indices_ready
             }
             
         except Exception as e:
@@ -4095,7 +4096,8 @@ def create_app(polly_instance=None) -> FastAPI:
                 "nodes": nodes,
                 "edges": edges,
                 "total_node_count": len(nodes),
-                "ghost_count": ghost_count
+                "ghost_count": ghost_count,
+                "indices_ready": indices_ready
             }
             
         except HTTPException:

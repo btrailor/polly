@@ -17823,6 +17823,12 @@ async function initGraphCanvas() {
     return;
   }
   
+  // Clean up previous Cytoscape instance if re-initializing
+  if (cytoscapeInstance) {
+    cytoscapeInstance.destroy();
+    cytoscapeInstance = null;
+  }
+  
   // Restore previous graph state if it exists
   const savedState = sessionStorage.getItem('graph-state');
   if (savedState) {
@@ -17929,6 +17935,42 @@ async function initGraphCanvas() {
   setupGraphEventHandlers(cytoscapeInstance, domainColors);
   
   console.log("[Graph] Initialized with", graphData.nodes.length, "nodes and", graphData.edges.length, "edges");
+  
+  // If indices aren't ready yet (background build still running),
+  // poll every 5 seconds and reload when they become available
+  if (!graphData.indices_ready) {
+    console.log("[Graph] Indices not ready yet, will auto-refresh when available...");
+    const retryInterval = setInterval(async () => {
+      try {
+        const retryParams = new URLSearchParams({ limit: '100', include_ghosts: 'true' });
+        if (graphState.centerNode) {
+          retryParams.append('center_node', graphState.centerNode);
+          retryParams.append('hops', '2');
+        }
+        if (graphState.filters) {
+          if (graphState.filters.type) retryParams.append('type', graphState.filters.type);
+          if (graphState.filters.domain) retryParams.append('domain', graphState.filters.domain);
+          if (graphState.filters.authority_min) retryParams.append('authority_min', graphState.filters.authority_min);
+        }
+        const retryResp = await fetch(`http://127.0.0.1:11436/polly/graph/nodes?${retryParams.toString()}`);
+        const retryData = await retryResp.json();
+        
+        if (retryData.indices_ready && retryData.edges && retryData.edges.length > 0) {
+          clearInterval(retryInterval);
+          console.log("[Graph] Indices ready! Reloading with", retryData.nodes.length, "nodes and", retryData.edges.length, "edges");
+          // Rebuild the graph with full data
+          initGraphCanvas();
+        } else {
+          console.log("[Graph] Still waiting for indices...", retryData.nodes?.length, "nodes so far");
+        }
+      } catch (e) {
+        console.warn("[Graph] Retry fetch failed:", e);
+      }
+    }, 5000);
+    
+    // Stop polling after 2 minutes to avoid infinite loops
+    setTimeout(() => clearInterval(retryInterval), 120000);
+  }
 }
 
 /**
