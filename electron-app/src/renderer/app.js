@@ -2899,6 +2899,12 @@ function showView(view) {
   currentView = view;
   currentPage = view; // Track page changes for conversation context
 
+  // Remove "Back to Graph" button when navigating away from notes
+  if (view !== 'notes') {
+    const backBtn = document.getElementById('back-to-graph-btn');
+    if (backBtn) backBtn.remove();
+  }
+
   // Hide all views
   const allViews = document.querySelectorAll(".view");
   allViews.forEach((v) => v.classList.add("hidden"));
@@ -17813,7 +17819,10 @@ let graphState = {
   centerNode: null,
   expandedNodes: new Set(),
   filters: {},
-  layout: 'cose'  // Use built-in cose layout (cose-bilkent requires additional deps)
+  layout: 'cose',  // Use built-in cose layout (cose-bilkent requires additional deps)
+  sourceNode: null, // Node ID that was clicked to navigate away (for cross-highlighting on return)
+  position: null,
+  zoom: null
 };
 
 async function initGraphCanvas() {
@@ -17929,6 +17938,37 @@ async function initGraphCanvas() {
     minZoom: 0.1,
     maxZoom: 3
     // Use default wheelSensitivity to avoid cross-platform issues
+  });
+  
+  // Restore position/zoom after layout completes, or highlight source node
+  cytoscapeInstance.one('layoutstop', () => {
+    // If we have saved position/zoom (returning from notes view), restore it
+    if (graphState.position && graphState.zoom) {
+      cytoscapeInstance.viewport({
+        pan: graphState.position,
+        zoom: graphState.zoom
+      });
+    }
+    
+    // Cross-highlight: if returning from a note, highlight the source node
+    const highlightNodeId = graphState.sourceNode || 
+      (window.notesManager && window.notesManager.currentNote ? window.notesManager.currentNote.name : null);
+    
+    if (highlightNodeId) {
+      const node = cytoscapeInstance.getElementById(highlightNodeId);
+      if (node && node.length > 0) {
+        node.select();
+        // If no saved position, center on the source node
+        if (!graphState.position) {
+          cytoscapeInstance.animate({
+            center: { eles: node },
+            zoom: 1.5
+          }, { duration: 400 });
+        }
+      }
+      // Clear sourceNode after restoring — it was a one-time return action
+      graphState.sourceNode = null;
+    }
   });
   
   // Setup event handlers
@@ -18214,7 +18254,10 @@ function setupGraphEventHandlers(cy, domainColors) {
     const node = evt.target;
     const data = node.data();
     
-    // Save graph state
+    // Track which node was clicked for cross-highlighting on return
+    graphState.sourceNode = data.id;
+    
+    // Save graph state (position, zoom, sourceNode)
     saveGraphState();
     
     // Open the item based on type
@@ -18354,12 +18397,19 @@ async function loadGraphBrowseList() {
     
     // Setup click handlers
     container.querySelectorAll('.browse-item').forEach(item => {
+      // Single click: highlight and center in graph
       item.addEventListener('click', () => {
         const itemId = item.dataset.itemId;
         const itemType = item.dataset.itemType;
         
+        // Mark active item in list
+        container.querySelectorAll('.browse-item').forEach(el => el.classList.remove('active'));
+        item.classList.add('active');
+        
         // Highlight and center in graph if visible
         if (cytoscapeInstance) {
+          // Deselect all first
+          cytoscapeInstance.elements().unselect();
           // Use getElementById() instead of CSS selector to avoid escaping issues
           const node = cytoscapeInstance.getElementById(itemId);
           if (node && node.length > 0) {
@@ -18371,6 +18421,20 @@ async function loadGraphBrowseList() {
             });
             node.select();
           }
+        }
+      });
+      
+      // Double click: open the note
+      item.addEventListener('dblclick', () => {
+        const itemId = item.dataset.itemId;
+        const itemType = item.dataset.itemType;
+        
+        if (itemType === 'note' && window.notesManager) {
+          graphState.sourceNode = itemId;
+          saveGraphState();
+          window.notesManager.openNote(itemId);
+          showView('notes');
+          showBackToGraphButton();
         }
       });
     });
