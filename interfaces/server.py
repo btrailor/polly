@@ -981,6 +981,10 @@ def create_app(polly_instance=None) -> FastAPI:
                 if metadata:
                     response_data["metadata"] = metadata
                 
+                # Add persona actions (e.g., knowledge gap suggestions)
+                if hasattr(polly, '_last_persona_actions') and polly._last_persona_actions:
+                    response_data["persona_actions"] = polly._last_persona_actions
+                
                 return response_data
         except Exception as e:
             logger.error(f"Query failed: {e}", exc_info=True)
@@ -1020,6 +1024,11 @@ def create_app(polly_instance=None) -> FastAPI:
         if metadata:
             logger.info("[STREAM DEBUG] Sending metadata")
             yield f"data: {json.dumps({'metadata': metadata})}\n\n"
+        
+        # Send persona actions if present (e.g., knowledge gap suggestions)
+        if hasattr(polly, '_last_persona_actions') and polly._last_persona_actions:
+            logger.info("[STREAM DEBUG] Sending persona_actions")
+            yield f"data: {json.dumps({'persona_actions': polly._last_persona_actions})}\n\n"
         
         logger.info("[STREAM DEBUG] Sending [DONE]")
         yield "data: [DONE]\n\n"
@@ -3802,8 +3811,10 @@ def create_app(polly_instance=None) -> FastAPI:
                     passes_filter = True
                     
                     # Type filter (currently only "note" supported)
-                    if type_filters and "note" not in type_filters:
-                        passes_filter = False
+                    # If type_filters is specified (even if empty), check if "note" is in it
+                    if type is not None:  # type param was provided
+                        if "note" not in type_filters:
+                            passes_filter = False
                     
                     # Domain filter
                     if domains_filter and note.domain not in domains_filter:
@@ -3976,8 +3987,10 @@ def create_app(polly_instance=None) -> FastAPI:
                 
                 for note in all_notes:
                     # Type filter
-                    if type_filters and "note" not in type_filters:
-                        continue
+                    # If type_filters is specified (even if empty), check if "note" is in it
+                    if type is not None:  # type param was provided
+                        if "note" not in type_filters:
+                            continue
                     
                     # Domain filter
                     if domains_filter and note.domain not in domains_filter:
@@ -4113,6 +4126,539 @@ def create_app(polly_instance=None) -> FastAPI:
         except Exception as e:
             logger.error(f"Graph nodes failed: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to get graph nodes: {str(e)}")
+    
+    # === Garden Management Endpoints ===
+    
+    @app.get("/polly/graph/garden/stats")
+    async def get_garden_stats():
+        """
+        Get knowledge graph garden statistics for the maintenance dashboard.
+        
+        Response: {
+            "total_notes": 150,
+            "total_connections": 312,
+            "total_entities": 45,
+            "isolated_notes": 8,
+            "enriched_notes": 120,
+            "unenriched_notes": 30,
+            "coverage_pct": 80.0,
+            "domain_counts": {"sigils": 50, "tools": 30, "patterns": 25},
+            "avg_connections_per_note": 2.08,
+            "weak_connection_count": 15,
+            "stale_entity_count": 3
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+            
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+            
+            notes_idx = get_notes_index()
+            backlinks_idx = get_backlinks_index(notes_idx)
+            
+            all_notes = notes_idx.get_all_notes()
+            total_notes = len(all_notes)
+            
+            # Count connections (backlinks + mentions)
+            total_connections = 0
+            isolated_notes = 0
+            enriched_notes = 0
+            domain_counts = {}
+            
+            for note in all_notes:
+                inbound = len(backlinks_idx.get_backlinks(note.name))
+                outbound = len(backlinks_idx.get_outgoing_links(note.name))
+                connection_count = inbound + outbound
+                total_connections += connection_count
+                
+                if connection_count == 0:
+                    isolated_notes += 1
+                
+                # Check if note has entity mentions (enriched)
+                mentions = entity_store.get_mentions_for_source(note.name, "note")
+                if mentions:
+                    enriched_notes += 1
+                
+                # Track domain counts
+                domain = note.domain or "uncategorized"
+                domain_counts[domain] = domain_counts.get(domain, 0) + 1
+            
+            # Entity stats
+            entity_stats = entity_store.get_stats()
+            total_entities = entity_stats.get("entities", 0)
+            
+            # Calculate weak/stale counts
+            with entity_store._conn() as conn:
+                cur = conn.execute("SELECT COUNT(*) FROM relationships WHERE strength < 0.3")
+                weak_connection_count = cur.fetchone()[0]
+                
+                from datetime import datetime, timedelta
+                cutoff = (datetime.now() - timedelta(days=180)).isoformat()
+                cur = conn.execute(
+                    "SELECT COUNT(*) FROM entities WHERE last_seen < ? AND mention_count < 3",
+                    (cutoff,)
+                )
+                stale_entity_count = cur.fetchone()[0]
+            
+            unenriched_notes = total_notes - enriched_notes
+            coverage_pct = (enriched_notes / total_notes * 100) if total_notes > 0 else 0.0
+            avg_connections = (total_connections / total_notes) if total_notes > 0 else 0.0
+            
+            return {
+                "total_notes": total_notes,
+                "total_connections": total_connections,
+                "total_entities": total_entities,
+                "isolated_notes": isolated_notes,
+                "enriched_notes": enriched_notes,
+                "unenriched_notes": unenriched_notes,
+                "coverage_pct": round(coverage_pct, 1),
+                "domain_counts": domain_counts,
+                "avg_connections_per_note": round(avg_connections, 2),
+                "weak_connection_count": weak_connection_count,
+                "stale_entity_count": stale_entity_count
+            }
+            
+        except Exception as e:
+            logger.error(f"Garden stats failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to get garden stats: {str(e)}")
+    
+    @app.get("/polly/graph/garden/suggestions")
+    async def get_garden_suggestions(limit: int = 20):
+        """
+        Get AI-powered suggestions for improving the knowledge graph.
+        
+        Returns connection opportunities, merge candidates, and enrichment targets.
+        
+        Query params:
+        - limit: Max suggestions per category (default 20)
+        
+        Response: {
+            "connection_suggestions": [{
+                "source_note": "Note A",
+                "target_note": "Note B",
+                "reason": "Both mention 'React hooks' but are not linked",
+                "confidence": 0.85,
+                "mention_count": 3
+            }],
+            "merge_candidates": [{
+                "entity_a": "React.js",
+                "entity_b": "ReactJS",
+                "reason": "Same entity, different names",
+                "confidence": 0.95,
+                "overlap_count": 12
+            }],
+            "enrichment_candidates": [{
+                "note_name": "Async Patterns",
+                "reason": "No entity extraction yet, high authority",
+                "authority": 0.92,
+                "connection_count": 15
+            }]
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+            from core.unlinked_mentions import get_unlinked_mentions_index
+            from core.entities.models import EntityQuery
+            
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+            
+            notes_idx = get_notes_index()
+            backlinks_idx = get_backlinks_index(notes_idx)
+            mentions_idx = get_unlinked_mentions_index(notes_idx)
+            
+            connection_suggestions = []
+            merge_candidates = []
+            enrichment_candidates = []
+            
+            # 1. Connection suggestions from unlinked mentions
+            mention_pairs = mentions_idx.get_all_mention_pairs()
+            for source, target, count in mention_pairs[:limit]:
+                # Check if they're already linked via backlinks
+                outbound = backlinks_idx.get_outgoing_links(source)
+                already_linked = any(bl.target_name == target for bl in outbound)
+                
+                if not already_linked:
+                    connection_suggestions.append({
+                        "source_note": source,
+                        "target_note": target,
+                        "reason": f"'{source}' mentions '{target}' {count} time(s) but no direct link exists",
+                        "confidence": min(0.95, 0.6 + (count * 0.1)),
+                        "mention_count": count
+                    })
+            
+            # 2. Merge candidates from entity overlap
+            # Find entities with similar names or high co-occurrence
+            all_entities = entity_store.search(EntityQuery(limit=200))
+            
+            seen_pairs = set()
+            for i, ent_a in enumerate(all_entities):
+                for ent_b in all_entities[i+1:]:
+                    pair_key = tuple(sorted([ent_a.id, ent_b.id]))
+                    if pair_key in seen_pairs:
+                        continue
+                    
+                    # Check name similarity (fuzzy match)
+                    name_a = ent_a.name.lower().replace(" ", "").replace("-", "").replace("_", "")
+                    name_b = ent_b.name.lower().replace(" ", "").replace("-", "").replace("_", "")
+                    
+                    if name_a == name_b and ent_a.entity_type == ent_b.entity_type:
+                        # Exact match (different formatting)
+                        seen_pairs.add(pair_key)
+                        merge_candidates.append({
+                            "entity_a": ent_a.name,
+                            "entity_a_id": ent_a.id,
+                            "entity_b": ent_b.name,
+                            "entity_b_id": ent_b.id,
+                            "reason": "Same entity, different formatting",
+                            "confidence": 0.95,
+                            "overlap_count": min(ent_a.mention_count, ent_b.mention_count)
+                        })
+                    elif name_a in name_b or name_b in name_a:
+                        # One is substring of the other
+                        seen_pairs.add(pair_key)
+                        merge_candidates.append({
+                            "entity_a": ent_a.name,
+                            "entity_a_id": ent_a.id,
+                            "entity_b": ent_b.name,
+                            "entity_b_id": ent_b.id,
+                            "reason": "Similar names, possible duplicate",
+                            "confidence": 0.75,
+                            "overlap_count": min(ent_a.mention_count, ent_b.mention_count)
+                        })
+                    
+                    if len(merge_candidates) >= limit:
+                        break
+                if len(merge_candidates) >= limit:
+                    break
+            
+            # 3. Enrichment candidates (high-authority notes without entities)
+            all_notes = notes_idx.get_all_notes()
+            for note in all_notes:
+                mentions = entity_store.get_mentions_for_source(note.name, "note")
+                if not mentions:
+                    # No entity extraction yet
+                    inbound = len(backlinks_idx.get_backlinks(note.name))
+                    outbound = len(backlinks_idx.get_outgoing_links(note.name))
+                    connection_count = inbound + outbound
+                    authority = min(1.0, inbound / 10.0)
+                    
+                    if authority > 0.3 or connection_count > 5:
+                        enrichment_candidates.append({
+                            "note_name": note.name,
+                            "note_title": note.title or note.name,
+                            "reason": f"High-value note ({connection_count} connections) without entity extraction",
+                            "authority": round(authority, 2),
+                            "connection_count": connection_count
+                        })
+                
+                if len(enrichment_candidates) >= limit:
+                    break
+            
+            # Sort by priority
+            connection_suggestions.sort(key=lambda x: x["confidence"], reverse=True)
+            merge_candidates.sort(key=lambda x: x["confidence"], reverse=True)
+            enrichment_candidates.sort(key=lambda x: x["authority"], reverse=True)
+            
+            return {
+                "connection_suggestions": connection_suggestions[:limit],
+                "merge_candidates": merge_candidates[:limit],
+                "enrichment_candidates": enrichment_candidates[:limit]
+            }
+            
+        except Exception as e:
+            logger.error(f"Garden suggestions failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to get garden suggestions: {str(e)}")
+    
+    @app.post("/polly/graph/garden/enrich")
+    async def enrich_notes(body: Dict[str, Any]):
+        """
+        Trigger entity extraction on specified notes.
+        
+        Request body: {
+            "note_names": ["Note A", "Note B"],
+            "force": false  // Re-extract even if already enriched
+        }
+        
+        Response: {
+            "enriched_count": 2,
+            "entities_added": 15,
+            "notes_processed": ["Note A", "Note B"]
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            from core.entities.extractor import EntityExtractor
+            
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+            
+            notes_idx = get_notes_index()
+            extractor = EntityExtractor(entity_store)
+            
+            note_names = body.get("note_names", [])
+            force = body.get("force", False)
+            
+            enriched_count = 0
+            entities_added = 0
+            notes_processed = []
+            
+            for note_name in note_names:
+                note = notes_idx.find_note_by_name_or_alias(note_name)
+                if not note:
+                    logger.warning(f"Note not found: {note_name}")
+                    continue
+                
+                # Check if already enriched
+                if not force:
+                    existing_mentions = entity_store.get_mentions_for_source(note.name, "note")
+                    if existing_mentions:
+                        logger.info(f"Skipping already enriched note: {note.name}")
+                        continue
+                
+                # Extract entities from note content
+                content = notes_idx.read_note_content(note.file_path)
+                if content:
+                    extracted = extractor.extract_and_store(
+                        text=content,
+                        source_type="note",
+                        source_id=note.name,
+                        domains=[note.domain] if note.domain else []
+                    )
+                    if extracted:
+                        enriched_count += 1
+                        entities_added += len(extracted)
+                        notes_processed.append(note.name)
+                        logger.info(f"Enriched '{note.name}' with {len(extracted)} entities")
+            
+            return {
+                "enriched_count": enriched_count,
+                "entities_added": entities_added,
+                "notes_processed": notes_processed
+            }
+            
+        except Exception as e:
+            logger.error(f"Enrich notes failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to enrich notes: {str(e)}")
+    
+    @app.post("/polly/graph/garden/connection")
+    async def manage_connection(body: Dict[str, Any]):
+        """
+        Add or remove a connection between notes/entities.
+        
+        Request body: {
+            "action": "add" | "remove",
+            "source": "Note A",
+            "target": "Note B",
+            "connection_type": "references" | "relates_to"
+        }
+        
+        Response: {
+            "success": true,
+            "message": "Connection added between 'Note A' and 'Note B'"
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+            from core.entities.models import Relationship, RelationshipType
+            
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+            
+            notes_idx = get_notes_index()
+            backlinks_idx = get_backlinks_index(notes_idx)
+            
+            action = body.get("action")
+            source = body.get("source")
+            target = body.get("target")
+            connection_type = body.get("connection_type", "relates_to")
+            
+            if action not in ["add", "remove"]:
+                raise HTTPException(400, "Invalid action. Must be 'add' or 'remove'")
+            
+            if not source or not target:
+                raise HTTPException(400, "Both 'source' and 'target' are required")
+            
+            if action == "add":
+                # Add relationship between entities
+                try:
+                    rel_type = RelationshipType(connection_type)
+                except ValueError:
+                    rel_type = RelationshipType.RELATED_TO
+                
+                relationship = Relationship(
+                    source_id=source,
+                    target_id=target,
+                    relationship_type=rel_type,
+                    strength=0.8,
+                    context="Manually added via garden"
+                )
+                entity_store.upsert_relationship(relationship)
+                
+                return {
+                    "success": True,
+                    "message": f"Connection added between '{source}' and '{target}'"
+                }
+            
+            else:  # remove
+                # Remove relationship
+                try:
+                    rel_type = RelationshipType(connection_type)
+                except ValueError:
+                    rel_type = None
+                
+                deleted = entity_store.remove_relationship(source, target, rel_type)
+                
+                return {
+                    "success": deleted,
+                    "message": f"Connection removed between '{source}' and '{target}'" if deleted else "Connection not found"
+                }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Manage connection failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to manage connection: {str(e)}")
+    
+    @app.post("/polly/graph/garden/merge")
+    async def merge_entities(body: Dict[str, Any]):
+        """
+        Merge entity mentions from source into target.
+        
+        Request body: {
+            "source_id": "entity_abc123",
+            "target_id": "entity_def456"
+        }
+        
+        Response: {
+            "success": true,
+            "mentions_moved": 15,
+            "message": "Merged 'React.js' into 'ReactJS'"
+        }
+        """
+        try:
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+            
+            source_id = body.get("source_id")
+            target_id = body.get("target_id")
+            
+            if not source_id or not target_id:
+                raise HTTPException(400, "Both 'source_id' and 'target_id' are required")
+            
+            source_entity = entity_store.get_entity(source_id)
+            target_entity = entity_store.get_entity(target_id)
+            
+            if not source_entity:
+                raise HTTPException(404, f"Source entity not found: {source_id}")
+            if not target_entity:
+                raise HTTPException(404, f"Target entity not found: {target_id}")
+            
+            # Move all mentions from source to target
+            mentions_moved = entity_store.move_mentions(source_id, target_id)
+            
+            # Delete source entity
+            entity_store.delete_entity(source_id)
+            
+            # Recompute authority for target
+            entity_store.recompute_authority(target_id)
+            
+            logger.info(f"Merged entity '{source_entity.name}' into '{target_entity.name}' ({mentions_moved} mentions)")
+            
+            return {
+                "success": True,
+                "mentions_moved": mentions_moved,
+                "message": f"Merged '{source_entity.name}' into '{target_entity.name}'"
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Merge entities failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to merge entities: {str(e)}")
+    
+    @app.delete("/polly/graph/garden/prune")
+    async def prune_graph(
+        weak_threshold: float = None,
+        stale_days: int = None,
+        entity_id: str = None,
+        relationship_id: str = None
+    ):
+        """
+        Remove weak connections, stale entities, or specific items.
+        
+        Query params:
+        - weak_threshold: Remove relationships below this strength (0.0-1.0)
+        - stale_days: Remove entities not seen in X days with <3 mentions
+        - entity_id: Remove specific entity
+        - relationship_id: Remove specific relationship (not implemented)
+        
+        Response: {
+            "removed_relationships": 15,
+            "removed_entities": 3,
+            "message": "Pruned 15 weak relationships and 3 stale entities"
+        }
+        """
+        try:
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+            
+            removed_relationships = 0
+            removed_entities = 0
+            
+            if entity_id:
+                # Remove specific entity
+                entity = entity_store.get_entity(entity_id)
+                if entity:
+                    entity_store.delete_entity(entity_id)
+                    removed_entities = 1
+                    logger.info(f"Pruned entity: {entity.name}")
+                else:
+                    raise HTTPException(404, f"Entity not found: {entity_id}")
+            
+            if weak_threshold is not None:
+                # Remove weak relationships
+                removed_relationships = entity_store.prune_weak_relationships(weak_threshold)
+            
+            if stale_days is not None:
+                # Remove stale entities
+                removed_entities += entity_store.prune_stale_entities(stale_days)
+            
+            message_parts = []
+            if removed_relationships > 0:
+                message_parts.append(f"{removed_relationships} weak relationships")
+            if removed_entities > 0:
+                message_parts.append(f"{removed_entities} stale entities")
+            
+            message = "Pruned " + " and ".join(message_parts) if message_parts else "No items pruned"
+            
+            return {
+                "removed_relationships": removed_relationships,
+                "removed_entities": removed_entities,
+                "message": message
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Prune graph failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to prune graph: {str(e)}")
     
     @app.get("/polly/graph/state")
     async def get_graph_state():

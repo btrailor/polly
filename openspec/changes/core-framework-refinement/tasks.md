@@ -363,75 +363,280 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
 
 ---
 
-### Wave 4 — Knowledge Enrichment (Weeks 6–10)
+### Wave 4 — Knowledge Enrichment & Progressive Autonomy (Weeks 6–10)
 
-These tasks build on the foundation from Waves 1–3. Mem0 + LiteLLM should be stable.
+**Context:** Waves 1–3 delivered the intelligent routing pipeline (decomposition, split routing, synthesis). Wave 4 focuses on closing the feedback loop: knowledge growth → better RAG → more local routing → autonomy gains.
 
-#### 20. ⬜ Progressive Autonomy Feedback Loop (1 week)
-
-**Same as original task #23**
-
-**What:** Close the full loop: KB growth → decomposition shifts more sub-queries to local → token savings tracked → dashboard shows autonomy trend.
-
-**Steps:**
-1. [ ] Wire together: KnowledgeWriter saves → RAG re-indexes → next query gets better RAG → Router shifts to local
-2. [ ] Autonomy Metrics dashboard shows the trend over time
-3. [ ] Settings: autonomy target (e.g., "80% local routing")
-4. [ ] Verify: adding knowledge actually increases local routing % over time
-
-**Backend files:** `core/autonomy_metrics.py`, `core/polly.py`
+**Key Insight:** Knowledge enrichment infrastructure is 90% complete (KnowledgeWriter, Scribe persona, gap detection, auto-linking, templates, incremental indexing) but **not integrated into the main chat flow**. Gap detection exists but is never called after synthesis.
 
 ---
 
-#### 21. ⬜ PIL Expansion (2 weeks)
+#### 20. ⬜ Knowledge Enrichment Integration (2 weeks) 🔥 **P0 CRITICAL**
 
-**Enhanced by:** LLMLingua (Wave 1, Task 13) for token compression; Mem0 (Wave 2, Task 14) for memory format
+**What:** Connect existing gap detection to synthesis flow. Enable automatic knowledge suggestions after cloud responses.
 
-**What:** Extend PIL (Polly Intermediate Language) format to cover patterns, knowledge summaries, and routing decisions — not just conversation compression.
+**Why P0:** All enrichment infrastructure exists and works. This task simply wires it into the chat flow. Highest ROI in Wave 4.
 
 **Steps:**
-1. [ ] Define PIL v2 format specification:
-   - Pattern encoding: `PIL:PATTERN:{type}:{confidence}:{content}`
-   - Knowledge summary: `PIL:KNOWLEDGE:{domain}:{key_concepts}`
-   - Routing decision: `PIL:ROUTE:{tier}:{provider}:{reason}`
-2. [ ] Update `core/compression/compressor.py` to produce/consume PIL v2
-3. [ ] LLMLingua for raw text → compressed text; PIL for structured metadata
-4. [ ] Mem0 memories can store PIL-encoded summaries for efficient retrieval
-5. [ ] Test: PIL v2 encoding/decoding, integration with chat context
 
-**Backend files:** `core/compression/`, `core/memory/` (if Mem0 integrated)
+**Backend Integration (3–4 days):**
+1. [ ] Add gap detection call in `core/polly.py` after synthesis/cloud response:
+   - After Wave 3 synthesis completes → call `knowledge_writer.detect_knowledge_gap()`
+   - After direct cloud response (non-Wave3 path) → same
+   - If `KnowledgeGap` returned → call `knowledge_writer.create_suggestion()`
+   - Add suggestion to response metadata as `PersonaAction` type `suggest_kb_write`
+2. [ ] Update `/api/chat` response format to include `persona_actions[]` array
+3. [ ] Handle config flag: `ai_features.knowledge_suggestions.enabled` (skip if false)
+4. [ ] Add logging: "Knowledge gap detected (score=0.72, concepts=5)"
+
+**Frontend Integration (3–4 days):**
+5. [ ] Suggestion card component (`suggestion-card.js`):
+   - Renders below assistant message when `suggest_kb_write` action present
+   - Shows: "This seems new. Save as a note?"
+   - Displays: novel_concepts (tags), suggested_title, suggested_domain
+   - Buttons: "Quick Save" | "Enrich with Scribe" | "Dismiss"
+6. [ ] Wire to existing save flow:
+   - Quick Save → `POST /api/settings/knowledge/save-quick`
+   - Enrich → Open PreviewModal with Scribe enrichment
+7. [ ] Add context menu item on assistant messages:
+   - Right-click → "Save to Knowledge Base"
+   - Opens modal: Quick Save vs Scribe Enrich
+   - Calls `POST /api/settings/knowledge/save-message`
+8. [ ] Post-save feedback:
+   - Show: "Note saved and indexed" toast notification
+   - Update autonomy metrics in background
+
+**Testing (2 days):**
+9. [ ] End-to-end test: Query → cloud synthesis → gap detected → suggestion shown → user saves → RAG indexes → next query finds it
+10. [ ] Test with Wave 3 multi-query synthesis (gap detection on combined response)
+11. [ ] Test with ADJACENT/ABSENT retrieval tiers (should trigger more gaps)
+12. [ ] Test config toggle: `enabled: false` should skip gap detection
+
+**Backend files:** `core/polly.py` (lines ~2000-2100), `interfaces/server.py`
+**Frontend files:** `electron-app/src/renderer/app.js`, new `components/suggestion-card.js`
+**Config:** `config.yaml` → `ai_features.knowledge_suggestions`
 
 ---
 
-#### 22. ⬜ RAG Optimization for Local Models (1 week)
+#### 21. ⬜ Progressive Autonomy Dashboard (1 week) 🟢 **P1**
+
+**What:** Visualize the feedback loop. Show users how KB growth increases local routing %.
+
+**Steps:**
+
+**Backend (2 days):**
+1. [ ] Verify existing endpoints work:
+   - `GET /api/settings/autonomy/snapshot?days=30`
+   - `GET /api/settings/autonomy/routing-trend?days=90&bucket_days=7`
+   - `GET /api/settings/autonomy/recent-writes?limit=20`
+2. [ ] Add endpoint: `GET /api/settings/autonomy/target` and `PUT` to set target % (default 80%)
+3. [ ] Enhance snapshot response with:
+   - RAG coverage trend (avg similarity scores over time)
+   - Token savings from local routing (calculated from BudgetManager data)
+   - Notes by source breakdown (gap_detected vs manual_save vs scribe_assisted)
+
+**Frontend Dashboard (3 days):**
+4. [ ] Create Autonomy Dashboard page (Settings → Autonomy):
+   - Hero metric: "Your KB is 73% autonomous" (circular progress)
+   - Chart: Local vs Cloud routing % over time (line chart, weekly buckets)
+   - Stats cards: Total notes added, Token savings, RAG coverage
+   - Recent writes table: title, domain, source_type, estimated_savings
+5. [ ] Add autonomy indicator to status bar (optional, config-driven):
+   - Small icon with % (e.g., "🤖 73%")
+   - Click to open dashboard
+6. [ ] Settings panel: Set autonomy target % (slider, 50-95%)
+
+**Post-Save Integration (1 day):**
+7. [ ] After note save → show immediate feedback:
+   - "Note indexed. Knowledge base updated."
+   - If this was a gap-detected save: "Next time, Polly can answer locally (save ~$0.03)"
+8. [ ] When local routing successfully answers (DIRECT tier):
+   - Subtle indicator: "💚 Answered locally" (tooltip: "Saved ~$0.02")
+
+**Testing (1 day):**
+9. [ ] Add 5-10 notes via gap detection → verify metrics update
+10. [ ] Verify routing trend chart shows increase in local %
+11. [ ] Test autonomy target setting persistence
+
+**Backend files:** `interfaces/settings_api.py`, `core/autonomy_metrics.py`
+**Frontend files:** `electron-app/src/renderer/index.html`, new dashboard page, status bar component
+
+---
+
+#### 22. ⬜ Enhanced Auto-Linking & Link Quality (1 week) 🟢 **P1**
+
+**What:** Improve link intelligence: bidirectional links, link suggestions, broken link detection.
+
+**Steps:**
+
+**Bidirectional Linking (2 days):**
+1. [ ] When Scribe creates `[[Note A]]` link in Note B:
+   - Parse saved note content for all `[[...]]` links
+   - For each target note, add backlink section if missing
+   - Append "## Backlinks\n- [[Note B]]" at end of target
+   - Use file locking to prevent race conditions
+2. [ ] Update `_auto_link_content()` in scribe.py to return list of inserted links
+3. [ ] Create `_add_backlinks()` method in knowledge_writer.py
+4. [ ] Call after successful `_save_note()`
+
+**Link Suggestions (2 days):**
+5. [ ] After note save, find related notes (similarity 0.7–0.84):
+   - Already returned by `notes_dedup` in `_save_note()`
+   - If similar_notes list not empty → create `PersonaAction` type `suggest_links`
+6. [ ] Frontend modal: "Related notes found. Add links?"
+   - Show similar_notes with similarity scores
+   - Checkboxes to select which to link
+   - Confirm → append to "## Related" section
+7. [ ] Option to link bidirectionally
+
+**Broken Link Detection (1 day):**
+8. [ ] Add `_validate_links()` method to knowledge_writer:
+   - Parse `[[...]]` links in content
+   - Check if target files exist in notes directory
+   - Return list of broken links
+9. [ ] If broken links found → show warning:
+   - "3 links point to non-existent notes. Create them?"
+   - Generate stub notes with frontmatter
+
+**Link Preview (1 day):**
+10. [ ] Frontend: Hover over `[[link]]` in preview modal
+11. [ ] Fetch first 200 chars from target note
+12. [ ] Show tooltip with snippet
+
+**Testing (1 day):**
+13. [ ] Create note with links → verify backlinks added to targets
+14. [ ] Test with non-existent notes → verify broken link detection
+15. [ ] Test suggestion modal with related notes
+
+**Backend files:** `core/knowledge_writer.py`, `core/personas/implementations/scribe.py`
+**Frontend files:** `electron-app/src/renderer/components/preview-modal.js`
+
+---
+
+#### 23. ⬜ RAG Optimization for Local Models (1 week) 🟡 **P2**
 
 **Enhanced by:** LLMLingua (context compression), Mem0 (reranker-enhanced search)
 
-**Same as original task #24**
+**What:** Tune RAG for local models with smaller context windows. Dynamic compression ratios.
 
 **Steps:**
-1. [ ] Context window tuning per model (local models have smaller windows)
-2. [ ] LLMLingua compression ratio scales with context window size
-3. [ ] Mem0 reranker improves relevance of retrieved chunks (fewer, better chunks)
-4. [ ] Knowledge gap detection triggers on low-confidence RAG results
+1. [ ] Add context window sizes to model config:
+   - `llama3.2:3b` → 8k tokens
+   - `qwen2.5:7b` → 32k tokens
+   - GPT-4o → 128k tokens
+2. [ ] Dynamic LLMLingua compression ratio based on model:
+   - If context_window < 16k → ratio 0.3 (3x compression)
+   - If context_window < 32k → ratio 0.5 (2x compression)
+   - If context_window >= 32k → ratio 0.7 (1.5x compression) or disabled
+3. [ ] Chunking size adjustment for local models:
+   - Smaller chunks (400 chars) for low-parameter models
+   - Standard chunks (800 chars) for 7B+ models
+4. [ ] RAG retrieval limit based on model:
+   - Local Fast tier: top 3 chunks
+   - Local Balanced tier: top 5 chunks
+   - Cloud models: top 10 chunks
+5. [ ] Mem0 reranker integration (if enabled):
+   - After RAG search → rerank via Mem0 semantic search
+   - Select top N after reranking
+6. [ ] Knowledge gap detection integration:
+   - If RAG confidence < 0.5 (ADJACENT/ABSENT tier) → higher gap detection threshold
+   - More aggressive knowledge suggestions when RAG is weak
+7. [ ] Test: Verify local models get compressed context, measure response quality
 
-**Backend files:** `core/rag.py`, `core/compression/`
+**Backend files:** `core/rag.py`, `core/compression/manager.py`, `config/litellm_config.yaml`
 
 ---
 
-#### 23. ⬜ SKILL ↔ Mental Model Bridge (1–2 weeks)
+#### 24. ⬜ Persona Memory for Enrichment Preferences (1 week) 🟡 **P2**
+
+**Enhanced by:** Mem0 (persona-scoped memory)
+
+**What:** Scribe remembers user preferences for note enrichment (template choices, linking style, detail level).
+
+**Steps:**
+
+**Memory Storage (2 days):**
+1. [ ] After each Scribe enrichment, store preferences in Mem0:
+   - `user_id = "persona:Scribe"`
+   - Memory: "User prefers tutorial template for scrolls domain"
+   - Memory: "User prefers sparse linking (3-5 links per note)"
+   - Memory: "User prefers concise notes (< 500 words)"
+2. [ ] Track edit patterns:
+   - If user always removes certain types of links → store as preference
+   - If user expands generated content → preference for more detail
+3. [ ] Create `_record_enrichment_feedback()` method in scribe.py
+
+**Memory Retrieval (2 days):**
+4. [ ] At enrichment start, query Mem0 for preferences:
+   - `mem0.search_memory(f"enrichment preferences for {domain} domain")`
+   - `mem0.search_memory(f"template preferences for {template_type}")`
+5. [ ] Apply preferences to generation:
+   - Adjust linking density based on preference
+   - Pre-select preferred template
+   - Adjust detail level in system prompt
+6. [ ] Add to system prompt: "User prefers X style based on past edits"
+
+**Pattern-Informed Enrichment (2 days):**
+7. [ ] Load patterns from PatternEngine:
+   - `patterns = pattern_engine.search(pattern_type=PatternType.QUERY, query=query)`
+   - If similar note saved before → suggest reusing structure
+8. [ ] Auto-suggest domain based on DOMAIN→COLLECTION patterns
+9. [ ] Boost relevant concepts based on CONCEPTUAL patterns
+
+**Testing (1 day):**
+10. [ ] Enrich 3 notes in same domain → verify preferences remembered
+11. [ ] Test with pattern matching (similar queries)
+12. [ ] Verify preferences don't over-constrain generation
+
+**Backend files:** `core/personas/implementations/scribe.py`, `core/memory/mem0_adapter.py`, `core/patterns/engine.py`
+
+---
+
+#### 25. ⬜ SKILL ↔ Mental Model Bridge (1 week) 🟡 **P2**
 
 **Enhanced by:** Mem0 (graph memory for relationship tracking)
 
-**Same as original task #25**
+**What:** Skills reference and activate mental models. Mental model relationships tracked in Mem0.
 
 **Steps:**
-1. [ ] Skills reference and activate mental models
-2. [ ] Mental model relationships stored in Mem0 graph memory (if available) or local JSON
-3. [ ] PIL-compressed mental model context in chat
-4. [ ] Persona skills auto-select relevant mental models
+1. [ ] Skills can declare mental model dependencies:
+   - `template-guide` skill → activates "First Principles" model
+   - `wiki-linking` skill → activates "Systems Thinking" model
+2. [ ] Mental model relationships stored in Mem0 graph (if graph_store enabled):
+   - Entities: mental model IDs
+   - Relationships: "supports", "conflicts_with", "prerequisites"
+   - Example: "First Principles" supports "Systems Thinking"
+3. [ ] Compact Format encoding of mental models in chat context (already exists)
+4. [ ] Persona skills auto-select relevant mental models:
+   - When Architect loads `planning` skill → activate "Second-Order Thinking"
+   - When Professor loads `teaching` skill → activate "Feynman Technique"
+5. [ ] Test: Verify mental model activation when skills loaded
 
-**Backend files:** `core/skills/`, `core/mental_models.py`, `core/memory/`
+**Backend files:** `core/skills/`, `core/mental_models.py`, `core/memory/mem0_adapter.py`
+
+---
+
+### Removed from Wave 4
+
+#### ~~21. PIL Expansion~~ ❌ **OBSOLETE**
+
+**Reason for removal:** "PIL" (Polly Internal Language) was correctly renamed to "Compact Format" in the Architecture Integration phase. Compact Format is **only used for mental model compression** (~2.5-3x ratio) and should remain specialized for that purpose.
+
+**Compression is already solved:**
+- **Conversation compression:** 50x ratio via ultra-compressed format (existing)
+- **RAG context compression:** 2-10x ratio via LLMLingua (Wave 1, Task 13 ✅ complete)
+- **Mental model compression:** 2.5-3x ratio via Compact Format (existing)
+
+**What was planned:** Extend PIL to patterns, knowledge summaries, routing decisions with formats like `PIL:PATTERN:{type}:{confidence}:{content}`.
+
+**Why not needed:** 
+- No use case requires structured encoding beyond mental models
+- LLMLingua handles general-purpose text compression
+- Mem0 handles semantic storage/retrieval of patterns and knowledge
+- JSON storage for patterns/routing works fine
+- Adding complexity without clear benefit
+
+**If structured encoding is needed later:** Consider it for Phase 12a (Knowledge Graph) where entity/relationship encoding may benefit from a compact wire format. But not a Wave 4 priority.
 
 ---
 
@@ -528,7 +733,7 @@ Same as original task #28 — Library collection in RAG, metadata extraction, Li
 | #19 Synthesis Layer | ✅ **Kept** | Can use LlamaIndex synthesis patterns |
 | #20 Provider Intelligence | ➡️ **Superseded** | LiteLLM fallback chains + health tracking handles this |
 | #21 Pattern → Routing | ✅ **Enhanced** | Mem0 graph memory provides pattern storage (Task 14) |
-| #22 PIL Expansion | ✅ **Enhanced** | LLMLingua for compression; PIL v2 format design remains custom |
+| #22 PIL Expansion | ❌ **Removed** | Obsolete — PIL renamed to Compact Format (mental models only); LLMLingua handles general compression |
 | #23 Progressive Autonomy | ✅ **Kept** | Renumbered to Task 20 |
 | #24 RAG Optimization | ✅ **Enhanced** | LLMLingua + Mem0 reranker (Tasks 13, 14) |
 | #25 SKILL ↔ Mental Model | ✅ **Enhanced** | Mem0 graph memory for relationships (Task 14) |
@@ -545,7 +750,7 @@ Same as original task #28 — Library collection in RAG, metadata extraction, Li
 | 1–3 | **Wave 1** | LiteLLM adapter (#12) + LLMLingua (#13) + Mem0 (#14) | ✅ Complete (Feb 2026) |
 | 2–5 | **Wave 2** | Provider UI (#15), "Polly" mode (#16) | Ready to start |
 | 5–8 | **Wave 3** | Query Decomposition (#17), Split Routing (#18), Synthesis (#19) | After Wave 1 |
-| 6–10 | **Wave 4** | Autonomy loop (#20), PIL v2 (#21), RAG opt (#22), SKILL↔MM (#23) | After Waves 1–3 |
+| 6–10 | **Wave 4** | Knowledge Enrichment Integration (#20), Autonomy Dashboard (#21), Enhanced Auto-Linking (#22), RAG Optimization (#23), Persona Memory (#24), SKILL↔MM (#25) | After Waves 1–3 |
 | — | **Blocker** | *Phase 23.5 Security Hardening* | Must complete before Wave 5 |
 | 10–14 | **Wave 5** | LlamaIndex KG (#24), CrewAI Orchestrator (#25), Langfuse (#26) | After 23.5 |
 | 14+ | **Wave 6** | BookLore (#27–28), Future OSS evaluation | Backlog |

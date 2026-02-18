@@ -3005,20 +3005,39 @@ function showView(view) {
             node.select();
           }
           graphState.sourceNode = null;
-          saveGraphState();
         }
       } else {
+        // Fresh graph initialization
         initGraphPage();
       }
     }
   } catch (error) {
-    console.error(`[showView] Error loading view data for ${view}:`, error);
+    console.error(`[showView] Error loading view-specific data:`, error);
   }
 
-  // Re-initialize Lucide icons after view change
-  if (typeof lucide !== "undefined") {
-    setTimeout(() => lucide.createIcons(), 0);
-  }
+  saveGraphState();
+}
+
+/**
+ * Apply graph filters with debouncing
+ */
+let filterDebounce = null;
+
+async function applyGraphFilters() {
+  clearTimeout(filterDebounce);
+  filterDebounce = setTimeout(async () => {
+    console.log('[Graph] Applying filters:', graphState.filters);
+    
+    // Save viewport before re-fetching
+    if (cytoscapeInstance) {
+      graphState.position = cytoscapeInstance.pan();
+      graphState.zoom = cytoscapeInstance.zoom();
+    }
+    saveGraphState();
+    
+    // Re-initialize with new filters (reads from graphState.filters)
+    await initGraphCanvas();
+  }, 300);
 }
 
 /**
@@ -5052,7 +5071,7 @@ async function sendToPersona(query, conversationHistory, loadingId, personaName,
 
     // Add persona response to UI
     const formattedContent = formatResponse(personaResponse.content);
-    addMessageToUI("assistant", formattedContent);
+    const messageDiv = addMessageToUI("assistant", formattedContent);
 
     // Add to conversation in database
     await addMessageToConversation("assistant", personaResponse.content);
@@ -5060,7 +5079,12 @@ async function sendToPersona(query, conversationHistory, loadingId, personaName,
     // Handle actions
     if (personaResponse.actions && personaResponse.actions.length > 0) {
       for (const action of personaResponse.actions) {
-        await handlePersonaAction(action, personaResponse.content);
+        // Check for knowledge gap suggestion first
+        if (action.type === 'suggest_kb_write' && window.showKnowledgeSuggestion && messageDiv) {
+          window.showKnowledgeSuggestion(messageDiv, action);
+        } else {
+          await handlePersonaAction(action, personaResponse.content);
+        }
       }
     }
 
@@ -5085,6 +5109,12 @@ async function handlePersonaAction(action, responseContent) {
   console.log("[Persona] Handling action:", action.type);
 
   switch (action.type) {
+    case "suggest_kb_write":
+      // Knowledge gap suggestion - handled inline in sendToPersona
+      // This case is here for completeness but shouldn't be called directly
+      console.log("[Persona] suggest_kb_write action (handled inline)");
+      break;
+
     case "review_curriculum":
       // Show curriculum review dialog (Phase 23)
       console.log("[Persona] review_curriculum action received");
@@ -8556,10 +8586,20 @@ async function sendQueryInternal(displayQuery, apiQuery, overrides) {
         console.log("Router v2 metadata:", metadata);
       }
 
-      addMessageToUI("assistant", messageContent);
+      const messageDiv = addMessageToUI("assistant", messageContent);
 
       // Add to conversation in database
       await addMessageToConversation("assistant", result.result.response);
+
+      // Check for knowledge gap suggestions (persona_actions)
+      if (result.result.persona_actions && result.result.persona_actions.length > 0) {
+        for (const action of result.result.persona_actions) {
+          if (action.type === 'suggest_kb_write' && window.showKnowledgeSuggestion && messageDiv) {
+            // Show knowledge suggestion card below the message
+            window.showKnowledgeSuggestion(messageDiv, action);
+          }
+        }
+      }
 
       // Auto-categorize conversation after response
       // Use setTimeout to not block the UI
@@ -8590,6 +8630,7 @@ function getChatMessagesContainer() {
 
 /**
  * Add message to UI
+ * Returns the message element for further manipulation
  */
 function addMessageToUI(role, content) {
   const container = getChatMessagesContainer();
@@ -8621,7 +8662,7 @@ function addMessageToUI(role, content) {
     setTimeout(() => lucide.createIcons(), 0);
   }
 
-  return id;
+  return div;
 }
 
 /**
@@ -8665,8 +8706,13 @@ function addMessage(role, content) {
 /**
  * Remove message
  */
-function removeMessage(id) {
-  const el = document.getElementById(id);
+/**
+ * Remove message (accepts ID string or element)
+ */
+function removeMessage(idOrElement) {
+  const el = typeof idOrElement === 'string' 
+    ? document.getElementById(idOrElement) 
+    : idOrElement;
   if (el) el.remove();
 }
 
@@ -16766,64 +16812,6 @@ async function presentExercise(data) {
 }
 
 /**
- * Check exercise solution
- */
-async function checkExerciseSolution(exerciseId) {
-  const container = document.getElementById(exerciseId);
-  if (!container) return;
-
-  const textarea = container.querySelector(".code-textarea");
-  const userCode = textarea ? textarea.value : "";
-  const data = JSON.parse(container.dataset.exerciseData || "{}");
-
-  const feedback = document.getElementById(`${exerciseId}-feedback`);
-  feedback.innerHTML =
-    '<div class="loading-spinner"></div><span>Checking...</span>';
-
-  try {
-    // Run test cases
-    const results = [];
-
-    for (const testCase of data.test_cases || []) {
-      const result = await runJavaScript(userCode + "\n" + testCase.input);
-      const passed = result.output.trim() === testCase.output;
-      results.push({ testCase, result, passed });
-    }
-
-    const allPassed = results.every((r) => r.passed);
-
-    // Display feedback
-    let html =
-      '<div class="feedback-header ' +
-      (allPassed ? "feedback-success" : "feedback-error") +
-      '">';
-    html += allPassed ? "✓ All tests passed!" : "✗ Some tests failed";
-    html += "</div>";
-
-    html += '<div class="feedback-tests">';
-    for (const r of results) {
-      html += `<div class="feedback-test ${r.passed ? "test-pass" : "test-fail"}">`;
-      html += `<div class="test-status">${r.passed ? "✓" : "✗"}</div>`;
-      html += `<div class="test-info">${r.testCase.input}</div>`;
-      html += "</div>";
-    }
-    html += "</div>";
-
-    if (allPassed) {
-      html +=
-        '<div class="feedback-success-message">Great job! You solved it correctly.</div>';
-
-      // Update mastery in backend
-      await updateExerciseMastery(data.exercise_id, true);
-    }
-
-    feedback.innerHTML = html;
-  } catch (error) {
-    feedback.innerHTML = `<div class="feedback-error">Error checking solution: ${error.message}</div>`;
-  }
-}
-
-/**
  * Show exercise hint
  */
 function showExerciseHint(exerciseId, hintIndex) {
@@ -17613,39 +17601,61 @@ function renderGraphSidebar() {
       </div>
     </div>
     <div id="graph-sidebar-garden" class="graph-sidebar-panel hidden">
-      <div id="graph-garden-content" style="padding: 16px;">
-        <!-- Graph Initialization Section -->
+      <div id="graph-garden-content" style="padding: 16px; overflow-y: auto;">
+        
+        <!-- Stats Dashboard -->
         <div class="garden-section" style="margin-bottom: 24px;">
           <h3 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">
-            <i data-lucide="database" style="width: 14px; height: 14px; margin-right: 6px;"></i>
-            Graph Data
+            <i data-lucide="bar-chart-3" style="width: 14px; height: 14px; margin-right: 6px;"></i>
+            Garden Health
           </h3>
-          <div id="graph-data-status" style="margin-bottom: 12px;">
-            <div class="loading-spinner" style="text-align: center; padding: 12px; color: #808080; font-size: 11px;">
-              Checking graph data...
+          <div id="garden-stats-grid" class="garden-stats-grid">
+            <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 11px; grid-column: 1 / -1;">
+              Loading stats...
             </div>
           </div>
-          <button id="graph-backfill-btn" class="btn btn-primary" style="width: 100%; display: none; font-size: 12px;">
-            <i data-lucide="zap" style="width: 14px; height: 14px; margin-right: 6px;"></i>
-            Populate Graph from Notes
-          </button>
         </div>
         
-        <!-- Isolated Notes Section -->
-        <div class="garden-section">
+        <!-- Suggestions Section -->
+        <div class="garden-section" style="margin-bottom: 24px;">
           <h3 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">
-            <i data-lucide="sprout" style="width: 14px; height: 14px; margin-right: 6px;"></i>
-            Digital Garden
+            <i data-lucide="lightbulb" style="width: 14px; height: 14px; margin-right: 6px;"></i>
+            Suggestions
           </h3>
-          <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px;">
-            Isolated notes that need more connections to grow.
-          </p>
-          <div id="garden-isolated-notes">
+          <div id="garden-suggestions-tabs" class="garden-suggestions-tabs">
+            <button class="garden-tab active" data-tab="connections">Connections</button>
+            <button class="garden-tab" data-tab="merges">Merges</button>
+            <button class="garden-tab" data-tab="enrichment">Enrichment</button>
+          </div>
+          <div id="garden-suggestions-content" style="margin-top: 12px;">
             <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 11px;">
-              Loading isolated notes...
+              Loading suggestions...
             </div>
           </div>
         </div>
+        
+        <!-- Maintenance Section -->
+        <div class="garden-section">
+          <h3 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">
+            <i data-lucide="wrench" style="width: 14px; height: 14px; margin-right: 6px;"></i>
+            Maintenance
+          </h3>
+          <div class="garden-maintenance-actions">
+            <button id="garden-prune-weak-btn" class="garden-action-btn">
+              <i data-lucide="scissors" style="width: 14px; height: 14px;"></i>
+              <span>Prune Weak Links</span>
+            </button>
+            <button id="garden-prune-stale-btn" class="garden-action-btn">
+              <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+              <span>Remove Stale Entities</span>
+            </button>
+            <button id="garden-enrich-all-btn" class="garden-action-btn">
+              <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
+              <span>Enrich Unenriched Notes</span>
+            </button>
+          </div>
+        </div>
+        
       </div>
     </div>
     ${renderLowerPanel("graph", [
@@ -17816,6 +17826,14 @@ function initGraphPage() {
     return;
   }
   
+  // Register cose-bilkent layout plugin
+  if (typeof cytoscapeCoseBilkent !== 'undefined') {
+    cytoscape.use(cytoscapeCoseBilkent);
+    console.log("[Graph] Registered cose-bilkent layout plugin");
+  } else {
+    console.warn("[Graph] cose-bilkent plugin not loaded, falling back to default layouts");
+  }
+  
   // Initialize the graph canvas
   initGraphCanvas();
   
@@ -17889,12 +17907,30 @@ async function initGraphCanvas() {
     cytoscapeInstance = null;
   }
   
-  // Restore previous graph state if it exists
+  // Clear bad saved state (empty types array) to ensure graph loads
   const savedState = sessionStorage.getItem('graph-state');
   if (savedState) {
     try {
-      graphState = JSON.parse(savedState);
+      const parsed = JSON.parse(savedState);
+      if (parsed.filters && Array.isArray(parsed.filters.types) && parsed.filters.types.length === 0) {
+        sessionStorage.removeItem('graph-state');
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+  }
+  
+  // Restore previous graph state if it exists
+  const savedStateAfterCleanup = sessionStorage.getItem('graph-state');
+  if (savedStateAfterCleanup) {
+    try {
+      graphState = JSON.parse(savedStateAfterCleanup);
       graphState.expandedNodes = new Set(graphState.expandedNodes || []);
+      
+      // Reset empty types array to undefined (means show all)
+      if (graphState.filters && Array.isArray(graphState.filters.types) && graphState.filters.types.length === 0) {
+        delete graphState.filters.types;
+      }
     } catch (e) {
       console.error("[Graph] Failed to restore graph state:", e);
     }
@@ -17916,7 +17952,13 @@ async function initGraphCanvas() {
     
     // Add filter parameters if they exist
     if (graphState.filters) {
-      if (graphState.filters.type) params.append('type', graphState.filters.type);
+      if (graphState.filters.types && graphState.filters.types.length > 0) {
+        params.append('type', graphState.filters.types.join(','));
+      }
+      // If types array is empty, explicitly filter to impossible type to show nothing
+      else if (graphState.filters.types && graphState.filters.types.length === 0) {
+        params.append('type', '__none__');
+      }
       if (graphState.filters.domain) params.append('domain', graphState.filters.domain);
       if (graphState.filters.authority_min) params.append('authority_min', graphState.filters.authority_min);
     }
@@ -18032,6 +18074,34 @@ async function initGraphCanvas() {
   // poll every 5 seconds and reload when they become available
   if (!graphData.indices_ready) {
     console.log("[Graph] Indices not ready yet, will auto-refresh when available...");
+    
+    // Show prominent loading overlay
+    const loadingOverlay = document.createElement('div');
+    loadingOverlay.id = 'graph-loading-overlay';
+    loadingOverlay.style.cssText = `
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 24px;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    `;
+    loadingOverlay.innerHTML = `
+      <div class="loading-spinner" style="width: 16px; height: 16px; border: 2px solid var(--accent-primary); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <div style="font-size: 13px; font-weight: 500; color: var(--text-primary);">Building Knowledge Graph</div>
+        <div id="graph-loading-status" style="font-size: 11px; color: var(--text-secondary);">Indexing ${graphData.nodes.length} notes...</div>
+      </div>
+    `;
+    container.appendChild(loadingOverlay);
+    
     graphRetryInterval = setInterval(async () => {
       try {
         const retryParams = new URLSearchParams({ limit: '100', include_ghosts: 'true' });
@@ -18048,10 +18118,22 @@ async function initGraphCanvas() {
         if (!retryResp.ok) throw new Error(`HTTP ${retryResp.status}`);
         const retryData = await retryResp.json();
         
+        // Update status message
+        const statusEl = document.getElementById('graph-loading-status');
+        if (statusEl) {
+          const edgeCount = retryData.edges?.length || 0;
+          statusEl.textContent = `Found ${retryData.nodes.length} notes, ${edgeCount} connections...`;
+        }
+        
         if (retryData.indices_ready && retryData.edges && retryData.edges.length > 0) {
           clearInterval(graphRetryInterval);
           graphRetryInterval = null;
           console.log("[Graph] Indices ready! Reloading with", retryData.nodes.length, "nodes and", retryData.edges.length, "edges");
+          
+          // Remove loading overlay
+          const overlay = document.getElementById('graph-loading-overlay');
+          if (overlay) overlay.remove();
+          
           // Rebuild the graph with full data
           initGraphCanvas();
         } else {
@@ -18110,22 +18192,49 @@ function getLayoutConfig(layoutName) {
       
     case 'cose':
     default:
-      return {
-        name: 'cose',
-        animate: true,
-        animationDuration: 500,
-        fit: true,
-        padding: 50,
-        nodeRepulsion: 800000,
-        idealEdgeLength: 150,
-        edgeElasticity: 100,
-        nestingFactor: 5,
-        gravity: 40,
-        numIter: 1000,
-        initialTemp: 200,
-        coolingFactor: 0.95,
-        minTemp: 1.0
-      };
+      // Use cose-bilkent if available, fallback to cose
+      const useCoseBilkent = typeof cytoscapeCoseBilkent !== 'undefined';
+      console.log('[Graph] cytoscapeCoseBilkent available:', useCoseBilkent);
+      console.log('[Graph] Using layout:', useCoseBilkent ? 'cose-bilkent' : 'cose');
+      
+      if (useCoseBilkent) {
+        return {
+          name: 'cose-bilkent',
+          animate: 'end',          // Animate only at end (faster)
+          animationDuration: 500,
+          fit: true,
+          padding: 80,             // More breathing room (was 50)
+          nodeRepulsion: 6500,     // Tuned for spread
+          idealEdgeLength: 200,    // Longer edges (was 150)
+          edgeElasticity: 0.45,    // Edge flexibility
+          nestingFactor: 0.1,      // Low nesting (flat graph)
+          gravity: 0.25,           // WEAK center pull (was 40!)
+          gravityRange: 3.8,       // Gravity falloff distance
+          numIter: 2500,           // More iterations (was 1000)
+          tile: true,              // Separate disconnected components
+          tilingPaddingVertical: 40,
+          tilingPaddingHorizontal: 40,
+          nodeDimensionsIncludeLabels: true
+        };
+      } else {
+        // Fallback to default cose with improved params
+        return {
+          name: 'cose',
+          animate: true,
+          animationDuration: 500,
+          fit: true,
+          padding: 50,
+          nodeRepulsion: 800000,
+          idealEdgeLength: 150,
+          edgeElasticity: 100,
+          nestingFactor: 5,
+          gravity: 40,
+          numIter: 1000,
+          initialTemp: 200,
+          coolingFactor: 0.95,
+          minTemp: 1.0
+        };
+      }
   }
 }
 
@@ -18146,9 +18255,9 @@ function buildGraphStyle(domainColors) {
         'text-outline-width': 2,
         'text-outline-color': '#1a1a1a',
         'color': '#ffffff',
-        // Smaller base size: 12px base + up to 24px based on authority (12-36px range)
-        'width': ele => 12 + (ele.data('authority') * 24),
-        'height': ele => 12 + (ele.data('authority') * 24),
+        // Increased base size: 16px base + up to 32px based on authority (16-48px range)
+        'width': ele => 16 + (ele.data('authority') * 32),
+        'height': ele => 16 + (ele.data('authority') * 32),
         'background-color': ele => {
           const domain = ele.data('domain');
           return domainColors[domain] || '#666666';
@@ -18373,15 +18482,8 @@ function setupGraphEventHandlers(cy, domainColors) {
   });
   document.getElementById('graph-reset')?.addEventListener('click', () => {
     if (cytoscapeInstance) {
-      const layout = cytoscapeInstance.layout({
-        name: 'cose',
-        animate: true,
-        animationDuration: 500,
-        nodeRepulsion: () => 8000,
-        idealEdgeLength: () => 80,
-        gravity: 0.3,
-        padding: 50
-      });
+      const layoutConfig = getLayoutConfig(graphState.layout || 'cose');
+      const layout = cytoscapeInstance.layout(layoutConfig);
       layout.run();
     }
   });
@@ -18865,6 +18967,39 @@ function renderGraphFiltersPanel() {
         </select>
       </div>
       
+      <!-- Edge Type Legend & Toggles -->
+      <div class="filter-section edge-type-toggles" style="margin-bottom: 20px;">
+        <h4 style="font-size: 11px; font-weight: 600; margin-bottom: 8px; opacity: 0.8; color: var(--text-primary);">
+          <i data-lucide="git-branch" style="width: 12px; height: 12px; margin-right: 4px;"></i>
+          Connection Types
+        </h4>
+        <label style="display: flex; align-items: center; gap: 8px; padding: 6px 4px; cursor: pointer; border-radius: 4px; transition: background 0.15s;">
+          <input type="checkbox" class="edge-type-cb" data-edge-type="references" checked>
+          <span class="edge-sample edge-solid" style="width: 20px; height: 3px; background: #888888; border-radius: 1px; flex-shrink: 0;"></span>
+          <span style="font-size: 11px; color: var(--text-primary);">References (backlinks)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; padding: 6px 4px; cursor: pointer; border-radius: 4px; transition: background 0.15s;">
+          <input type="checkbox" class="edge-type-cb" data-edge-type="mention" checked>
+          <span class="edge-sample edge-dashed" style="width: 20px; height: 3px; flex-shrink: 0; border-radius: 1px; background: repeating-linear-gradient(to right, #45B7D1, #45B7D1 4px, transparent 4px, transparent 8px);"></span>
+          <span style="font-size: 11px; color: var(--text-primary);">Mentions (unlinked)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; padding: 6px 4px; cursor: pointer; border-radius: 4px; transition: background 0.15s;">
+          <input type="checkbox" class="edge-type-cb" data-edge-type="shared_tag" checked>
+          <span class="edge-sample edge-dotted" style="width: 20px; height: 3px; flex-shrink: 0; border-radius: 1px; background: repeating-linear-gradient(to right, #52B788, #52B788 2px, transparent 2px, transparent 6px);"></span>
+          <span style="font-size: 11px; color: var(--text-primary);">Shared Tags</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; padding: 6px 4px; cursor: pointer; border-radius: 4px; transition: background 0.15s;">
+          <input type="checkbox" class="edge-type-cb" data-edge-type="relates_to" checked>
+          <span class="edge-sample edge-dashed" style="width: 20px; height: 3px; flex-shrink: 0; border-radius: 1px; background: repeating-linear-gradient(to right, #555555, #555555 4px, transparent 4px, transparent 8px);"></span>
+          <span style="font-size: 11px; color: var(--text-primary);">Relates To (entities)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; padding: 6px 4px; cursor: pointer; border-radius: 4px; transition: background 0.15s;">
+          <input type="checkbox" class="edge-type-cb" data-edge-type="co_occurs_with" checked>
+          <span class="edge-sample edge-dotted" style="width: 20px; height: 3px; flex-shrink: 0; border-radius: 1px; background: repeating-linear-gradient(to right, #555555, #555555 2px, transparent 2px, transparent 6px);"></span>
+          <span style="font-size: 11px; color: var(--text-primary);">Co-occurs With</span>
+        </label>
+      </div>
+      
       <!-- Ghost Node Toggle -->
       <div class="filter-section" style="margin-bottom: 20px;">
         <label style="display: flex; align-items: center; font-size: 12px; color: var(--text-primary); cursor: pointer;">
@@ -18876,18 +19011,71 @@ function renderGraphFiltersPanel() {
         </p>
       </div>
       
-      <!-- Domain Filter (placeholder for future) -->
+      <!-- Domain Filter -->
       <div class="filter-section" style="margin-bottom: 12px;">
         <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
           <i data-lucide="folder" style="width: 12px; height: 12px; margin-right: 4px;"></i>
           Domain Filter
         </label>
-        <select id="graph-domain-filter" disabled style="width: 100%; padding: 6px 8px; font-size: 12px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-secondary); opacity: 0.5;">
+        <select id="graph-domain-filter" style="width: 100%; padding: 6px 8px; font-size: 12px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary);">
           <option value="">All Domains</option>
+          ${Object.keys(graphDomainColors || {}).map(d => 
+            `<option value="${d}" ${graphState.filters?.domain === d ? 'selected' : ''}>${d}</option>`
+          ).join('')}
         </select>
-        <p style="font-size: 10px; color: var(--text-secondary); margin: 4px 0 0 0; font-style: italic;">
-          Coming soon
-        </p>
+      </div>
+      
+      <!-- Content Type Filter -->
+      <div class="filter-section content-type-filter" style="margin-bottom: 12px;">
+        <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+          <i data-lucide="layers" style="width: 12px; height: 12px; margin-right: 4px;"></i>
+          Content Types
+        </label>
+        <div class="content-type-toggles" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+          <label style="display: flex; align-items: center; gap: 6px; padding: 4px; cursor: pointer; border-radius: 4px; font-size: 11px; transition: background 0.15s;">
+            <input type="checkbox" class="content-type-cb" data-content-type="note" checked>
+            <i data-lucide="file-text" style="width: 14px; height: 14px;"></i>
+            <span>Notes</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; padding: 4px; cursor: pointer; border-radius: 4px; font-size: 11px; transition: background 0.15s;">
+            <input type="checkbox" class="content-type-cb" data-content-type="conversation" checked>
+            <i data-lucide="message-circle" style="width: 14px; height: 14px;"></i>
+            <span>Convos</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; padding: 4px; cursor: pointer; border-radius: 4px; font-size: 11px; transition: background 0.15s;">
+            <input type="checkbox" class="content-type-cb" data-content-type="book" checked>
+            <i data-lucide="book" style="width: 14px; height: 14px;"></i>
+            <span>Books</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; padding: 4px; cursor: pointer; border-radius: 4px; font-size: 11px; transition: background 0.15s;">
+            <input type="checkbox" class="content-type-cb" data-content-type="capture" checked>
+            <i data-lucide="camera" style="width: 14px; height: 14px;"></i>
+            <span>Captures</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; padding: 4px; cursor: pointer; border-radius: 4px; font-size: 11px; transition: background 0.15s;">
+            <input type="checkbox" class="content-type-cb" data-content-type="code" checked>
+            <i data-lucide="code" style="width: 14px; height: 14px;"></i>
+            <span>Code</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; padding: 4px; cursor: pointer; border-radius: 4px; font-size: 11px; transition: background 0.15s;">
+            <input type="checkbox" class="content-type-cb" data-content-type="canvas" checked>
+            <i data-lucide="layout" style="width: 14px; height: 14px;"></i>
+            <span>Canvas</span>
+          </label>
+        </div>
+      </div>
+      
+      <!-- Authority Threshold Filter -->
+      <div class="filter-section authority-filter" style="margin-bottom: 12px;">
+        <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+          <i data-lucide="trending-up" style="width: 12px; height: 12px; margin-right: 4px;"></i>
+          Min Authority: <span id="authority-value" style="color: var(--accent-primary);">0.0</span>
+        </label>
+        <input type="range" id="graph-authority-filter" min="0" max="1" step="0.1" value="${graphState.filters?.authority_min || 0}" style="width: 100%; accent-color: var(--accent-primary);">
+        <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-secondary); margin-top: 2px;">
+          <span>0.0</span>
+          <span>1.0</span>
+        </div>
       </div>
     </div>
   `;
@@ -18907,12 +19095,143 @@ function renderGraphFiltersPanel() {
     });
   }
   
-  // Setup ghost toggle handler (placeholder for now)
+  // Setup edge type toggle handlers
+  const edgeTypeCheckboxes = document.querySelectorAll('.edge-type-cb');
+  edgeTypeCheckboxes.forEach(checkbox => {
+    const edgeType = checkbox.getAttribute('data-edge-type');
+    
+    // Restore saved state
+    if (graphState.filters && graphState.filters.edgeTypes) {
+      checkbox.checked = graphState.filters.edgeTypes.includes(edgeType);
+    }
+    
+    // Add hover effect to label
+    const label = checkbox.closest('label');
+    if (label) {
+      label.addEventListener('mouseenter', () => {
+        label.style.background = 'var(--bg-tertiary)';
+      });
+      label.addEventListener('mouseleave', () => {
+        label.style.background = 'transparent';
+      });
+    }
+    
+    // Add change handler
+    checkbox.addEventListener('change', (e) => {
+      toggleEdgeType(edgeType, e.target.checked);
+    });
+  });
+  
+  // Setup domain filter handler
+  const domainFilter = document.getElementById('graph-domain-filter');
+  if (domainFilter) {
+    domainFilter.addEventListener('change', (e) => {
+      const domain = e.target.value;
+      console.log('[Graph] Domain filter changed to:', domain || 'All');
+      if (!graphState.filters) graphState.filters = {};
+      graphState.filters.domain = domain || null;
+      applyGraphFilters();
+    });
+  }
+  
+  // Setup content type filter handlers
+  const contentTypeCheckboxes = document.querySelectorAll('.content-type-cb');
+  contentTypeCheckboxes.forEach(checkbox => {
+    const contentType = checkbox.getAttribute('data-content-type');
+    
+    // Restore saved state
+    if (graphState.filters && graphState.filters.types && graphState.filters.types.length > 0) {
+      // If types is an array with items, check if this type is in it
+      checkbox.checked = graphState.filters.types.includes(contentType);
+    } else {
+      // If types is undefined/null/empty (all types or none selected), check all boxes by default
+      checkbox.checked = true;
+    }
+    
+    // Add hover effect to label
+    const label = checkbox.closest('label');
+    if (label) {
+      label.addEventListener('mouseenter', () => {
+        label.style.background = 'var(--bg-tertiary)';
+      });
+      label.addEventListener('mouseleave', () => {
+        label.style.background = 'transparent';
+      });
+    }
+    
+    // Add change handler
+    checkbox.addEventListener('change', () => {
+      // Collect all checked types
+      const checkedTypes = [];
+      contentTypeCheckboxes.forEach(cb => {
+        if (cb.checked) {
+          checkedTypes.push(cb.getAttribute('data-content-type'));
+        }
+      });
+      console.log('[Graph] Content types filter changed to:', checkedTypes);
+      if (!graphState.filters) graphState.filters = {};
+      // Always use the array - empty array means no types, full array means all types
+      graphState.filters.types = checkedTypes;
+      applyGraphFilters();
+    });
+  });
+  
+  // Setup authority threshold slider handler (debounced)
+  const authoritySlider = document.getElementById('graph-authority-filter');
+  const authorityValue = document.getElementById('authority-value');
+  if (authoritySlider && authorityValue) {
+    // Set initial value display
+    authorityValue.textContent = parseFloat(authoritySlider.value).toFixed(1);
+    
+    let authorityDebounce = null;
+    authoritySlider.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      authorityValue.textContent = value.toFixed(1);
+      
+      // Debounce the filter application
+      clearTimeout(authorityDebounce);
+      authorityDebounce = setTimeout(() => {
+        console.log('[Graph] Authority threshold changed to:', value);
+        if (!graphState.filters) graphState.filters = {};
+        graphState.filters.authority_min = value;
+        applyGraphFilters();
+      }, 300);
+    });
+  }
+  
+  // Setup ghost toggle handler
   const ghostToggle = document.getElementById('graph-show-ghosts');
   if (ghostToggle) {
+    // Restore saved state
+    if (graphState.filters && graphState.filters.showGhosts !== undefined) {
+      ghostToggle.checked = graphState.filters.showGhosts;
+    } else {
+      ghostToggle.checked = true; // Default to showing ghosts
+    }
+    
     ghostToggle.addEventListener('change', (e) => {
-      console.log('[Graph] Ghost nodes toggle:', e.target.checked);
-      // TODO: Implement ghost node filtering
+      const showGhosts = e.target.checked;
+      console.log('[Graph] Ghost nodes toggle:', showGhosts);
+      
+      if (!graphState.filters) graphState.filters = {};
+      graphState.filters.showGhosts = showGhosts;
+      
+      if (cytoscapeInstance) {
+        // Hide/show ghost nodes
+        cytoscapeInstance.nodes().forEach(node => {
+          if (node.data('isGhost')) {
+            node.style('display', showGhosts ? 'element' : 'none');
+          }
+        });
+        // Hide/show ghost edges
+        cytoscapeInstance.edges().forEach(edge => {
+          if (edge.data('isGhost')) {
+            edge.style('display', showGhosts ? 'element' : 'none');
+          }
+        });
+      }
+      
+      saveGraphState();
     });
   }
 }
@@ -18939,6 +19258,38 @@ function applyGraphLayout(layoutName) {
 }
 
 /**
+ * Toggle edge type visibility
+ */
+function toggleEdgeType(edgeType, visible) {
+  if (!cytoscapeInstance) return;
+  
+  console.log(`[Graph] Toggling edge type ${edgeType} to ${visible ? 'visible' : 'hidden'}`);
+  
+  // Initialize edgeTypes array if not exists
+  if (!graphState.filters.edgeTypes) {
+    graphState.filters.edgeTypes = ['references', 'mention', 'shared_tag', 'relates_to', 'co_occurs_with'];
+  }
+  
+  // Update state
+  if (visible) {
+    if (!graphState.filters.edgeTypes.includes(edgeType)) {
+      graphState.filters.edgeTypes.push(edgeType);
+    }
+  } else {
+    graphState.filters.edgeTypes = graphState.filters.edgeTypes.filter(t => t !== edgeType);
+  }
+  
+  // Apply style to all edges of this type
+  cytoscapeInstance.edges().forEach(edge => {
+    if (edge.data('relationshipType') === edgeType) {
+      edge.style('display', visible ? 'element' : 'none');
+    }
+  });
+  
+  saveGraphState();
+}
+
+/**
  * Render graph details panel
  */
 function renderGraphDetailsPanel() {
@@ -18959,176 +19310,546 @@ function renderGraphDetailsPanel() {
  * Load Garden view - shows isolated notes and maintenance stats
  */
 async function loadGardenView() {
-  // Check graph data status first
-  await checkGraphDataStatus();
-  
-  const container = document.getElementById('garden-isolated-notes');
+  await initGardenView();
+}
+
+/**
+ * Load garden stats and display them in the dashboard
+ */
+async function loadGardenStats() {
+  const container = document.getElementById('garden-stats-grid');
   if (!container) return;
   
   try {
-    // Fetch isolated notes from /polly/graph/list with connection_status filter
-    const response = await fetch('http://127.0.0.1:11436/polly/graph/list?connection_status=isolated&limit=50');
+    const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/stats');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
+    const stats = await response.json();
     
-    if (!data.items || data.items.length === 0) {
-      container.innerHTML = `
-        <div style="text-align: center; padding: 20px; color: var(--text-success);">
-          <i data-lucide="check-circle" style="width: 32px; height: 32px; opacity: 0.5; margin-bottom: 8px;"></i>
-          <p style="font-size: 12px; margin: 0;">No isolated notes found!</p>
-          <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">Your knowledge graph is well connected.</p>
-        </div>
-      `;
-      if (typeof lucide !== 'undefined') lucide.createIcons();
-      return;
-    }
+    // Calculate health score (0-100)
+    const healthScore = Math.round(
+      (stats.coverage_pct * 0.4) + // 40% weight on coverage
+      (Math.min(100, (stats.avg_connections_per_note / 5) * 100) * 0.3) + // 30% weight on connections
+      (Math.max(0, 100 - stats.isolated_notes) * 0.3) // 30% weight on non-isolated
+    );
     
-    // Render isolated notes
-    let html = '<div class="garden-isolated-list">';
-    data.items.forEach(item => {
-      const icon = getTypeIcon(item.type);
-      html += `
-        <div class="garden-isolated-item" data-item-id="${escapeHtml(item.id)}">
-          <i data-lucide="${escapeHtml(icon)}" style="width: 14px; height: 14px; opacity: 0.5;"></i>
-          <div class="garden-isolated-info">
-            <div style="font-size: 12px; font-weight: 500; color: var(--text-primary);">${escapeHtml(item.name)}</div>
-            <div style="font-size: 10px; color: var(--text-secondary); margin-top: 2px;">
-              ${item.connection_count || 0} connections
-            </div>
-          </div>
-        </div>
-      `;
-    });
-    html += '</div>';
+    const healthColor = healthScore >= 70 ? '#10b981' : healthScore >= 40 ? '#f59e0b' : '#ef4444';
     
-    container.innerHTML = html;
-    
-    // Re-initialize icons
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-    
-    // Setup click handlers
-    container.querySelectorAll('.garden-isolated-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const itemId = item.dataset.itemId;
-        
-        // Center on this node in the graph
-        if (cytoscapeInstance) {
-          const node = cytoscapeInstance.getElementById(itemId);
-          if (node && node.length > 0) {
-            cytoscapeInstance.animate({
-              center: { eles: node },
-              zoom: 2
-            }, {
-              duration: 300
-            });
-            node.select();
-          }
-        }
-      });
-    });
+    container.innerHTML = `
+      <!-- Health Score Card -->
+      <div class="garden-stat-card" style="grid-column: span 2; background: linear-gradient(135deg, ${healthColor}22 0%, ${healthColor}11 100%); border-color: ${healthColor}33;">
+        <div class="garden-stat-value" style="color: ${healthColor}; font-size: 36px;">${healthScore}</div>
+        <div class="garden-stat-label">Health Score</div>
+      </div>
+      
+      <!-- Total Notes -->
+      <div class="garden-stat-card">
+        <div class="garden-stat-value">${stats.total_notes}</div>
+        <div class="garden-stat-label">Total Notes</div>
+      </div>
+      
+      <!-- Total Connections -->
+      <div class="garden-stat-card">
+        <div class="garden-stat-value">${stats.total_connections}</div>
+        <div class="garden-stat-label">Connections</div>
+      </div>
+      
+      <!-- Entities -->
+      <div class="garden-stat-card">
+        <div class="garden-stat-value">${stats.total_entities}</div>
+        <div class="garden-stat-label">Entities</div>
+      </div>
+      
+      <!-- Avg Connections -->
+      <div class="garden-stat-card">
+        <div class="garden-stat-value">${stats.avg_connections_per_note}</div>
+        <div class="garden-stat-label">Avg Connections</div>
+      </div>
+      
+      <!-- Coverage -->
+      <div class="garden-stat-card">
+        <div class="garden-stat-value">${stats.coverage_pct}%</div>
+        <div class="garden-stat-label">Enriched</div>
+        <div class="garden-stat-detail">${stats.enriched_notes} of ${stats.total_notes}</div>
+      </div>
+      
+      <!-- Isolated Notes -->
+      <div class="garden-stat-card ${stats.isolated_notes > 10 ? 'stat-warning' : ''}">
+        <div class="garden-stat-value">${stats.isolated_notes}</div>
+        <div class="garden-stat-label">Isolated Notes</div>
+      </div>
+      
+      <!-- Weak Links -->
+      <div class="garden-stat-card ${stats.weak_connection_count > 20 ? 'stat-warning' : ''}">
+        <div class="garden-stat-value">${stats.weak_connection_count}</div>
+        <div class="garden-stat-label">Weak Links</div>
+      </div>
+      
+      <!-- Stale Entities -->
+      <div class="garden-stat-card ${stats.stale_entity_count > 5 ? 'stat-warning' : ''}">
+        <div class="garden-stat-value">${stats.stale_entity_count}</div>
+        <div class="garden-stat-label">Stale Entities</div>
+      </div>
+    `;
     
   } catch (error) {
-    console.error("[Garden] Failed to load isolated notes:", error);
+    console.error("[Garden] Failed to load stats:", error);
     container.innerHTML = `
-      <div style="text-align: center; padding: 20px; color: var(--text-error); font-size: 11px;">
-        Failed to load isolated notes
+      <div style="text-align: center; padding: 20px; color: var(--text-error); font-size: 11px; grid-column: 1 / -1;">
+        Failed to load garden stats
       </div>
     `;
   }
 }
 
 /**
- * Check graph data status and show backfill button if needed
+ * Load garden suggestions and display them
  */
-async function checkGraphDataStatus() {
-  const statusContainer = document.getElementById('graph-data-status');
-  const backfillBtn = document.getElementById('graph-backfill-btn');
-  if (!statusContainer || !backfillBtn) return;
+async function loadGardenSuggestions() {
+  const container = document.getElementById('garden-suggestions-content');
+  if (!container) return;
   
   try {
-    // Check if we have any graph data
-    const response = await fetch('http://127.0.0.1:11436/polly/graph/nodes?limit=1');
+    const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/suggestions?limit=10');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     
-    if (!data.nodes || data.nodes.length === 0) {
-      // No graph data - show backfill button
-      statusContainer.innerHTML = `
-        <div style="background: var(--bg-warning, #FFF3CD); border: 1px solid var(--border-warning, #FFE69C); border-radius: 6px; padding: 12px; font-size: 11px; color: var(--text-warning, #856404);">
-          <i data-lucide="alert-triangle" style="width: 14px; height: 14px; margin-right: 4px;"></i>
-          <strong>No graph data found.</strong> Extract entities from your notes to build the knowledge graph.
-        </div>
-      `;
-      backfillBtn.style.display = 'flex';
-      
-      // Setup backfill button handler
-      backfillBtn.onclick = async () => {
-        backfillBtn.disabled = true;
-        backfillBtn.innerHTML = '<i data-lucide="loader" class="spin" style="width: 14px; height: 14px; margin-right: 6px;"></i> Extracting entities...';
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-        
-        try {
-          const backfillResponse = await fetch('http://127.0.0.1:11436/polly/graph/backfill', {
-            method: 'POST'
-          });
-          if (!backfillResponse.ok) throw new Error(`HTTP ${backfillResponse.status}`);
-          const result = await backfillResponse.json();
-          
-          if (result.success) {
-            statusContainer.innerHTML = `
-              <div style="background: var(--bg-success, #D4EDDA); border: 1px solid var(--border-success, #C3E6CB); border-radius: 6px; padding: 12px; font-size: 11px; color: var(--text-success, #155724);">
-                <i data-lucide="check-circle" style="width: 14px; height: 14px; margin-right: 4px;"></i>
-                <strong>Success!</strong> Processed ${result.processed} notes. Refresh the graph to see your data.
-              </div>
-            `;
-            backfillBtn.style.display = 'none';
-            
-            // Refresh graph canvas after backfill
-            setTimeout(() => {
-              if (cytoscapeInstance) {
-                initGraphCanvas();
-              }
-            }, 1000);
-          } else {
-            throw new Error('Backfill failed');
-          }
-          
-        } catch (error) {
-          console.error('[Garden] Backfill failed:', error);
-          statusContainer.innerHTML = `
-            <div style="background: var(--bg-error, #F8D7DA); border: 1px solid var(--border-error, #F5C6CB); border-radius: 6px; padding: 12px; font-size: 11px; color: var(--text-error, #721C24);">
-              <i data-lucide="x-circle" style="width: 14px; height: 14px; margin-right: 4px;"></i>
-              <strong>Failed to extract entities.</strong> Check console for details.
-            </div>
-          `;
-          backfillBtn.disabled = false;
-          backfillBtn.innerHTML = '<i data-lucide="zap" style="width: 14px; height: 14px; margin-right: 6px;"></i> Retry';
-        }
-        
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-      };
-      
-    } else {
-      // Have graph data - show success
-      statusContainer.innerHTML = `
-        <div style="background: var(--bg-success, #D4EDDA); border: 1px solid var(--border-success, #C3E6CB); border-radius: 6px; padding: 12px; font-size: 11px; color: var(--text-success, #155724);">
-          <i data-lucide="check-circle" style="width: 14px; height: 14px; margin-right: 4px;"></i>
-          Graph contains ${data.nodes.length === 1 ? '1+ node' : `${data.nodes.length}+ nodes`}
-        </div>
-      `;
-      backfillBtn.style.display = 'none';
-    }
+    // Store suggestions in memory for later actions
+    window.gardenSuggestions = data;
     
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    // Show connection suggestions by default
+    renderConnectionSuggestions(data.connection_suggestions);
     
   } catch (error) {
-    console.error('[Garden] Failed to check graph status:', error);
-    statusContainer.innerHTML = `
-      <div style="font-size: 11px; color: var(--text-error); text-align: center; padding: 12px;">
-        Failed to check graph status
+    console.error("[Garden] Failed to load suggestions:", error);
+    container.innerHTML = `
+      <div style="text-align: center; padding: 20px; color: var(--text-error); font-size: 11px;">
+        Failed to load suggestions
       </div>
     `;
   }
 }
+
+/**
+ * Render connection suggestions
+ */
+function renderConnectionSuggestions(suggestions) {
+  const container = document.getElementById('garden-suggestions-content');
+  if (!container) return;
+  
+  if (!suggestions || suggestions.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 20px; color: var(--text-success);">
+        <i data-lucide="check-circle" style="width: 24px; height: 24px; opacity: 0.5; margin-bottom: 8px;"></i>
+        <p style="font-size: 12px; margin: 0;">No connection suggestions!</p>
+        <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">Your notes are well connected.</p>
+      </div>
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+  
+  let html = '<div class="garden-suggestions-list">';
+  suggestions.forEach((sug, idx) => {
+    const confidenceColor = sug.confidence >= 0.8 ? '#10b981' : sug.confidence >= 0.6 ? '#f59e0b' : '#808080';
+    html += `
+      <div class="garden-suggestion-item" data-suggestion-type="connection" data-suggestion-idx="${idx}">
+        <div class="garden-suggestion-header">
+          <div style="flex: 1;">
+            <div style="font-size: 11px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">
+              ${escapeHtml(sug.source_note)} → ${escapeHtml(sug.target_note)}
+            </div>
+            <div style="font-size: 10px; color: var(--text-secondary);">${escapeHtml(sug.reason)}</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: ${confidenceColor}; font-weight: 600;">${Math.round(sug.confidence * 100)}%</span>
+            <button class="garden-suggestion-action" data-action="accept" title="Accept suggestion">
+              <i data-lucide="check" style="width: 12px; height: 12px;"></i>
+            </button>
+            <button class="garden-suggestion-action" data-action="dismiss" title="Dismiss">
+              <i data-lucide="x" style="width: 12px; height: 12px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  html += '</div>';
+  container.innerHTML = html;
+  
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  setupSuggestionHandlers();
+}
+
+/**
+ * Render merge suggestions
+ */
+function renderMergeSuggestions(suggestions) {
+  const container = document.getElementById('garden-suggestions-content');
+  if (!container) return;
+  
+  if (!suggestions || suggestions.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 20px; color: var(--text-success);">
+        <i data-lucide="check-circle" style="width: 24px; height: 24px; opacity: 0.5; margin-bottom: 8px;"></i>
+        <p style="font-size: 12px; margin: 0;">No merge suggestions!</p>
+        <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">No duplicate entities found.</p>
+      </div>
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+  
+  let html = '<div class="garden-suggestions-list">';
+  suggestions.forEach((sug, idx) => {
+    const confidenceColor = sug.confidence >= 0.8 ? '#10b981' : sug.confidence >= 0.6 ? '#f59e0b' : '#808080';
+    html += `
+      <div class="garden-suggestion-item" data-suggestion-type="merge" data-suggestion-idx="${idx}">
+        <div class="garden-suggestion-header">
+          <div style="flex: 1;">
+            <div style="font-size: 11px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">
+              ${escapeHtml(sug.entity_a)} ← ${escapeHtml(sug.entity_b)}
+            </div>
+            <div style="font-size: 10px; color: var(--text-secondary);">${escapeHtml(sug.reason)} (${sug.overlap_count} mentions)</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: ${confidenceColor}; font-weight: 600;">${Math.round(sug.confidence * 100)}%</span>
+            <button class="garden-suggestion-action" data-action="accept" title="Merge entities">
+              <i data-lucide="check" style="width: 12px; height: 12px;"></i>
+            </button>
+            <button class="garden-suggestion-action" data-action="dismiss" title="Dismiss">
+              <i data-lucide="x" style="width: 12px; height: 12px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  html += '</div>';
+  container.innerHTML = html;
+  
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  setupSuggestionHandlers();
+}
+
+/**
+ * Render enrichment suggestions
+ */
+function renderEnrichmentSuggestions(suggestions) {
+  const container = document.getElementById('garden-suggestions-content');
+  if (!container) return;
+  
+  if (!suggestions || suggestions.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 20px; color: var(--text-success);">
+        <i data-lucide="check-circle" style="width: 24px; height: 24px; opacity: 0.5; margin-bottom: 8px;"></i>
+        <p style="font-size: 12px; margin: 0;">No enrichment needed!</p>
+        <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">All notes are enriched.</p>
+      </div>
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+  
+  let html = '<div class="garden-suggestions-list">';
+  suggestions.forEach((sug, idx) => {
+    html += `
+      <div class="garden-suggestion-item" data-suggestion-type="enrichment" data-suggestion-idx="${idx}">
+        <div class="garden-suggestion-header">
+          <div style="flex: 1;">
+            <div style="font-size: 11px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">
+              ${escapeHtml(sug.note_title)}
+            </div>
+            <div style="font-size: 10px; color: var(--text-secondary);">${escapeHtml(sug.reason)}</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 10px; color: #f59e0b; font-weight: 600;">Authority: ${sug.authority}</span>
+            <button class="garden-suggestion-action" data-action="accept" title="Enrich note">
+              <i data-lucide="check" style="width: 12px; height: 12px;"></i>
+            </button>
+            <button class="garden-suggestion-action" data-action="dismiss" title="Dismiss">
+              <i data-lucide="x" style="width: 12px; height: 12px;"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+  html += '</div>';
+  container.innerHTML = html;
+  
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  setupSuggestionHandlers();
+}
+
+/**
+ * Setup event handlers for suggestion actions
+ */
+function setupSuggestionHandlers() {
+  document.querySelectorAll('.garden-suggestion-action').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      const item = btn.closest('.garden-suggestion-item');
+      const type = item.dataset.suggestionType;
+      const idx = parseInt(item.dataset.suggestionIdx);
+      
+      if (action === 'dismiss') {
+        item.remove();
+        return;
+      }
+      
+      // Handle accept action
+      if (action === 'accept') {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="spinning" style="width: 12px; height: 12px;"></i>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        
+        try {
+          if (type === 'connection') {
+            await acceptConnectionSuggestion(idx);
+          } else if (type === 'merge') {
+            await acceptMergeSuggestion(idx);
+          } else if (type === 'enrichment') {
+            await acceptEnrichmentSuggestion(idx);
+          }
+          
+          item.style.opacity = '0.5';
+          setTimeout(() => item.remove(), 300);
+          
+        } catch (error) {
+          console.error(`[Garden] Failed to accept ${type} suggestion:`, error);
+          btn.disabled = false;
+          btn.innerHTML = '<i data-lucide="check" style="width: 12px; height: 12px;"></i>';
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+          alert(`Failed to apply suggestion: ${error.message}`);
+        }
+      }
+    });
+  });
+}
+
+/**
+ * Accept a connection suggestion
+ */
+async function acceptConnectionSuggestion(idx) {
+  const sug = window.gardenSuggestions.connection_suggestions[idx];
+  if (!sug) return;
+  
+  const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/connection', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'add',
+      source: sug.source_note,
+      target: sug.target_note,
+      connection_type: 'relates_to'
+    })
+  });
+  
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  
+  // Refresh graph
+  if (cytoscapeInstance) {
+    await initGraphCanvas();
+  }
+}
+
+/**
+ * Accept a merge suggestion
+ */
+async function acceptMergeSuggestion(idx) {
+  const sug = window.gardenSuggestions.merge_candidates[idx];
+  if (!sug) return;
+  
+  const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/merge', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      source_id: sug.entity_b_id,
+      target_id: sug.entity_a_id
+    })
+  });
+  
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  
+  // Refresh stats and graph
+  await loadGardenStats();
+  if (cytoscapeInstance) {
+    await initGraphCanvas();
+  }
+}
+
+/**
+ * Accept an enrichment suggestion
+ */
+async function acceptEnrichmentSuggestion(idx) {
+  const sug = window.gardenSuggestions.enrichment_candidates[idx];
+  if (!sug) return;
+  
+  const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/enrich', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      note_names: [sug.note_name],
+      force: false
+    })
+  });
+  
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  
+  // Refresh stats
+  await loadGardenStats();
+}
+
+/**
+ * Setup garden tab switching
+ */
+function setupGardenTabs() {
+  const tabs = document.querySelectorAll('.garden-tab');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Update active tab
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      
+      // Render appropriate suggestions
+      const tabType = tab.dataset.tab;
+      const suggestions = window.gardenSuggestions;
+      
+      if (tabType === 'connections' && suggestions) {
+        renderConnectionSuggestions(suggestions.connection_suggestions);
+      } else if (tabType === 'merges' && suggestions) {
+        renderMergeSuggestions(suggestions.merge_candidates);
+      } else if (tabType === 'enrichment' && suggestions) {
+        renderEnrichmentSuggestions(suggestions.enrichment_candidates);
+      }
+    });
+  });
+}
+
+/**
+ * Setup garden maintenance actions
+ */
+function setupGardenMaintenance() {
+  const pruneWeakBtn = document.getElementById('garden-prune-weak-btn');
+  const pruneStaleBtn = document.getElementById('garden-prune-stale-btn');
+  const enrichAllBtn = document.getElementById('garden-enrich-all-btn');
+  
+  if (pruneWeakBtn) {
+    pruneWeakBtn.addEventListener('click', async () => {
+      if (!confirm('Remove all connections with strength below 0.3? This cannot be undone.')) return;
+      
+      pruneWeakBtn.disabled = true;
+      pruneWeakBtn.innerHTML = '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Pruning...</span>';
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      
+      try {
+        const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/prune?weak_threshold=0.3', {
+          method: 'DELETE'
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        
+        alert(data.message);
+        await loadGardenStats();
+        if (cytoscapeInstance) await initGraphCanvas();
+        
+      } catch (error) {
+        console.error('[Garden] Prune weak failed:', error);
+        alert(`Failed to prune weak links: ${error.message}`);
+      } finally {
+        pruneWeakBtn.disabled = false;
+        pruneWeakBtn.innerHTML = '<i data-lucide="scissors" style="width: 14px; height: 14px;"></i><span>Prune Weak Links</span>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    });
+  }
+  
+  if (pruneStaleBtn) {
+    pruneStaleBtn.addEventListener('click', async () => {
+      if (!confirm('Remove entities not seen in 180 days with <3 mentions? This cannot be undone.')) return;
+      
+      pruneStaleBtn.disabled = true;
+      pruneStaleBtn.innerHTML = '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Pruning...</span>';
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      
+      try {
+        const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/prune?stale_days=180', {
+          method: 'DELETE'
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        
+        alert(data.message);
+        await loadGardenStats();
+        
+      } catch (error) {
+        console.error('[Garden] Prune stale failed:', error);
+        alert(`Failed to prune stale entities: ${error.message}`);
+      } finally {
+        pruneStaleBtn.disabled = false;
+        pruneStaleBtn.innerHTML = '<i data-lucide="trash-2" style="width: 14px; height: 14px;"></i><span>Remove Stale Entities</span>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    });
+  }
+  
+  if (enrichAllBtn) {
+    enrichAllBtn.addEventListener('click', async () => {
+      const suggestions = window.gardenSuggestions?.enrichment_candidates || [];
+      if (suggestions.length === 0) {
+        alert('No notes need enrichment!');
+        return;
+      }
+      
+      if (!confirm(`Enrich ${suggestions.length} unenriched notes? This may take a while.`)) return;
+      
+      enrichAllBtn.disabled = true;
+      enrichAllBtn.innerHTML = '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Enriching...</span>';
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      
+      try {
+        const noteNames = suggestions.map(s => s.note_name);
+        const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/enrich', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note_names: noteNames, force: false })
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        
+        alert(`Enriched ${data.enriched_count} notes with ${data.entities_added} entities!`);
+        await loadGardenStats();
+        await loadGardenSuggestions();
+        
+      } catch (error) {
+        console.error('[Garden] Enrich all failed:', error);
+        alert(`Failed to enrich notes: ${error.message}`);
+      } finally {
+        enrichAllBtn.disabled = false;
+        enrichAllBtn.innerHTML = '<i data-lucide="sparkles" style="width: 14px; height: 14px;"></i><span>Enrich Unenriched Notes</span>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    });
+  }
+}
+
+/**
+ * Initialize garden view with stats, suggestions, and maintenance tools
+ */
+async function initGardenView() {
+  await loadGardenStats();
+  await loadGardenSuggestions();
+  setupGardenTabs();
+  setupGardenMaintenance();
+}
+
+/**
+ * Legacy function - now calls initGardenView()
+ */
+async function loadGardenIsolatedNotes() {
+  await initGardenView();
+}
+
 
 // ==================== End Graph Page ====================

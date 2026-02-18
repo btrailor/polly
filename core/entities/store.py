@@ -535,3 +535,115 @@ class EntityStore:
             )
         cols = [d[0] for d in cur.description]
         return [_entity_from_row(row, cols) for row in cur.fetchall()]
+
+    # === Garden Operations ===
+
+    def get_mentions_for_source(self, source_id: str, source_type: str) -> List[Dict[str, Any]]:
+        """Get all entity mentions for a given source (note, conversation, etc.)."""
+        conn = self._conn()
+        cur = conn.execute(
+            """
+            SELECT em.entity_id, em.context, e.name, e.entity_type, e.authority_score
+            FROM entity_mentions em
+            JOIN entities e ON em.entity_id = e.id
+            WHERE em.source_type = ? AND em.source_id = ?
+            ORDER BY e.authority_score DESC
+            """,
+            (source_type, source_id),
+        )
+        results = []
+        for row in cur.fetchall():
+            results.append({
+                "entity_id": row[0],
+                "context": row[1],
+                "name": row[2],
+                "entity_type": row[3],
+                "authority_score": row[4],
+            })
+        return results
+
+    def move_mentions(self, source_id: str, target_id: str) -> int:
+        """Move all mentions from source entity to target entity (for merging)."""
+        with self._conn() as conn:
+            cur = conn.execute(
+                "SELECT COUNT(*) FROM entity_mentions WHERE entity_id = ?",
+                (source_id,),
+            )
+            count = cur.fetchone()[0]
+            
+            conn.execute(
+                "UPDATE entity_mentions SET entity_id = ? WHERE entity_id = ?",
+                (target_id, source_id),
+            )
+            
+            conn.execute(
+                "UPDATE entities SET mention_count = mention_count + ? WHERE id = ?",
+                (count, target_id),
+            )
+            
+            conn.commit()
+        return count
+
+    def prune_weak_relationships(self, threshold: float = 0.3) -> int:
+        """Remove relationships below strength threshold."""
+        with self._conn() as conn:
+            cur = conn.execute(
+                "SELECT COUNT(*) FROM relationships WHERE strength < ?",
+                (threshold,),
+            )
+            count = cur.fetchone()[0]
+            
+            conn.execute(
+                "DELETE FROM relationships WHERE strength < ?",
+                (threshold,),
+            )
+            
+            conn.commit()
+        logger.info(f"Pruned {count} weak relationships (threshold={threshold})")
+        return count
+
+    def prune_stale_entities(self, days_threshold: int = 180) -> int:
+        """Remove entities not seen in X days with low mention counts."""
+        cutoff = (datetime.now() - timedelta(days=days_threshold)).isoformat()
+        with self._conn() as conn:
+            cur = conn.execute(
+                """
+                SELECT COUNT(*) FROM entities 
+                WHERE last_seen < ? AND mention_count < 3
+                """,
+                (cutoff,),
+            )
+            count = cur.fetchone()[0]
+            
+            cur = conn.execute(
+                """
+                SELECT id FROM entities 
+                WHERE last_seen < ? AND mention_count < 3
+                """,
+                (cutoff,),
+            )
+            stale_ids = [row[0] for row in cur.fetchall()]
+            
+            for entity_id in stale_ids:
+                self.delete_entity(entity_id)
+            
+            conn.commit()
+        logger.info(f"Pruned {count} stale entities (>{days_threshold} days, <3 mentions)")
+        return count
+
+    def remove_relationship(self, source_id: str, target_id: str, relationship_type: Optional[RelationshipType] = None) -> bool:
+        """Remove a specific relationship between two entities."""
+        with self._conn() as conn:
+            if relationship_type:
+                cur = conn.execute(
+                    "DELETE FROM relationships WHERE source_id = ? AND target_id = ? AND relationship_type = ?",
+                    (source_id, target_id, relationship_type.value),
+                )
+            else:
+                cur = conn.execute(
+                    "DELETE FROM relationships WHERE source_id = ? AND target_id = ?",
+                    (source_id, target_id),
+                )
+            deleted = cur.rowcount > 0
+            conn.commit()
+        return deleted
