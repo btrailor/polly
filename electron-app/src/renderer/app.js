@@ -19140,11 +19140,11 @@ function renderGraphFiltersPanel() {
     const contentType = checkbox.getAttribute('data-content-type');
     
     // Restore saved state
-    if (graphState.filters && graphState.filters.types && graphState.filters.types.length > 0) {
-      // If types is an array with items, check if this type is in it
+    if (graphState.filters && graphState.filters.types !== undefined) {
+      // If types is explicitly set (array), check if this type is in it
       checkbox.checked = graphState.filters.types.includes(contentType);
     } else {
-      // If types is undefined/null/empty (all types or none selected), check all boxes by default
+      // If types is undefined (no filter = show all), check all boxes by default
       checkbox.checked = true;
     }
     
@@ -19168,10 +19168,22 @@ function renderGraphFiltersPanel() {
           checkedTypes.push(cb.getAttribute('data-content-type'));
         }
       });
+      
       console.log('[Graph] Content types filter changed to:', checkedTypes);
       if (!graphState.filters) graphState.filters = {};
-      // Always use the array - empty array means no types, full array means all types
-      graphState.filters.types = checkedTypes;
+      
+      // If all types are checked, treat as "no filter" (show all including entities)
+      // If some types are unchecked, filter to only those checked types
+      // If no types are checked, show nothing
+      const allTypes = ['note', 'conversation', 'book', 'capture', 'code', 'canvas'];
+      if (checkedTypes.length === allTypes.length) {
+        // All checked = no filter
+        graphState.filters.types = undefined;
+      } else {
+        // Some checked = filter to those types
+        graphState.filters.types = checkedTypes;
+      }
+      
       applyGraphFilters();
     });
   });
