@@ -3028,15 +3028,14 @@ async function applyGraphFilters() {
   filterDebounce = setTimeout(async () => {
     console.log('[Graph] Applying filters:', graphState.filters);
     
-    // Save viewport before re-fetching
-    if (cytoscapeInstance) {
-      graphState.position = cytoscapeInstance.pan();
-      graphState.zoom = cytoscapeInstance.zoom();
-    }
+    // Clear saved viewport when applying filters so graph refits to new node set
+    graphState.position = null;
+    graphState.zoom = null;
     saveGraphState();
     
     // Re-initialize with new filters (reads from graphState.filters)
-    await initGraphCanvas();
+    // Pass flag to prevent restoring filters from session storage
+    await initGraphCanvas(true); // skipFilterRestore = true
   }, 300);
 }
 
@@ -17888,12 +17887,14 @@ let graphState = {
   zoom: null
 };
 
-async function initGraphCanvas() {
+async function initGraphCanvas(skipFilterRestore = false) {
   const container = document.getElementById('graph-canvas');
   if (!container) {
     console.error("[Graph] Canvas container not found");
     return;
   }
+  
+
   
   // Clear any existing retry interval from previous initialization
   if (graphRetryInterval) {
@@ -17920,17 +17921,25 @@ async function initGraphCanvas() {
     }
   }
   
-  // Restore previous graph state if it exists
+  // Restore previous graph state if it exists, but preserve current filters when applying filters
+  const currentFilters = skipFilterRestore ? graphState.filters : null;
   const savedStateAfterCleanup = sessionStorage.getItem('graph-state');
   if (savedStateAfterCleanup) {
     try {
-      graphState = JSON.parse(savedStateAfterCleanup);
+      const savedState = JSON.parse(savedStateAfterCleanup);
+      graphState = savedState;
       graphState.expandedNodes = new Set(graphState.expandedNodes || []);
+      
+      // If we're applying filters, don't restore them from session storage
+      if (skipFilterRestore && currentFilters) {
+        graphState.filters = currentFilters;
+      }
       
       // Reset empty types array to undefined (means show all)
       if (graphState.filters && Array.isArray(graphState.filters.types) && graphState.filters.types.length === 0) {
         delete graphState.filters.types;
       }
+      console.log('[Graph] Restored state from session storage, filters:', graphState.filters);
     } catch (e) {
       console.error("[Graph] Failed to restore graph state:", e);
     }
@@ -17996,6 +18005,9 @@ async function initGraphCanvas() {
   const domains = [...new Set(graphData.nodes.map(n => n.domain).filter(Boolean))];
   graphDomainColors = buildDomainPalette(domains);
   
+  // Clear container before initializing (in case it has "No data" message)
+  container.innerHTML = '';
+  
   // Transform nodes for Cytoscape
   const elements = {
     nodes: graphData.nodes.map(node => ({
@@ -18036,6 +18048,7 @@ async function initGraphCanvas() {
   
   // Restore position/zoom after layout completes, or highlight source node
   cytoscapeInstance.one('layoutstop', () => {
+    
     // If we have saved position/zoom (returning from notes view), restore it
     if (graphState.position && graphState.zoom) {
       cytoscapeInstance.viewport({
@@ -19177,8 +19190,8 @@ function renderGraphFiltersPanel() {
       // If no types are checked, show nothing
       const allTypes = ['note', 'conversation', 'book', 'capture', 'code', 'canvas'];
       if (checkedTypes.length === allTypes.length) {
-        // All checked = no filter
-        graphState.filters.types = undefined;
+        // All checked = no filter (delete the key so it's not sent to API)
+        delete graphState.filters.types;
       } else {
         // Some checked = filter to those types
         graphState.filters.types = checkedTypes;
