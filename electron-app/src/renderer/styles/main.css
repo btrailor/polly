@@ -7651,6 +7651,145 @@ body {
   height: 16px;
 }
 
+/* ==================== Graph Details Panel ==================== */
+
+.graph-details-container {
+  padding: 12px 16px;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.graph-details-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.graph-details-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.graph-details-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-details-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.graph-detail-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.graph-detail-badge.domain {
+  background: transparent;
+}
+
+.graph-detail-badge.ghost {
+  color: #808080;
+  border-color: #808080;
+  font-style: italic;
+}
+
+.graph-details-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.graph-detail-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.graph-detail-action-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+}
+
+.graph-details-connections {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.graph-details-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.graph-details-conn-list {
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.graph-detail-connection {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.graph-detail-connection:hover {
+  background: var(--bg-hover);
+}
+
+.graph-detail-conn-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-detail-conn-rel {
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+/* ==================== End Graph Details Panel ==================== */
+
 /* ==================== End Graph View Styles ==================== */
 
 /* Graph sidebar ribbon buttons */
@@ -7983,6 +8122,152 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.garden-action-btn.danger {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.garden-action-btn.danger:hover {
+  background: #ef444422;
+}
+
+/* ==================== Garden Entity Browser ==================== */
+
+.garden-entity-browser-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.garden-entity-search-input {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 11px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.garden-entity-search-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.garden-entity-filter-select {
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.garden-entity-list {
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  padding: 4px;
+}
+
+.garden-entity-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.garden-entity-item:hover {
+  background: var(--bg-hover);
+}
+
+.garden-entity-checkbox {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.garden-entity-checkbox input {
+  cursor: pointer;
+}
+
+.garden-entity-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.garden-entity-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.garden-entity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.garden-entity-type {
+  background: var(--bg-secondary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.garden-entity-domain {
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border-primary);
+  font-weight: 500;
+}
+
+.garden-entity-delete-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.garden-entity-item:hover .garden-entity-delete-btn {
+  display: flex;
+}
+
+.garden-entity-delete-btn:hover {
+  color: #ef4444;
+  background: #ef444422;
+}
+
+.garden-entity-browser-footer {
+  display: flex;
+  gap: 8px;
+}
+
+/* ==================== End Garden Entity Browser ==================== */
 
 /* Spinning animation for loaders */
 @keyframes spinning {

@@ -18350,6 +18350,50 @@ function renderGraphSidebar() {
           </div>
         </div>
         
+        <!-- Entity Browser Section -->
+        <div class="garden-section" style="margin-top: 24px;">
+          <h3 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">
+            <i data-lucide="database" style="width: 14px; height: 14px; margin-right: 6px;"></i>
+            Entity Browser
+          </h3>
+          <div class="garden-entity-browser-controls">
+            <input type="text" id="garden-entity-search" placeholder="Search entities..." class="garden-entity-search-input" />
+            <select id="garden-entity-type-filter" class="garden-entity-filter-select">
+              <option value="">All Types</option>
+              <option value="concept">Concept</option>
+              <option value="tool">Tool</option>
+              <option value="language">Language</option>
+              <option value="framework">Framework</option>
+              <option value="project">Project</option>
+              <option value="person">Person</option>
+              <option value="pattern">Pattern</option>
+              <option value="topic">Topic</option>
+              <option value="organization">Organization</option>
+            </select>
+            <select id="garden-entity-sort" class="garden-entity-filter-select">
+              <option value="authority">By Authority</option>
+              <option value="mentions">By Mentions</option>
+              <option value="recent">By Recent</option>
+              <option value="alpha">Alphabetical</option>
+            </select>
+          </div>
+          <div id="garden-entity-list" class="garden-entity-list">
+            <div style="text-align: center; padding: 16px; color: #808080; font-size: 11px;">
+              Click "Load Entities" to browse
+            </div>
+          </div>
+          <div class="garden-entity-browser-footer">
+            <button id="garden-load-entities-btn" class="garden-action-btn" style="flex: 1;">
+              <i data-lucide="refresh-cw" style="width: 12px; height: 12px;"></i>
+              <span>Load Entities</span>
+            </button>
+            <button id="garden-delete-selected-btn" class="garden-action-btn danger" style="flex: 1; display: none;">
+              <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+              <span>Delete Selected (<span id="garden-selected-count">0</span>)</span>
+            </button>
+          </div>
+        </div>
+        
       </div>
     </div>
     ${renderLowerPanel("graph", [
@@ -19084,6 +19128,24 @@ function buildGraphStyle(domainColors) {
         'border-color': '#00aaff',
         'border-opacity': 1
       }
+    },
+    // Details panel selection highlighting
+    {
+      selector: '.graph-selected',
+      style: {
+        'border-width': 4,
+        'border-color': '#00aaff',
+        'border-opacity': 1,
+        'text-opacity': 1
+      }
+    },
+    {
+      selector: '.graph-selected-neighbor',
+      style: {
+        'opacity': 1,
+        'border-opacity': 0.6,
+        'text-opacity': 1
+      }
     }
   ];
 }
@@ -19125,8 +19187,66 @@ function setupGraphEventHandlers(cy, domainColors) {
     hideGraphTooltip();
   });
   
-  // Node click - open item
+  // Node click - show details in lower panel
   cy.on('tap', 'node', (evt) => {
+    const node = evt.target;
+    const data = node.data();
+    
+    // Hide tooltip
+    hideGraphTooltip();
+    
+    // Highlight selected node
+    cy.elements().removeClass('graph-selected graph-selected-neighbor');
+    node.addClass('graph-selected');
+    node.neighborhood().addClass('graph-selected-neighbor');
+    
+    // Get connected edges and neighbors for details
+    const connectedEdges = node.connectedEdges();
+    const neighbors = node.neighborhood('node');
+    const connections = [];
+    connectedEdges.forEach(edge => {
+      const edgeData = edge.data();
+      const otherNode = edge.source().id() === data.id ? edge.target() : edge.source();
+      const otherData = otherNode.data();
+      connections.push({
+        nodeId: otherData.id,
+        nodeName: otherData.label,
+        nodeType: otherData.type,
+        nodeDomain: otherData.domain,
+        relationshipType: edgeData.relationshipType || 'references',
+        strength: edgeData.weight || 1,
+        direction: edge.source().id() === data.id ? 'outgoing' : 'incoming'
+      });
+    });
+    
+    // Show details in the lower panel
+    renderGraphDetailsPanel({
+      id: data.id,
+      name: data.label,
+      type: data.type,
+      domain: data.domain,
+      authority: data.authority,
+      connectionCount: data.connectionCount,
+      isGhost: data.isGhost,
+      connections: connections
+    });
+    
+    // Switch to details tab and expand the lower panel
+    const panel = document.querySelector('.lower-panel[data-view="graph"]');
+    if (panel) {
+      const isCollapsed = panel.dataset.collapsed === 'true';
+      if (isCollapsed) {
+        panel.querySelector('.lower-panel-handle')?.click();
+      }
+      const detailsTab = panel.querySelector('.lower-panel-tab[data-tab="details"]');
+      if (detailsTab && !detailsTab.classList.contains('active')) {
+        detailsTab.click();
+      }
+    }
+  });
+  
+  // Node double-click - navigate to note
+  cy.on('dbltap', 'node', (evt) => {
     const node = evt.target;
     const data = node.data();
     
@@ -19149,6 +19269,14 @@ function setupGraphEventHandlers(cy, domainColors) {
       
       // Show "Back to Graph" button
       showBackToGraphButton();
+    }
+  });
+  
+  // Click on background - deselect and clear details
+  cy.on('tap', (evt) => {
+    if (evt.target === cy) {
+      cy.elements().removeClass('graph-selected graph-selected-neighbor');
+      renderGraphDetailsPanel(null);
     }
   });
   
@@ -20010,20 +20138,127 @@ function toggleEdgeType(edgeType, visible) {
 }
 
 /**
- * Render graph details panel
+ * Render graph details panel with node information
+ * @param {Object|null} nodeData - Node data object or null to show empty state
  */
-function renderGraphDetailsPanel() {
+function renderGraphDetailsPanel(nodeData) {
   const content = document.querySelector('.lower-panel[data-view="graph"] .lower-panel-content');
   if (!content) return;
   
+  if (!nodeData) {
+    content.innerHTML = `
+      <div class="lower-panel-empty">
+        <i data-lucide="info" style="width: 20px; height: 20px; opacity: 0.3; margin-bottom: 8px;"></i>
+        <p style="font-size: 12px; color: var(--text-secondary);">Click a node to see details</p>
+        <p style="font-size: 11px; color: var(--text-secondary); opacity: 0.6; margin-top: 4px;">Double-click to open the note</p>
+      </div>
+    `;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+  
+  const domainColor = graphDomainColors[nodeData.domain] || 'var(--text-secondary)';
+  const authorityPct = Math.round((nodeData.authority || 0) * 100);
+  const authorityColor = authorityPct >= 70 ? '#10b981' : authorityPct >= 40 ? '#f59e0b' : '#808080';
+  
+  const typeIcons = {
+    note: 'file-text',
+    conversation: 'message-circle',
+    book: 'book-open',
+    capture: 'camera',
+    code: 'code',
+    canvas: 'layout'
+  };
+  const typeIcon = typeIcons[nodeData.type] || 'circle';
+  
+  // Build connections list HTML
+  let connectionsHtml = '';
+  if (nodeData.connections && nodeData.connections.length > 0) {
+    const sorted = [...nodeData.connections].sort((a, b) => (b.strength || 0) - (a.strength || 0));
+    connectionsHtml = sorted.map(conn => {
+      const connIcon = typeIcons[conn.nodeType] || 'circle';
+      const dirIcon = conn.direction === 'outgoing' ? 'arrow-right' : 'arrow-left';
+      const connDomainColor = graphDomainColors[conn.nodeDomain] || 'var(--text-secondary)';
+      const relLabel = (conn.relationshipType || 'references').replace(/_/g, ' ');
+      return `
+        <div class="graph-detail-connection" data-node-id="${escapeHtml(conn.nodeId)}">
+          <i data-lucide="${dirIcon}" style="width: 10px; height: 10px; color: var(--text-secondary); flex-shrink: 0;"></i>
+          <i data-lucide="${connIcon}" style="width: 12px; height: 12px; color: ${connDomainColor}; flex-shrink: 0;"></i>
+          <span class="graph-detail-conn-name">${escapeHtml(conn.nodeName)}</span>
+          <span class="graph-detail-conn-rel">${escapeHtml(relLabel)}</span>
+        </div>
+      `;
+    }).join('');
+  } else {
+    connectionsHtml = '<div style="font-size: 11px; color: var(--text-secondary); opacity: 0.6; padding: 8px 0;">No connections</div>';
+  }
+  
   content.innerHTML = `
-    <div class="lower-panel-empty">
-      <i data-lucide="info" style="width: 20px; height: 20px; opacity: 0.3; margin-bottom: 8px;"></i>
-      <p style="font-size: 12px; color: var(--text-secondary);">Select a node to see details</p>
+    <div class="graph-details-container">
+      <div class="graph-details-header">
+        <div class="graph-details-title-row">
+          <i data-lucide="${typeIcon}" style="width: 16px; height: 16px; color: ${domainColor}; flex-shrink: 0;"></i>
+          <span class="graph-details-title">${escapeHtml(nodeData.name)}</span>
+          ${nodeData.isGhost ? '<span class="graph-detail-badge ghost">Ghost</span>' : ''}
+        </div>
+        <div class="graph-details-meta">
+          <span class="graph-detail-badge type">${escapeHtml(nodeData.type || 'unknown')}</span>
+          ${nodeData.domain ? `<span class="graph-detail-badge domain" style="border-color: ${domainColor}; color: ${domainColor};">${escapeHtml(nodeData.domain)}</span>` : ''}
+          <span class="graph-detail-badge authority" style="color: ${authorityColor};">Authority: ${authorityPct}%</span>
+          <span class="graph-detail-badge connections">${nodeData.connectionCount || 0} connections</span>
+        </div>
+      </div>
+      <div class="graph-details-actions">
+        ${nodeData.type === 'note' ? `<button class="graph-detail-action-btn" data-action="open-note" data-node-id="${escapeHtml(nodeData.id)}" title="Open note"><i data-lucide="external-link" style="width: 12px; height: 12px;"></i> Open</button>` : ''}
+        <button class="graph-detail-action-btn" data-action="explore" data-node-id="${escapeHtml(nodeData.id)}" title="Explore from here"><i data-lucide="git-branch" style="width: 12px; height: 12px;"></i> Explore</button>
+      </div>
+      <div class="graph-details-connections">
+        <div class="graph-details-section-title">Connections (${nodeData.connections ? nodeData.connections.length : 0})</div>
+        <div class="graph-details-conn-list">
+          ${connectionsHtml}
+        </div>
+      </div>
     </div>
   `;
   
   if (typeof lucide !== 'undefined') lucide.createIcons();
+  
+  // Wire up action buttons
+  content.querySelectorAll('.graph-detail-action-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const action = btn.dataset.action;
+      const nodeId = btn.dataset.nodeId;
+      if (action === 'open-note' && window.notesManager) {
+        graphState.sourceNode = nodeId;
+        saveGraphState();
+        window.notesManager.openNote(nodeId);
+        showView('notes');
+        showBackToGraphButton();
+      } else if (action === 'explore') {
+        exploreFromNode(nodeId);
+      }
+    });
+  });
+  
+  // Wire up connection item clicks to select that node in the graph
+  content.querySelectorAll('.graph-detail-connection').forEach(item => {
+    item.addEventListener('click', () => {
+      const nodeId = item.dataset.nodeId;
+      if (cytoscapeInstance) {
+        const node = cytoscapeInstance.getElementById(nodeId);
+        if (node && node.length > 0) {
+          // Animate to the connected node
+          cytoscapeInstance.animate({
+            center: { eles: node },
+            duration: 300
+          });
+          // Simulate a tap on that node to show its details
+          node.emit('tap');
+        }
+      }
+    });
+    item.style.cursor = 'pointer';
+  });
 }
 
 /**
@@ -20562,6 +20797,218 @@ async function initGardenView() {
   await loadGardenSuggestions();
   setupGardenTabs();
   setupGardenMaintenance();
+  setupEntityBrowser();
+}
+
+/**
+ * Setup entity browser controls in the garden view
+ */
+function setupEntityBrowser() {
+  const loadBtn = document.getElementById('garden-load-entities-btn');
+  const deleteBtn = document.getElementById('garden-delete-selected-btn');
+  const searchInput = document.getElementById('garden-entity-search');
+  const typeFilter = document.getElementById('garden-entity-type-filter');
+  const sortSelect = document.getElementById('garden-entity-sort');
+  
+  if (loadBtn) {
+    loadBtn.addEventListener('click', () => loadGardenEntities());
+  }
+  
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', () => deleteSelectedEntities());
+  }
+  
+  // Debounced search
+  let searchTimeout;
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => loadGardenEntities(), 300);
+    });
+  }
+  
+  if (typeFilter) {
+    typeFilter.addEventListener('change', () => loadGardenEntities());
+  }
+  
+  if (sortSelect) {
+    sortSelect.addEventListener('change', () => loadGardenEntities());
+  }
+}
+
+/**
+ * Track selected entities for bulk delete
+ */
+let gardenSelectedEntities = new Set();
+
+/**
+ * Load and render entities in the garden entity browser
+ */
+async function loadGardenEntities() {
+  const listEl = document.getElementById('garden-entity-list');
+  if (!listEl) return;
+  
+  const searchInput = document.getElementById('garden-entity-search');
+  const typeFilter = document.getElementById('garden-entity-type-filter');
+  const sortSelect = document.getElementById('garden-entity-sort');
+  
+  const q = searchInput?.value?.trim() || '';
+  const type = typeFilter?.value || '';
+  const sort = sortSelect?.value || 'authority';
+  
+  listEl.innerHTML = '<div style="text-align: center; padding: 16px; color: #808080; font-size: 11px;">Loading entities...</div>';
+  
+  try {
+    const params = new URLSearchParams({ limit: '50', sort });
+    if (q) params.append('q', q);
+    if (type) params.append('type', type);
+    
+    const response = await fetch(`http://127.0.0.1:11436/polly/graph/entities?${params.toString()}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    
+    gardenSelectedEntities.clear();
+    updateDeleteSelectedBtn();
+    
+    if (!data.entities || data.entities.length === 0) {
+      listEl.innerHTML = '<div style="text-align: center; padding: 16px; color: #808080; font-size: 11px;">No entities found</div>';
+      return;
+    }
+    
+    listEl.innerHTML = data.entities.map(entity => {
+      const authorityPct = Math.round((entity.authority_score || 0) * 100);
+      const authorityColor = authorityPct >= 70 ? '#10b981' : authorityPct >= 40 ? '#f59e0b' : '#808080';
+      const domainTags = (entity.domains || []).map(d => `<span class="garden-entity-domain">${escapeHtml(d)}</span>`).join('');
+      
+      return `
+        <div class="garden-entity-item" data-entity-id="${escapeHtml(entity.id)}">
+          <label class="garden-entity-checkbox">
+            <input type="checkbox" data-entity-id="${escapeHtml(entity.id)}" />
+          </label>
+          <div class="garden-entity-info">
+            <div class="garden-entity-name">${escapeHtml(entity.name)}</div>
+            <div class="garden-entity-meta">
+              <span class="garden-entity-type">${escapeHtml(entity.entity_type)}</span>
+              ${domainTags}
+              <span style="color: ${authorityColor}; font-weight: 600;">${authorityPct}%</span>
+              <span>${entity.mention_count} mentions</span>
+            </div>
+          </div>
+          <button class="garden-entity-delete-btn" data-entity-id="${escapeHtml(entity.id)}" data-entity-name="${escapeHtml(entity.name)}" title="Delete entity">
+            <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+          </button>
+        </div>
+      `;
+    }).join('');
+    
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    
+    // Wire up individual delete buttons
+    listEl.querySelectorAll('.garden-entity-delete-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const entityId = btn.dataset.entityId;
+        const entityName = btn.dataset.entityName;
+        if (!confirm(`Delete entity "${entityName}"? This will also remove all its relationships.`)) return;
+        
+        try {
+          const resp = await fetch(`http://127.0.0.1:11436/polly/graph/entities/${encodeURIComponent(entityId)}`, { method: 'DELETE' });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          
+          // Remove from list
+          const item = btn.closest('.garden-entity-item');
+          if (item) item.remove();
+          gardenSelectedEntities.delete(entityId);
+          updateDeleteSelectedBtn();
+          
+          // Refresh stats
+          loadGardenStats();
+        } catch (error) {
+          console.error('[Garden] Delete entity failed:', error);
+          alert(`Failed to delete entity: ${error.message}`);
+        }
+      });
+    });
+    
+    // Wire up checkboxes for bulk selection
+    listEl.querySelectorAll('.garden-entity-checkbox input').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const entityId = cb.dataset.entityId;
+        if (cb.checked) {
+          gardenSelectedEntities.add(entityId);
+        } else {
+          gardenSelectedEntities.delete(entityId);
+        }
+        updateDeleteSelectedBtn();
+      });
+    });
+    
+  } catch (error) {
+    console.error('[Garden] Failed to load entities:', error);
+    listEl.innerHTML = `<div style="text-align: center; padding: 16px; color: var(--text-error, #ef4444); font-size: 11px;">Failed to load entities</div>`;
+  }
+}
+
+/**
+ * Update the "Delete Selected" button visibility and count
+ */
+function updateDeleteSelectedBtn() {
+  const btn = document.getElementById('garden-delete-selected-btn');
+  const countEl = document.getElementById('garden-selected-count');
+  if (!btn) return;
+  
+  if (gardenSelectedEntities.size > 0) {
+    btn.style.display = 'flex';
+    if (countEl) countEl.textContent = gardenSelectedEntities.size;
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+/**
+ * Delete all selected entities in bulk
+ */
+async function deleteSelectedEntities() {
+  if (gardenSelectedEntities.size === 0) return;
+  
+  if (!confirm(`Delete ${gardenSelectedEntities.size} selected entities? This cannot be undone.`)) return;
+  
+  const btn = document.getElementById('garden-delete-selected-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.querySelector('span').textContent = 'Deleting...';
+  }
+  
+  let deleted = 0;
+  let failed = 0;
+  
+  for (const entityId of gardenSelectedEntities) {
+    try {
+      const resp = await fetch(`http://127.0.0.1:11436/polly/graph/entities/${encodeURIComponent(entityId)}`, { method: 'DELETE' });
+      if (resp.ok) {
+        deleted++;
+        const item = document.querySelector(`.garden-entity-item[data-entity-id="${entityId}"]`);
+        if (item) item.remove();
+      } else {
+        failed++;
+      }
+    } catch {
+      failed++;
+    }
+  }
+  
+  gardenSelectedEntities.clear();
+  updateDeleteSelectedBtn();
+  
+  if (btn) {
+    btn.disabled = false;
+  }
+  
+  const msg = `Deleted ${deleted} entities` + (failed > 0 ? `, ${failed} failed` : '');
+  alert(msg);
+  
+  // Refresh stats
+  loadGardenStats();
 }
 
 /**
