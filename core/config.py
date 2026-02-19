@@ -59,6 +59,59 @@ class PollyConfig:
             "keep_recent": 10,             # Keep last 10 messages uncompressed
             "show_stats": False            # Hide compression stats by default
         },
+        "memory": {
+            "provider": "mem0",
+            "extraction": {
+                "enabled": True,
+                "cloud_threshold": "balanced",
+                "cloud_model": "claude-haiku",
+                "local_model": "llama3.2:latest",
+                "max_cloud_cost": 0.02,
+            },
+            "tiers": {
+                "stable": {"collection": "memory_stable", "decay": None},
+                "episodic": {"collection": "memory_episodic", "decay_halflife_days": 90},
+                "working": {"collection": "memory_working", "session_scoped": True},
+            },
+            "retrieval": {
+                "stable_limit": 5,
+                "episodic_limit": 5,
+                "working_include_all": True,
+                "min_similarity": 0.4,
+                "dedup_threshold": 0.92,
+            },
+        },
+        "context_budget": {
+            "response_reserve": 2000,
+            "model_context_windows": {
+                "gpt-4": 128000,
+                "gpt-4o": 128000,
+                "claude-sonnet": 200000,
+                "claude-haiku": 200000,
+                "llama3.2": 131072,
+                "default": 8192,
+            },
+            "sections": {
+                "system_prompt": {"min": 500, "max": 2000, "target_pct": 0.10, "priority": 1},
+                "conversation": {"min": 1000, "max": 8000, "target_pct": 0.25, "priority": 2},
+                "memory": {"min": 500, "max": 4000, "target_pct": 0.20, "priority": 3},
+                "rag": {"min": 1000, "max": 6000, "target_pct": 0.30, "priority": 4},
+                "mental_models": {"min": 200, "max": 2000, "target_pct": 0.10, "priority": 5},
+                "entities": {"min": 100, "max": 1000, "target_pct": 0.05, "priority": 6},
+            },
+            "relevance_weights": {
+                "retrieval_similarity": 0.35,
+                "recency": 0.25,
+                "reference_frequency": 0.15,
+                "domain_affinity": 0.15,
+                "tier_weight": 0.10,
+            },
+            "rolling": {
+                "decay_per_turn": 0.85,
+                "eviction_turns": 5,
+                "amplification_reset": True,
+            },
+        },
         "routing_v2": {
             "enabled": True,               # Multi-provider intelligent routing (recommended)
         }

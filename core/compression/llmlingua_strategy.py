@@ -11,6 +11,8 @@ import logging
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
+from core.context.token_counter import TokenCounter
+
 logger = logging.getLogger(__name__)
 
 
@@ -189,12 +191,12 @@ class LLMLinguaCompressor:
     
     def _count_tokens(self, text: str) -> int:
         """
-        Estimate token count.
+        Count tokens in text.
         
-        Uses simple heuristic: 1 token ≈ 4 characters.
-        For more accurate counting, could use tiktoken.
+        Uses TokenCounter for accurate counting with tiktoken
+        when available, falls back to character-based estimation.
         """
-        return len(text) // 4
+        return TokenCounter.count(text)
     
     def is_available(self) -> bool:
         """Check if LLMLingua is available and loaded"""

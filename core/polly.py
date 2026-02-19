@@ -114,6 +114,11 @@ class Polly:
         self._init_wave3_pipeline()  # Initialize Wave 3 (decomposition, split routing, synthesis)
         print(f"[INIT {time.time() - _total_start:.2f}s] _init_wave3_pipeline took {time.time() - _step_start:.2f}s", flush=True)
 
+        logger.info("Initializing memory & context budget system...")
+        _step_start = time.time()
+        self._init_memory_context()  # Initialize tiered memory, budget allocator, rolling context
+        print(f"[INIT {time.time() - _total_start:.2f}s] _init_memory_context took {time.time() - _step_start:.2f}s", flush=True)
+
         # Conversation state
         self.conversation_history: List[Dict] = []
         self.session_start = datetime.now()
@@ -626,6 +631,97 @@ class Polly:
             self.split_router = None
             self.synthesizer = None
 
+    def _init_memory_context(self):
+        """Initialize tiered memory, budget allocator, relevance scorer, and rolling context.
+
+        All components are optional — if any fail to initialize the system
+        degrades gracefully to the original unbounded context assembly.
+        """
+        # Defaults — each set to None so the rest of the pipeline knows to skip
+        self.mem0_adapter = None
+        self.tiered_store = None
+        self.memory_retriever = None
+        self.session_extractor = None
+        self.budget_allocator = None
+        self.relevance_scorer = None
+        self.rolling_context = None
+
+        config_dict = getattr(self.config, "_config", {})
+
+        # ------------------------------------------------------------------
+        # 1. Mem0 adapter → Tiered Memory Store → Retriever + Extractor
+        # ------------------------------------------------------------------
+        try:
+            memory_cfg = config_dict.get("memory", {})
+            provider = memory_cfg.get("provider", "local")
+            mem0_enabled = memory_cfg.get("mem0", {}).get("enabled", False)
+
+            if provider == "mem0" and mem0_enabled:
+                from core.memory import get_memory_adapter
+                self.mem0_adapter = get_memory_adapter(config_dict)
+
+                if self.mem0_adapter is not None:
+                    from core.memory.tiers import TieredMemoryStore
+                    self.tiered_store = TieredMemoryStore(
+                        self.mem0_adapter,
+                        memory_cfg.get("tiers", {}),
+                    )
+                    logger.info("TieredMemoryStore initialized")
+
+                    from core.memory.retriever import MemoryRetriever
+                    self.memory_retriever = MemoryRetriever(
+                        self.tiered_store,
+                        memory_cfg,
+                    )
+                    logger.info("MemoryRetriever initialized (priority 50)")
+
+                    from core.memory.extractor import SessionExtractor
+                    self.session_extractor = SessionExtractor(
+                        tiered_store=self.tiered_store,
+                        config=memory_cfg.get("extraction", {}),
+                        budget_manager=getattr(self, "budget_manager", None),
+                        router_v2=getattr(self, "router_v2", None),
+                    )
+                    logger.info("SessionExtractor initialized")
+                else:
+                    logger.info("Mem0 adapter returned None — memory tiers disabled")
+            else:
+                logger.info("Mem0 not enabled — memory tiers disabled")
+        except Exception as e:
+            logger.warning(f"Memory tier init failed (graceful degradation): {e}")
+            self.mem0_adapter = None
+            self.tiered_store = None
+            self.memory_retriever = None
+            self.session_extractor = None
+
+        # ------------------------------------------------------------------
+        # 2. Context infrastructure (works with or without memory tiers)
+        # ------------------------------------------------------------------
+        try:
+            budget_cfg = config_dict.get("context_budget", {})
+
+            from core.context.budget_allocator import BudgetAllocator
+            self.budget_allocator = BudgetAllocator(budget_cfg)
+            logger.info("BudgetAllocator initialized")
+
+            from core.context.relevance_scorer import RelevanceScorer
+            self.relevance_scorer = RelevanceScorer(
+                budget_cfg.get("relevance_weights", {})
+            )
+            logger.info("RelevanceScorer initialized")
+
+            from core.context.rolling_context import RollingContext
+            self.rolling_context = RollingContext(
+                budget_cfg.get("rolling", {}),
+                scorer=self.relevance_scorer,
+            )
+            logger.info("RollingContext initialized")
+        except Exception as e:
+            logger.warning(f"Context budget init failed (graceful degradation): {e}")
+            self.budget_allocator = None
+            self.relevance_scorer = None
+            self.rolling_context = None
+
     def _build_system_prompt(self) -> str:
         """Build the base system prompt with constitutional epistemology layer."""
         constitutional = get_constitutional_layer()
@@ -837,71 +933,183 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         domains: List[str],
         persona: Optional[str] = None,
         mode: Optional[str] = None,
+        budget_plan: Optional[Any] = None,
+        retrieval_tier: Optional[Any] = None,
         **kwargs: Any,
     ) -> str:
-        """Gather context from all ContextContributors, ordered by priority (integration-contracts)."""
-        contributors: List[tuple[int, str]] = []
+        """Gather context from all ContextContributors, ordered by priority.
 
-        # Mental models (priority 60) — ContextContributor
+        When *budget_plan* is provided AND the rolling-context system is
+        initialised, each contributor receives a token budget, results are
+        scored for relevance, ingested into the rolling context window, and
+        then bin-packed to fit within section budgets.
+
+        Without a budget_plan the method falls back to the original behaviour
+        (unbounded concatenation, no scoring).
+
+        When *retrieval_tier* is provided (a TierResult from the
+        RetrievalClassifier), it influences scoring:
+          - ADJACENT: RAG-sourced entry scores are multiplied by 0.7
+          - ABSENT:   Memory retriever uses more aggressive limits
+                      (episodic_limit 5→10, min_similarity 0.4→0.3)
+        """
+        use_budget = (
+            budget_plan is not None
+            and self.rolling_context is not None
+            and self.relevance_scorer is not None
+        )
+
+        # ------------------------------------------------------------------
+        # Build contributor list:  (section_name, contributor, priority)
+        # ------------------------------------------------------------------
+        contributor_specs: List[tuple] = []
+
+        # Mental models (priority 60)
         if self.mental_model_manager and hasattr(self.mental_model_manager, "build_context"):
-            try:
-                mm_kw = dict(kwargs)
-                if "keywords" not in mm_kw:
-                    mm_kw["keywords"] = self._extract_keywords(query)
-                mm_kw["domain"] = kwargs.get("domain") or (domains[0] if domains else None)
-                mm_ctx = self.mental_model_manager.build_context(
-                    query=query,
-                    domains=domains,
-                    persona=persona,
-                    mode=mode,
-                    **mm_kw,
-                )
-                if mm_ctx:
-                    contributors.append((self.mental_model_manager.context_priority, mm_ctx))
-            except Exception as e:
-                logger.debug(f"Mental models context failed: {e}")
+            contributor_specs.append(("mental_models", self.mental_model_manager, 60))
+
+        # Memory retriever (priority 50) — NEW
+        if self.memory_retriever and hasattr(self.memory_retriever, "build_context"):
+            contributor_specs.append(("memory", self.memory_retriever, 50))
 
         # Entity context (priority 40)
         if self.entity_context and hasattr(self.entity_context, "build_context"):
-            try:
-                ctx = self.entity_context.build_context(
-                    query, domains, persona=persona, mode=mode, **kwargs
-                )
-                if ctx:
-                    contributors.append((self.entity_context.context_priority, ctx))
-            except Exception as e:
-                logger.debug(f"Entity context failed: {e}")
+            contributor_specs.append(("entities", self.entity_context, 40))
 
         # Pattern engine (priority 20)
         if self.pattern_engine and hasattr(self.pattern_engine, "build_context"):
-            try:
-                ctx = self.pattern_engine.build_context(
-                    query, domains, persona=persona, mode=mode,
-                    user_name=self.user_name, **kwargs
-                )
-                if ctx:
-                    contributors.append((self.pattern_engine.context_priority, ctx))
-            except Exception as e:
-                logger.debug(f"Pattern context failed: {e}")
+            contributor_specs.append(("entities", self.pattern_engine, 20))
 
         # Compression summary (priority 10)
         if self.compression_manager and hasattr(self.compression_manager, "build_context"):
+            contributor_specs.append(("compression", self.compression_manager, 10))
+
+        contributor_specs.sort(key=lambda x: x[2], reverse=True)
+
+        # ------------------------------------------------------------------
+        # Call each contributor
+        # ------------------------------------------------------------------
+        raw_results: List[tuple] = []  # (section, priority, text)
+
+        for section, contributor, priority in contributor_specs:
             try:
-                conv_id = kwargs.get("conversation_id") or (
-                    f"session_{self.session_start.isoformat()}" if self.session_start else None
-                )
-                if conv_id and hasattr(self.compression_manager, "set_current_conversation"):
-                    self.compression_manager.set_current_conversation(conv_id)
-                ctx = self.compression_manager.build_context(
-                    query, domains, persona=persona, mode=mode, **kwargs
+                # Determine token budget for this contributor
+                token_budget = 0
+                if use_budget:
+                    token_budget = budget_plan.remaining(section)
+
+                # Build call kwargs — forward everything except budget_plan
+                call_kw: Dict[str, Any] = dict(kwargs)
+                call_kw["token_budget"] = token_budget
+
+                # Mental model manager needs extra kwargs
+                if section == "mental_models":
+                    if "keywords" not in call_kw:
+                        call_kw["keywords"] = self._extract_keywords(query)
+                    call_kw["domain"] = kwargs.get("domain") or (domains[0] if domains else None)
+
+                # Memory retriever: pass retrieval tier for ABSENT adjustment
+                if section == "memory" and retrieval_tier is not None:
+                    call_kw["retrieval_tier"] = retrieval_tier
+
+                # Pattern engine needs user_name
+                if contributor is self.pattern_engine:
+                    call_kw["user_name"] = self.user_name
+
+                # Compression manager needs conversation_id
+                if section == "compression":
+                    conv_id = kwargs.get("conversation_id") or (
+                        f"session_{self.session_start.isoformat()}" if self.session_start else None
+                    )
+                    if conv_id and hasattr(contributor, "set_current_conversation"):
+                        contributor.set_current_conversation(conv_id)
+
+                ctx = contributor.build_context(
+                    query, domains, persona=persona, mode=mode, **call_kw
                 )
                 if ctx:
-                    contributors.append((self.compression_manager.context_priority, ctx))
+                    raw_results.append((section, priority, ctx))
             except Exception as e:
-                logger.debug(f"Compression context failed: {e}")
+                logger.debug(f"Context contributor {section} (priority {priority}) failed: {e}")
 
-        contributors.sort(key=lambda x: x[0], reverse=True)
-        return "\n\n".join(c for _, c in contributors)
+        # ------------------------------------------------------------------
+        # If budget system is inactive, fall back to simple concatenation
+        # ------------------------------------------------------------------
+        if not use_budget:
+            raw_results.sort(key=lambda x: x[1], reverse=True)
+            return "\n\n".join(text for _, _, text in raw_results)
+
+        # ------------------------------------------------------------------
+        # Budget-aware path: score → ingest → select via rolling context
+        # ------------------------------------------------------------------
+        from core.context.relevance_scorer import ScoredEntry
+        from core.context.token_counter import TokenCounter
+
+        scored_entries = []
+        for section, priority, text in raw_results:
+            try:
+                # Map section to source names used by RelevanceScorer
+                source_map = {
+                    "mental_models": "mental_model",
+                    "memory": "memory:stable",  # generic; retriever adds per-tier detail
+                    "entities": "entity",
+                    "compression": "pattern",
+                }
+                source = source_map.get(section, "entity")
+                raw_score = priority / 100.0
+
+                # Retrieval tier adjustments:
+                #   ADJACENT → RAG-sourced raw_scores multiplied by 0.7
+                #   (DIRECT uses scores as-is, ABSENT doesn't affect scoring
+                #    but boosts memory retrieval aggressiveness above)
+                if retrieval_tier is not None and source in ("entity", "pattern", "mental_model"):
+                    try:
+                        from core.hardened.classifier import RetrievalTier
+                        if retrieval_tier.tier == RetrievalTier.ADJACENT:
+                            raw_score *= 0.7
+                    except Exception:
+                        pass
+
+                entry = ScoredEntry(
+                    content=text,
+                    source=source,
+                    raw_score=raw_score,
+                    composite_score=0.0,
+                    token_count=TokenCounter.count(text),
+                    metadata={"priority": priority, "domain": domains[0] if domains else "general"},
+                )
+                entry.composite_score = self.relevance_scorer.score(
+                    entry,
+                    query_domains=domains,
+                    current_turn=self.rolling_context.turn_count,
+                )
+                scored_entries.append(entry)
+            except Exception as e:
+                logger.debug(f"Scoring entry from {section} failed: {e}")
+
+        # Ingest into rolling context (handles dedup and decay tracking)
+        self.rolling_context.ingest(scored_entries)
+
+        # Build section budgets from budget_plan
+        section_budgets: Dict[str, int] = {}
+        for name in budget_plan.sections:
+            section_budgets[name] = budget_plan.remaining(name)
+
+        # Select entries via bin-packing
+        selected = self.rolling_context.select(section_budgets)
+
+        # Assemble selected entries and report usage
+        parts: List[str] = []
+        for section_name, entries in selected.items():
+            for entry in entries:
+                parts.append(entry.content)
+                budget_plan.report_usage(section_name, entry.token_count)
+
+        logger.debug(
+            f"Budget-aware context: {len(parts)} entries selected, "
+            f"budget used {budget_plan.total_used()}/{budget_plan.total_allocated()}"
+        )
+        return "\n\n".join(parts)
 
     def _record_routing_outcome(
         self,
@@ -1883,12 +2091,33 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             f"reason={retrieval_tier.reason})"
         )
 
-        # 3. Gather context from all contributors (integration-contracts: ContextContributor)
+        # 3. Allocate context budget (if budget allocator available)
+        budget_plan = None
+        if self.budget_allocator:
+            try:
+                from core.context.token_counter import TokenCounter
+                # Estimate conversation tokens from history
+                conv_text = " ".join(
+                    msg.get("content", "") for msg in self.conversation_history
+                )
+                conversation_tokens = TokenCounter.count(conv_text) if conv_text else 0
+
+                budget_plan = self.budget_allocator.allocate(
+                    conversation_tokens=conversation_tokens,
+                )
+                logger.debug(f"Budget plan created:\n{budget_plan.summary()}")
+            except Exception as e:
+                logger.warning(f"Budget allocation failed, using unbounded context: {e}")
+                budget_plan = None
+
+        # 4. Gather context from all contributors (integration-contracts: ContextContributor)
         gathered_context = self._gather_context(
             query,
             domain_names,
             persona=persona,
             mode=persona_mode,
+            budget_plan=budget_plan,
+            retrieval_tier=retrieval_tier,
             domain=domain_names[0] if domain_names else None,
             page=page,
             override_model_ids=mental_models_override,
@@ -2125,6 +2354,19 @@ If you suggest an exercise, copy the description directly from the context above
                         retrieval_tier=retrieval_tier.tier
                     )
                     
+                    # Update conversation history for Wave 3 path
+                    self.conversation_history.append({'role': 'user', 'content': query})
+                    self.conversation_history.append({'role': 'assistant', 'content': full_response})
+
+                    # Rolling context turn tracking for Wave 3 path
+                    if self.rolling_context:
+                        try:
+                            self.rolling_context.on_new_turn(
+                                query, full_response, query_domains=domain_names
+                            )
+                        except Exception as e:
+                            logger.debug(f"Rolling context turn tracking (Wave 3) failed: {e}")
+
                     # Early return - Wave 3 handled the query
                     return
                 else:
@@ -2357,6 +2599,19 @@ If you suggest an exercise, copy the description directly from the context above
         # 9. Update conversation history
         self.conversation_history.append({'role': 'user', 'content': query})
         self.conversation_history.append({'role': 'assistant', 'content': full_response})
+
+        # 9.5 Rolling context turn tracking — decay unreferenced, amplify referenced
+        if self.rolling_context:
+            try:
+                self.rolling_context.on_new_turn(
+                    query, full_response, query_domains=domain_names
+                )
+                logger.debug(
+                    f"Rolling context turn tracked (turn {self.rolling_context.turn_count}, "
+                    f"{len(self.rolling_context.entries)} entries)"
+                )
+            except Exception as e:
+                logger.debug(f"Rolling context turn tracking failed: {e}")
 
         # 10. Learn from interaction
         if self.pattern_engine:
@@ -2664,9 +2919,84 @@ If you suggest an exercise, copy the description directly from the context above
 
         logger.info("State saved")
     
+    async def _on_session_end(self):
+        """Extract facts from conversation and write to tiered memory.
+
+        Called at session end (cleanup, timeout, explicit close).
+        Uses the session extractor to analyse the conversation and
+        write stable/episodic facts to the memory store.
+        """
+        if not self.session_extractor:
+            return
+
+        if not self.conversation_history or len(self.conversation_history) < 2:
+            logger.debug("Session too short for extraction — skipping")
+            return
+
+        try:
+            # Build session metadata
+            session_metadata = {
+                "duration_minutes": (
+                    (datetime.now() - self.session_start).total_seconds() / 60
+                    if self.session_start else 0
+                ),
+                "exchange_count": len(self.conversation_history) // 2,
+                "domains": list(set(
+                    msg.get("domain", "general")
+                    for msg in self.conversation_history
+                    if isinstance(msg, dict)
+                )),
+            }
+
+            # Get compression summary if available
+            compression_summary = {}
+            if self.compression_manager and hasattr(self.compression_manager, "get_current_summary"):
+                try:
+                    compression_summary = self.compression_manager.get_current_summary()
+                except Exception:
+                    pass
+
+            result = await self.session_extractor.extract_and_store(
+                self.conversation_history,
+                compression_summary,
+                session_metadata,
+            )
+
+            logger.info(
+                f"Session extraction complete: {result.stable_count} stable, "
+                f"{result.episodic_count} episodic facts (model={result.model_used}, "
+                f"{result.duration_ms}ms)"
+            )
+
+            # Flush working memory for this session
+            if self.tiered_store and hasattr(self.tiered_store, "flush_working"):
+                self.tiered_store.flush_working()
+                logger.info("Working memory flushed")
+
+        except Exception as e:
+            logger.warning(f"Session-end extraction failed: {e}")
+
     def cleanup(self):
         """Cleanup resources on shutdown."""
         try:
+            # Run session-end extraction (async → sync bridge)
+            if self.session_extractor:
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # If we're inside an async context, schedule it
+                        asyncio.ensure_future(self._on_session_end())
+                        logger.info("Session extraction scheduled (async)")
+                    else:
+                        loop.run_until_complete(self._on_session_end())
+                        logger.info("Session extraction completed (sync)")
+                except RuntimeError:
+                    # No event loop — create one
+                    asyncio.run(self._on_session_end())
+                    logger.info("Session extraction completed (new loop)")
+                except Exception as e:
+                    logger.warning(f"Session extraction during cleanup failed: {e}")
+
             # Stop notes sync if running
             if hasattr(self, 'notes_sync') and self.notes_sync:
                 logger.info("Stopping notes sync manager...")

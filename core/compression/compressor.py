@@ -17,6 +17,8 @@ from typing import Any, Optional, Literal
 from collections import Counter
 import logging
 
+from core.context.token_counter import TokenCounter
+
 logger = logging.getLogger(__name__)
 
 
@@ -159,7 +161,7 @@ class ConversationCompressor:
         
         # Calculate compressed size using ultra format
         compressed_json = json.dumps(ultra_compressed, separators=(',', ':'))
-        compressed_tokens = len(compressed_json) // 4  # Rough estimate: 1 token ≈ 4 chars
+        compressed_tokens = TokenCounter.count(compressed_json)  # Accurate token count
         
         compressed_dict["token_stats"]["compressed"] = compressed_tokens
         compressed_dict["token_stats"]["ratio"] = (
@@ -544,8 +546,7 @@ Artifacts Created:
     def _count_tokens(self, conversation: list[dict]) -> int:
         """Estimate token count for conversation"""
         text = " ".join(m.get("content", "") for m in conversation)
-        # Rough estimate: 1 token ≈ 4 characters
-        return len(text) // 4
+        return TokenCounter.count(text)
     
     # ========== Formatting Methods ==========
     
@@ -1037,8 +1038,8 @@ Artifacts Created:
                 # Return uncompressed as fallback
                 return {
                     "compressed_text": text,
-                    "original_tokens": len(text) // 4,
-                    "compressed_tokens": len(text) // 4,
+                    "original_tokens": TokenCounter.count(text),
+                    "compressed_tokens": TokenCounter.count(text),
                     "compression_ratio": 1.0,
                     "strategy": "none",
                     "error": "llmlingua_not_available"

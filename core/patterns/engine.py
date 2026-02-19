@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
+from core.context.token_counter import TokenCounter
 from .models import (
     DomainPriorityPattern,
     Pattern,
@@ -588,6 +589,7 @@ class PatternEngine:
         persona: Optional[str] = None,
         mode: Optional[str] = None,
         user_name: str = "the user",
+        token_budget: int = 0,
         **kwargs: object,
     ) -> str:
         """Build learned-patterns context block for system prompt (ContextContributor)."""
@@ -612,7 +614,10 @@ class PatternEngine:
             else:
                 parts.append(f"- **{p.name}**: {p.description}\n")
         parts.append("\nUse these patterns to anticipate needs, reference familiar tools/concepts, and provide more relevant responses.\n")
-        return "".join(parts)
+        result = "".join(parts)
+        if token_budget > 0 and TokenCounter.count(result) > token_budget:
+            result = TokenCounter.truncate(result, token_budget)
+        return result
 
     def get_persona_patterns(self, persona_name: str, limit: int = 50) -> List[Pattern]:
         """Return patterns attributed to the given persona (for persona↔entity affinity)."""

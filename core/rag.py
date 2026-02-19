@@ -14,6 +14,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Import token counter for accurate budget tracking
+from core.context.token_counter import TokenCounter
+
 # Import hybrid search components
 try:
     from core.hybrid_search import HybridSearcher
@@ -1254,7 +1257,7 @@ class UnifiedRAG:
         
         # Normal formatting (existing code)
         context_parts = []
-        total_length = 0
+        total_tokens = 0
 
         for result in results:
             # Handle integration sources specially
@@ -1298,11 +1301,11 @@ class UnifiedRAG:
             
             content = f"{header}\n```\n{content_text}\n```"
 
-            if total_length + len(content) > max_tokens * 4:  # Rough char estimate
+            if total_tokens + TokenCounter.count(content) > max_tokens:
                 break
 
             context_parts.append(content)
-            total_length += len(content)
+            total_tokens += TokenCounter.count(content)
 
         return "\n\n---\n\n".join(context_parts)
 

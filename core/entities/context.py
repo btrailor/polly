@@ -10,6 +10,7 @@ import logging
 import re
 from typing import Any, List, Optional, Set
 
+from core.context.token_counter import TokenCounter
 from .models import Entity, EntityQuery, EntityType
 from .store import EntityStore
 
@@ -68,6 +69,7 @@ class EntityContextBuilder:
         include_cross_domain: bool = True,
         persona: Optional[str] = None,
         mode: Optional[str] = None,
+        token_budget: int = 0,
         **kwargs: object,
     ) -> str:
         """Build formatted context block for prompt injection."""
@@ -140,4 +142,7 @@ class EntityContextBuilder:
             if path and len(path) > 1:
                 path_names = [p[0].name for p in path]
                 parts.append(f"\nConnection path: {' → '.join(path_names)}")
-        return "\n".join(parts)
+        result = "\n".join(parts)
+        if token_budget > 0 and TokenCounter.count(result) > token_budget:
+            result = TokenCounter.truncate(result, token_budget)
+        return result

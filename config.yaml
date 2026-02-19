@@ -308,6 +308,83 @@ routing_v2:
     # Enable automatic tier downgrade on budget constraints
     downgrade_on_budget: true
 
+# Scalable Memory Layers (Tiered Memory + Context Budget)
+memory:
+  provider: "mem0"
+  extraction:
+    enabled: true
+    cloud_threshold: "balanced"      # Session complexity that triggers cloud model
+    cloud_model: "claude-haiku"
+    local_model: "llama3.2:latest"
+    max_cloud_cost: 0.02             # Per-extraction budget cap
+  tiers:
+    stable:
+      collection: "memory_stable"
+      decay: null                    # No decay for stable facts
+    episodic:
+      collection: "memory_episodic"
+      decay_halflife_days: 90        # Score halves every 90 days
+    working:
+      collection: "memory_working"
+      session_scoped: true
+  retrieval:
+    stable_limit: 5
+    episodic_limit: 5
+    working_include_all: true
+    min_similarity: 0.4
+    dedup_threshold: 0.92
+
+context_budget:
+  response_reserve: 2000
+  model_context_windows:
+    gpt-4: 128000
+    gpt-4o: 128000
+    claude-sonnet: 200000
+    claude-haiku: 200000
+    llama3.2: 131072
+    default: 8192
+  sections:
+    system_prompt:
+      min: 500
+      max: 2000
+      target_pct: 0.10
+      priority: 1              # Guaranteed — persona + constitutional layer
+    conversation:
+      min: 1000
+      max: 8000
+      target_pct: 0.25
+      priority: 2              # Guaranteed — recent conversation history
+    memory:
+      min: 500
+      max: 4000
+      target_pct: 0.20
+      priority: 3              # Tiered memory retrieval
+    rag:
+      min: 1000
+      max: 6000
+      target_pct: 0.30
+      priority: 4              # RAG search results
+    mental_models:
+      min: 200
+      max: 2000
+      target_pct: 0.10
+      priority: 5              # Active mental models
+    entities:
+      min: 100
+      max: 1000
+      target_pct: 0.05
+      priority: 6              # Entity + pattern context
+  relevance_weights:
+    retrieval_similarity: 0.35
+    recency: 0.25
+    reference_frequency: 0.15
+    domain_affinity: 0.15
+    tier_weight: 0.10
+  rolling:
+    decay_per_turn: 0.85
+    eviction_turns: 5
+    amplification_reset: true
+
 # RAG settings
 rag:
   # Vector database

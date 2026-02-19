@@ -18,6 +18,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 
+from core.context.token_counter import TokenCounter
+
 logger = logging.getLogger(__name__)
 
 
@@ -144,6 +146,7 @@ class MentalModelManager:
         domains: List[str],
         persona: Optional[str] = None,
         mode: Optional[str] = None,
+        token_budget: int = 0,
         **kwargs: Any,
     ) -> str:
         """Build mental models context for system prompt (ContextContributor protocol)."""
@@ -190,7 +193,10 @@ class MentalModelManager:
         for compressed in compressed_models:
             parts.append(f"{compressed}\n\n")
         parts.append("Apply these frameworks to guide your thinking and responses.\n")
-        return "".join(parts)
+        result = "".join(parts)
+        if token_budget > 0 and TokenCounter.count(result) > token_budget:
+            result = TokenCounter.truncate(result, token_budget)
+        return result
 
     # Minimum score a model must reach to be included in auto-assignment.
     # A single keyword match (+2) or lone domain match (+3) is not enough;
@@ -511,7 +517,7 @@ class MentalModelManager:
             prompt_injection='When discussing education, learning, or teaching, adopt a problem-posing approach. Engage in dialogue rather than transmission. Ask questions that promote critical consciousness. Recognize that we are learning together.',
             applies_to=['scrolls', 'grids'],
             active_on_pages=['learning', 'notes', 'dashboard'],
-            active_for_personas=['teacher'],
+            active_for_personas=['professor'],
             active_for_modes=['socratic', 'guide'],
             keywords=['freire', 'paulo', 'pedagogy', 'liberation', 'praxis', 'banking', 'problem-posing', 'dialogue', 'conscientização'],
             category_triggers=['scrolls'],
@@ -531,7 +537,7 @@ class MentalModelManager:
             prompt_injection='When helping someone learn, suggest starting with examples to deconstruct rather than building from first principles. Show how to take things apart to understand how they work.',
             applies_to=['sigils', 'signals', 'grids'],
             active_on_pages=['code', 'learning', 'patterns'],
-            active_for_personas=['teacher'],
+            active_for_personas=['professor'],
             active_for_modes=['guide'],
             keywords=['reverse', 'engineering', 'deconstruct', 'take apart', 'understand', 'analyze'],
             category_triggers=[],
@@ -551,7 +557,7 @@ class MentalModelManager:
             prompt_injection='Don\'t provide direct answers. Ask questions that guide discovery. Reveal contradictions in thinking. Use dialogue to promote deeper understanding. Recognize that we\'re learning together through this exchange.',
             applies_to=['scrolls', 'grids'],
             active_on_pages=['learning', 'dashboard'],
-            active_for_personas=['teacher'],
+            active_for_personas=['professor'],
             active_for_modes=['socratic'],
             keywords=['socratic', 'socrates', 'question', 'dialogue', 'dialectic', 'contradiction', 'inquiry'],
             category_triggers=[],
@@ -1107,7 +1113,7 @@ class MentalModelManager:
             prompt_injection='When stuck on a problem: Ask "What would this look like in music? In architecture? In cooking?" Draw analogies from other domains. Cross-pollination often reveals novel approaches. Constraints from one field may not apply in another.',
             applies_to=['sigils', 'scrolls', 'glyphs', 'grids'],
             active_on_pages=['projects', 'learning', 'patterns'],
-            active_for_personas=['architect', 'teacher'],
+            active_for_personas=['architect', 'professor'],
             active_for_modes=[],
             keywords=['domain', 'bridge', 'analogy', 'cross-pollination', 'metaphor', 'insight', 'transfer'],
             category_triggers=[],
@@ -1128,7 +1134,7 @@ class MentalModelManager:
             prompt_injection='When someone asks a question: Listen for the question beneath the question. The stated problem often isn\'t the real one. Ask clarifying questions. Reframe to reveal the true issue before jumping to solutions. Problem-posing before problem-solving.',
             applies_to=['scrolls', 'grids'],
             active_on_pages=['learning', 'dashboard', 'notes'],
-            active_for_personas=['teacher', 'architect'],
+            active_for_personas=['professor', 'architect'],
             active_for_modes=['socratic', 'guide'],
             keywords=['problem', 'posing', 'reframe', 'question', 'clarify', 'underlying', 'real issue'],
             category_triggers=[],

@@ -11,7 +11,18 @@ The memory layer operates as an additive enhancement to existing systems
 
 from typing import Optional, Dict, Any
 
-__all__ = ['get_memory_adapter', 'Mem0Adapter']
+__all__ = [
+    'get_memory_adapter',
+    'Mem0Adapter',
+    'TieredMemoryStore',
+    'MemoryTier',
+    'MemoryEntry',
+    'MemoryMetadata',
+    'MemoryRetriever',
+    'SessionExtractor',
+    'ExtractedFact',
+    'ExtractionResult',
+]
 
 
 def get_memory_adapter(config: Dict[str, Any]) -> Optional[Any]:
@@ -45,3 +56,24 @@ try:
 except ImportError:
     # Mem0 not installed
     Mem0Adapter = None
+
+try:
+    from core.memory.tiers import TieredMemoryStore, MemoryTier, MemoryEntry, MemoryMetadata
+except ImportError:
+    # Dependencies not available
+    TieredMemoryStore = None
+    MemoryTier = None
+    MemoryEntry = None
+    MemoryMetadata = None
+
+try:
+    from core.memory.retriever import MemoryRetriever
+except ImportError:
+    MemoryRetriever = None
+
+try:
+    from core.memory.extractor import SessionExtractor, ExtractedFact, ExtractionResult
+except ImportError:
+    SessionExtractor = None
+    ExtractedFact = None
+    ExtractionResult = None

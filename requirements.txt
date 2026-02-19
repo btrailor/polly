@@ -39,6 +39,9 @@ llmlingua>=0.2.0  # Fast algorithmic prompt compression (2x-10x token reduction)
 # Adaptive Memory Layer (Phase 1.5)
 mem0ai>=1.0.0  # Graph-based memory with entity relationships and multi-level context
 
+# Token Counting (Scalable Memory Layers)
+tiktoken>=0.5.0  # Accurate token counting for budget allocation
+
 # Optional: For enhanced code parsing
 # tree-sitter>=0.20.0
 # tree-sitter-python

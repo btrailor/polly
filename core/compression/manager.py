@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Literal
 import logging
 
+from core.context.token_counter import TokenCounter
 from .compressor import ConversationCompressor, CompressionStrategy
 
 logger = logging.getLogger(__name__)
@@ -183,6 +184,7 @@ class CompressionManager:
         domains: List[str],
         persona: Optional[str] = None,
         mode: Optional[str] = None,
+        token_budget: int = 0,
         **kwargs: object,
     ) -> str:
         """Build compressed conversation summary for system prompt (ContextContributor)."""
@@ -194,7 +196,12 @@ class CompressionManager:
             return ""
         try:
             summary = self.compressor.decompress(compressed)
-            return f"\n\n## Conversation Summary\n\n{summary}\n" if summary else ""
+            if not summary:
+                return ""
+            result = f"\n\n## Conversation Summary\n\n{summary}\n"
+            if token_budget > 0 and TokenCounter.count(result) > token_budget:
+                result = TokenCounter.truncate(result, token_budget)
+            return result
         except Exception as e:
             logger.debug(f"Could not decompress for context: {e}")
             return ""
