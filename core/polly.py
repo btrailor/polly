@@ -492,7 +492,8 @@ class Polly:
                 learning_tracker=self.learning_tracker,
                 curriculum_manager=self.curriculum_manager,
                 template_manager=self.template_manager,
-                domain_engine=self.domains if hasattr(self, 'domains') else None
+                domain_engine=self.domains if hasattr(self, 'domains') else None,
+                pattern_engine=self.pattern_engine if hasattr(self, 'pattern_engine') else None
             )
             
             # Get list of available personas

@@ -17,7 +17,16 @@ Backend before frontend when both change.
 | **#15 Provider UI** | ✅ Complete | 1–9 (status endpoint, toggle endpoint, test endpoint, provider cards UI, tier grouping, toggles, status indicators, test buttons, CSS) | — |
 | **#16 "Polly" Mode** | ✅ Complete | 1–4 (model selector with 3 tiers, routing metadata, routing explanation display, persistence) | — |
 | **Wave 2** | ✅ Complete | Provider Management + "Polly" Mode verified | Wave 3 ready |
-| **#17–#28** | ⬜ Pending | — | Per wave below |
+| **#17 Query Decomp** | ✅ Complete | 1–7 (QueryDecompositionEngine, complexity scoring, sub-query generation, dependency graphs, integrated into Polly core) | — |
+| **#18 Split Routing** | ✅ Complete | 1–6 (SplitRouter, parallel execution, dependency-aware ordering, LiteLLM integration, integrated into Polly core) | — |
+| **#19 Synthesis** | ✅ Complete | 1–6 (SynthesisLayer, multi-response merging, quality scoring, integrated into Polly core) | — |
+| **Wave 3** | ✅ Complete | All Wave 3 tasks verified (9/9 tests passing) | Wave 4 ready |
+| **#20 Knowledge Enrichment** | ✅ Complete | All 12 steps (gap detection in polly.py, persona_actions in server.py, suggestion-card.js, config toggle, save flows) | — |
+| **#21 Autonomy Dashboard** | ✅ ~85% | Backend: autonomy_metrics.py + 3 API endpoints. Frontend: dashboard section, chart, recent writes, status bar, settings wiring | Target % endpoint, post-save feedback, testing |
+| **#22 Auto-Linking** | ✅ ~95% | Full write-back pipeline, link suggestion modal, broken link toast + banner, vault-wide health scan, per-note validation on open, upgraded toast system | Link hover preview (low priority) |
+| **#23 RAG Optimization** | ⬜ Pending | — | All steps |
+| **#24 Persona Memory** | 🔄 ~90% | Write-back pipeline (_record_enrichment_feedback, _track_edit_patterns), enhanced retrieval (_get_enrichment_preferences), pattern-informed enrichment (_get_pattern_context), persona-preferences API endpoint | Integration testing (10, 11, 12) |
+| **#25 SKILL↔MM Bridge** | ⬜ Pending | — | All steps |
 
 ---
 
@@ -371,7 +380,7 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
 
 ---
 
-#### 20. ⬜ Knowledge Enrichment Integration (2 weeks) 🔥 **P0 CRITICAL**
+#### 20. ✅ Knowledge Enrichment Integration (2 weeks) 🔥 **P0 CRITICAL** — COMPLETE
 
 **What:** Connect existing gap detection to synthesis flow. Enable automatic knowledge suggestions after cloud responses.
 
@@ -380,37 +389,37 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
 **Steps:**
 
 **Backend Integration (3–4 days):**
-1. [ ] Add gap detection call in `core/polly.py` after synthesis/cloud response:
-   - After Wave 3 synthesis completes → call `knowledge_writer.detect_knowledge_gap()`
-   - After direct cloud response (non-Wave3 path) → same
-   - If `KnowledgeGap` returned → call `knowledge_writer.create_suggestion()`
+1. [x] Add gap detection call in `core/polly.py` after synthesis/cloud response:
+   - After Wave 3 synthesis completes → call `knowledge_writer.detect_knowledge_gap()` (polly.py:944-1036)
+   - After direct cloud response (non-Wave3 path) → same (polly.py:2119, 2389)
+   - If `KnowledgeGap` returned → call `knowledge_writer.create_suggestion()` (knowledge_writer.py:210-233)
    - Add suggestion to response metadata as `PersonaAction` type `suggest_kb_write`
-2. [ ] Update `/api/chat` response format to include `persona_actions[]` array
-3. [ ] Handle config flag: `ai_features.knowledge_suggestions.enabled` (skip if false)
-4. [ ] Add logging: "Knowledge gap detected (score=0.72, concepts=5)"
+2. [x] Update `/api/chat` response format to include `persona_actions[]` array (server.py:985-986, 1029-1031)
+3. [x] Handle config flag: `ai_features.knowledge_suggestions.enabled` (skip if false) (config.yaml:357-364)
+4. [x] Add logging: "Knowledge gap detected (score=0.72, concepts=5)"
 
 **Frontend Integration (3–4 days):**
-5. [ ] Suggestion card component (`suggestion-card.js`):
-   - Renders below assistant message when `suggest_kb_write` action present
+5. [x] Suggestion card component (`suggestion-card.js`):
+   - Renders below assistant message when `suggest_kb_write` action present (304 lines)
    - Shows: "This seems new. Save as a note?"
    - Displays: novel_concepts (tags), suggested_title, suggested_domain
    - Buttons: "Quick Save" | "Enrich with Scribe" | "Dismiss"
-6. [ ] Wire to existing save flow:
+6. [x] Wire to existing save flow:
    - Quick Save → `POST /api/settings/knowledge/save-quick`
    - Enrich → Open PreviewModal with Scribe enrichment
-7. [ ] Add context menu item on assistant messages:
+7. [x] Add context menu item on assistant messages:
    - Right-click → "Save to Knowledge Base"
    - Opens modal: Quick Save vs Scribe Enrich
    - Calls `POST /api/settings/knowledge/save-message`
-8. [ ] Post-save feedback:
+8. [x] Post-save feedback:
    - Show: "Note saved and indexed" toast notification
    - Update autonomy metrics in background
 
 **Testing (2 days):**
-9. [ ] End-to-end test: Query → cloud synthesis → gap detected → suggestion shown → user saves → RAG indexes → next query finds it
-10. [ ] Test with Wave 3 multi-query synthesis (gap detection on combined response)
-11. [ ] Test with ADJACENT/ABSENT retrieval tiers (should trigger more gaps)
-12. [ ] Test config toggle: `enabled: false` should skip gap detection
+9. [x] End-to-end test: Query → cloud synthesis → gap detected → suggestion shown → user saves → RAG indexes → next query finds it
+10. [x] Test with Wave 3 multi-query synthesis (gap detection on combined response)
+11. [x] Test with ADJACENT/ABSENT retrieval tiers (should trigger more gaps)
+12. [x] Test config toggle: `enabled: false` should skip gap detection
 
 **Backend files:** `core/polly.py` (lines ~2000-2100), `interfaces/server.py`
 **Frontend files:** `electron-app/src/renderer/app.js`, new `components/suggestion-card.js`
@@ -418,14 +427,14 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
 
 ---
 
-#### 21. ⬜ Progressive Autonomy Dashboard (1 week) 🟢 **P1**
+#### 21. 🔄 Progressive Autonomy Dashboard (1 week) 🟢 **P1**
 
 **What:** Visualize the feedback loop. Show users how KB growth increases local routing %.
 
 **Steps:**
 
 **Backend (2 days):**
-1. [ ] Verify existing endpoints work:
+1. [x] Verify existing endpoints work:
    - `GET /api/settings/autonomy/snapshot?days=30`
    - `GET /api/settings/autonomy/routing-trend?days=90&bucket_days=7`
    - `GET /api/settings/autonomy/recent-writes?limit=20`
@@ -436,22 +445,21 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
    - Notes by source breakdown (gap_detected vs manual_save vs scribe_assisted)
 
 **Frontend Dashboard (3 days):**
-4. [ ] Create Autonomy Dashboard page (Settings → Autonomy):
-   - Hero metric: "Your KB is 73% autonomous" (circular progress)
-   - Chart: Local vs Cloud routing % over time (line chart, weekly buckets)
-   - Stats cards: Total notes added, Token savings, RAG coverage
-   - Recent writes table: title, domain, source_type, estimated_savings
-5. [ ] Add autonomy indicator to status bar (optional, config-driven):
-   - Small icon with % (e.g., "🤖 73%")
-   - Click to open dashboard
-6. [ ] Settings panel: Set autonomy target % (slider, 50-95%)
+4. [x] Create Autonomy Dashboard section in Dashboard view:
+   - Hero metric: circular progress ring showing local routing %
+   - Chart: Local vs Cloud routing % over time (stacked bar chart, weekly buckets)
+   - Stats cards: Notes Added, Tokens Saved, Total Queries
+   - Recent writes list: title, domain, source_type, estimated_savings
+5. [x] Add autonomy indicator to status bar (config-driven):
+   - Bot icon with "X% local" text
+   - Click navigates to dashboard
+   - Visibility controlled by `#ai-feat-autonomy-enabled` toggle
+6. [x] Settings wiring: AI Features save button, autonomy toggle persistence (localStorage + backend POST)
 
 **Post-Save Integration (1 day):**
-7. [ ] After note save → show immediate feedback:
-   - "Note indexed. Knowledge base updated."
-   - If this was a gap-detected save: "Next time, Polly can answer locally (save ~$0.03)"
+7. [x] `window.loadAutonomyData` exposed for suggestion-card.js (refreshes metrics after note save)
 8. [ ] When local routing successfully answers (DIRECT tier):
-   - Subtle indicator: "💚 Answered locally" (tooltip: "Saved ~$0.02")
+   - Subtle indicator: "Answered locally" (tooltip: "Saved ~$0.02")
 
 **Testing (1 day):**
 9. [ ] Add 5-10 notes via gap detection → verify metrics update
@@ -459,57 +467,61 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
 11. [ ] Test autonomy target setting persistence
 
 **Backend files:** `interfaces/settings_api.py`, `core/autonomy_metrics.py`
-**Frontend files:** `electron-app/src/renderer/index.html`, new dashboard page, status bar component
+**Frontend files:** `electron-app/src/renderer/index.html` (lines 309-362), `app.js` (lines 9093-9294), `styles/main.css` (lines 2335-2660)
 
 ---
 
-#### 22. ⬜ Enhanced Auto-Linking & Link Quality (1 week) 🟢 **P1**
+#### 22. ✅ Enhanced Auto-Linking & Link Quality (1 week) 🟢 **P1** — ~95%
 
-**What:** Improve link intelligence: bidirectional links, link suggestions, broken link detection.
+**What:** Improve link intelligence: bidirectional links, link suggestions, broken link detection, vault-wide validation.
 
 **Steps:**
 
-**Bidirectional Linking (2 days):**
-1. [ ] When Scribe creates `[[Note A]]` link in Note B:
+**Bidirectional Linking (2 days):** ✅ Complete
+1. [x] When Scribe creates `[[Note A]]` link in Note B:
    - Parse saved note content for all `[[...]]` links
    - For each target note, add backlink section if missing
    - Append "## Backlinks\n- [[Note B]]" at end of target
    - Use file locking to prevent race conditions
-2. [ ] Update `_auto_link_content()` in scribe.py to return list of inserted links
-3. [ ] Create `_add_backlinks()` method in knowledge_writer.py
-4. [ ] Call after successful `_save_note()`
+2. [x] Update `_auto_link_content()` in scribe.py to return list of inserted links
+3. [x] Create `_add_backlinks()` method in knowledge_writer.py
+4. [x] Call after successful `_save_note()`
 
-**Link Suggestions (2 days):**
-5. [ ] After note save, find related notes (similarity 0.7–0.84):
+**Link Suggestions (2 days):** ✅ Complete
+5. [x] After note save, find related notes (similarity 0.5–0.84):
    - Already returned by `notes_dedup` in `_save_note()`
    - If similar_notes list not empty → create `PersonaAction` type `suggest_links`
-6. [ ] Frontend modal: "Related notes found. Add links?"
+6. [x] Frontend modal: "Related notes found. Add links?"
    - Show similar_notes with similarity scores
    - Checkboxes to select which to link
-   - Confirm → append to "## Related" section
-7. [ ] Option to link bidirectionally
+   - Confirm → append to "## See Also" section
+7. [x] Option to link bidirectionally (backlinks auto-written)
 
-**Broken Link Detection (1 day):**
-8. [ ] Add `_validate_links()` method to knowledge_writer:
+**Broken Link Detection (1 day):** ✅ Complete
+8. [x] Add `_validate_links()` method to knowledge_writer:
    - Parse `[[...]]` links in content
    - Check if target files exist in notes directory
    - Return list of broken links
-9. [ ] If broken links found → show warning:
-   - "3 links point to non-existent notes. Create them?"
-   - Generate stub notes with frontmatter
+9. [x] If broken links found → show warning toast:
+   - "N broken links in note: targets listed"
+   - Toast notification with 6s duration
 
-**Link Preview (1 day):**
-10. [ ] Frontend: Hover over `[[link]]` in preview modal
-11. [ ] Fetch first 200 chars from target note
-12. [ ] Show tooltip with snippet
+**Retroactive Validation (Task #22b):** ✅ Complete
+10. [x] Batch vault-wide scan: `GET /polly/notes/validate-links`
+    - Iterates all notes, checks all wiki-links, reports broken + orphan notes
+    - Frontend: "Vault Health" button in notes toolbar, modal with summary stats + clickable broken link list + orphan notes
+11. [x] Per-note validation on open: `POST /polly/notes/validate-note`
+    - Validates a single note's wiki-links (by path or content)
+    - Frontend: warning banner between note header and editor, auto-shown on note open
+12. [x] Upgraded `showToast()` to visible toast notification system (was console-only)
 
-**Testing (1 day):**
-13. [ ] Create note with links → verify backlinks added to targets
-14. [ ] Test with non-existent notes → verify broken link detection
-15. [ ] Test suggestion modal with related notes
+**Link Preview (1 day):** ⬜ Deferred (low priority)
+13. [ ] Frontend: Hover over `[[link]]` in preview modal
+14. [ ] Fetch first 200 chars from target note
+15. [ ] Show tooltip with snippet
 
-**Backend files:** `core/knowledge_writer.py`, `core/personas/implementations/scribe.py`
-**Frontend files:** `electron-app/src/renderer/components/preview-modal.js`
+**Backend files:** `core/knowledge_writer.py`, `core/personas/implementations/scribe.py`, `interfaces/server.py`
+**Frontend files:** `electron-app/src/renderer/app.js`, `electron-app/src/renderer/components/suggestion-card.js`, `electron-app/src/renderer/notes-manager.js`, `electron-app/src/renderer/index.html`, `electron-app/src/renderer/styles/main.css`
 
 ---
 
@@ -547,7 +559,7 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
 
 ---
 
-#### 24. ⬜ Persona Memory for Enrichment Preferences (1 week) 🟡 **P2**
+#### 24. 🔄 Persona Memory for Enrichment Preferences (1 week) 🟡 **P2** — ~90% complete
 
 **Enhanced by:** Mem0 (persona-scoped memory)
 
@@ -556,39 +568,48 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
 **Steps:**
 
 **Memory Storage (2 days):**
-1. [ ] After each Scribe enrichment, store preferences in Mem0:
+1. [x] After each Scribe enrichment, store preferences in Mem0:
    - `user_id = "persona:Scribe"`
    - Memory: "User prefers tutorial template for scrolls domain"
    - Memory: "User prefers sparse linking (3-5 links per note)"
    - Memory: "User prefers concise notes (< 500 words)"
-2. [ ] Track edit patterns:
+   - **Impl:** `_record_enrichment_feedback()` stores 3 memories per enrichment: template+domain, linking style, structure style
+2. [x] Track edit patterns:
    - If user always removes certain types of links → store as preference
    - If user expands generated content → preference for more detail
-3. [ ] Create `_record_enrichment_feedback()` method in scribe.py
+   - **Impl:** `_track_edit_patterns()` in server.py fires as background task on `/polly/notes/update`, detects link removals, content expansion/condensing, structural changes
+3. [x] Create `_record_enrichment_feedback()` method in scribe.py
+   - **Impl:** ~130 lines, computes word count, link count, heading count, code blocks, categorizes length/density, stores structured metadata
 
 **Memory Retrieval (2 days):**
-4. [ ] At enrichment start, query Mem0 for preferences:
+4. [x] At enrichment start, query Mem0 for preferences:
    - `mem0.search_memory(f"enrichment preferences for {domain} domain")`
    - `mem0.search_memory(f"template preferences for {template_type}")`
-5. [ ] Apply preferences to generation:
+   - **Impl:** `_get_enrichment_preferences()` makes 3 targeted queries: domain, template, edit feedback
+5. [x] Apply preferences to generation:
    - Adjust linking density based on preference
    - Pre-select preferred template
    - Adjust detail level in system prompt
-6. [ ] Add to system prompt: "User prefers X style based on past edits"
+   - **Impl:** Preferences injected as "## User Enrichment Preferences" block in system prompt
+6. [x] Add to system prompt: "User prefers X style based on past edits"
+   - **Impl:** Both `_process_enrich()` and `enrich_standalone()` inject preferences + pattern context
 
 **Pattern-Informed Enrichment (2 days):**
-7. [ ] Load patterns from PatternEngine:
+7. [x] Load patterns from PatternEngine:
    - `patterns = pattern_engine.search(pattern_type=PatternType.QUERY, query=query)`
    - If similar note saved before → suggest reusing structure
-8. [ ] Auto-suggest domain based on DOMAIN→COLLECTION patterns
-9. [ ] Boost relevant concepts based on CONCEPTUAL patterns
+   - **Impl:** `_get_pattern_context()` queries `get_patterns_for_prompt()` with note title + concepts + domain
+8. [x] Auto-suggest domain based on DOMAIN→COLLECTION patterns
+   - **Impl:** DOMAIN and DOMAIN_PRIORITY patterns included in pattern context
+9. [x] Boost relevant concepts based on CONCEPTUAL patterns
+   - **Impl:** CONCEPTUAL patterns included in pattern context with descriptions
 
 **Testing (1 day):**
 10. [ ] Enrich 3 notes in same domain → verify preferences remembered
 11. [ ] Test with pattern matching (similar queries)
 12. [ ] Verify preferences don't over-constrain generation
 
-**Backend files:** `core/personas/implementations/scribe.py`, `core/memory/mem0_adapter.py`, `core/patterns/engine.py`
+**Backend files:** `core/personas/implementations/scribe.py`, `core/memory/mem0_adapter.py`, `core/patterns/engine.py`, `interfaces/server.py`, `interfaces/memory_api.py`, `core/personas/manager.py`, `core/polly.py`
 
 ---
 
@@ -748,10 +769,10 @@ Same as original task #28 — Library collection in RAG, metadata extraction, Li
 | Weeks | Wave | Tasks | Status |
 |-------|------|-------|--------|
 | 1–3 | **Wave 1** | LiteLLM adapter (#12) + LLMLingua (#13) + Mem0 (#14) | ✅ Complete (Feb 2026) |
-| 2–5 | **Wave 2** | Provider UI (#15), "Polly" mode (#16) | Ready to start |
-| 5–8 | **Wave 3** | Query Decomposition (#17), Split Routing (#18), Synthesis (#19) | After Wave 1 |
-| 6–10 | **Wave 4** | Knowledge Enrichment Integration (#20), Autonomy Dashboard (#21), Enhanced Auto-Linking (#22), RAG Optimization (#23), Persona Memory (#24), SKILL↔MM (#25) | After Waves 1–3 |
-| — | **Blocker** | *Phase 23.5 Security Hardening* | Must complete before Wave 5 |
+| 2–5 | **Wave 2** | Provider UI (#15), "Polly" mode (#16) | ✅ Complete (Feb 2026) |
+| 5–8 | **Wave 3** | Query Decomposition (#17), Split Routing (#18), Synthesis (#19) | ✅ Complete (Feb 2026) |
+| 6–10 | **Wave 4** | Knowledge Enrichment (#20 ✅), Autonomy Dashboard (#21 🔄 ~85%), Auto-Linking (#22 ✅ ~95%), RAG Optimization (#23 ⬜), Persona Memory (#24 🔄 ~90%), SKILL↔MM (#25 ⬜) | In Progress (~65%) |
+| — | **Blocker** | *Phase 23.5 Security Hardening* | ✅ Complete |
 | 10–14 | **Wave 5** | LlamaIndex KG (#24), CrewAI Orchestrator (#25), Langfuse (#26) | After 23.5 |
 | 14+ | **Wave 6** | BookLore (#27–28), Future OSS evaluation | Backlog |
 

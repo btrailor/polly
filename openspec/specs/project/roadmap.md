@@ -10,9 +10,9 @@
 | Tier | Name | Progress | Notes |
 |------|------|----------|--------|
 | **0** | Foundation & UI | ✅ 100% | Phases 0.5, 1, 3, 4, 5 |
-| **1** | Core Intelligence | ~85% | 15+ phases done; 23.5 ✅; 16c, 22 frontend, 12a/12b remaining |
+| **1** | Core Intelligence | ~90% | 15+ phases done; 23.5 ✅; 12a ✅ ~95%; 16c frontend, 12b remaining |
 | **2** | Packaging & Permissions | 📋 Not started | Phase 9, signing, UI polish |
-| **3** | Knowledge Platform | 📋 Not started | Knowledge graph, capture, maturity lifecycle, canvas, publishing |
+| **3** | Knowledge Platform | 📋 Not started | Knowledge graph advanced, capture, maturity lifecycle, canvas, publishing |
 | **4** | Polish & Autonomy | 📋 Not started | Phase 18 onboarding, Phase 19 data autonomy, analytics |
 | **5** | Distributed & Mobile | 📋 Not started | DRM, mobile companion, advanced communication |
 
@@ -48,7 +48,7 @@ Tier docs: [docs/planning/tiers/](../../../docs/planning/tiers/).
 | 22 | Teaching Mode | 🔄 ~75% | Backend done; frontend includes Learning page center area redesign + meta-pedagogy. [changes/learning-and-administrator-profiles/](../changes/learning-and-administrator-profiles/) |
 | 23 | Curriculum Learning System | ✅ | All 6 sub-phases |
 | **23.5** | **Security Hardening** | ✅ Substantially complete | Capability Broker, Pyodide sandbox, allowlist, CORS, audit. Analysis: [phase-23.5/PHASE23.5_ANALYSIS.md](../../../docs/planning/phases/phase-23.5/PHASE23.5_ANALYSIS.md) |
-| 12a | Knowledge Graph Basic | 📋 | Extended scope — see Tier 3 |
+| 12a | Knowledge Graph Basic | ✅ ~95% | Implemented via knowledge-graph-navigation + knowledge-graph-refinement changes. Backend: all graph endpoints, entity extraction on save, Garden API. Frontend: Cytoscape.js graph page, Browse list, Garden view, filters, navigation. Spec updates pending. |
 | 12b | Knowledge Graph Advanced | 📋 | After 12a |
 
 ### Cross-Cutting: Core Framework Refinement
@@ -58,17 +58,18 @@ Tier docs: [docs/planning/tiers/](../../../docs/planning/tiers/).
 | Autonomy Metrics | ✅ | `core/autonomy_metrics.py`, dashboard API |
 | Incremental RAG Index | ✅ | `rag.index_single_document()` |
 | AI Features Config + UI | ✅ | `config.yaml`, settings toggles |
-| Provider Registry | 📋 | `core/provider_registry.py` (designed, not coded) |
-| "Polly" Routing Mode | 📋 | UI + routing pipeline (designed, not coded) |
-| OpenRouter Gateway | 📋 | `core/providers/openrouter_provider.py` (designed) |
-| Query Decomposition | 📋 | Core differentiator — not started |
-| Split Routing + Synthesis | 📋 | Depends on decomposition |
-| Pattern → Routing | 📋 | Not started |
-| PIL Expansion | 📋 | Not started |
+| Provider Management UI | ✅ | Settings → Providers page with toggles, status, test buttons |
+| "Polly" Routing Mode | ✅ | Model selector with 3 tiers (Fast/Balanced/Thorough), routing explanations |
+| Query Decomposition | ✅ | `core/query_decomposition.py` (467 lines), complexity scoring, sub-query generation |
+| Split Routing + Synthesis | ✅ | `core/split_router.py` (453 lines), `core/synthesis.py` (380 lines), parallel execution |
+| Knowledge Enrichment Integration | ✅ | Gap detection in `polly.py`, suggestion-card.js, persona_actions in chat responses |
+| Autonomy Dashboard | 🔄 ~40% | Backend complete (`autonomy_metrics.py`, 3 API endpoints); frontend dashboard not built |
+| Enhanced Auto-Linking | 🔄 ~35% | BacklinksIndex (516 lines), sync integration; write-back, broken link detection pending |
+| RAG Optimization | 📋 | Not started |
+| Persona Memory for Enrichment | 🔄 ~25% | Memory read path works; write-back/preference recording pending |
 | SKILL ↔ Mental Model | 📋 | Not started |
 | Agent Swarms / Nexus | 📋 | Replaces original Orchestrator; see Phase 24a–24e |
 | BookLore Library | 📋 | Not started |
-| RAG Optimization | 📋 | Not started |
 
 Change folder: [changes/core-framework-refinement/](../changes/core-framework-refinement/)
 
@@ -161,7 +162,7 @@ Specs: [code-library](../code-library/spec.md), [dev-philosophy](../dev-philosop
 ### Tier 3: Knowledge Platform (NEW)
 | Phase | Name | Status | Spec | Dependencies |
 |-------|------|--------|------|--------------|
-| 12a-ext | Knowledge Graph + Quality Pipeline | 📋 | [knowledge-graph](../knowledge-graph/spec.md) | Phase 23.5 |
+| 12a-ext | Knowledge Graph + Quality Pipeline | ✅ ~95% | [knowledge-graph](../knowledge-graph/spec.md) | Phase 23.5 — Implemented via knowledge-graph-navigation + knowledge-graph-refinement |
 | 12b-ext | Knowledge Quality Controls | 📋 | [knowledge-graph](../knowledge-graph/spec.md) | 12a-ext |
 | 12c | Active Maintenance + Augmented Writing | 📋 | [knowledge-graph](../knowledge-graph/spec.md) | 12b-ext |
 | 25a | BookLore: Book Management + Parsing | 📋 | [library](../library/spec.md) | 12a-ext (entity extraction) |

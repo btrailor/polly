@@ -306,6 +306,61 @@
               </div>
             </div>
 
+            <!-- Autonomy Dashboard Section (Task #21) -->
+            <div class="autonomy-section" id="autonomy-section">
+              <h3>progressive autonomy</h3>
+              
+              <div class="autonomy-hero">
+                <div class="autonomy-ring-container">
+                  <svg class="autonomy-ring" viewBox="0 0 120 120">
+                    <circle class="autonomy-ring-bg" cx="60" cy="60" r="52" />
+                    <circle class="autonomy-ring-fill" id="autonomy-ring-fill" cx="60" cy="60" r="52" />
+                  </svg>
+                  <div class="autonomy-ring-label">
+                    <span class="autonomy-pct" id="autonomy-pct">0%</span>
+                    <span class="autonomy-pct-label">local</span>
+                  </div>
+                </div>
+                <div class="autonomy-hero-stats">
+                  <div class="autonomy-hero-stat">
+                    <i data-lucide="file-plus" class="stat-icon"></i>
+                    <div class="stat-value" id="autonomy-writes-count">0</div>
+                    <div class="stat-label">Notes Added</div>
+                  </div>
+                  <div class="autonomy-hero-stat">
+                    <i data-lucide="zap" class="stat-icon"></i>
+                    <div class="stat-value" id="autonomy-tokens-saved">0</div>
+                    <div class="stat-label">Tokens Saved</div>
+                  </div>
+                  <div class="autonomy-hero-stat">
+                    <i data-lucide="activity" class="stat-icon"></i>
+                    <div class="stat-value" id="autonomy-total-queries">0</div>
+                    <div class="stat-label">Total Queries</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Routing Trend Chart -->
+              <div class="autonomy-chart-container">
+                <h4>routing trend</h4>
+                <div class="autonomy-chart" id="autonomy-chart">
+                  <div class="autonomy-chart-empty">No routing data yet</div>
+                </div>
+                <div class="autonomy-chart-legend">
+                  <span class="chart-legend-item"><span class="legend-dot legend-local"></span> Local</span>
+                  <span class="chart-legend-item"><span class="legend-dot legend-cloud"></span> Cloud</span>
+                </div>
+              </div>
+
+              <!-- Recent Knowledge Writes -->
+              <div class="autonomy-recent">
+                <h4>recent knowledge writes</h4>
+                <div class="autonomy-writes-list" id="autonomy-writes-list">
+                  <div class="autonomy-empty-state">No knowledge writes yet. Use KB suggestions to grow your local knowledge.</div>
+                </div>
+              </div>
+            </div>
+
             <div class="domains-section">
               <h3>your domains</h3>
               <div class="domains-grid">
@@ -2071,6 +2126,10 @@
               </div>
               
               <div class="notes-indicators">
+                <button id="vault-health-btn" class="btn-icon" title="Validate links across vault" style="padding: 4px 8px; font-size: 12px; cursor: pointer; background: transparent; border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px;">
+                  <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i>
+                  <span>Vault Health</span>
+                </button>
                 <span id="notes-save-status" style="display: none;"></span>
                 <span id="notes-source-indicator">📚 Obsidian</span>
                 <span id="notes-sync-indicator">⚪ Idle</span>
@@ -2089,6 +2148,17 @@
                 <div class="notes-editor-header" id="notes-current-note-header">
                   <h2>Select a note</h2>
                   <div class="note-meta"></div>
+                </div>
+                <!-- Per-note link validation banner (Task #22b) -->
+                <div id="notes-validation-banner" class="notes-validation-banner hidden">
+                  <div class="validation-banner-icon">
+                    <i data-lucide="alert-triangle" style="width: 16px; height: 16px;"></i>
+                  </div>
+                  <div class="validation-banner-content">
+                    <span id="validation-banner-message"></span>
+                    <span id="validation-banner-targets" class="validation-banner-targets"></span>
+                  </div>
+                  <button class="validation-banner-close" id="validation-banner-close" title="Dismiss">&times;</button>
                 </div>
                 <div id="notes-editor"></div>
               </div>
@@ -2418,6 +2488,10 @@
         </span>
       </div>
       <div class="status-right">
+        <span class="status-item status-item-clickable" id="autonomy-status-indicator" style="display: none;" title="Click to view Autonomy Dashboard">
+          <i data-lucide="bot"></i>
+          <span id="autonomy-status-pct">0%</span>
+        </span>
         <span class="status-item" id="cursor-info" style="display: none;">Ln 1, Col 1</span>
         <span class="status-item" id="encoding" style="display: none;">UTF-8</span>
         <span class="status-item" id="line-endings" style="display: none;">LF</span>
@@ -3075,6 +3149,68 @@
       </div>
     </div>
   </div>
+
+  <!-- Vault Health Modal (Task #22b) -->
+  <div id="vault-health-modal" class="modal hidden">
+    <div class="modal-content" style="max-width: 640px; max-height: 80vh;">
+      <div class="modal-header">
+        <h3>vault link health</h3>
+        <button class="modal-close" id="close-vault-health-modal">&times;</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto;">
+        <!-- Summary stats -->
+        <div id="vault-health-summary" class="vault-health-summary">
+          <div class="vault-health-scanning">
+            <i data-lucide="loader" class="spinning" style="width: 20px; height: 20px;"></i>
+            <span>Scanning vault...</span>
+          </div>
+        </div>
+        <!-- Broken links list -->
+        <div id="vault-health-broken" class="vault-health-section hidden">
+          <h4 style="margin: 16px 0 8px; font-size: 13px; color: var(--warning); text-transform: lowercase; letter-spacing: 0.05em;">
+            <i data-lucide="link-2-off" style="width: 14px; height: 14px; vertical-align: -2px;"></i>
+            broken links
+          </h4>
+          <div id="vault-health-broken-list" class="vault-health-list"></div>
+        </div>
+        <!-- Orphan notes list -->
+        <div id="vault-health-orphans" class="vault-health-section hidden">
+          <h4 style="margin: 16px 0 8px; font-size: 13px; color: var(--text-secondary); text-transform: lowercase; letter-spacing: 0.05em;">
+            <i data-lucide="unlink" style="width: 14px; height: 14px; vertical-align: -2px;"></i>
+            orphan notes (no links in or out)
+          </h4>
+          <div id="vault-health-orphan-list" class="vault-health-list"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="close-vault-health-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Link Suggestion Modal (Task #22) -->
+  <div id="link-suggestion-modal" class="modal hidden">
+    <div class="modal-content" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3>related notes found</h3>
+        <button class="modal-close" id="close-link-suggestion-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="link-suggestion-message" style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;"></p>
+        <div id="link-suggestion-candidates" class="link-suggestion-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="dismiss-link-suggestions">Dismiss</button>
+        <button class="btn btn-primary" id="apply-link-suggestions">
+          <i data-lucide="link" style="width: 14px; height: 14px; margin-right: 6px;"></i>
+          <span>Add Selected Links</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notification container (Task #22) -->
+  <div id="toast-container" style="position: fixed; bottom: 60px; right: 16px; z-index: 10001; display: flex; flex-direction: column-reverse; gap: 8px; pointer-events: none;"></div>
 
   <script src="marked.js"></script>
   <script src="markdown-editor-cm6.bundle.js"></script>

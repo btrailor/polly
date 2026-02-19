@@ -182,6 +182,11 @@
           if (window.loadAutonomyData) {
             setTimeout(() => window.loadAutonomyData(), 1000);
           }
+
+          // Task #22: Handle post-save actions (link suggestions, broken link warnings)
+          if (window.handlePostSaveActions) {
+            window.handlePostSaveActions(result);
+          }
         } else {
           const errorText = await response.text();
           console.error('Quick save: Server error:', errorText);
@@ -239,6 +244,11 @@
               // Refresh autonomy metrics
               if (window.loadAutonomyData) {
                 setTimeout(() => window.loadAutonomyData(), 1000);
+              }
+
+              // Task #22: Handle post-save actions (link suggestions, broken link warnings)
+              if (window.handlePostSaveActions) {
+                window.handlePostSaveActions(result);
               }
             } else {
               const errorText = await response.text();

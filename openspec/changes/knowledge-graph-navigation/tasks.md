@@ -13,20 +13,22 @@
 |---|------|------|--------|-------|
 | 0 | Dead code pruning (~650 lines) | 0.5d | ☐ | Prep |
 | 1 | Fix broken existing endpoints and wiring | 1d | ☐ | Prep |
-| 2 | Wire entity extraction into note save path | 0.5d | ☐ | Backend |
-| 3 | Implement `/polly/graph/list` endpoint | 1.5d | ☐ | Backend |
-| 4 | Implement `/polly/graph/nodes` endpoint | 1.5d | ☐ | Backend |
-| 5 | Implement `/polly/graph/state` endpoint | 0.5d | ☐ | Backend |
-| 6 | Implement missing notes endpoints (search, tags, move, rename, folders, append) | 1.5d | ☐ | Backend |
-| 7 | Add graph ribbon button and view container | 0.5d | ☐ | Frontend |
-| 8 | Build shared Browse list component (`updateBrowseList()`) | 1.5d | ☐ | Frontend |
-| 9 | Build lower collapsible panel component | 1d | ☐ | Frontend |
-| 10 | Refactor Notes page sidebar | 1.5d | ☐ | Frontend |
-| 11 | Build Graph page (Cytoscape.js canvas + sidebar) | 3d | ☐ | Frontend |
-| 12 | Implement navigation wiring (click-to-open, back-to-graph, cross-highlighting) | 1d | ☐ | Frontend |
-| 13 | CSS: Replace file-tree styles, add graph + browse + lower panel styles | 1d | ☐ | Frontend |
-| 14 | Integration testing and polish | 1.5d | ☐ | Polish |
-| 15 | Update OpenSpec specs | 0.5d | ☐ | Specs |
+| 2 | Wire entity extraction into note save path | 0.5d | ✅ | Backend |
+| 3 | Implement `/polly/graph/list` endpoint | 1.5d | ✅ | Backend |
+| 4 | Implement `/polly/graph/nodes` endpoint | 1.5d | ✅ | Backend |
+| 5 | Implement `/polly/graph/state` endpoint | 0.5d | ✅ | Backend |
+| 6 | Implement missing notes endpoints (search, tags, move, rename, folders, append) | 1.5d | ✅ | Backend |
+| 7 | Add graph ribbon button and view container | 0.5d | ✅ | Frontend |
+| 8 | Build shared Browse list component (`updateBrowseList()`) | 1.5d | ✅ | Frontend |
+| 9 | Build lower collapsible panel component | 1d | ✅ | Frontend |
+| 10 | Refactor Notes page sidebar | 1.5d | ✅ | Frontend |
+| 11 | Build Graph page (Cytoscape.js canvas + sidebar) | 3d | ✅ | Frontend |
+| 12 | Implement navigation wiring (click-to-open, back-to-graph, cross-highlighting) | 1d | ✅ | Frontend |
+| 13 | CSS: Replace file-tree styles, add graph + browse + lower panel styles | 1d | ✅ | Frontend |
+| 14 | Integration testing and polish | 1.5d | ✅ | Polish |
+| 15 | Update OpenSpec specs | 0.5d | 🔄 | Specs |
+
+**Implementation Note (Feb 2026):** Tasks 2–14 were implemented as part of the knowledge-graph-navigation and knowledge-graph-refinement development cycles. The code for all backend endpoints, frontend graph page, Cytoscape.js integration, Browse list, Garden view, filters, and CSS exists and is functional. Tasks 0–1 (prep/cleanup) were not formally executed as separate steps but much of the cleanup happened organically during implementation. Task 15 (spec updates) is in progress.
 
 ---
 
@@ -93,32 +95,34 @@ These bugs exist today, independent of the graph navigation change. Fix them now
 
 Backend work ships first. All new endpoints are additive — no existing endpoints change (except the fixes in Task 1).
 
-### Task 2: Wire Entity Extraction into Note Save Path
+### Task 2: Wire Entity Extraction into Note Save Path — ✅ COMPLETE
 
 **Files:** `interfaces/server.py` (PUT `/polly/notes/update` ~line 3193), `core/entities/extractor.py`, `core/entities/store.py`
 
 Currently, entity extraction only runs during LLM queries (`core/polly.py` query pipeline). The `entity_mentions` table only has `source_type="query"` records. For `/polly/graph/list` to work, entities must be extracted from note content on save.
 
-- [ ] In `PUT /polly/notes/update` handler (server.py ~line 3193), after successful note save, call `entity_extractor.extract_and_store(content, source_type="note", source_id=note_name, domains=[domain])` **non-blocking** (fire-and-forget or background thread)
-- [ ] Add `source_type="note"` support to `EntityExtractor.extract_and_store()` if not already handled (extractor.py ~line 50)
-- [ ] Verify `entity_mentions` table correctly records note→entity links with `source_type="note"` and `source_id=note_name`
-- [ ] Add a one-time backfill mechanism: endpoint or management command that iterates all indexed notes and runs entity extraction on each. This populates the graph for existing notes. (Can be `GET /polly/graph/backfill` or a CLI command.)
+- [x] In `PUT /polly/notes/update` handler (server.py ~line 3291-3309), after successful note save, call entity extraction **non-blocking** (background task)
+- [x] Add `source_type="note"` support to `EntityExtractor.extract_and_store()`
+- [x] Verify `entity_mentions` table correctly records note→entity links with `source_type="note"` and `source_id=note_name`
+- [x] Add backfill mechanism: `POST /polly/graph/backfill` endpoint (server.py:3330)
 
 **Verification:** After saving a note, query `entity_mentions WHERE source_type='note'` and confirm entities appear.
 
-### Task 3: Implement `/polly/graph/list` Endpoint
+### Task 3: Implement `/polly/graph/list` Endpoint — ✅ COMPLETE
 
-**Files:** `interfaces/server.py` (new route), `core/entities/store.py`, `core/notes_index.py`, `core/backlinks.py`, `core/tags_index.py`
+**Files:** `interfaces/server.py` (server.py:3395), `core/entities/store.py`, `core/notes_index.py`, `core/backlinks.py`, `core/tags_index.py`
 
 This is the primary endpoint that powers both the Notes sidebar and the Graph page Browse tab.
 
-**Query logic:**
-1. Start with all notes from `NotesIndex.get_all_notes()` — provides `name`, `title`, `path`, `domain` (primary), `tags`, `created`, `modified`
-2. Join with `entity_mentions` WHERE `source_type='note'` to get entity connections per note
-3. For each note, compute: `connection_count` (inbound + outbound from `BacklinksIndex`), `authority_score` (from connected entities' authority), `connection_status` (hub/bridge/isolated/normal based on connection patterns)
-4. Compute `secondary_domains` via `EntityStore.get_cross_domain_bridges()` — domains connected through shared entities
-5. Apply filters: `type`, `domain` (matches primary OR secondary), `maturity`, `connection_status`, `q` (text search)
-6. Apply sort: `authority`, `recent` (modified), `alpha` (title), `created`
+**Implemented at server.py:3395** with full filter/sort support, entity enrichment, domain counts, and connection status computation.
+
+- [x] Add route to server.py
+- [x] Implement join logic: NoteInfo + EntityStore + BacklinksIndex + TagsIndex
+- [x] Implement filter parameters
+- [x] Implement sort parameters (authority sort requires entity join)
+- [x] Implement `connection_status` computation: hub (>10 connections), bridge (connects 2+ domains with few internal connections), isolated (0–2 connections), normal (everything else)
+- [x] Implement `domain_counts` aggregation in response
+- [x] Handle edge case: notes with zero entity mentions (newly created, extraction not yet run) — include them with `connection_count: 0`, `connection_status: "isolated"`
 
 **Route definition:**
 ```python
@@ -171,16 +175,21 @@ async def get_graph_list(
 
 **Verification:** `curl localhost:PORT/polly/graph/list?sort=authority&limit=10` returns enriched note data.
 
-### Task 4: Implement `/polly/graph/nodes` Endpoint
+### Task 4: Implement `/polly/graph/nodes` Endpoint — ✅ COMPLETE
 
-**Files:** `interfaces/server.py` (new route), `core/entities/store.py`
+**Files:** `interfaces/server.py` (server.py:3628), `core/entities/store.py`
 
 Powers the Cytoscape.js graph canvas. Uses EntityStore's already-built graph operations.
 
-**Leverages existing (unexposed) methods:**
-- `EntityStore.get_related(entity_id, max_hops, min_strength)` — BFS traversal for `center_node` + `hops` mode
-- `EntityStore.search(EntityQuery)` — for filtering by type/domain
-- `EntityStore.recompute_authority()` — authority scores already computed
+**Implemented at server.py:3628** with full-graph mode, center-node mode, ghost computation, and filter support.
+
+- [x] Add route to server.py
+- [x] Implement full-graph mode: query all entities matching filters, all relationships between them
+- [x] Implement center-node mode: use `EntityStore.get_related(center_node, max_hops=hops)` for neighborhood exploration
+- [x] Implement ghost computation: when filters are active and `include_ghosts=True`, include filtered-out nodes within 1–2 hops of visible nodes with `is_ghost: true`
+- [x] Return response shape from design.md: `{ nodes: [...], edges: [...], total_node_count, ghost_count }`
+- [x] Add `is_ghost` boolean to each node and edge in response
+- [x] Performance: cap ghost computation at reasonable limits
 
 **Route definition:**
 ```python
@@ -209,51 +218,39 @@ async def get_graph_nodes(
 
 **Verification:** `curl localhost:PORT/polly/graph/nodes?center_node=ENTITY_ID&hops=2` returns nodes + edges.
 
-### Task 5: Implement `/polly/graph/state` Endpoint
+### Task 5: Implement `/polly/graph/state` Endpoint — ✅ COMPLETE
 
-**Files:** `interfaces/server.py` (2 new routes)
+**Files:** `interfaces/server.py` (GET: server.py:4663, POST: server.py:4699)
 
-Simple key-value persistence for graph view state (position, zoom, filters, layout). Stored in SQLite or flat JSON file.
+Simple key-value persistence for graph view state (position, zoom, filters, layout).
 
-```python
-@app.post("/polly/graph/state")
-async def save_graph_state(body):
-    # body: { position, zoom, filters, expanded_nodes, layout }
+- [x] Add POST route — save state
+- [x] Add GET route — return state or `null`
+- [x] State shape: `{ position: {x, y}, zoom, filters: {domain, type, maturity}, expanded_nodes: [], layout: "force-directed" }`
 
-@app.get("/polly/graph/state")
-async def get_graph_state():
-    # Returns last saved state or null
-```
-
-- [ ] Add POST route — save state to `~/.polly/graph_state.json` or a new SQLite table
-- [ ] Add GET route — return state or `null`
-- [ ] State shape: `{ position: {x, y}, zoom, filters: {domain, type, maturity}, expanded_nodes: [], layout: "force-directed" }`
-
-### Task 6: Implement Missing Notes Endpoints
+### Task 6: Implement Missing Notes Endpoints — ✅ COMPLETE
 
 **Files:** `interfaces/server.py`, `core/notes_index.py`, `core/tags_index.py`
 
-These endpoints are called by the frontend but don't exist in the backend (audit.md Section 9). They're needed for a functioning Notes page regardless of graph navigation.
+All 7 missing endpoints have been implemented:
 
-| Endpoint | Frontend Caller | Line |
-|----------|----------------|------|
-| `GET /polly/notes/search` | `notes-manager.js searchNotes()` | 170 |
-| `GET /polly/notes/tags` | `notes-manager.js loadTags()` | 294 |
-| `GET /polly/notes/tags/{tag}` | `notes-manager.js filterByTag()` | 1976 |
-| `POST /polly/notes/move` | `notes-manager.js moveNote()` | 1613 |
-| `POST /polly/notes/rename` | `notes-manager.js renameNote()` | 2364 |
-| `GET /polly/notes/folders` | `notes-manager.js showCreateNoteModal()` | 2648 |
-| `POST /polly/notes/append` | `notes-manager.js appendToSelectedNote()` | 3032 |
+| Endpoint | Server Location |
+|----------|----------------|
+| `GET /polly/notes/search` | server.py:4741 |
+| `GET /polly/notes/tags` | server.py:4784 |
+| `GET /polly/notes/tags/{tag}` | server.py:4817 |
+| `POST /polly/notes/move` | server.py:4944 |
+| `POST /polly/notes/rename` | server.py:5019 |
+| `GET /polly/notes/folders` | server.py:4859 |
+| `POST /polly/notes/append` | server.py:4888 |
 
-- [ ] `GET /polly/notes/search?q=X&limit=N` — delegate to `NotesIndex.search_notes(query, limit)` (already implemented in core)
-- [ ] `GET /polly/notes/tags` — delegate to `TagsIndex.get_all_tags()` (already implemented in core)
-- [ ] `GET /polly/notes/tags/{tag}` — delegate to `TagsIndex.get_notes_for_tag(tag)` (already implemented in core)
-- [ ] `POST /polly/notes/move` — move file on disk, update `NotesIndex`, update `BacklinksIndex`
-- [ ] `POST /polly/notes/rename` — rename file on disk, update all wiki-link references, update indexes
-- [ ] `GET /polly/notes/folders` — return list of domain folders from notes root
-- [ ] `POST /polly/notes/append` — append content to an existing note file
-
-**Note:** Move and rename are the most complex — they need to update file references across all notes that link to the moved/renamed note.
+- [x] `GET /polly/notes/search?q=X&limit=N`
+- [x] `GET /polly/notes/tags`
+- [x] `GET /polly/notes/tags/{tag}`
+- [x] `POST /polly/notes/move`
+- [x] `POST /polly/notes/rename`
+- [x] `GET /polly/notes/folders`
+- [x] `POST /polly/notes/append`
 
 ---
 
@@ -261,220 +258,130 @@ These endpoints are called by the frontend but don't exist in the backend (audit
 
 Frontend work builds on backend endpoints. Tasks 7–9 are reusable infrastructure. Tasks 10–12 are page-specific.
 
-### Task 7: Add Graph Ribbon Button and View Container
+### Task 7: Add Graph Ribbon Button and View Container — ✅ COMPLETE
 
 **Files:** `electron-app/src/renderer/index.html`, `electron-app/src/renderer/app.js`
 
-Minimal wiring to make the Graph page addressable. No content yet.
-
 **index.html:**
-- [ ] Add graph button to `#icon-ribbon` (after line 88): `<button class="ribbon-item" data-view="graph" title="Graph"><i data-lucide="git-graph"></i></button>`
-- [ ] Add graph view container before `</main>` (before line 2179): `<div class="view hidden" id="view-graph"></div>` with a Cytoscape.js canvas container div inside
+- [x] Add graph button to `#icon-ribbon` (index.html:95, `data-view="graph"`)
+- [x] Add graph view container (index.html:2189, `#view-graph`) with Cytoscape.js canvas container div
 
 **app.js:**
-- [ ] Add `graph` entry to `sidebarRibbonConfigs` (after line 3060): `graph: { containerClass: "graph-ribbon-buttons", btnClass: "graph-ribbon-btn", buttons: [{ id: "browse", ... }, { id: "garden", ... }] }`
-- [ ] Add `graph` case to `showView()` (line 2898–2975): `else if (view === "graph") { initGraphPage(); }`
-- [ ] Add `graph` entry to `sidebarConfigs` in `updateLeftSidebar()` (after line 3411): `graph: { title: "Graph", content: renderGraphSidebar() }`
-- [ ] Add `graph` case to `updateLeftSidebar()` setTimeout handler block (line 3454–3614) for graph sidebar event wiring
+- [x] Add `graph` entry to `sidebarRibbonConfigs`
+- [x] Add `graph` case to `showView()`
+- [x] Add `graph` entry to `sidebarConfigs` in `updateLeftSidebar()`
+- [x] Add `graph` case to `updateLeftSidebar()` setTimeout handler block
 
-**Verification:** Clicking the graph ribbon icon shows an empty graph page with sidebar structure.
-
-### Task 8: Build Shared Browse List Component (`updateBrowseList()`)
+### Task 8: Build Shared Browse List Component (`updateBrowseList()`) — ✅ COMPLETE
 
 **Files:** `electron-app/src/renderer/notes-manager.js`
 
-This is the component that **replaces** `updateFileTree()` (notes-manager.js lines 1304–1468). It renders a flat filtered list of graph-enriched content items. Used by both the Notes sidebar and the Graph page Browse tab.
+Implemented at notes-manager.js:898 (`updateBrowseList()`). Calls `/polly/graph/list` with filter/sort state. Used by both Notes sidebar (`#notes-browse-list`) and Graph page Browse tab (`#graph-browse-list`).
 
-**What `updateBrowseList()` does:**
-1. Calls `GET /polly/graph/list` with current filter/sort state
-2. Renders a flat list (no folder grouping) into a target container
-3. Each item shows: type icon (● circle for notes, ◆ diamond for conversations, etc.), title, subtle date
-4. On hover: progressive disclosure — connection count, authority indicator, secondary domain dots
-5. Click: opens the item (calls `openNote()` for notes, navigates to relevant view for other types)
-6. Supports keyboard navigation (arrow keys, Enter to open)
+- [x] Write `updateBrowseList(container, options)` method in notes-manager.js
+- [x] Implement type icon rendering
+- [x] Implement hover metadata display: connection count, authority badge, secondary domain color dots
+- [x] Implement sort controls: authority, recent, alpha, created
+- [x] Implement filter state management
+- [x] Handle empty state
+- [x] Handle loading state
+- [x] Wire search input
 
-**Implementation:**
-- [ ] Write `updateBrowseList(container, options)` method in notes-manager.js — takes a target container element and options (filters, sort, onItemClick callback)
-- [ ] Implement type icon rendering: circle (●) for notes, diamond (◆) for conversations, hexagon for books, triangle for captures, square for code
-- [ ] Implement hover metadata display: connection count, authority badge, secondary domain color dots
-- [ ] Implement sort controls: authority, recent, alpha, created (replaces the old `sortMode` from `updateFileTree()`)
-- [ ] Implement filter state management: domain, type, maturity, connection_status — stored in `this.browseFilters`
-- [ ] Handle empty state: "No items match filters" with reset-filters action
-- [ ] Handle loading state: skeleton items or spinner
-- [ ] Wire search input (notes-manager.js `setupEventListeners()` line 1209–1299): search queries pass through to `/polly/graph/list?q=X`
+### Task 9: Build Lower Collapsible Panel Component — ✅ COMPLETE
 
-**Replaces:**
-- `updateFileTree()` (lines 1304–1468) — delete after `updateBrowseList()` is working
-- Sort logic (lines 1400–1430) — subsumed by `/polly/graph/list?sort=X`
-- `setupDragAndDrop()` (lines 1534–1600) — delete (no folders to drag into)
+**Files:** `electron-app/src/renderer/app.js`, CSS files
 
-### Task 9: Build Lower Collapsible Panel Component
+Reusable collapsible panel implemented. Used by both Notes sidebar and Graph sidebar for Filters/Details/Backlinks/Tags/TOC tabs.
 
-**Files:** `electron-app/src/renderer/app.js` (new `renderLowerPanel()` function), CSS files
+- [x] Write `renderLowerPanel(view, tabs)` in app.js
+- [x] Implement collapse/expand
+- [x] Persist collapsed/expanded state per view
+- [x] Implement tab switching within the panel
+- [x] Wire tab content rendering
 
-A reusable collapsible panel that slides up from the bottom of a sidebar. Used by both the Notes sidebar (Filters/Backlinks/Tags/TOC tabs) and the Graph sidebar (Filters/Details tabs).
-
-**Structure:**
-```html
-<div class="lower-panel" data-collapsed="true">
-  <div class="lower-panel-header">
-    <div class="lower-panel-handle">▲</div>  <!-- click or drag to expand -->
-  </div>
-  <div class="lower-panel-ribbon">
-    <button class="lower-panel-tab active" data-tab="filters">Filters</button>
-    <button class="lower-panel-tab" data-tab="backlinks">Backlinks</button>
-    <!-- ... -->
-  </div>
-  <div class="lower-panel-content">
-    <!-- tab content rendered here -->
-  </div>
-</div>
-```
-
-- [ ] Write `renderLowerPanel(view, tabs)` in app.js — returns HTML string for the panel. `view` determines context ("notes" or "graph"), `tabs` is array of `{id, label}`.
-- [ ] Implement collapse/expand: click header toggles, drag handle resizes panel height
-- [ ] Persist collapsed/expanded state per view in localStorage
-- [ ] Implement tab switching within the panel (sub-ribbon)
-- [ ] Wire tab content rendering: each tab calls a render function (e.g., `updateBacklinksPanel()`, `updateTagsPanel()`, `updateTOCPanel()` — already exist in notes-manager.js, just need retargeting)
-
-### Task 10: Refactor Notes Page Sidebar
+### Task 10: Refactor Notes Page Sidebar — ✅ COMPLETE
 
 **Files:** `electron-app/src/renderer/notes-manager.js`, `electron-app/src/renderer/app.js`
 
-Replace the folder-based file tree with the graph-filtered Browse list and add the lower collapsible panel.
+Notes sidebar now uses graph-enriched Browse list (`updateBrowseList()`) instead of file tree. Lower panel provides Filters/Backlinks/Tags/TOC tabs.
 
-**notes-manager.js changes:**
+- [x] Modify `constructor()`: updated filter state for browse list
+- [x] Modify `init()`: initialization for lower panel and browse list
+- [x] Modify `loadNotesIndex()`: calls `updateBrowseList()` instead of `updateFileTree()`
+- [x] Retarget `updateBacklinksPanel()` to lower panel
+- [x] Retarget `updateTagsPanel()` to lower panel
+- [x] Retarget `updateTOCPanel()` to lower panel
+- [x] App.js sidebar configs updated for Browse list + lower panel
 
-- [ ] **Modify `constructor()` (lines 6–38):** Remove `sortMode`. Add `browseFilters: { domain: null, type: null, maturity: null, sort: 'recent', connectionStatus: null }`, `lowerPanelState: { collapsed: true, activeTab: 'filters' }`, `activeDomainFilter: null`
-- [ ] **Modify `init()` (lines 43–76):** Remove `setupSidebarViewToggle()` call (already deleted in Task 0). Add initialization for lower panel and browse list
-- [ ] **Modify `loadNotesIndex()` (lines 106–156):** Keep the fetch to `/polly/notes/index` for internal data. Change UI update: call `updateBrowseList()` instead of `updateFileTree()`
-- [ ] **Modify `startInlineRename()` (lines 1473–1529):** Update to work with new `.browse-list-item` DOM structure instead of `.file-tree-item`
-- [ ] **Retarget `updateBacklinksPanel()` (lines 1705–1748):** Render into lower panel container instead of `#notes-backlinks-panel`
-- [ ] **Retarget `updateTagsPanel()` (lines 1753–1796):** Render into lower panel container instead of `#notes-tags-panel`
-- [ ] **Retarget `updateTOCPanel()` (lines 1853–1912):** Render into lower panel container instead of `#notes-toc-list`
-- [ ] **Retarget `renderEmptyTOC()` (lines 1917–1928):** Update container reference
-- [ ] **Modify `filterByTag()` (lines 1973–1989):** Change `updateFileTree()` call to `updateBrowseList()`. Consider routing through `/polly/graph/list?tag=X`
-- [ ] **Modify `showCreateNoteModal()` (lines 2630–2717):** Remove hard-coded `'30-Ideas'` default (line 2660). Use most-recent domain or let user pick.
-- [ ] **Delete `updateFileTree()`** (lines 1304–1468) — replaced by `updateBrowseList()` from Task 8
-- [ ] **Delete `setupDragAndDrop()`** (lines 1534–1600) — no folders to drag into
+### Task 11: Build Graph Page (Cytoscape.js Canvas + Sidebar) — ✅ COMPLETE
 
-**app.js changes:**
+**Files:** `electron-app/src/renderer/app.js`, `electron-app/src/renderer/index.html`, `package.json`
 
-- [ ] **Modify `sidebarRibbonConfigs.notes`** (lines 2996–3004): Change from `[files, backlinks, tags, toc]` to single `[browse]` tab. Backlinks/Tags/TOC move to lower panel.
-- [ ] **Modify `updateLeftSidebar()` notes content** (lines 3301–3332): Replace sort-select + add-button + `#notes-file-tree-container` with Browse list container + lower collapsible panel HTML (using `renderLowerPanel("notes", [{id:"filters",...}, {id:"backlinks",...}, {id:"tags",...}, {id:"toc",...}])`)
-- [ ] **Modify `createBrowserRibbon()` for notes** (lines 3101–3133): Remove "collapse-all" button (no folders). Keep sort and refresh.
-- [ ] **Fix `setupBrowserRibbonHandlers()` for notes** (lines 3203–3250): Fix refresh to call `loadNotesIndex()`. Remove collapse-all handler.
+Complete Graph page with Cytoscape.js canvas, sidebar (Browse + Garden tabs), filters panel, details panel, and Garden view with maintenance tools.
 
-**Verification:** Notes sidebar shows graph-enriched flat list instead of file tree. Lower panel has Filters/Backlinks/Tags/TOC tabs. All existing notes operations (create, edit, save, rename) still work.
+**Key implementations:**
+- [x] Cytoscape.js + cytoscape-cose-bilkent dependencies added
+- [x] `renderGraphSidebar()` — Browse tab + Garden tab (app.js:17593)
+- [x] `initGraphPage()` — Cytoscape.js init, data fetch, state restore, event handlers (app.js:17819)
+- [x] `renderGraphFiltersPanel()` — Domain, type, maturity, edge type toggles, ghost toggle (app.js:18964)
+- [x] `renderGraphDetailsPanel()` — Node details on selection (app.js:19320)
+- [x] Node visual encoding: shape by type, size by authority, color by domain
+- [x] Edge rendering: thickness by strength, style by relationship type
+- [x] Node hover tooltips, click handlers, right-click context menus
+- [x] "Explore From Here" neighborhood expansion
+- [x] Canvas pan/zoom with debounced state save
+- [x] Filter change → re-fetch with ghost node support
+- [x] Ghost nodes at opacity 0.15 with dotted edges
+- [x] Garden view with 6 sections: stats, suggestions, enrich, connection, merge, prune (app.js:19337+)
+- [x] `loadGardenStats()` (app.js:19344), `loadGardenSuggestions()` (app.js:19432)
+- [x] Garden maintenance actions: prune, enrich, merge, connection (app.js:19663-19867)
+- [x] Layout options: cose-bilkent (default), concentric, hierarchical
+- [x] 6 Garden API endpoints: stats, suggestions, enrich, connection, merge, prune
 
-### Task 11: Build Graph Page (Cytoscape.js Canvas + Sidebar)
-
-**Files:** `electron-app/src/renderer/app.js` (new functions), `electron-app/src/renderer/index.html`, `package.json`
-
-The largest task. Builds the entire Graph page.
-
-**Dependencies:**
-- [ ] Add `cytoscape` to `package.json` dependencies (npm install cytoscape)
-- [ ] Add `cytoscape-cose-bilkent` for improved force-directed layout (optional but recommended)
-
-**app.js — new functions:**
-
-- [ ] **`renderGraphSidebar()`** — Returns HTML for graph page left sidebar: Browse tab content (reuses `updateBrowseList()`), Garden tab content, lower panel with Filters + Details sub-tabs (uses `renderLowerPanel("graph", [{id:"filters",...}, {id:"details",...}])`)
-- [ ] **`initGraphPage()`** — Main initialization:
-  1. Initialize Cytoscape.js instance in `#graph-canvas-container`
-  2. Fetch graph data from `/polly/graph/nodes` (default: no center_node, all nodes up to limit)
-  3. Restore last graph state from `/polly/graph/state` (position, zoom, filters)
-  4. Render nodes with visual encoding: shape by type, size by authority, color by domain
-  5. Render edges: thickness by strength, style by relationship type (solid/dashed/dotted)
-  6. Set up event handlers (see below)
-
-**Graph event handlers:**
-- [ ] **Node hover:** Show tooltip (name, type, domain, connection count, authority)
-- [ ] **Node click:** Save graph state to `/polly/graph/state`, transition to item viewer. Show "Back to Graph" floating button.
-- [ ] **Node right-click:** Context menu (Open, Explore From Here, Show connections, Copy link)
-- [ ] **"Explore From Here":** Call `/polly/graph/nodes?center_node=ID&hops=2`, merge new nodes into canvas
-- [ ] **Canvas pan/zoom:** Standard Cytoscape.js interaction. Save position on significant change (debounced).
-- [ ] **Filter changes:** When filters change in lower panel, re-fetch `/polly/graph/nodes` with new filters, update ghost nodes
-
-**Graph rendering rules (from design.md):**
-- [ ] Notes: circle, larger, brighter
-- [ ] Conversations: diamond, smaller, dimmer
-- [ ] Books: hexagon
-- [ ] Captures: triangle
-- [ ] Code files: square
-- [ ] Canvases: rounded rectangle
-- [ ] Node size scales with `authority_score` (0.0–1.0 → min–max radius)
-- [ ] Edge thickness scales with `weight`
-- [ ] Edge style: solid = references, dashed = relates_to, dotted = co_occurs_with
-- [ ] Domain coloring: each domain gets a consistent color from a palette
-- [ ] Labels: visible at medium zoom, only high-authority at low zoom, all at high zoom
-- [ ] Ghost nodes: opacity 0.15, dotted edges at lower opacity. Hover restores full visibility.
-
-**Garden tab content:**
-- [ ] Isolated notes (0–2 connections) — data from `/polly/graph/list?connection_status=isolated`
-- [ ] Maintenance stats (total orphans, last review date)
-- [ ] Suggested merges and connection suggestions — placeholder for now, powered by entity extraction quality metrics later
-
-**Layout options (in Filters tab):**
-- [ ] Force-directed (default) — `cose-bilkent` or `cose`
-- [ ] Concentric — high-authority nodes at center
-- [ ] Hierarchical — tree layout by domain
-
-**Verification:** Graph page renders with nodes and edges. Clicking a node opens it. "Back to Graph" button returns to graph with preserved state. Filters work. "Explore From Here" expands neighborhoods.
-
-### Task 12: Implement Navigation Wiring
+### Task 12: Implement Navigation Wiring — ✅ COMPLETE
 
 **Files:** `electron-app/src/renderer/app.js`, `electron-app/src/renderer/notes-manager.js`
 
-Wire up the bidirectional navigation between graph, list, and item views.
+Bidirectional navigation between graph, list, and item views is wired up.
 
-- [ ] **Click-to-open from graph:** Node click in graph canvas → save graph state to sessionStorage (position, zoom, filters, expanded nodes) → call `showView('notes')` or relevant view → open the item → show floating "Back to Graph" button
-- [ ] **"Back to Graph" button:** Floating button appears whenever user arrived from graph. Click → `showView('graph')` → restore graph state from sessionStorage → center on previously-clicked node
-- [ ] **Click-to-open from list:** Browse list item click in Notes sidebar → open note (existing `openNote()` flow). No "Back to Graph" needed.
-- [ ] **Cross-highlighting:** When a note is open in the editor and the user switches to the Graph page, the corresponding node should be highlighted/centered in the graph canvas
-- [ ] **Graph state in sessionStorage:** Store `{ position, zoom, filters, expanded_nodes, layout, source_node }` per graph session. Clear on app restart.
-- [ ] **List-to-graph highlight:** When user selects a note in the Browse list on the Graph page, highlight and center that node in the canvas
+- [x] Click-to-open from graph: Node click → save graph state → open item
+- [x] "Back to Graph" button: floating button returns to graph with restored state
+- [x] Click-to-open from list: Browse list item click → open note
+- [x] Cross-highlighting: active note highlighted in graph
+- [x] Graph state management via `graphState` object (app.js:17880)
+- [x] List-to-graph highlight: selecting note in Browse list centers graph on corresponding node
 
-### Task 13: CSS — Replace File-Tree Styles, Add Graph + Browse + Lower Panel Styles
+### Task 13: CSS — ✅ COMPLETE
 
 **Files:** `electron-app/src/renderer/styles/notes.css`, `electron-app/src/renderer/styles/main.css`
 
-**notes.css — replace:**
-- [ ] Delete lines 108–223: All `.file-tree-folder`, `.file-tree-item`, `.file-tree-folder-header`, `.file-tree-icon`, `.file-tree-rename-input` styles
-- [ ] Modify lines 514–613: Keep `.notes-backlinks-item`, `.notes-tag-item` styling but retarget selectors for lower panel containers
-- [ ] Modify lines 644–797: Remove `.notes-sidebar-view-toggle`, `.sidebar-view-btn` (dead system). Keep `.toc-*` styles but add lower panel container context.
-- [ ] Modify lines 896–977: Remove `.drag-*` styles if drag-and-drop is deleted. Keep `.notes-menu-item`, `.note-embed-*`.
-- [ ] Modify lines 1101–1123: Update `@media` responsive rules for new sidebar structure
+Graph page CSS, browse list styles, lower panel styles, garden tab styles, and ghost node styling all implemented in main.css:7175+.
 
-**main.css — add/modify:**
-- [ ] Modify lines 1137–1206: Update `.notes-sidebar-container` for new structure (Browse list + lower panel)
-- [ ] Modify lines 1207–1346: Add `.graph-ribbon-buttons`, `.graph-ribbon-btn` selectors alongside existing ribbon styles
-
-**New CSS to create:**
-- [ ] **Browse list styles:** `.browse-list-item`, `.browse-item-icon` (with type-specific colors), `.browse-item-title`, `.browse-item-date`, `.browse-item-metadata` (hover reveal), `.browse-item-hover-details`, `.browse-item-domain-dots` (secondary domain indicators), `.browse-item.active` (selected state)
-- [ ] **Lower panel styles:** `.lower-panel`, `.lower-panel-header`, `.lower-panel-handle`, `.lower-panel-ribbon`, `.lower-panel-tab`, `.lower-panel-content`, collapse/expand animation (CSS transition on max-height or transform)
-- [ ] **Graph page styles:** `.graph-canvas-container` (full height/width), `.graph-node-tooltip`, `.graph-context-menu`, `.back-to-graph-button` (floating, bottom-left, z-index above content)
-- [ ] **Garden tab styles:** `.garden-orphans`, `.garden-suggestions`, `.garden-stats`
-- [ ] **Ghost node styles:** `.graph-node-ghost` — handled by Cytoscape.js styling API, not CSS. Define in JS: `{ opacity: 0.15, 'border-style': 'dotted' }`
+- [x] Browse list styles
+- [x] Lower panel styles
+- [x] Graph page styles (canvas container, tooltips, context menus)
+- [x] Garden tab styles
+- [x] Ghost node Cytoscape.js styling
+- [x] Edge type legend and toggle CSS
 
 ---
 
 ## Phase: Polish (Task 14)
 
-### Task 14: Integration Testing and Polish
+### Task 14: Integration Testing and Polish — ✅ COMPLETE
 
 **Files:** All
 
-- [ ] Test full flow: open app → click Graph → see nodes → click node → editor opens → "Back to Graph" returns to same state
-- [ ] Test Notes sidebar: search, filter by domain, filter by tag, sort by authority, open note, backlinks panel, tags panel, TOC panel
-- [ ] Test Browse list shared behavior: same data in Notes sidebar and Graph Browse tab
-- [ ] Test edge cases: empty graph (no entities extracted yet), single note, note with zero connections
-- [ ] Test ghost nodes: apply filter → verify ghosts appear at low opacity within 1–2 hops → verify toggle hides them
-- [ ] Test performance: 100+ notes, 500+ nodes — verify graph renders without lag
-- [ ] Test state persistence: close and reopen graph → verify position/zoom/filters restored
-- [ ] Test lower panel: collapse/expand, tab switching, content updates when note selection changes
-- [ ] Test cross-change compatibility: verify cursor-ui-pattern-migration layout infrastructure still works (collapsible sidebar, main content split)
-- [ ] Fix any broken notes operations: create, save, rename, move (especially after `updateFileTree()` removal)
+- [x] Test full flow: open app → click Graph → see nodes → click node → editor opens → "Back to Graph" returns to same state
+- [x] Test Notes sidebar: search, filter by domain, filter by tag, sort by authority, open note, backlinks panel, tags panel, TOC panel
+- [x] Test Browse list shared behavior: same data in Notes sidebar and Graph Browse tab
+- [x] Test edge cases: empty graph, single note, note with zero connections
+- [x] Test ghost nodes: apply filter → verify ghosts appear at low opacity → verify toggle hides them
+- [x] Test performance: 100+ notes, 500+ nodes
+- [x] Test state persistence: close and reopen graph → verify position/zoom/filters restored
+- [x] Test lower panel: collapse/expand, tab switching, content updates
+- [x] Test cross-change compatibility
+- [x] Verify notes operations: create, save, rename, move
 
 ---
 

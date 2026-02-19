@@ -94,7 +94,7 @@ providers:
       name: Gemini 1.5 Pro
   github:
     api_key_env: GITHUB_TOKEN
-    base_url: https://models.inference.ai.azure.com
+    base_url: https://models.github.ai
     enabled: true
     models:
     - capabilities:

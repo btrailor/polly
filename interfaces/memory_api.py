@@ -12,6 +12,7 @@ Endpoints:
 - GET /api/memory/all - Get all memories for a user
 - DELETE /api/memory/reset - Reset memories
 - GET /api/memory/stats - Get memory statistics
+- GET /api/memory/persona-preferences - Get persona enrichment preferences (Task #24)
 """
 
 from fastapi import APIRouter, HTTPException, Query, Body
@@ -441,3 +442,94 @@ async def memory_health():
             "provider": "mem0",
             "message": str(e)
         }
+
+
+# ========== Persona Preferences (Task #24) ==========
+
+@router.get("/persona-preferences")
+async def get_persona_preferences(
+    persona: str = Query(default="scribe", description="Persona name"),
+    domain: Optional[str] = Query(default=None, description="Filter by domain"),
+    limit: int = Query(default=20, ge=1, le=100, description="Max memories to return"),
+):
+    """
+    Get enrichment preferences stored for a persona.
+    
+    Returns all memories in the persona's namespace, optionally filtered by domain.
+    Groups memories by subtype (template_domain, linking_style, structure_style,
+    link_removal, content_expansion, content_condensing, structure_change).
+    
+    Example:
+        GET /api/memory/persona-preferences?persona=scribe
+        GET /api/memory/persona-preferences?persona=scribe&domain=scrolls
+    """
+    try:
+        mem0 = get_mem0_adapter()
+        user_id = f"persona:{persona}"
+        
+        # Get all memories for this persona
+        all_memories = mem0.get_all_memories(user_id)
+        
+        if not all_memories:
+            return {
+                "success": True,
+                "persona": persona,
+                "total": 0,
+                "preferences": {},
+                "memories": [],
+            }
+        
+        # Filter by domain if specified
+        if domain:
+            all_memories = [
+                m for m in all_memories
+                if m.get('metadata', {}).get('domain', '') == domain
+            ]
+        
+        # Group by subtype
+        grouped = {}
+        for mem in all_memories:
+            metadata = mem.get('metadata', {})
+            subtype = metadata.get('subtype', metadata.get('type', 'other'))
+            
+            if subtype not in grouped:
+                grouped[subtype] = []
+            
+            grouped[subtype].append({
+                'id': mem.get('id', ''),
+                'memory': mem.get('memory', ''),
+                'metadata': metadata,
+                'created_at': mem.get('created_at', ''),
+            })
+        
+        # Build summary statistics
+        summary = {}
+        for subtype, memories in grouped.items():
+            summary[subtype] = {
+                'count': len(memories),
+                'latest': memories[0].get('memory', '') if memories else '',
+            }
+        
+        # Return capped list
+        all_formatted = []
+        for mem in all_memories[:limit]:
+            all_formatted.append({
+                'id': mem.get('id', ''),
+                'memory': mem.get('memory', ''),
+                'metadata': mem.get('metadata', {}),
+                'created_at': mem.get('created_at', ''),
+            })
+        
+        return {
+            "success": True,
+            "persona": persona,
+            "total": len(all_memories),
+            "summary": summary,
+            "memories": all_formatted,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get persona preferences: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

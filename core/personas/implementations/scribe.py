@@ -48,7 +48,7 @@ class ScribePersona(AgentPersona):
     10. User reviews and saves
     """
     
-    def __init__(self, name: str, router: Any, skill_manager: Any = None, rag: Any = None):
+    def __init__(self, name: str, router: Any, skill_manager: Any = None, rag: Any = None, pattern_engine: Any = None):
         """
         Initialize Scribe persona.
         
@@ -57,12 +57,14 @@ class ScribePersona(AgentPersona):
             router: IntelligentRouterV2 instance for LLM calls
             skill_manager: SkillManager instance for loading skills
             rag: UnifiedRAG instance for related note search
+            pattern_engine: PatternEngine instance for pattern-informed enrichment (Task #24)
         """
         super().__init__(name, router)
         self.skill_manager = skill_manager
         self.rag = rag
+        self.pattern_engine = pattern_engine
         
-        logger.info(f"Initialized Scribe persona (skills: {skill_manager is not None}, rag: {rag is not None})")
+        logger.info(f"Initialized Scribe persona (skills: {skill_manager is not None}, rag: {rag is not None}, patterns: {pattern_engine is not None})")
     
     @property
     def default_mode(self) -> str:
@@ -404,15 +406,36 @@ class ScribePersona(AgentPersona):
             analysis, template, linking_skill, domain_skill, context
         )
         
-        # Get Scribe-specific memory context (preferences, patterns)
-        memory_context = self._get_memory_context(
-            f"enrichment style preferences for {template['name']} template"
+        # Get Scribe-specific memory context (preferences, patterns) — Task #24
+        # Use targeted multi-query retrieval for domain + template + edit feedback
+        enrich_domain = template.get("smart_defaults", {}).get("domain", "scrolls")
+        memory_context = self._get_enrichment_preferences(
+            domain=enrich_domain,
+            template_name=template['name'],
         )
+        # Fall back to general memory context if no targeted preferences
+        if not memory_context:
+            memory_context = self._get_memory_context(
+                f"enrichment style preferences for {template['name']} template"
+            )
         
         # Build system prompt with memory context
         system_prompt = self.get_system_prompt("enrich")
         if memory_context:
             system_prompt = f"{system_prompt}\n\n{memory_context}"
+        
+        # Get pattern context for structure/concept boosting (Task #24)
+        pattern_query = " ".join(
+            analysis.get("note_title_suggestions", [])[:2]
+            + analysis.get("key_concepts", [])[:3]
+        )
+        if pattern_query:
+            pattern_context = self._get_pattern_context(
+                query=pattern_query,
+                domain=enrich_domain,
+            )
+            if pattern_context:
+                system_prompt = f"{system_prompt}\n\n{pattern_context}"
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -438,7 +461,7 @@ class ScribePersona(AgentPersona):
             )
         
         # Auto-link: Find and insert [[wiki-links]]
-        enriched_content = await self._auto_link_content(
+        enriched_content, inserted_links = await self._auto_link_content(
             response.content, linking_skill
         )
         
@@ -485,7 +508,8 @@ class ScribePersona(AgentPersona):
             "template_name": template["name"],
             "tags": tags,
             "ai_tone": ai_hints.get("tone", ""),
-            "ai_focus": ai_hints.get("focus", "")
+            "ai_focus": ai_hints.get("focus", ""),
+            "inserted_links": inserted_links,
         }
         
         note_data = {
@@ -496,6 +520,16 @@ class ScribePersona(AgentPersona):
         # Store generated note in state
         self.state.set_data("generated_note", note_data)
         self.state.set_data("enriched_at", datetime.now().isoformat())
+        
+        # Record enrichment preferences in Mem0 (Task #24)
+        self._record_enrichment_feedback(
+            title=title,
+            domain=domain,
+            template_name=template["name"],
+            content=final_content,
+            inserted_links=inserted_links,
+            tags=tags,
+        )
         
         # Generate preview action
         actions = [PersonaAction(
@@ -590,8 +624,30 @@ Preview ready! Review and save your note."""
 
 Generate the enriched note:"""
 
+        # Get enrichment preferences from Mem0 (Task #24)
+        memory_context = self._get_enrichment_preferences(
+            domain=domain,
+            template_name="standalone",
+        )
+        if not memory_context:
+            memory_context = self._get_memory_context(
+                f"enrichment style preferences for {domain} domain"
+            )
+        
+        system_prompt = self.get_system_prompt("enrich")
+        if memory_context:
+            system_prompt = f"{system_prompt}\n\n{memory_context}"
+        
+        # Get pattern context for structure/concept boosting (Task #24)
+        pattern_context = self._get_pattern_context(
+            query=f"{title} {domain}",
+            domain=domain,
+        )
+        if pattern_context:
+            system_prompt = f"{system_prompt}\n\n{pattern_context}"
+        
         messages = [
-            {"role": "system", "content": self.get_system_prompt("enrich")},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": enrich_prompt}
         ]
         
@@ -617,7 +673,7 @@ Generate the enriched note:"""
             }
         
         # Auto-link the enriched content
-        enriched_content = await self._auto_link_content(
+        enriched_content, inserted_links = await self._auto_link_content(
             response.content, linking_skill
         )
         
@@ -641,12 +697,338 @@ created_by: scribe_standalone
             "filename": f"{title.replace(' ', '-').lower()}.md",
             "tags": [],
             "template_used": "none (standalone enrich)",
+            "inserted_links": inserted_links,
         }
+        
+        # Record enrichment preferences in Mem0 (Task #24)
+        self._record_enrichment_feedback(
+            title=title,
+            domain=domain,
+            template_name="standalone",
+            content=final_content,
+            inserted_links=inserted_links,
+        )
         
         return {
             "content": final_content,
             "metadata": metadata,
         }
+    
+    # ========== Enrichment Feedback (Task #24) ==========
+    
+    def _get_enrichment_preferences(
+        self,
+        domain: str,
+        template_name: str,
+    ) -> str:
+        """
+        Query Mem0 for enrichment preferences across multiple dimensions.
+        
+        Makes targeted queries for:
+        1. Domain-specific preferences (linking density, note length, structure)
+        2. Template-specific preferences (which templates work for which domains)
+        3. Edit feedback (what the user changed after enrichment)
+        
+        Returns a formatted instruction block for the system prompt.
+        Empty string if Mem0 is disabled or no relevant memories found.
+        
+        Args:
+            domain: Target domain (e.g. "scrolls", "workshop")
+            template_name: Template being used (or "standalone")
+        
+        Returns:
+            Formatted preferences string for system prompt injection
+        """
+        if not self.mem0:
+            return ""
+        
+        try:
+            user_id = f"persona:{self.name}"
+            all_memories = []
+            
+            # Query 1: Domain-specific enrichment preferences
+            domain_memories = self.mem0.search_memory(
+                f"enrichment preferences for {domain} domain notes",
+                user_id=user_id,
+                limit=3,
+            )
+            all_memories.extend(domain_memories)
+            
+            # Query 2: Template-specific preferences
+            if template_name and template_name != "standalone":
+                template_memories = self.mem0.search_memory(
+                    f"template preferences for {template_name}",
+                    user_id=user_id,
+                    limit=2,
+                )
+                all_memories.extend(template_memories)
+            
+            # Query 3: Edit feedback (what user changed after enrichment)
+            edit_memories = self.mem0.search_memory(
+                f"user edit feedback link removal content changes {domain}",
+                user_id=user_id,
+                limit=3,
+            )
+            all_memories.extend(edit_memories)
+            
+            if not all_memories:
+                return ""
+            
+            # Deduplicate by memory text
+            seen_texts = set()
+            unique_memories = []
+            for mem in all_memories:
+                text = mem.get('memory', '')
+                if text and text not in seen_texts:
+                    seen_texts.add(text)
+                    unique_memories.append(mem)
+            
+            if not unique_memories:
+                return ""
+            
+            # Format as actionable preferences block
+            pref_lines = []
+            for mem in unique_memories[:6]:  # Cap at 6 to avoid prompt bloat
+                text = mem.get('memory', '')
+                score = mem.get('score', 0)
+                if score >= 0.5:  # Only use reasonably relevant memories
+                    pref_lines.append(f"- {text}")
+            
+            if not pref_lines:
+                return ""
+            
+            preferences = (
+                "## User Enrichment Preferences (from past interactions)\n"
+                "Apply these preferences when generating the note. "
+                "They reflect the user's actual editing patterns and choices:\n"
+                + "\n".join(pref_lines)
+            )
+            
+            logger.debug(
+                f"Retrieved {len(pref_lines)} enrichment preferences "
+                f"for domain={domain}, template={template_name}"
+            )
+            
+            return preferences
+            
+        except Exception as e:
+            logger.warning(f"Failed to get enrichment preferences: {e}")
+            return ""
+    
+    def _get_pattern_context(
+        self,
+        query: str,
+        domain: str,
+    ) -> str:
+        """
+        Query PatternEngine for patterns relevant to the enrichment.
+        
+        Retrieves DOMAIN, CONCEPTUAL, and QUERY patterns that can inform:
+        - Domain auto-suggestion (DOMAIN patterns)
+        - Structure reuse from similar notes (QUERY patterns)
+        - Relevant concepts to boost/link (CONCEPTUAL patterns)
+        
+        Args:
+            query: Search query (typically the note title or key concepts)
+            domain: Target domain slug
+        
+        Returns:
+            Formatted pattern context string for system prompt injection.
+            Empty string if PatternEngine is unavailable or no patterns found.
+        """
+        if not self.pattern_engine:
+            return ""
+        
+        try:
+            domains = [domain] if domain else []
+            patterns = self.pattern_engine.get_patterns_for_prompt(
+                query=query,
+                domains=domains,
+                limit=5,
+            )
+            
+            if not patterns:
+                return ""
+            
+            pattern_lines = []
+            for p in patterns:
+                # Include pattern type for the LLM to understand context
+                ptype = p.pattern_type.value if hasattr(p.pattern_type, 'value') else str(p.pattern_type)
+                confidence_pct = int(p.confidence * 100)
+                
+                if ptype == "domain" or ptype == "domain_priority":
+                    pattern_lines.append(
+                        f"- [Domain] {p.description} (confidence: {confidence_pct}%)"
+                    )
+                elif ptype == "conceptual":
+                    pattern_lines.append(
+                        f"- [Concept] {p.description} (confidence: {confidence_pct}%)"
+                    )
+                elif ptype == "query":
+                    pattern_lines.append(
+                        f"- [Prior Note] {p.description} (confidence: {confidence_pct}%)"
+                    )
+                else:
+                    pattern_lines.append(
+                        f"- [{ptype.title()}] {p.description} (confidence: {confidence_pct}%)"
+                    )
+            
+            if not pattern_lines:
+                return ""
+            
+            context = (
+                "## Relevant Patterns from User's History\n"
+                "These patterns were learned from the user's previous interactions. "
+                "Use them to inform structure, concepts, and linking:\n"
+                + "\n".join(pattern_lines)
+            )
+            
+            logger.debug(
+                f"Retrieved {len(pattern_lines)} patterns for enrichment "
+                f"(query='{query[:50]}...', domain={domain})"
+            )
+            
+            return context
+            
+        except Exception as e:
+            logger.warning(f"Failed to get pattern context for enrichment: {e}")
+            return ""
+    
+    def _record_enrichment_feedback(
+        self,
+        title: str,
+        domain: str,
+        template_name: str,
+        content: str,
+        inserted_links: Dict[str, Any],
+        tags: List[str] = None,
+    ) -> None:
+        """
+        Record enrichment preferences in Mem0 after each Scribe enrichment.
+        
+        Stores structured preference memories that future enrichments
+        can query to provide user-aligned defaults (linking density,
+        template affinity, note length, domain patterns).
+        
+        This is the write-back side of the persona memory loop.
+        _get_memory_context() is the read side (already wired in enrich).
+        
+        Args:
+            title: Note title
+            domain: Target domain (e.g. "scrolls", "workshop")
+            template_name: Template used (or "standalone")
+            content: Final enriched content
+            inserted_links: Dict with link stats from _auto_link_content()
+            tags: Optional tags applied to the note
+        """
+        if not self.mem0:
+            return
+        
+        try:
+            # Compute enrichment metrics
+            word_count = len(content.split())
+            link_count = len(re.findall(r'\[\[.+?\]\]', content))
+            heading_count = len(re.findall(r'^#{1,6}\s', content, re.MULTILINE))
+            code_block_count = len(re.findall(r'```', content)) // 2
+            
+            # Determine note length category
+            if word_count < 300:
+                length_pref = "concise"
+            elif word_count < 800:
+                length_pref = "moderate"
+            else:
+                length_pref = "detailed"
+            
+            # Determine linking density category
+            if link_count == 0:
+                link_density = "none"
+            elif link_count <= 3:
+                link_density = "sparse"
+            elif link_count <= 7:
+                link_density = "moderate"
+            else:
+                link_density = "dense"
+            
+            # Build preference memory strings and store each one
+            # 1. Template + domain preference
+            template_memory = (
+                f"User used '{template_name}' template for '{domain}' domain note. "
+                f"Note was {word_count} words ({length_pref}), "
+                f"{link_count} wiki-links ({link_density} linking), "
+                f"{heading_count} headings."
+            )
+            self._add_memory(
+                content=template_memory,
+                metadata={
+                    'type': 'enrichment_preference',
+                    'subtype': 'template_domain',
+                    'domain': domain,
+                    'template': template_name,
+                    'word_count': word_count,
+                    'link_count': link_count,
+                    'heading_count': heading_count,
+                    'code_blocks': code_block_count,
+                    'length_preference': length_pref,
+                    'link_density': link_density,
+                    'timestamp': datetime.now().isoformat(),
+                }
+            )
+            
+            # 2. Linking style preference (only if links were inserted)
+            if link_count > 0:
+                link_targets = re.findall(r'\[\[(.+?)(?:\|.+?)?\]\]', content)
+                link_memory = (
+                    f"User prefers {link_density} linking ({link_count} links) "
+                    f"in {domain} domain notes. "
+                    f"Link targets: {', '.join(link_targets[:5])}."
+                )
+                self._add_memory(
+                    content=link_memory,
+                    metadata={
+                        'type': 'enrichment_preference',
+                        'subtype': 'linking_style',
+                        'domain': domain,
+                        'link_density': link_density,
+                        'link_count': link_count,
+                        'timestamp': datetime.now().isoformat(),
+                    }
+                )
+            
+            # 3. Structure preference
+            has_frontmatter = content.startswith('---')
+            has_bullet_lists = bool(re.search(r'^\s*[-*]\s', content, re.MULTILINE))
+            has_numbered_lists = bool(re.search(r'^\s*\d+\.\s', content, re.MULTILINE))
+            
+            structure_memory = (
+                f"User's {domain} note structure: {heading_count} headings, "
+                f"{'uses' if has_bullet_lists else 'no'} bullet lists, "
+                f"{'uses' if has_numbered_lists else 'no'} numbered lists, "
+                f"{code_block_count} code blocks, "
+                f"{'has' if has_frontmatter else 'no'} frontmatter."
+            )
+            self._add_memory(
+                content=structure_memory,
+                metadata={
+                    'type': 'enrichment_preference',
+                    'subtype': 'structure_style',
+                    'domain': domain,
+                    'has_frontmatter': has_frontmatter,
+                    'has_bullet_lists': has_bullet_lists,
+                    'has_numbered_lists': has_numbered_lists,
+                    'code_blocks': code_block_count,
+                    'heading_count': heading_count,
+                    'timestamp': datetime.now().isoformat(),
+                }
+            )
+            
+            logger.info(
+                f"Recorded enrichment feedback: domain={domain}, "
+                f"template={template_name}, words={word_count}, "
+                f"links={link_count} ({link_density})"
+            )
+            
+        except Exception as e:
+            logger.warning(f"Failed to record enrichment feedback (non-critical): {e}")
     
     # ========== Edit Mode ==========
     
@@ -987,19 +1369,23 @@ type: [type from user_answers]
     
     async def _auto_link_content(
         self, content: str, linking_skill
-    ) -> str:
+    ) -> tuple:
         """
         Automatically insert [[wiki-links]] based on RAG search.
         
         Process:
         1. Extract significant terms from content
         2. Query RAG for each term
-        3. If similarity ≥0.85, insert [[link]]
+        3. If similarity >=0.85, insert [[link]]
         4. Follow rules from linking_skill
+        
+        Returns:
+            Tuple of (linked_content: str, inserted_links: dict)
+            where inserted_links maps {term: target_title}
         """
         if not self.rag or not linking_skill:
             logger.warning("RAG or linking skill not available, skipping auto-linking")
-            return content
+            return content, {}
         
         logger.info("Auto-linking content...")
         
@@ -1037,7 +1423,7 @@ type: [type from user_answers]
         
         logger.info(f"Inserted {len(links_to_insert)} wiki-links")
         
-        return linked_content
+        return linked_content, links_to_insert
     
     def _extract_stopwords(self, stopwords_section: Optional[str]) -> set:
         """Extract stopwords from linking skill"""

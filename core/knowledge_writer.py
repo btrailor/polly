@@ -50,6 +50,9 @@ class NoteCreateResult:
     rag_indexed: bool = False
     source: str = "native"       # "native" or "obsidian"
     error: Optional[str] = None
+    backlinks_added: List[str] = field(default_factory=list)
+    broken_links: List[Dict] = field(default_factory=list)
+    link_suggestion: Optional[Dict] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -489,6 +492,31 @@ class KnowledgeWriter:
                 metadata=metadata
             )
 
+            # Bidirectional backlinks: write backlinks to target notes (Task #22)
+            backlinks_added = []
+            try:
+                backlinks_added = await self._add_backlinks(
+                    note_path=str(note_path),
+                    note_title=title,
+                    content=content,
+                )
+                if backlinks_added:
+                    logger.info(f"Added backlinks to {len(backlinks_added)} target notes")
+            except Exception as e:
+                logger.warning(f"Backlink write-back failed (non-critical): {e}")
+
+            # Validate links: check for broken wiki-links (Task #22)
+            broken_links = self._validate_links(content)
+            if broken_links:
+                logger.info(f"Found {len(broken_links)} broken links in '{title}'")
+
+            # Generate link suggestion if similar notes exist (Task #22)
+            link_suggestion = self.create_link_suggestion(
+                note_title=title,
+                similar_notes=similar_notes,
+                note_path=str(note_path),
+            )
+
             return NoteCreateResult(
                 success=True,
                 note_path=str(note_path),
@@ -497,6 +525,9 @@ class KnowledgeWriter:
                 similar_notes=similar_notes,
                 rag_indexed=rag_indexed,
                 source=source,
+                backlinks_added=backlinks_added,
+                broken_links=[bl for bl in broken_links],
+                link_suggestion=link_suggestion,
             )
 
         except Exception as e:
@@ -592,6 +623,225 @@ class KnowledgeWriter:
         except Exception as e:
             # Non-critical failure — note is still saved
             logger.warning(f"Failed to add note to Mem0 (non-critical): {e}")
+
+    # ------------------------------------------------------------------
+    # Bidirectional Backlinks Write-Back (Task #22)
+    # ------------------------------------------------------------------
+
+    async def _add_backlinks(
+        self,
+        note_path: str,
+        note_title: str,
+        content: str,
+    ) -> List[str]:
+        """
+        Parse the saved note for [[wiki-links]] and add backlink sections
+        to each target note.
+
+        For each [[Target Note]] found in the saved content:
+        1. Resolve target note path via NotesIndex
+        2. Read target note content
+        3. Append or update '## Backlinks' section with link to this note
+        4. Write target note back to disk
+
+        Args:
+            note_path: Path to the newly saved note
+            note_title: Title of the newly saved note
+            content: Content of the newly saved note
+
+        Returns:
+            List of target note paths that were updated
+        """
+        updated_targets = []
+
+        try:
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+
+            notes_idx = get_notes_index()
+            if not notes_idx:
+                logger.warning("NotesIndex not available, skipping backlink write-back")
+                return updated_targets
+
+            backlinks_idx = get_backlinks_index(notes_idx)
+
+            # Extract all wiki-links from the saved content
+            wiki_links = backlinks_idx.extract_wiki_links(content)
+            if not wiki_links:
+                return updated_targets
+
+            logger.info(f"Found {len(wiki_links)} wiki-links in '{note_title}', writing backlinks...")
+
+            for link_info in wiki_links:
+                target_name = link_info.get("target", "").strip()
+                if not target_name:
+                    continue
+
+                # Resolve target to an actual note file
+                target_note = notes_idx.find_note_by_name_or_alias(target_name)
+                if not target_note or not target_note.path:
+                    logger.debug(f"Target note not found for link: [[{target_name}]]")
+                    continue
+
+                target_path = Path(target_note.path)
+                if not target_path.exists():
+                    logger.debug(f"Target note file missing: {target_path}")
+                    continue
+
+                # Don't add backlink to self
+                if str(target_path.resolve()) == str(Path(note_path).resolve()):
+                    continue
+
+                try:
+                    # Read target note content
+                    target_content = target_path.read_text(encoding="utf-8")
+
+                    # Check if backlink already exists
+                    backlink_marker = f"[[{note_title}]]"
+                    if backlink_marker in target_content:
+                        logger.debug(f"Backlink to '{note_title}' already in {target_path.name}")
+                        continue
+
+                    # Find or create the Backlinks section
+                    backlinks_header = "## Backlinks"
+                    if backlinks_header in target_content:
+                        # Append to existing Backlinks section
+                        # Find the end of the section (next ## heading or end of file)
+                        header_pos = target_content.index(backlinks_header)
+                        rest = target_content[header_pos + len(backlinks_header):]
+
+                        # Find next heading or end of file
+                        next_heading = re.search(r'^## ', rest, re.MULTILINE)
+                        if next_heading:
+                            insert_pos = header_pos + len(backlinks_header) + next_heading.start()
+                            target_content = (
+                                target_content[:insert_pos]
+                                + f"- [[{note_title}]]\n"
+                                + target_content[insert_pos:]
+                            )
+                        else:
+                            # Append at end
+                            target_content = target_content.rstrip() + f"\n- [[{note_title}]]\n"
+                    else:
+                        # Create new Backlinks section at end
+                        target_content = (
+                            target_content.rstrip()
+                            + f"\n\n{backlinks_header}\n- [[{note_title}]]\n"
+                        )
+
+                    # Write back
+                    target_path.write_text(target_content, encoding="utf-8")
+                    updated_targets.append(str(target_path))
+                    logger.info(f"Added backlink [[{note_title}]] to {target_path.name}")
+
+                except Exception as e:
+                    logger.warning(f"Failed to add backlink to {target_path}: {e}")
+                    continue
+
+            # Update the backlinks index for the new note
+            try:
+                backlinks_idx.update_note_backlinks(Path(note_path))
+                # Also update targets so the index reflects new backlinks
+                for tp in updated_targets:
+                    backlinks_idx.update_note_backlinks(Path(tp))
+            except Exception as e:
+                logger.warning(f"Failed to update backlinks index: {e}")
+
+        except ImportError as e:
+            logger.debug(f"Backlinks system not available: {e}")
+        except Exception as e:
+            logger.warning(f"Backlink write-back failed (non-critical): {e}")
+
+        return updated_targets
+
+    def _validate_links(self, content: str) -> List[Dict[str, Any]]:
+        """
+        Parse [[wiki-links]] in content and check if target notes exist.
+
+        Returns:
+            List of broken link dicts:
+            [{"target": "Note Name", "line_number": 5, "context": "..."}]
+        """
+        broken_links = []
+
+        try:
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+
+            notes_idx = get_notes_index()
+            if not notes_idx:
+                return broken_links
+
+            backlinks_idx = get_backlinks_index(notes_idx)
+            wiki_links = backlinks_idx.extract_wiki_links(content)
+
+            for link_info in wiki_links:
+                target_name = link_info.get("target", "").strip()
+                if not target_name:
+                    continue
+
+                # Try to resolve target
+                target_note = notes_idx.find_note_by_name_or_alias(target_name)
+                if not target_note:
+                    broken_links.append({
+                        "target": target_name,
+                        "line_number": link_info.get("line_number", 0),
+                        "context": link_info.get("context", ""),
+                    })
+
+        except ImportError:
+            logger.debug("Backlinks system not available for link validation")
+        except Exception as e:
+            logger.warning(f"Link validation failed: {e}")
+
+        return broken_links
+
+    def create_link_suggestion(
+        self, note_title: str, similar_notes: List[Dict], note_path: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        If similar notes were found during dedup check, create a
+        PersonaAction-compatible dict of type 'suggest_links'.
+
+        The frontend can render this as a modal offering to add links.
+
+        Args:
+            note_title: Title of the newly saved note
+            similar_notes: List of similar note dicts from dedup
+            note_path: Path to the newly saved note
+
+        Returns:
+            Dict with type 'suggest_links' and link candidates, or None
+        """
+        if not similar_notes:
+            return None
+
+        # Filter to notes with moderate similarity (0.5–0.84)
+        # Very high similarity (>0.84) = likely duplicates, handled by dedup
+        # Low similarity (<0.5) = not relevant enough to link
+        candidates = []
+        for note in similar_notes:
+            sim = note.get("similarity", 0)
+            if 0.5 <= sim < 0.85:
+                candidates.append({
+                    "name": note.get("name", ""),
+                    "path": note.get("path", ""),
+                    "similarity": round(sim, 2),
+                    "title": note.get("title", note.get("name", "")),
+                })
+
+        if not candidates:
+            return None
+
+        return {
+            "type": "suggest_links",
+            "data": {
+                "note_title": note_title,
+                "note_path": note_path,
+                "candidates": candidates[:5],  # Top 5
+                "message": f"Found {len(candidates)} related note{'s' if len(candidates) != 1 else ''}. Add links?",
+            },
+        }
 
     # ------------------------------------------------------------------
     # Settings Management

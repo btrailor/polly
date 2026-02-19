@@ -3044,6 +3044,169 @@ def create_app(polly_instance=None) -> FastAPI:
             logger.error(f"Failed to get notes index: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to get notes index: {str(e)}")
     
+    # ========== Edit Pattern Tracking (Task #24) ==========
+    
+    async def _track_edit_patterns(
+        note_path: str,
+        old_content: str,
+        new_content: str,
+        note_domain: str = None,
+    ) -> None:
+        """
+        Analyze before/after note content and store edit preferences in Mem0.
+        
+        Detects:
+        - Link removals → user doesn't want those types of links
+        - Content expansion → user prefers more detail
+        - Content condensing → user prefers concise notes
+        - Structural changes → heading additions/removals
+        
+        Fires as a background task from /polly/notes/update.
+        Non-critical: failures are logged and silently ignored.
+        """
+        import re
+        
+        try:
+            from core.memory import get_memory_adapter
+            import yaml
+            
+            config_path = Path(__file__).parent.parent / "config" / "config.yaml"
+            if not config_path.exists():
+                return
+            
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+            
+            if config.get('memory', {}).get('provider') != 'mem0':
+                return
+            if not config.get('memory', {}).get('mem0', {}).get('enabled', False):
+                return
+            
+            adapter = get_memory_adapter(config)
+            if not adapter:
+                return
+            
+            user_id = "persona:scribe"
+            note_name = Path(note_path).stem
+            domain = note_domain or "unknown"
+            
+            # --- Compute diffs ---
+            
+            # Wiki-link changes
+            old_links = set(re.findall(r'\[\[(.+?)(?:\|.+?)?\]\]', old_content))
+            new_links = set(re.findall(r'\[\[(.+?)(?:\|.+?)?\]\]', new_content))
+            removed_links = old_links - new_links
+            added_links = new_links - old_links
+            
+            # Word count changes
+            old_words = len(old_content.split())
+            new_words = len(new_content.split())
+            word_delta = new_words - old_words
+            word_pct_change = (word_delta / max(old_words, 1)) * 100
+            
+            # Heading changes
+            old_headings = re.findall(r'^#{1,6}\s+(.+)$', old_content, re.MULTILINE)
+            new_headings = re.findall(r'^#{1,6}\s+(.+)$', new_content, re.MULTILINE)
+            
+            memories_added = 0
+            
+            # --- Store meaningful patterns ---
+            
+            # 1. Link removals (user explicitly removed auto-linked content)
+            if removed_links and len(removed_links) >= 1:
+                memory = (
+                    f"User removed {len(removed_links)} wiki-links from '{note_name}' "
+                    f"in {domain} domain: {', '.join(list(removed_links)[:5])}. "
+                    f"Consider fewer or different links for similar notes."
+                )
+                adapter.add_memory(
+                    content=memory,
+                    user_id=user_id,
+                    metadata={
+                        'type': 'edit_feedback',
+                        'subtype': 'link_removal',
+                        'domain': domain,
+                        'removed_links': list(removed_links)[:10],
+                        'removed_count': len(removed_links),
+                        'persona': 'scribe',
+                    }
+                )
+                memories_added += 1
+            
+            # 2. Content expansion (>20% more words)
+            if word_pct_change > 20 and word_delta > 50:
+                memory = (
+                    f"User expanded '{note_name}' by {word_delta} words "
+                    f"({word_pct_change:.0f}% increase) in {domain} domain. "
+                    f"User may prefer more detailed enrichment for similar notes."
+                )
+                adapter.add_memory(
+                    content=memory,
+                    user_id=user_id,
+                    metadata={
+                        'type': 'edit_feedback',
+                        'subtype': 'content_expansion',
+                        'domain': domain,
+                        'word_delta': word_delta,
+                        'pct_change': round(word_pct_change, 1),
+                        'persona': 'scribe',
+                    }
+                )
+                memories_added += 1
+            
+            # 3. Content condensing (>20% fewer words)
+            elif word_pct_change < -20 and abs(word_delta) > 50:
+                memory = (
+                    f"User condensed '{note_name}' by {abs(word_delta)} words "
+                    f"({abs(word_pct_change):.0f}% decrease) in {domain} domain. "
+                    f"User may prefer more concise enrichment for similar notes."
+                )
+                adapter.add_memory(
+                    content=memory,
+                    user_id=user_id,
+                    metadata={
+                        'type': 'edit_feedback',
+                        'subtype': 'content_condensing',
+                        'domain': domain,
+                        'word_delta': word_delta,
+                        'pct_change': round(word_pct_change, 1),
+                        'persona': 'scribe',
+                    }
+                )
+                memories_added += 1
+            
+            # 4. Structural changes (headings added/removed)
+            if len(new_headings) != len(old_headings):
+                heading_delta = len(new_headings) - len(old_headings)
+                if abs(heading_delta) >= 2:
+                    direction = "added" if heading_delta > 0 else "removed"
+                    memory = (
+                        f"User {direction} {abs(heading_delta)} headings in '{note_name}' "
+                        f"({domain} domain). "
+                        f"Old: {len(old_headings)} headings, New: {len(new_headings)} headings."
+                    )
+                    adapter.add_memory(
+                        content=memory,
+                        user_id=user_id,
+                        metadata={
+                            'type': 'edit_feedback',
+                            'subtype': 'structure_change',
+                            'domain': domain,
+                            'heading_delta': heading_delta,
+                            'persona': 'scribe',
+                        }
+                    )
+                    memories_added += 1
+            
+            if memories_added > 0:
+                logger.info(
+                    f"Edit pattern tracking: recorded {memories_added} feedback memories "
+                    f"for '{note_name}' (domain={domain})"
+                )
+            
+        except Exception as e:
+            logger.debug(f"Edit pattern tracking failed (non-critical): {e}")
+    
     @app.post("/polly/notes/create")
     async def create_note(request: Dict[str, Any]):
         """
@@ -3268,6 +3431,14 @@ def create_app(polly_instance=None) -> FastAPI:
             if not note_path.exists():
                 raise HTTPException(404, f"Note not found: {note_path}")
             
+            # Read old content before overwriting (for edit pattern tracking - Task #24)
+            old_content = None
+            try:
+                with open(note_path, 'r', encoding='utf-8') as f:
+                    old_content = f.read()
+            except Exception as e:
+                logger.debug(f"Could not read old content for edit tracking: {e}")
+            
             # Write updated content
             with open(note_path, 'w', encoding='utf-8') as f:
                 f.write(content)
@@ -3307,6 +3478,21 @@ def create_app(polly_instance=None) -> FastAPI:
             # Fire background task
             import asyncio
             asyncio.create_task(extract_entities_background())
+            
+            # Track edit patterns for persona memory (Task #24)
+            if old_content and old_content != content:
+                async def track_edit_patterns_background():
+                    try:
+                        await _track_edit_patterns(
+                            note_path=str(note_path),
+                            old_content=old_content,
+                            new_content=content,
+                            note_domain=note_obj.domain if note_obj else None,
+                        )
+                    except Exception as e:
+                        logger.debug(f"Edit pattern tracking failed (non-critical): {e}")
+                
+                asyncio.create_task(track_edit_patterns_background())
             
             # Return note metadata so UI can update modified time
             stat = note_path.stat()
@@ -5188,6 +5374,208 @@ def create_app(polly_instance=None) -> FastAPI:
                 "error": str(e)
             }
     
+    # ===== LINK VALIDATION ENDPOINTS (Task #22b) =====
+
+    @app.get("/polly/notes/validate-links")
+    async def validate_all_links():
+        """
+        Batch validation: scan all notes for broken wiki-links.
+        
+        Returns a report of all broken links across the knowledge base,
+        plus summary statistics.
+        
+        Response: {
+            "total_notes": 42,
+            "notes_scanned": 42,
+            "total_links": 180,
+            "broken_links": [
+                {
+                    "source_name": "React Patterns",
+                    "source_path": "/path/to/note.md",
+                    "source_domain": "03-Scrolls",
+                    "target": "Missing Note",
+                    "line_number": 12,
+                    "context": "...see [[Missing Note]] for..."
+                }
+            ],
+            "broken_count": 5,
+            "orphan_notes": [
+                {
+                    "name": "Lonely Note",
+                    "path": "/path/to/lonely-note.md",
+                    "domain": "03-Scrolls"
+                }
+            ],
+            "orphan_count": 2
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+            
+            notes_idx = get_notes_index()
+            backlinks_idx = get_backlinks_index(notes_idx)
+            all_notes = notes_idx.get_all_notes()
+            
+            broken_links = []
+            total_links = 0
+            notes_with_inbound = set()  # Track notes that are linked TO
+            notes_with_outbound = set()  # Track notes that link OUT
+            
+            for note_info in all_notes:
+                try:
+                    content = note_info.path.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+                
+                wiki_links = backlinks_idx.extract_wiki_links(content)
+                total_links += len(wiki_links)
+                
+                if wiki_links:
+                    notes_with_outbound.add(note_info.name)
+                
+                for link_info in wiki_links:
+                    target_name = link_info.get("target", "").strip()
+                    if not target_name:
+                        continue
+                    
+                    target_note = notes_idx.find_note_by_name_or_alias(target_name)
+                    if target_note:
+                        notes_with_inbound.add(target_note.name)
+                    else:
+                        broken_links.append({
+                            "source_name": note_info.name,
+                            "source_path": str(note_info.path),
+                            "source_domain": note_info.domain or "",
+                            "target": target_name,
+                            "line_number": link_info.get("line_number", 0),
+                            "context": link_info.get("context", ""),
+                        })
+            
+            # Orphan notes: no inbound links AND no outbound links
+            all_note_names = {n.name for n in all_notes}
+            orphan_names = all_note_names - notes_with_inbound - notes_with_outbound
+            orphan_notes = []
+            for note_info in all_notes:
+                if note_info.name in orphan_names:
+                    orphan_notes.append({
+                        "name": note_info.name,
+                        "path": str(note_info.path),
+                        "domain": note_info.domain or "",
+                    })
+            
+            return {
+                "total_notes": len(all_notes),
+                "notes_scanned": len(all_notes),
+                "total_links": total_links,
+                "broken_links": broken_links,
+                "broken_count": len(broken_links),
+                "orphan_notes": orphan_notes,
+                "orphan_count": len(orphan_notes),
+            }
+        
+        except Exception as e:
+            logger.error(f"Validate all links failed: {e}")
+            return {
+                "total_notes": 0,
+                "notes_scanned": 0,
+                "total_links": 0,
+                "broken_links": [],
+                "broken_count": 0,
+                "orphan_notes": [],
+                "orphan_count": 0,
+                "error": str(e),
+            }
+
+    @app.post("/polly/notes/validate-note")
+    async def validate_note_links(request: Dict[str, Any]):
+        """
+        Per-note validation: check a single note's wiki-links.
+        
+        Request: {
+            "path": "/full/path/to/note.md"  (optional — reads from disk)
+            "content": "markdown content..."  (optional — validates this directly)
+        }
+        
+        At least one of path or content must be provided.
+        If both are provided, content is used (for validating unsaved edits).
+        
+        Response: {
+            "broken_links": [
+                {"target": "Missing Note", "line_number": 5, "context": "..."}
+            ],
+            "valid_links": [
+                {"target": "Existing Note", "line_number": 3, "path": "/path/to/note.md"}
+            ],
+            "broken_count": 1,
+            "valid_count": 3,
+            "total_count": 4
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+            
+            content = request.get("content")
+            note_path_str = request.get("path")
+            
+            if not content and not note_path_str:
+                raise HTTPException(400, "Either 'path' or 'content' is required")
+            
+            # Read from disk if content not provided
+            if not content:
+                note_path = Path(note_path_str)
+                if not note_path.exists():
+                    raise HTTPException(404, f"Note not found: {note_path}")
+                content = note_path.read_text(encoding="utf-8")
+            
+            notes_idx = get_notes_index()
+            backlinks_idx = get_backlinks_index(notes_idx)
+            wiki_links = backlinks_idx.extract_wiki_links(content)
+            
+            broken_links = []
+            valid_links = []
+            
+            for link_info in wiki_links:
+                target_name = link_info.get("target", "").strip()
+                if not target_name:
+                    continue
+                
+                target_note = notes_idx.find_note_by_name_or_alias(target_name)
+                if target_note:
+                    valid_links.append({
+                        "target": target_name,
+                        "line_number": link_info.get("line_number", 0),
+                        "path": str(target_note.path),
+                    })
+                else:
+                    broken_links.append({
+                        "target": target_name,
+                        "line_number": link_info.get("line_number", 0),
+                        "context": link_info.get("context", ""),
+                    })
+            
+            return {
+                "broken_links": broken_links,
+                "valid_links": valid_links,
+                "broken_count": len(broken_links),
+                "valid_count": len(valid_links),
+                "total_count": len(broken_links) + len(valid_links),
+            }
+        
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Validate note links failed: {e}")
+            return {
+                "broken_links": [],
+                "valid_links": [],
+                "broken_count": 0,
+                "valid_count": 0,
+                "total_count": 0,
+                "error": str(e),
+            }
+
     # ===== TEMPLATE ENDPOINTS (Phase 16e) =====
     
     @app.get("/polly/templates")

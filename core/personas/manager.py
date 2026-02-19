@@ -84,7 +84,8 @@ class PersonaManager:
         learning_tracker: Optional[Any] = None,
         curriculum_manager: Optional[Any] = None,
         template_manager: Optional[Any] = None,
-        domain_engine: Optional[Any] = None
+        domain_engine: Optional[Any] = None,
+        pattern_engine: Optional[Any] = None
     ):
         """
         Initialize persona manager.
@@ -99,6 +100,7 @@ class PersonaManager:
             curriculum_manager: CurriculumManager instance for curriculum management (Phase 23)
             template_manager: CurriculumTemplateManager instance for templates (Phase 23)
             domain_engine: DomainEngine instance for auto-detecting domains from content
+            pattern_engine: PatternEngine instance for pattern-informed enrichment (Task #24)
         """
         self.router = router
         self.skill_manager = skill_manager
@@ -107,6 +109,7 @@ class PersonaManager:
         self.curriculum_manager = curriculum_manager
         self.template_manager = template_manager
         self.domain_engine = domain_engine
+        self.pattern_engine = pattern_engine
         
         # Set definitions directory
         if definitions_dir is None:
@@ -363,7 +366,8 @@ class PersonaManager:
                     name=persona_name, 
                     router=self.router,
                     skill_manager=self.skill_manager,
-                    rag=self.rag
+                    rag=self.rag,
+                    pattern_engine=self.pattern_engine
                 )
             elif persona_name == "professor":
                 # Professor needs skill_manager, rag, and learning_tracker (Phase 20+22)

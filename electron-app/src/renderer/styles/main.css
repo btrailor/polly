@@ -1030,6 +1030,29 @@ body {
   white-space: nowrap;
 }
 
+.agent-delete-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.agent-item:hover .agent-delete-btn {
+  display: flex;
+}
+
+.agent-delete-btn:hover {
+  color: var(--text-error, #ef4444);
+  background: var(--bg-hover);
+}
+
 .agent-conversations {
   padding-left: var(--spacing-md);
   padding-bottom: var(--spacing-xs);
@@ -2331,6 +2354,333 @@ body {
   letter-spacing: 0.5px;
   font-weight: 600;
 }
+
+/* ==================== Autonomy Dashboard (Task #21) ==================== */
+
+.autonomy-section {
+  margin-bottom: 32px;
+}
+
+.autonomy-section h3 {
+  margin-bottom: 16px;
+  text-transform: lowercase;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.autonomy-section h4 {
+  margin-bottom: 12px;
+  text-transform: lowercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Hero: ring + 3 stat cards */
+.autonomy-hero {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.autonomy-ring-container {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
+}
+
+.autonomy-ring {
+  width: 120px;
+  height: 120px;
+  transform: rotate(-90deg);
+}
+
+.autonomy-ring-bg {
+  fill: none;
+  stroke: #3a3a3a;
+  stroke-width: 8;
+}
+
+.autonomy-ring-fill {
+  fill: none;
+  stroke: var(--success);
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 326.73;
+  stroke-dashoffset: 326.73;
+  transition: stroke-dashoffset 0.8s ease;
+}
+
+.autonomy-ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.autonomy-pct {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.autonomy-pct-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.autonomy-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  flex: 1;
+}
+
+.autonomy-hero-stat {
+  background: var(--bg-secondary);
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.autonomy-hero-stat:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-primary);
+  transform: translateY(-2px);
+}
+
+.autonomy-hero-stat .stat-icon {
+  width: 24px;
+  height: 24px;
+  margin: 0 auto 8px;
+}
+
+.autonomy-hero-stat .stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.autonomy-hero-stat .stat-label {
+  font-size: 11px;
+}
+
+/* Routing Trend Chart */
+.autonomy-chart-container {
+  background: var(--bg-secondary);
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+.autonomy-chart {
+  height: 160px;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.autonomy-chart-empty {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  height: 100%;
+}
+
+.autonomy-chart-bar-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.autonomy-bar-stack {
+  width: 100%;
+  max-width: 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+}
+
+.autonomy-bar-local {
+  background: var(--success);
+  border-radius: 2px 2px 0 0;
+  min-height: 0;
+  transition: height 0.3s ease;
+}
+
+.autonomy-bar-cloud {
+  background: var(--accent-primary);
+  border-radius: 0 0 2px 2px;
+  min-height: 0;
+  transition: height 0.3s ease;
+}
+
+.autonomy-bar-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  text-align: center;
+}
+
+.autonomy-chart-legend {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend-dot.legend-local {
+  background: var(--success);
+}
+
+.legend-dot.legend-cloud {
+  background: var(--accent-primary);
+}
+
+/* Recent Knowledge Writes */
+.autonomy-recent {
+  background: var(--bg-secondary);
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.autonomy-writes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.autonomy-write-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  transition: border-color 0.15s ease;
+}
+
+.autonomy-write-item:hover {
+  border-color: var(--accent-primary);
+}
+
+.autonomy-write-source {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.autonomy-write-source.ai-suggestion {
+  background: rgba(152, 195, 121, 0.15);
+  color: var(--success);
+}
+
+.autonomy-write-source.context-menu {
+  background: rgba(240, 144, 59, 0.15);
+  color: var(--accent-primary);
+}
+
+.autonomy-write-source.manual {
+  background: rgba(97, 175, 239, 0.15);
+  color: var(--sigils);
+}
+
+.autonomy-write-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.autonomy-write-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.autonomy-write-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.autonomy-write-savings {
+  font-size: 12px;
+  color: var(--success);
+  font-weight: 600;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.autonomy-empty-state {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px;
+}
+
+/* Status bar autonomy indicator */
+.status-item-clickable {
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.15s ease;
+}
+
+.status-item-clickable:hover {
+  background: var(--bg-hover);
+}
+
+/* ==================== End Autonomy Dashboard ==================== */
 
 .domains-section {
   margin-bottom: 32px;
@@ -7670,4 +8020,343 @@ body {
   }
 }
 /* ==================== End Knowledge Suggestion Card ==================== */
+
+/* ==================== Link Suggestion Modal (Task #22) ==================== */
+.link-suggestion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.link-suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.link-suggestion-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+
+.link-suggestion-item.selected {
+  border-color: var(--accent-primary);
+  background: rgba(240, 144, 59, 0.08);
+}
+
+.link-suggestion-item input[type="checkbox"] {
+  accent-color: var(--accent-primary);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.link-suggestion-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.link-suggestion-item-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.link-suggestion-item-path {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.link-suggestion-item-similarity {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(152, 195, 121, 0.15);
+  color: var(--success);
+}
+
+/* ==================== Toast Notifications (Task #22) ==================== */
+.polly-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  animation: toastSlideIn 0.25s ease-out;
+  max-width: 380px;
+}
+
+.polly-toast.toast-success {
+  border-color: var(--success);
+  background: rgba(152, 195, 121, 0.12);
+}
+
+.polly-toast.toast-error {
+  border-color: var(--error);
+  background: rgba(224, 108, 117, 0.12);
+}
+
+.polly-toast.toast-warning {
+  border-color: var(--warning);
+  background: rgba(240, 144, 59, 0.12);
+}
+
+.polly-toast.toast-info {
+  border-color: var(--sigils);
+  background: rgba(97, 175, 239, 0.12);
+}
+
+.polly-toast-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.polly-toast-message {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.polly-toast-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  transition: color var(--transition-fast);
+}
+
+.polly-toast-close:hover {
+  color: var(--text-primary);
+}
+
+.polly-toast.removing {
+  animation: toastSlideOut 0.2s ease-in forwards;
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes toastSlideOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+/* ==================== End Toast & Link Suggestion ==================== */
+
+/* ==================== Per-Note Validation Banner (Task #22b) ==================== */
+.notes-validation-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(240, 144, 59, 0.1);
+  border-left: 3px solid var(--warning);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-secondary);
+  animation: slideIn 0.2s ease-out;
+}
+
+.notes-validation-banner.hidden {
+  display: none;
+}
+
+.validation-banner-icon {
+  color: var(--warning);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.validation-banner-content {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.validation-banner-targets {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.validation-banner-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.validation-banner-close:hover {
+  color: var(--text-primary);
+}
+
+/* ==================== Vault Health Modal (Task #22b) ==================== */
+.vault-health-summary {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.vault-health-scanning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 16px 0;
+}
+
+.vault-health-stat {
+  flex: 1;
+  min-width: 100px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  text-align: center;
+}
+
+.vault-health-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.vault-health-stat-value.healthy {
+  color: var(--success);
+}
+
+.vault-health-stat-value.warning {
+  color: var(--warning);
+}
+
+.vault-health-stat-value.error {
+  color: var(--error);
+}
+
+.vault-health-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  text-transform: lowercase;
+}
+
+.vault-health-section.hidden {
+  display: none;
+}
+
+.vault-health-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.vault-health-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.vault-health-item:hover {
+  background: var(--bg-hover);
+}
+
+.vault-health-item-source {
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.vault-health-item-arrow {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.vault-health-item-target {
+  color: var(--error);
+  font-style: italic;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-health-item-domain {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 1px 6px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+}
+
+.vault-health-item-line {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.vault-health-orphan-name {
+  color: var(--text-primary);
+  flex: 1;
+}
+
+#vault-health-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+/* ==================== End Vault Health ==================== */
 

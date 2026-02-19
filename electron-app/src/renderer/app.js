@@ -235,23 +235,45 @@ function getEffectivePage() {
  * Show a toast notification
  * @param {string} message - Message to display
  * @param {string} type - Type of toast: 'success', 'error', 'info', 'warning'
+ * @param {number} duration - Auto-dismiss duration in ms (0 = no auto-dismiss)
  */
-function showToast(message, type = "info") {
-  // For now, use console and alert for critical errors
-  // In the future, this could be replaced with a proper toast UI component
-  const prefix =
-    {
-      success: "✓",
-      error: "✗",
-      warning: "⚠",
-      info: "ℹ",
-    }[type] || "ℹ";
+function showToast(message, type = "info", duration = 4000) {
+  const icons = {
+    success: "\u2713",
+    error: "\u2717",
+    warning: "\u26A0",
+    info: "\u2139",
+  };
+  const icon = icons[type] || icons.info;
 
   console.log(`[${type.toUpperCase()}] ${message}`);
 
-  // Only show alert for errors
-  if (type === "error") {
-    alert(`${prefix} ${message}`);
+  const container = document.getElementById("toast-container");
+  if (!container) {
+    // Fallback for errors if container not yet in DOM
+    if (type === "error") alert(`${icon} ${message}`);
+    return;
+  }
+
+  const toast = document.createElement("div");
+  toast.className = `polly-toast toast-${type}`;
+  toast.innerHTML = `
+    <span class="polly-toast-icon">${icon}</span>
+    <span class="polly-toast-message">${message}</span>
+    <button class="polly-toast-close">&times;</button>
+  `;
+
+  const closeBtn = toast.querySelector(".polly-toast-close");
+  const dismiss = () => {
+    toast.classList.add("removing");
+    setTimeout(() => toast.remove(), 200);
+  };
+  closeBtn.addEventListener("click", dismiss);
+
+  container.appendChild(toast);
+
+  if (duration > 0) {
+    setTimeout(dismiss, duration);
   }
 }
 
@@ -1524,11 +1546,16 @@ function renderAgentsSidebar() {
                  .join("")}
              </div>`
           : "";
+      const isBuiltIn = ["default", "architect", "scribe", "professor"].includes(agent.id);
+      const deleteBtnHtml = !isBuiltIn
+        ? `<button type="button" class="agent-delete-btn" data-agent-id="${escapeHtml(agent.id)}" aria-label="Delete agent" title="Delete agent"><i data-lucide="trash-2" style="width: 12px; height: 12px;"></i></button>`
+        : "";
       return `
         <div class="agent-item ${isActive ? "active" : ""}" data-agent-id="${escapeHtml(agent.id)}">
           <div class="agent-row">
             <i data-lucide="${icon}" class="agent-icon" style="width: 16px; height: 16px;"></i>
             <span class="agent-name">${escapeHtml(agent.display_name)}</span>
+            ${deleteBtnHtml}
           </div>
           ${convsHtml}
         </div>
@@ -1541,8 +1568,27 @@ function renderAgentsSidebar() {
     if (!agentId) return;
     const agentRow = item.querySelector(".agent-row");
     if (agentRow) {
-      agentRow.addEventListener("click", () => switchToAgent(agentId));
+      agentRow.addEventListener("click", (e) => {
+        if (e.target.closest(".agent-delete-btn")) return;
+        switchToAgent(agentId);
+      });
     }
+  });
+
+  listEl.querySelectorAll(".agent-delete-btn").forEach((btn) => {
+    const agentId = btn.dataset.agentId;
+    if (!agentId) return;
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const agent = getAgentById(agentId);
+      const name = agent ? agent.display_name : agentId;
+      if (confirm(`Delete agent "${name}" and all its conversations?`)) {
+        deleteAgent(agentId);
+        renderAgentsSidebar();
+        if (typeof renderChatTabs === "function") renderChatTabs();
+      }
+    });
   });
 
   listEl.querySelectorAll(".agent-conversation-item").forEach((item) => {
@@ -1604,13 +1650,9 @@ function renderChatTabs() {
     });
     const closeBtn = tab.querySelector(".tab-close");
     if (closeBtn) {
-      closeBtn.addEventListener("click", (e) => {
+      closeBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        const idx = conversations.findIndex((c) => c.id === convId);
-        if (conversations.length > 1 && idx >= 0) {
-          const next = idx > 0 ? conversations[idx - 1] : conversations[idx + 1];
-          if (next) switchToConversation(next.id);
-        }
+        await deleteConversation(convId);
       });
     }
   });
@@ -2890,6 +2932,103 @@ function setupEventListeners() {
       handleConfirmCompleteSection,
     );
   }
+
+  // Autonomy Dashboard (Task #21)
+  // Status bar indicator click → navigate to dashboard
+  const autonomyIndicator = document.getElementById("autonomy-status-indicator");
+  if (autonomyIndicator) {
+    autonomyIndicator.addEventListener("click", () => {
+      showView("dashboard");
+      // Update ribbon active state
+      document.querySelectorAll(".ribbon-item").forEach((b) => {
+        b.classList.remove("active", "glitch");
+      });
+      const dashboardBtn = document.querySelector('.ribbon-item[data-view="dashboard"]');
+      if (dashboardBtn) dashboardBtn.classList.add("active", "glitch");
+    });
+  }
+
+  // AI Features → Autonomy Dashboard toggle
+  const autonomyToggle = document.getElementById("ai-feat-autonomy-enabled");
+  if (autonomyToggle) {
+    autonomyToggle.addEventListener("change", () => {
+      // Persist to localStorage
+      localStorage.setItem("polly-autonomy-enabled", autonomyToggle.checked ? "true" : "false");
+      // Immediately reflect in UI
+      if (currentView === "dashboard") {
+        loadAutonomyData();
+      } else {
+        updateAutonomyStatusBar(null);
+        const indicator = document.getElementById("autonomy-status-indicator");
+        if (indicator) indicator.style.display = "none";
+      }
+    });
+    // Restore persisted state on load
+    const savedState = localStorage.getItem("polly-autonomy-enabled");
+    if (savedState !== null) {
+      autonomyToggle.checked = savedState === "true";
+    }
+  }
+
+  // AI Features → Save button
+  const saveAiFeaturesBtn = document.getElementById("btn-save-ai-features");
+  if (saveAiFeaturesBtn) {
+    saveAiFeaturesBtn.addEventListener("click", saveAIFeaturesSettings);
+  }
+
+  // Load autonomy data on startup (for status bar indicator)
+  // Delayed to let server start
+  setTimeout(() => {
+    loadAutonomyData();
+  }, 3000);
+
+  // Link Suggestion Modal (Task #22)
+  const closeLinkSuggestionBtn = document.getElementById("close-link-suggestion-modal");
+  const dismissLinkSuggestionsBtn = document.getElementById("dismiss-link-suggestions");
+  const applyLinkSuggestionsBtn = document.getElementById("apply-link-suggestions");
+  const linkSuggestionModal = document.getElementById("link-suggestion-modal");
+
+  if (closeLinkSuggestionBtn) {
+    closeLinkSuggestionBtn.addEventListener("click", () => {
+      linkSuggestionModal.classList.add("hidden");
+    });
+  }
+  if (dismissLinkSuggestionsBtn) {
+    dismissLinkSuggestionsBtn.addEventListener("click", () => {
+      linkSuggestionModal.classList.add("hidden");
+    });
+  }
+  if (applyLinkSuggestionsBtn) {
+    applyLinkSuggestionsBtn.addEventListener("click", applyLinkSuggestions);
+  }
+  // Backdrop click to close
+  if (linkSuggestionModal) {
+    linkSuggestionModal.addEventListener("click", (e) => {
+      if (e.target === linkSuggestionModal) {
+        linkSuggestionModal.classList.add("hidden");
+      }
+    });
+  }
+
+  // Vault Health Scanner (Task #22b)
+  const vaultHealthBtn = document.getElementById("vault-health-btn");
+  if (vaultHealthBtn) {
+    vaultHealthBtn.addEventListener("click", runVaultHealthScan);
+  }
+  const closeVaultHealthBtn = document.getElementById("close-vault-health-modal");
+  const closeVaultHealthBtn2 = document.getElementById("close-vault-health-btn");
+  const vaultHealthModal = document.getElementById("vault-health-modal");
+  if (closeVaultHealthBtn) {
+    closeVaultHealthBtn.addEventListener("click", () => vaultHealthModal.classList.add("hidden"));
+  }
+  if (closeVaultHealthBtn2) {
+    closeVaultHealthBtn2.addEventListener("click", () => vaultHealthModal.classList.add("hidden"));
+  }
+  if (vaultHealthModal) {
+    vaultHealthModal.addEventListener("click", (e) => {
+      if (e.target === vaultHealthModal) vaultHealthModal.classList.add("hidden");
+    });
+  }
 }
 
 /**
@@ -2941,6 +3080,7 @@ function showView(view) {
   try {
     if (view === "dashboard") {
       loadDashboardData();
+      loadAutonomyData();
     } else if (view === "knowledge") {
       loadKnowledgeData();
     } else if (view === "patterns") {
@@ -9041,6 +9181,507 @@ const loadDashboardData = withErrorBoundary(async function () {
 }, "loadDashboardData");
 
 /**
+ * ===========================================
+ * AUTONOMY DASHBOARD (Task #21)
+ * ===========================================
+ * Fetches progressive autonomy metrics and renders:
+ *  - Hero ring (local routing %)
+ *  - Stat cards (writes count, tokens saved, total queries)
+ *  - Stacked bar chart (routing trend over time)
+ *  - Recent knowledge writes list
+ *  - Status bar indicator
+ */
+
+/**
+ * Format large numbers for display (e.g. 12500 → "12.5k")
+ */
+function formatTokenCount(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+  if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+  return String(n);
+}
+
+/**
+ * Load all autonomy dashboard data from the 3 API endpoints.
+ * Called when dashboard view opens and after knowledge writes.
+ */
+const loadAutonomyData = withErrorBoundary(async function () {
+  // Check if autonomy dashboard is enabled in settings
+  const autonomyEnabled = document.getElementById("ai-feat-autonomy-enabled");
+  if (autonomyEnabled && !autonomyEnabled.checked) {
+    const section = document.getElementById("autonomy-section");
+    if (section) section.style.display = "none";
+    updateAutonomyStatusBar(null);
+    return;
+  }
+
+  const section = document.getElementById("autonomy-section");
+  if (section) section.style.display = "";
+
+  // Fetch all 3 endpoints in parallel
+  const [snapshotResult, writesResult, trendResult] = await Promise.all([
+    safeFetch("http://127.0.0.1:11436/api/settings/autonomy/snapshot?days=30", {}, true),
+    safeFetch("http://127.0.0.1:11436/api/settings/autonomy/recent-writes?limit=10", {}, true),
+    safeFetch("http://127.0.0.1:11436/api/settings/autonomy/routing-trend?days=30", {}, true),
+  ]);
+
+  // --- Render snapshot (hero ring + stat cards) ---
+  if (snapshotResult.ok && snapshotResult.data?.snapshot) {
+    const snap = snapshotResult.data.snapshot;
+    renderAutonomySnapshot(snap);
+    updateAutonomyStatusBar(snap);
+  } else {
+    // Show zeros / empty state gracefully
+    renderAutonomySnapshot(null);
+    updateAutonomyStatusBar(null);
+  }
+
+  // --- Render routing trend chart ---
+  if (trendResult.ok && trendResult.data?.trend) {
+    renderAutonomyChart(trendResult.data.trend);
+  } else {
+    renderAutonomyChart([]);
+  }
+
+  // --- Render recent writes ---
+  if (writesResult.ok && writesResult.data?.writes) {
+    renderAutonomyWrites(writesResult.data.writes);
+  } else {
+    renderAutonomyWrites([]);
+  }
+}, "loadAutonomyData");
+
+// Expose globally so suggestion-card.js can call it after saves
+window.loadAutonomyData = loadAutonomyData;
+
+/**
+ * Render the hero ring and stat cards from a snapshot object.
+ */
+function renderAutonomySnapshot(snap) {
+  const localPct = snap ? snap.local_routing_pct : 0;
+  const writesCount = snap ? snap.knowledge_writes_count : 0;
+  const tokensSaved = snap ? snap.estimated_tokens_saved : 0;
+  const totalQueries = snap ? snap.total_queries : 0;
+
+  // Update ring
+  const ringFill = document.getElementById("autonomy-ring-fill");
+  if (ringFill) {
+    // circumference = 2 * PI * 52 ≈ 326.73
+    const circumference = 326.73;
+    const offset = circumference - (circumference * localPct) / 100;
+    ringFill.style.strokeDashoffset = offset;
+  }
+
+  const pctEl = document.getElementById("autonomy-pct");
+  if (pctEl) pctEl.textContent = Math.round(localPct) + "%";
+
+  // Update stat cards
+  const writesEl = document.getElementById("autonomy-writes-count");
+  if (writesEl) writesEl.textContent = writesCount;
+
+  const tokensEl = document.getElementById("autonomy-tokens-saved");
+  if (tokensEl) tokensEl.textContent = formatTokenCount(tokensSaved);
+
+  const queriesEl = document.getElementById("autonomy-total-queries");
+  if (queriesEl) queriesEl.textContent = totalQueries;
+}
+
+/**
+ * Render stacked bar chart from routing trend data.
+ * Each entry: { period_start, local_pct, cloud_pct, total_queries }
+ */
+function renderAutonomyChart(trend) {
+  const container = document.getElementById("autonomy-chart");
+  if (!container) return;
+
+  if (!trend || trend.length === 0) {
+    container.innerHTML = '<div class="autonomy-chart-empty">No routing data yet</div>';
+    return;
+  }
+
+  // Find max total queries for scaling
+  const maxQueries = Math.max(...trend.map((t) => t.total_queries), 1);
+
+  const barsHtml = trend.map((entry) => {
+    const localH = Math.max((entry.local_pct / 100) * 140, 0);
+    const cloudH = Math.max((entry.cloud_pct / 100) * 140, 0);
+    // Format date label: "Feb 10"
+    const d = new Date(entry.period_start);
+    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+    return `
+      <div class="autonomy-chart-bar-group" title="${label}: ${Math.round(entry.local_pct)}% local, ${Math.round(entry.cloud_pct)}% cloud (${entry.total_queries} queries)">
+        <div class="autonomy-bar-stack">
+          <div class="autonomy-bar-local" style="height: ${localH}px;"></div>
+          <div class="autonomy-bar-cloud" style="height: ${cloudH}px;"></div>
+        </div>
+        <div class="autonomy-bar-label">${label}</div>
+      </div>`;
+  }).join("");
+
+  container.innerHTML = barsHtml;
+}
+
+/**
+ * Render the recent knowledge writes list.
+ * Each write: { id, timestamp, title, domain, source_type, cloud_provider, estimated_future_savings, note_path, gap_score }
+ */
+function renderAutonomyWrites(writes) {
+  const list = document.getElementById("autonomy-writes-list");
+  if (!list) return;
+
+  if (!writes || writes.length === 0) {
+    list.innerHTML = '<div class="autonomy-empty-state">No knowledge writes yet. Use KB suggestions to grow your local knowledge.</div>';
+    return;
+  }
+
+  const html = writes.map((w) => {
+    const sourceClass = (w.source_type || "manual").replace(/_/g, "-");
+    const sourceLabel = (w.source_type || "manual").replace(/_/g, " ");
+    const savings = w.estimated_future_savings
+      ? `~${formatTokenCount(w.estimated_future_savings)} tokens`
+      : "";
+    const domain = w.domain || "";
+    const ts = w.timestamp
+      ? new Date(w.timestamp).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : "";
+
+    return `
+      <div class="autonomy-write-item">
+        <span class="autonomy-write-source ${sourceClass}">${sourceLabel}</span>
+        <div class="autonomy-write-info">
+          <div class="autonomy-write-title">${escapeHtml(w.title || "Untitled")}</div>
+          <div class="autonomy-write-meta">${domain}${domain && ts ? " · " : ""}${ts}</div>
+        </div>
+        ${savings ? `<span class="autonomy-write-savings">${savings}</span>` : ""}
+      </div>`;
+  }).join("");
+
+  list.innerHTML = html;
+}
+
+/**
+ * Update the status bar autonomy indicator.
+ */
+function updateAutonomyStatusBar(snap) {
+  const indicator = document.getElementById("autonomy-status-indicator");
+  const pctSpan = document.getElementById("autonomy-status-pct");
+  if (!indicator) return;
+
+  const autonomyEnabled = document.getElementById("ai-feat-autonomy-enabled");
+  if (!snap || (autonomyEnabled && !autonomyEnabled.checked)) {
+    indicator.style.display = "none";
+    return;
+  }
+
+  indicator.style.display = "";
+  if (pctSpan) pctSpan.textContent = Math.round(snap.local_routing_pct) + "% local";
+}
+
+// ==================== Link Suggestion Modal (Task #22) ====================
+
+/**
+ * Show the link suggestion modal after a note save returns related notes.
+ * @param {Object} linkSuggestion - The suggest_links PersonaAction from backend
+ * @param {string} savedNotePath - Path of the note that was just saved
+ */
+function showLinkSuggestionModal(linkSuggestion, savedNotePath) {
+  if (!linkSuggestion || linkSuggestion.type !== "suggest_links") return;
+
+  const data = linkSuggestion.data || {};
+  const candidates = data.candidates || [];
+  if (candidates.length === 0) return;
+
+  const modal = document.getElementById("link-suggestion-modal");
+  const msgEl = document.getElementById("link-suggestion-message");
+  const listEl = document.getElementById("link-suggestion-candidates");
+  if (!modal || !msgEl || !listEl) return;
+
+  msgEl.textContent = data.message || `Found ${candidates.length} related note(s). Add wiki-links?`;
+
+  listEl.innerHTML = candidates.map((c, i) => {
+    const simPct = Math.round((c.similarity || 0) * 100);
+    const title = escapeHtml(c.title || c.name || "Untitled");
+    const pathDisplay = escapeHtml(c.path || "");
+    return `
+      <label class="link-suggestion-item" data-index="${i}">
+        <input type="checkbox" checked data-name="${escapeHtml(c.name || c.title || "")}" data-path="${escapeHtml(c.path || "")}">
+        <div class="link-suggestion-item-info">
+          <div class="link-suggestion-item-title">${title}</div>
+          <div class="link-suggestion-item-path">${pathDisplay}</div>
+        </div>
+        <span class="link-suggestion-item-similarity">${simPct}%</span>
+      </label>`;
+  }).join("");
+
+  // Toggle selected class on checkbox change
+  listEl.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+    cb.addEventListener("change", () => {
+      cb.closest(".link-suggestion-item").classList.toggle("selected", cb.checked);
+    });
+    // Mark initially selected
+    cb.closest(".link-suggestion-item").classList.add("selected");
+  });
+
+  // Store the saved note path for the apply handler
+  modal.dataset.notePath = savedNotePath || data.note_path || "";
+
+  modal.classList.remove("hidden");
+  if (window.lucide) lucide.createIcons();
+}
+
+/**
+ * Handle applying selected link suggestions — appends wiki-links to the saved note.
+ */
+async function applyLinkSuggestions() {
+  const modal = document.getElementById("link-suggestion-modal");
+  const listEl = document.getElementById("link-suggestion-candidates");
+  if (!modal || !listEl) return;
+
+  const notePath = modal.dataset.notePath || "";
+  const checkedBoxes = listEl.querySelectorAll('input[type="checkbox"]:checked');
+  const selectedNames = Array.from(checkedBoxes).map((cb) => cb.dataset.name).filter(Boolean);
+
+  if (selectedNames.length === 0) {
+    modal.classList.add("hidden");
+    return;
+  }
+
+  // Build the wiki-links section to append
+  const linksSection = "\n\n## See Also\n" + selectedNames.map((n) => `- [[${n}]]`).join("\n") + "\n";
+
+  try {
+    if (notePath) {
+      // Read the current note content, append links, write back
+      const readResp = await fetch(`http://127.0.0.1:11436/polly/notes/read?path=${encodeURIComponent(notePath)}`);
+      if (readResp.ok) {
+        const noteData = await readResp.json();
+        const currentContent = noteData.content || "";
+
+        // Check if there's already a "## See Also" section
+        const hasSection = /^## See Also/m.test(currentContent);
+        let updatedContent;
+        if (hasSection) {
+          // Append links to existing section (before next ## heading or EOF)
+          const seeAlsoIdx = currentContent.indexOf("## See Also");
+          const afterSection = currentContent.substring(seeAlsoIdx + "## See Also".length);
+          const nextHeading = afterSection.search(/\n## /);
+          const insertPos = nextHeading >= 0
+            ? seeAlsoIdx + "## See Also".length + nextHeading
+            : currentContent.length;
+          const newLinks = selectedNames.map((n) => `- [[${n}]]`).join("\n");
+          updatedContent = currentContent.substring(0, insertPos) + "\n" + newLinks + currentContent.substring(insertPos);
+        } else {
+          updatedContent = currentContent.trimEnd() + linksSection;
+        }
+
+        const writeResp = await fetch("http://127.0.0.1:11436/polly/notes/update", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: notePath, content: updatedContent }),
+        });
+
+        if (writeResp.ok) {
+          showToast(`Added ${selectedNames.length} link(s) to note`, "success");
+        } else {
+          throw new Error(`Update failed: ${writeResp.status}`);
+        }
+      } else {
+        throw new Error(`Could not read note: ${readResp.status}`);
+      }
+    }
+  } catch (err) {
+    console.error("[LinkSuggestion] Failed to apply links:", err);
+    showToast(`Failed to add links: ${err.message}`, "error");
+  }
+
+  modal.classList.add("hidden");
+}
+
+/**
+ * Show broken link warnings as a toast notification.
+ * @param {Array} brokenLinks - List of {target, line_number, context} dicts
+ * @param {string} noteTitle - Title of the note with broken links
+ */
+function showBrokenLinkWarning(brokenLinks, noteTitle) {
+  if (!brokenLinks || brokenLinks.length === 0) return;
+
+  const targets = brokenLinks.map((bl) => bl.target).join(", ");
+  const msg = brokenLinks.length === 1
+    ? `Broken link in "${noteTitle}": [[${targets}]] — target note not found`
+    : `${brokenLinks.length} broken links in "${noteTitle}": ${targets}`;
+
+  showToast(msg, "warning", 6000);
+}
+
+/**
+ * Process save result for Task #22 post-save actions (link suggestions, broken link warnings).
+ * Call this after any successful note save that returns a NoteCreateResult.
+ * @param {Object} result - The save result from backend
+ */
+function handlePostSaveActions(result) {
+  if (!result) return;
+
+  // Show broken link warnings
+  if (result.broken_links && result.broken_links.length > 0) {
+    showBrokenLinkWarning(result.broken_links, result.title || "note");
+  }
+
+  // Show backlinks added confirmation
+  if (result.backlinks_added && result.backlinks_added.length > 0) {
+    showToast(
+      `Backlinks added to ${result.backlinks_added.length} related note(s)`,
+      "info",
+      3000
+    );
+  }
+
+  // Show link suggestion modal
+  if (result.link_suggestion) {
+    // Slight delay so toasts appear first
+    setTimeout(() => {
+      showLinkSuggestionModal(result.link_suggestion, result.note_path);
+    }, 500);
+  }
+}
+
+// Export to global scope for suggestion-card.js and other components
+window.handlePostSaveActions = handlePostSaveActions;
+window.showLinkSuggestionModal = showLinkSuggestionModal;
+
+// ==================== End Link Suggestion Modal ====================
+
+// ==================== Vault Health Scanner (Task #22b) ====================
+
+/**
+ * Run vault-wide link validation and display results in the vault health modal.
+ */
+async function runVaultHealthScan() {
+  const modal = document.getElementById("vault-health-modal");
+  const summary = document.getElementById("vault-health-summary");
+  const brokenSection = document.getElementById("vault-health-broken");
+  const brokenList = document.getElementById("vault-health-broken-list");
+  const orphanSection = document.getElementById("vault-health-orphans");
+  const orphanList = document.getElementById("vault-health-orphan-list");
+
+  if (!modal) return;
+
+  // Show modal with loading state
+  summary.innerHTML = `
+    <div class="vault-health-scanning">
+      <i data-lucide="loader" class="spinning" style="width: 20px; height: 20px;"></i>
+      <span>Scanning vault...</span>
+    </div>`;
+  brokenSection.classList.add("hidden");
+  orphanSection.classList.add("hidden");
+  modal.classList.remove("hidden");
+  if (window.lucide) lucide.createIcons();
+
+  try {
+    const response = await fetch("http://127.0.0.1:11436/polly/notes/validate-links");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const data = await response.json();
+
+    if (data.error) {
+      summary.innerHTML = `<div style="color: var(--error); padding: 12px;">Scan failed: ${escapeHtml(data.error)}</div>`;
+      return;
+    }
+
+    // Render summary stats
+    const brokenClass = data.broken_count === 0 ? "healthy" : data.broken_count <= 3 ? "warning" : "error";
+    const orphanClass = data.orphan_count === 0 ? "healthy" : "warning";
+
+    summary.innerHTML = `
+      <div class="vault-health-stat">
+        <div class="vault-health-stat-value">${data.total_notes}</div>
+        <div class="vault-health-stat-label">total notes</div>
+      </div>
+      <div class="vault-health-stat">
+        <div class="vault-health-stat-value">${data.total_links}</div>
+        <div class="vault-health-stat-label">wiki-links</div>
+      </div>
+      <div class="vault-health-stat">
+        <div class="vault-health-stat-value ${brokenClass}">${data.broken_count}</div>
+        <div class="vault-health-stat-label">broken links</div>
+      </div>
+      <div class="vault-health-stat">
+        <div class="vault-health-stat-value ${orphanClass}">${data.orphan_count}</div>
+        <div class="vault-health-stat-label">orphan notes</div>
+      </div>`;
+
+    // Render broken links
+    if (data.broken_count > 0) {
+      brokenList.innerHTML = data.broken_links.map((bl) => `
+        <div class="vault-health-item" data-source="${escapeHtml(bl.source_name || "")}">
+          <span class="vault-health-item-source">${escapeHtml(bl.source_name || "?")}</span>
+          <span class="vault-health-item-arrow">&rarr;</span>
+          <span class="vault-health-item-target">[[${escapeHtml(bl.target)}]]</span>
+          ${bl.source_domain ? `<span class="vault-health-item-domain">${escapeHtml(bl.source_domain)}</span>` : ""}
+          ${bl.line_number ? `<span class="vault-health-item-line">L${bl.line_number}</span>` : ""}
+        </div>`).join("");
+
+      // Click handler: navigate to source note
+      brokenList.querySelectorAll(".vault-health-item").forEach((item) => {
+        item.addEventListener("click", () => {
+          const sourceName = item.dataset.source;
+          if (sourceName && window.notesManager) {
+            modal.classList.add("hidden");
+            showView("notes");
+            setTimeout(() => window.notesManager.openNote(sourceName), 200);
+          }
+        });
+      });
+
+      brokenSection.classList.remove("hidden");
+    }
+
+    // Render orphan notes
+    if (data.orphan_count > 0) {
+      orphanList.innerHTML = data.orphan_notes.map((n) => `
+        <div class="vault-health-item" data-name="${escapeHtml(n.name || "")}">
+          <span class="vault-health-orphan-name">${escapeHtml(n.name || "?")}</span>
+          ${n.domain ? `<span class="vault-health-item-domain">${escapeHtml(n.domain)}</span>` : ""}
+        </div>`).join("");
+
+      orphanList.querySelectorAll(".vault-health-item").forEach((item) => {
+        item.addEventListener("click", () => {
+          const name = item.dataset.name;
+          if (name && window.notesManager) {
+            modal.classList.add("hidden");
+            showView("notes");
+            setTimeout(() => window.notesManager.openNote(name), 200);
+          }
+        });
+      });
+
+      orphanSection.classList.remove("hidden");
+    }
+
+    // All green message
+    if (data.broken_count === 0 && data.orphan_count === 0) {
+      brokenSection.classList.remove("hidden");
+      brokenList.innerHTML = `<div style="padding: 12px; color: var(--success); font-size: 13px;">All links valid. No orphan notes detected.</div>`;
+    }
+
+  } catch (err) {
+    console.error("[VaultHealth] Scan failed:", err);
+    summary.innerHTML = `<div style="color: var(--error); padding: 12px;">Failed to scan vault: ${escapeHtml(err.message)}</div>`;
+  }
+
+  if (window.lucide) lucide.createIcons();
+}
+
+window.runVaultHealthScan = runVaultHealthScan;
+
+// ==================== End Vault Health Scanner ====================
+
+/**
  * Load knowledge data
  */
 const loadKnowledgeData = withErrorBoundary(async function () {
@@ -9715,6 +10356,60 @@ async function saveSettings() {
   }
 
   alert("Settings saved!");
+}
+
+/**
+ * Save AI Features settings (Task #21)
+ * Persists the AI features toggles to localStorage and notifies the user.
+ */
+async function saveAIFeaturesSettings() {
+  const kbSuggestions = document.getElementById("ai-feat-kb-suggestions");
+  const contextEnrichment = document.getElementById("ai-feat-context-enrichment");
+  const gapScore = document.getElementById("ai-feat-kb-gap-score");
+  const autonomyEnabled = document.getElementById("ai-feat-autonomy-enabled");
+
+  if (kbSuggestions) {
+    localStorage.setItem("polly-kb-suggestions", kbSuggestions.checked ? "true" : "false");
+  }
+  if (contextEnrichment) {
+    localStorage.setItem("polly-context-enrichment", contextEnrichment.checked ? "true" : "false");
+  }
+  if (gapScore) {
+    localStorage.setItem("polly-kb-gap-score", gapScore.value);
+  }
+  if (autonomyEnabled) {
+    localStorage.setItem("polly-autonomy-enabled", autonomyEnabled.checked ? "true" : "false");
+  }
+
+  // Also push to backend if server is available
+  const payload = {
+    kb_suggestions: kbSuggestions ? kbSuggestions.checked : true,
+    context_enrichment: contextEnrichment ? contextEnrichment.checked : true,
+    gap_score_threshold: gapScore ? parseInt(gapScore.value) / 100 : 0.5,
+    autonomy_dashboard: autonomyEnabled ? autonomyEnabled.checked : true,
+  };
+
+  const result = await safeFetch(
+    "http://127.0.0.1:11436/api/settings/ai-features",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+    true,
+  );
+
+  if (result.ok) {
+    showToast("AI Features settings saved", "success");
+  } else {
+    // Still saved locally even if server is down
+    showToast("AI Features saved locally (server not available)", "info");
+  }
+
+  // Refresh autonomy display
+  if (currentView === "dashboard") {
+    loadAutonomyData();
+  }
 }
 
 /**

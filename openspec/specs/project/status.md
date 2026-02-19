@@ -1,7 +1,7 @@
 # Polly Project Status (OpenSpec)
 
 **Authority:** This file is the single source of truth for "where we are now."  
-**Last Updated:** February 16, 2026  
+**Last Updated:** February 18, 2026  
 **Full history:** [docs/status/CHANGELOG.md](../../../docs/status/CHANGELOG.md)
 
 ---
@@ -10,24 +10,30 @@
 
 | | |
 |---|---|
-| **Overall** | ~87% Tier 1 complete, production-ready |
-| **Completed** | 16.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22, 23) + Core Framework Waves 1–3 |
-| **Current priority** | Phase 24 (Agent Swarms), Core Framework Wave 4, or Phase 12a (Knowledge Graph) |
-| **Next recommended** | Core Framework Wave 4 (Progressive Autonomy + PIL) or Phase 12a |
+| **Overall** | ~90% Tier 1 complete, production-ready |
+| **Completed** | 16.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22, 23) + Core Framework Waves 1–3 + Knowledge Graph Navigation + Knowledge Graph Refinement |
+| **Current priority** | Core Framework Wave 4 (remaining tasks), Phase 24 (Agent Swarms), or Phase 12b (Knowledge Graph Advanced) |
+| **Next recommended** | Complete Wave 4 remaining tasks (#21 Autonomy Dashboard frontend, #22 Auto-Linking, #24 Persona Memory) |
 | **Spec integration** | Feb 2026 — Knowledge management, DRM, BAD Canvas, knowledge quality specs integrated into OpenSpec |
 
 ---
 
 ## Current Priority (Active Work)
 
-### Core Framework Refinement 🧠 ✅ Waves 1–3 COMPLETE (Feb 2026)
-- **Status:** Wave 3 complete (Feb 2026) — Full intelligent routing pipeline (Query Decomposition → Split Routing → Synthesis) now operational
+### Core Framework Refinement 🧠 ✅ Waves 1–3 COMPLETE, Wave 4 In Progress (Feb 2026)
+- **Status:** Wave 3 complete (Feb 2026) — Full intelligent routing pipeline operational. Wave 4 partially complete.
 - **OpenSpec:** [openspec/changes/core-framework-refinement/](../../changes/core-framework-refinement/)
 - **Wave 1 Complete (Feb 2026):** LiteLLM adapter integration, LLMLingua compression, Mem0 memory layer
 - **Wave 2 Complete (Feb 2026):** Provider Management UI (Settings → Providers page with toggles, status, test buttons), "Polly" mode in model selector (3 tiers: Fast/Balanced/Thorough with routing explanations)
 - **Wave 3 Complete (Feb 2026):** Query Decomposition Engine (`core/query_decomposition.py`, 467 lines), Split Router (`core/split_router.py`, 453 lines, parallel execution with dependency graphs), Synthesis Layer (`core/synthesis.py`, 380 lines), integrated into Polly core via `_init_wave3_pipeline()`, all tests passing (9/9 in `tests/test_wave3_pipeline.py`)
-- **Completed:** Knowledge Writer (`core/knowledge_writer.py`), Autonomy Metrics (`core/autonomy_metrics.py`), Incremental RAG indexing, Scribe standalone enrich, AI Features config + settings UI, save-message frontend component, settings API endpoints, provider management API + UI, "Polly" model selector with routing transparency, query decomposition, split routing, response synthesis
-- **Next:** Wave 4 — Progressive Autonomy Feedback Loop + PIL Expansion (knowledge enrichment)
+- **Wave 4 In Progress (~30%):**
+  - ✅ **#20 Knowledge Enrichment Integration** — Complete. Gap detection in `polly.py:944-1036`, suggestion card component (304 lines), persona_actions in chat responses, config toggle.
+  - 🔄 **#21 Autonomy Dashboard** (~40%) — Backend complete (`autonomy_metrics.py`, 3 API endpoints). Frontend dashboard not built.
+  - 🔄 **#22 Enhanced Auto-Linking** (~35%) — BacklinksIndex (516 lines) with sync integration and UI panel. Write-back to targets, broken link detection, link preview pending.
+  - ⬜ **#23 RAG Optimization for Local Models** — Not started.
+  - 🔄 **#24 Persona Memory for Enrichment** (~25%) — Memory read path works. Write-back/preference recording pending.
+  - ⬜ **#25 SKILL↔Mental Model Bridge** — Not started.
+- **Next:** Complete Wave 4 remaining frontend/integration tasks
 
 ### Phase 23.5: Security Hardening 🔐 ✅
 - **Status:** Substantially complete (Feb 2026 analysis). Implemented: Capability Broker, Pyodide sandbox, package allowlist + approval dialog, CORS from security policy, audit logging. Config only: content sanitization (prompt injection/PII), API key context managers.
@@ -39,6 +45,13 @@
 - **Scope:** Defense-in-depth infrastructure layer: observable failure modes, unified retry manager with circuit breaker, dual-phenomenology validation (provenance + content), three-tier retrieval classification (DIRECT/ADJACENT/ABSENT), performance metrics with percentiles, persistent state with schema migration.
 - **Impact:** `core/hardened/` (8 modules), `config/retry.yaml`, `config/validation.yaml`, `migrations/001_initial_hardened.sql`. Constitutional checks reconciled with ethics spec: epistemological enrichment, not content filtering. All hardened tables in `~/.polly/hardened.db` with WAL mode and automatic migration.
 - **OpenSpec:** [openspec/changes/hardened-knowledge-infrastructure/](../../changes/hardened-knowledge-infrastructure/)
+
+### Knowledge Graph Navigation ✅ ~95% (Feb 2026)
+- **Status:** Substantially complete. All backend endpoints and frontend graph page implemented. Spec updates pending (Task 15).
+- **Scope:** Full knowledge graph visualization and navigation system. Implements Phase 12a (Knowledge Graph Basic).
+- **Backend:** 11 `/polly/graph/*` endpoints (list, nodes, state, backfill, 6 garden endpoints), 7 missing notes endpoints (search, tags, move, rename, folders, append), entity extraction wired into note save path. EntityStore with 18 methods including garden-specific operations.
+- **Frontend:** Cytoscape.js graph page with cose-bilkent layout, Browse list component (`updateBrowseList()`), Garden view with 6 sections (stats, suggestions, enrich, connection, merge, prune), filters panel (domain, type, maturity, edge types, ghost toggle), details panel, navigation wiring (click-to-open, Back to Graph, cross-highlighting), edge type legend.
+- **OpenSpec:** [openspec/changes/knowledge-graph-navigation/](../../changes/knowledge-graph-navigation/), [openspec/changes/knowledge-graph-refinement/](../../changes/knowledge-graph-refinement/)
 
 ### Spec Integration (Feb 2026) 📋
 - **Status:** Specs integrated into OpenSpec. Implementation not started.
@@ -76,10 +89,9 @@
 
 | Phase | Status | Notes |
 |-------|--------|--------|
-| **Core Framework** | 🔄 ~75% | Waves 1–3 complete (LiteLLM, LLMLingua, Mem0, Provider UI, "Polly" mode, Query Decomposition, Split Routing, Synthesis); Wave 4 (Progressive Autonomy + PIL) pending |
+| **Core Framework** | 🔄 ~65% | Waves 1–3 complete; Wave 4: #20 ✅, #21 🔄 40%, #22 🔄 35%, #23 ⬜, #24 🔄 25%, #25 ⬜; Waves 5–6 pending |
+| **12a** | ✅ ~95% | Knowledge Graph Basic — implemented via knowledge-graph-navigation + knowledge-graph-refinement. Spec updates pending. |
 | **16c** | Backend ready, frontend pending | AI Note Creation; ~4 weeks remaining |
-| **22** | ✅ Complete | Teaching Mode — Backend 100%, Frontend 100% (completed Feb 16, 2026) |
-| **12a** | Ready to start | Knowledge Graph — extended scope per spec integration (see Tier 3) |
 | **12b** | After 12a | Knowledge Graph Advanced — extended scope |
 
 ---
@@ -87,7 +99,7 @@
 ## Completed Phases (Summary)
 
 **Tier 0 (100%):** 0.5 (UI), 1 (Config), 3 (Server), 4 (Electron), 5 (Secrets)  
-**Tier 1 (~85%):** 1.5 (Domains), 2a (RAG), 2b (Compression), 11 (Multi-Model + Personas), 11c (Compression UI), 13a (Patterns), 14 (Mental Models), 16 (Notes), 16c (Scribe/AI notes), 16e (TOC/Templates), 21 (Dedup), 22 (Teaching Mode ✅), 23 (Curriculum)
+**Tier 1 (~90%):** 1.5 (Domains), 2a (RAG), 2b (Compression), 11 (Multi-Model + Personas), 11c (Compression UI), 12a (Knowledge Graph ✅ ~95%), 13a (Patterns), 14 (Mental Models), 16 (Notes), 16c (Scribe/AI notes), 16e (TOC/Templates), 21 (Dedup), 22 (Teaching Mode ✅), 23 (Curriculum)
 
 Detailed phase notes and file references remain in [docs/status/CURRENT.md](../../../docs/status/CURRENT.md) (reference). New work should update this status and [roadmap.md](roadmap.md) and, when applicable, [openspec/changes/](../changes/).
 

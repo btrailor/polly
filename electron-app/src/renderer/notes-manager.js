@@ -273,6 +273,9 @@ class NotesManager {
       this.updateBacklinksPanel();
       this.updateTOCPanel();
       
+      // Validate links in background (Task #22b)
+      this.validateNoteLinks();
+      
       // TODO: If heading specified, implement scroll-to-heading for CM6 using scrollToLine()
       
     } catch (error) {
@@ -297,6 +300,51 @@ class NotesManager {
     } catch (error) {
       console.error('[Notes] Error loading backlinks:', error);
       this.backlinks = [];
+    }
+  }
+
+  /**
+   * Validate wiki-links in the current note (Task #22b).
+   * Shows a warning banner above the editor if broken links are found.
+   */
+  async validateNoteLinks() {
+    const banner = document.getElementById('notes-validation-banner');
+    const msgEl = document.getElementById('validation-banner-message');
+    const targetsEl = document.getElementById('validation-banner-targets');
+    
+    if (!banner || !this.currentNote) {
+      if (banner) banner.classList.add('hidden');
+      return;
+    }
+    
+    try {
+      const response = await fetch('http://127.0.0.1:11436/polly/notes/validate-note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: this.currentNote.path })
+      });
+      
+      if (!response.ok) {
+        banner.classList.add('hidden');
+        return;
+      }
+      
+      const result = await response.json();
+      
+      if (result.broken_count > 0) {
+        const broken = result.broken_links;
+        const count = result.broken_count;
+        const noun = count === 1 ? 'broken link' : 'broken links';
+        msgEl.textContent = `${count} ${noun} found: `;
+        targetsEl.textContent = broken.map(bl => `[[${bl.target}]]`).join(', ');
+        banner.classList.remove('hidden');
+        if (window.lucide) lucide.createIcons();
+      } else {
+        banner.classList.add('hidden');
+      }
+    } catch (error) {
+      console.debug('[Notes] Link validation skipped:', error.message);
+      banner.classList.add('hidden');
     }
   }
 
@@ -800,6 +848,15 @@ class NotesManager {
         searchTimeout = setTimeout(() => {
           this.searchNotes(e.target.value);
         }, 300); // Debounce 300ms
+      });
+    }
+
+    // Validation banner close button (Task #22b)
+    const validationClose = document.getElementById('validation-banner-close');
+    if (validationClose) {
+      validationClose.addEventListener('click', () => {
+        const banner = document.getElementById('notes-validation-banner');
+        if (banner) banner.classList.add('hidden');
       });
     }
     
