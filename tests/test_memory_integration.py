@@ -30,7 +30,7 @@ class MockMem0Adapter:
     def __init__(self):
         self._memories = {}  # user_id → list of dicts
 
-    def add_memory(self, content, user_id, metadata=None):
+    def add_memory(self, content, user_id, metadata=None, infer=True):
         if user_id not in self._memories:
             self._memories[user_id] = []
         mem_id = f"mem_{user_id}_{len(self._memories[user_id])}"

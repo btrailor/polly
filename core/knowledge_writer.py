@@ -930,8 +930,11 @@ class KnowledgeWriter:
         if self.domain_engine:
             try:
                 domains = self.domain_engine.detect_domains(text)
-                if domains and domains[0].value != "unknown":
-                    return domains[0].value
+                if domains:
+                    d = domains[0]
+                    d_str = d.value if hasattr(d, 'value') else str(d)
+                    if d_str != "unknown":
+                        return d_str
             except Exception as e:
                 logger.warning(f"Domain detection failed: {e}")
 

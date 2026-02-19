@@ -288,15 +288,19 @@ class Mem0Adapter:
         self,
         content: str,
         user_id: str = "default",
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        infer: bool = True
     ) -> Dict[str, Any]:
         """
-        Add a memory with automatic entity extraction.
+        Add a memory with optional entity extraction.
         
         Args:
             content: The memory content (text)
             user_id: User/agent identifier for memory namespacing
             metadata: Optional metadata dict (source, type, timestamp, etc.)
+            infer: If True (default), Mem0 uses LLM to extract entities/relations.
+                   Set to False when storing pre-extracted facts to avoid LLM calls
+                   (and to avoid errors with models that don't support function calling).
             
         Returns:
             Dict with memory_id and extracted entities
@@ -321,10 +325,14 @@ class Mem0Adapter:
                 metadata['timestamp'] = datetime.now().isoformat()
             
             # Call Mem0 add
+            # When infer=False, Mem0 skips LLM-based entity extraction and stores
+            # the content directly. This is needed for models like ollama/llama3.2:3b
+            # that don't support function calling (which Mem0's infer path requires).
             result = self.memory.add(
                 messages=content,
                 user_id=user_id,
-                metadata=metadata
+                metadata=metadata,
+                infer=infer
             )
             
             logger.debug(f"Added memory for user_id={user_id}: {content[:100]}...")

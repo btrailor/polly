@@ -172,6 +172,7 @@ class TieredMemoryStore:
                 content=content,
                 user_id=user_id,
                 metadata=meta.to_dict(),
+                infer=False,  # Facts are already extracted by SessionExtractor
             )
             memory_id = ""
             if isinstance(result, dict):
