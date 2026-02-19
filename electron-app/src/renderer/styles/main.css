@@ -1381,7 +1381,8 @@ body {
 .code-sidebar-container,
 .dashboard-sidebar-container,
 .knowledge-sidebar-container,
-.patterns-sidebar-container {
+.patterns-sidebar-container,
+.graph-sidebar-container {
   display: flex;
   flex-direction: column;
   height: 100%;
