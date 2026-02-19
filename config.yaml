@@ -146,9 +146,9 @@ models:
     host: "http://localhost:11434"
     embedding_model: "nomic-embed-text"
     chat_models:
-      fast: "llama3.2:3b"
-      balanced: "llama3.1:7b"
-      quality: "llama3.1:70b"  # If you have the VRAM
+      fast: "qwen2.5:7b"
+      balanced: "qwen2.5:7b"
+      quality: "qwen2.5:7b"  # If you have the VRAM
     default: "balanced"
 
   # Cloud models for complex queries or when local unavailable
@@ -315,7 +315,7 @@ memory:
     enabled: true
     cloud_threshold: "balanced"      # Session complexity that triggers cloud model
     cloud_model: "claude-haiku"
-    local_model: "llama3.2:latest"
+    local_model: "qwen2.5:7b"
     max_cloud_cost: 0.02             # Per-extraction budget cap
   tiers:
     stable:

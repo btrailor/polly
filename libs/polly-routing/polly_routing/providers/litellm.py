@@ -485,10 +485,12 @@ class LiteLLMAdapter(ProviderAdapter):
             )
             
             # Stream chunks
+            chunk_count = 0
             async for chunk in response:
                 if chunk.choices and chunk.choices[0].delta:
                     content = chunk.choices[0].delta.content
                     if content:
+                        chunk_count += 1
                         yield content
         
         except Exception as e:

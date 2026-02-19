@@ -173,10 +173,12 @@ class Polly:
     
     def _init_router_v1(self):
         """Initialize legacy router (v1)."""
+        local_models = self.config.get("models.local.chat_models", None)
         self.router = IntelligentRouter(
             ollama_host=self.config.ollama_host,
             anthropic_api_key=self.config.cloud_api_key,
-            default_mode=RoutingMode.AUTO
+            default_mode=RoutingMode.AUTO,
+            local_models=local_models,
         )
         
         # Skip availability check at init to avoid blocking/hanging
@@ -197,10 +199,12 @@ class Polly:
         This method initializes router_v1 WITHOUT overwriting using_router_v2 flag.
         Used when router_v2 is active but we want v1 available for local fallback.
         """
+        local_models = self.config.get("models.local.chat_models", None)
         self.router = IntelligentRouter(
             ollama_host=self.config.ollama_host,
             anthropic_api_key=self.config.cloud_api_key,
-            default_mode=RoutingMode.AUTO
+            default_mode=RoutingMode.AUTO,
+            local_models=local_models,
         )
         
         # Skip availability check at init to avoid blocking/hanging
@@ -552,7 +556,6 @@ class Polly:
 
     def _init_wave3_pipeline(self):
         """Initialize Wave 3 routing pipeline (decomposition, split routing, synthesis)."""
-        print("[Wave 3] Initializing Wave 3 routing pipeline...", flush=True)
         logger.info("Initializing Wave 3 routing pipeline...")
         try:
             # Check if Wave 3 is enabled
@@ -561,11 +564,9 @@ class Polly:
             split_enabled = routing_config.get('split_routing', {}).get('enabled', False)
             synthesis_enabled = routing_config.get('synthesis', {}).get('enabled', False)
             
-            print(f"[Wave 3] Config check: decomp={decomp_enabled}, split={split_enabled}, synthesis={synthesis_enabled}", flush=True)
             logger.info(f"Wave 3 config: decomp={decomp_enabled}, split={split_enabled}, synthesis={synthesis_enabled}")
             
             if not (decomp_enabled or split_enabled or synthesis_enabled):
-                print("[Wave 3] Pipeline disabled in config", flush=True)
                 logger.info("Wave 3 pipeline disabled in config")
                 self.query_decomposer = None
                 self.split_router = None
@@ -580,11 +581,9 @@ class Polly:
                     router=self.router_v2,
                     pattern_learner=self.pattern_engine
                 )
-                print("[Wave 3] ✓ Query decomposer initialized", flush=True)
                 logger.info("Query decomposer initialized")
             else:
                 self.query_decomposer = None
-                print("[Wave 3] Query decomposer disabled in config", flush=True)
                 logger.info("Query decomposer disabled in config")
             
             # Initialize split router
@@ -597,11 +596,9 @@ class Polly:
                     local_llm=self.llm,  # Pass local LLM for Ollama routing
                     autonomy_metrics=self.autonomy_metrics
                 )
-                print("[Wave 3] ✓ Split router initialized", flush=True)
                 logger.info("Split router initialized")
             else:
                 self.split_router = None
-                print("[Wave 3] Split router disabled in config", flush=True)
                 logger.info("Split router disabled in config")
             
             # Initialize synthesizer
@@ -614,18 +611,14 @@ class Polly:
                     router=self.router_v2,
                     compression_manager=compression_mgr
                 )
-                print("[Wave 3] ✓ Synthesizer initialized", flush=True)
                 logger.info("Synthesizer initialized")
             else:
                 self.synthesizer = None
-                print("[Wave 3] Synthesizer disabled in config", flush=True)
                 logger.info("Synthesizer disabled in config")
             
-            print(f"[Wave 3] ✅ Pipeline fully initialized (decomp={decomp_enabled}, split={split_enabled}, synthesis={synthesis_enabled})", flush=True)
             logger.info(f"Wave 3 pipeline initialized (decomp={decomp_enabled}, split={split_enabled}, synthesis={synthesis_enabled})")
             
         except Exception as e:
-            print(f"[Wave 3] ❌ Initialization failed: {e}", flush=True)
             logger.error(f"Could not initialize Wave 3 pipeline: {e}", exc_info=True)
             self.query_decomposer = None
             self.split_router = None
@@ -2111,7 +2104,12 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                 budget_plan = None
 
         # 4. Gather context from all contributors (integration-contracts: ContextContributor)
-        gathered_context = self._gather_context(
+        # NOTE: _gather_context is synchronous and calls blocking I/O (Mem0 search,
+        # ChromaDB queries, SQLite reads). Run in thread pool to avoid blocking
+        # the async event loop, which would stall concurrent async operations
+        # like the LiteLLM acompletion() call.
+        gathered_context = await asyncio.to_thread(
+            self._gather_context,
             query,
             domain_names,
             persona=persona,
@@ -2252,13 +2250,13 @@ If you suggest an exercise, copy the description directly from the context above
             delattr(self, '_debug_query')
 
         # 6. Manage conversation context (compress if needed)
-        self._manage_conversation_context()
+        # NOTE: Sync method with blocking SQLite I/O — offload to thread pool
+        await asyncio.to_thread(self._manage_conversation_context)
 
         # 7. Build messages with compressed context
-        messages = self._build_context_for_llm()
+        # NOTE: Sync method with blocking SQLite read — offload to thread pool
+        messages = await asyncio.to_thread(self._build_context_for_llm)
         messages.append({'role': 'user', 'content': query})
-        
-        print(f"[PRE-WAVE3] About to check Wave 3 pipeline. Query: {query[:100]}", flush=True)
 
         # 7.5. Wave 3 Pipeline: Query Decomposition → Split Routing → Synthesis
         # Check if query should be decomposed and routed via Wave 3 pipeline
@@ -2268,11 +2266,9 @@ If you suggest an exercise, copy the description directly from the context above
             self.synthesizer is not None
         )
         
-        print(f"[Wave 3 Query Check] decomposer={self.query_decomposer is not None}, split_router={self.split_router is not None}, synthesizer={self.synthesizer is not None}, enabled={wave3_enabled}", flush=True)
         logger.info(f"Wave 3 check: decomposer={self.query_decomposer is not None}, split_router={self.split_router is not None}, synthesizer={self.synthesizer is not None}, enabled={wave3_enabled}")
         
         if wave3_enabled:
-            print("[Wave 3 Query] Pipeline enabled, attempting decomposition...", flush=True)
             logger.info("Wave 3 pipeline is enabled, attempting decomposition...")
             try:
                 # Decompose query if complex
@@ -2284,13 +2280,10 @@ If you suggest an exercise, copy the description directly from the context above
                     }
                 )
                 
-                print(f"[Wave 3 Query] Decomposition complete: is_complex={decomposition_result.is_complex}, sub_queries={len(decomposition_result.sub_queries)}", flush=True)
                 logger.info(f"Wave 3: Decomposition complete, is_complex={decomposition_result.is_complex}")
                 
                 # If query was decomposed (is_complex=True), use Wave 3 pipeline
                 if decomposition_result.is_complex:
-                    print(f"[Wave 3 Query] ✓ Complex query detected! Decomposed into {len(decomposition_result.sub_queries)} sub-queries", flush=True)
-                    print(f"[Wave 3 Query] Reasoning: {decomposition_result.reasoning}", flush=True)
                     logger.info(f"Wave 3: Query decomposed into {len(decomposition_result.sub_queries)} sub-queries")
                     logger.info(f"Wave 3: Reasoning: {decomposition_result.reasoning}")
                     
@@ -2370,12 +2363,10 @@ If you suggest an exercise, copy the description directly from the context above
                     # Early return - Wave 3 handled the query
                     return
                 else:
-                    print(f"[Wave 3 Query] Query is simple, using standard routing", flush=True)
                     logger.info(f"Wave 3: Query is simple, using standard routing")
                     # Fall through to standard routing below
                     
             except Exception as e:
-                print(f"[Wave 3 Query] ❌ Pipeline failed: {e}", flush=True)
                 logger.error(f"Wave 3 pipeline failed: {e}", exc_info=True)
                 logger.info("Falling back to standard routing")
                 # Fall through to standard routing
@@ -2541,12 +2532,16 @@ If you suggest an exercise, copy the description directly from the context above
                     # Store metadata for access by caller
                     self._last_response_metadata = response_metadata
 
-                    # Record routing outcome for pattern learning (integration-contracts)
-                    self._record_routing_outcome(
-                        response_metadata,
-                        task_type="general",
-                        persona=persona,
-                        rag_coverage=None,
+                    # Record routing outcome — fire-and-forget in background thread
+                    # (Mem0 add_memory inside learn() takes ~25-30s due to LLM extraction)
+                    asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: self._record_routing_outcome(
+                            response_metadata,
+                            task_type="general",
+                            persona=persona,
+                            rag_coverage=None,
+                        ),
                     )
                 
             except Exception as e:
@@ -2596,11 +2591,11 @@ If you suggest an exercise, copy the description directly from the context above
             }
             self._last_response_metadata = response_metadata
 
-        # 9. Update conversation history
+        # 9. Update conversation history (must be inline — fast, needed for next query)
         self.conversation_history.append({'role': 'user', 'content': query})
         self.conversation_history.append({'role': 'assistant', 'content': full_response})
 
-        # 9.5 Rolling context turn tracking — decay unreferenced, amplify referenced
+        # 9.5 Rolling context turn tracking — decay unreferenced, amplify referenced (fast, inline)
         if self.rolling_context:
             try:
                 self.rolling_context.on_new_turn(
@@ -2613,35 +2608,46 @@ If you suggest an exercise, copy the description directly from the context above
             except Exception as e:
                 logger.debug(f"Rolling context turn tracking failed: {e}")
 
-        # 10. Learn from interaction
-        if self.pattern_engine:
-            try:
-                self.pattern_engine.learn_from_query(query, detected_domains, full_response)
-                self.pattern_engine.save()
-                logger.info(f"Recorded query pattern: {query[:50]}...")
-            except Exception as e:
-                logger.error(f"Failed to record pattern: {e}")
+        # 10. Offload slow post-response work to background thread
+        # Pattern learning (Mem0 save ~25s), entity extraction (spaCy + SQLite ~11s),
+        # mental model tracking, knowledge gap detection — none of these need to block
+        # the response delivery.
+        def _post_response_background():
+            """Run slow post-response tasks in a background thread."""
+            # Pattern learning
+            if self.pattern_engine:
+                try:
+                    self.pattern_engine.learn_from_query(query, detected_domains, full_response)
+                    self.pattern_engine.save()
+                    logger.info(f"Recorded query pattern: {query[:50]}...")
+                except Exception as e:
+                    logger.error(f"Failed to record pattern: {e}")
 
-        if self.entity_extractor:
-            try:
-                source_id = f"session_{self.session_start.isoformat()}"
-                domain_ids = [d for d in detected_domains if (d or "").strip().lower() not in ("", "unknown")]
-                self.entity_extractor.extract_and_store(query, "query", source_id, domain_ids)
-                self.entity_extractor.extract_and_store(full_response, "response", source_id, domain_ids)
-            except Exception as e:
-                logger.debug(f"Entity extraction failed (non-critical): {e}")
+            # Entity extraction
+            if self.entity_extractor:
+                try:
+                    source_id = f"session_{self.session_start.isoformat()}"
+                    domain_ids = [d for d in detected_domains if (d or "").strip().lower() not in ("", "unknown")]
+                    self.entity_extractor.extract_and_store(query, "query", source_id, domain_ids)
+                    self.entity_extractor.extract_and_store(full_response, "response", source_id, domain_ids)
+                except Exception as e:
+                    logger.debug(f"Entity extraction failed (non-critical): {e}")
 
-        # Mental model effectiveness tracking (integration-contracts)
-        if self.mental_model_manager and getattr(self, "_last_activated_mental_model_ids", None):
-            try:
-                self.mental_model_manager.record_activation(
-                    self._last_activated_mental_model_ids,
-                    signals={"conversation_continued": True},
-                )
-            except Exception as e:
-                logger.debug(f"Mental model effectiveness recording failed: {e}")
+            # Mental model effectiveness tracking
+            if self.mental_model_manager and getattr(self, "_last_activated_mental_model_ids", None):
+                try:
+                    self.mental_model_manager.record_activation(
+                        self._last_activated_mental_model_ids,
+                        signals={"conversation_continued": True},
+                    )
+                except Exception as e:
+                    logger.debug(f"Mental model effectiveness recording failed: {e}")
 
-        # Knowledge gap detection (Wave 4 - Knowledge Enrichment Integration)
+            logger.info("Background post-response tasks completed")
+
+        asyncio.get_event_loop().run_in_executor(None, _post_response_background)
+
+        # Knowledge gap detection (async, needs event loop — keep inline but lightweight)
         await self._detect_and_suggest_knowledge_gap(
             query=query,
             rag_results=filtered_search_results,

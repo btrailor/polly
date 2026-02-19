@@ -7,9 +7,9 @@ models:
     host: http://localhost:11434
     embedding_model: nomic-embed-text
     chat_models:
-      fast: llama3.2:3b
-      balanced: llama3.1:7b
-      quality: llama3.1:70b
+      fast: qwen2.5:7b
+      balanced: qwen2.5:7b
+      quality: qwen2.5:7b
     default: balanced
   cloud:
     provider: anthropic
@@ -80,7 +80,7 @@ memory:
       ollama:
         host: http://localhost:11434
         embedding_model: nomic-embed-text
-        llm_model: llama3.2:3b
+        llm_model: qwen2.5:7b
         temperature: 0.0
       
       qwen:

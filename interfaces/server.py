@@ -992,11 +992,8 @@ def create_app(polly_instance=None) -> FastAPI:
 
     async def stream_polly_response(polly, query, context, mode, tier, confidence=None, provider_override=None, page=None, persona=None, persona_mode=None, mental_models_override=None):
         """Stream Polly response."""
-        logger.info(f"[STREAM DEBUG] Starting stream for query: {query[:50]}...")
-        logger.info(f"[STREAM DEBUG] Mode={mode}, Tier={tier}, Context={context is not None}")
         
         try:
-            logger.info("[STREAM DEBUG] About to call polly.query()")
             async for chunk in polly.query(
             query, 
             context=context, 
@@ -1010,27 +1007,22 @@ def create_app(polly_instance=None) -> FastAPI:
             persona_mode=persona_mode,
                 mental_models_override=mental_models_override
             ):
-                logger.info(f"[STREAM DEBUG] Got chunk: {chunk[:100] if chunk else 'empty'}...")
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
             
-            logger.info("[STREAM DEBUG] Query iteration complete")
         except Exception as e:
-            logger.error(f"[STREAM DEBUG] Error during streaming: {e}", exc_info=True)
+            logger.error(f"Error during streaming: {e}", exc_info=True)
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
             return
         
         # Send metadata as final message if router_v2 was used
         metadata = polly.get_last_response_metadata()
         if metadata:
-            logger.info("[STREAM DEBUG] Sending metadata")
             yield f"data: {json.dumps({'metadata': metadata})}\n\n"
         
         # Send persona actions if present (e.g., knowledge gap suggestions)
         if hasattr(polly, '_last_persona_actions') and polly._last_persona_actions:
-            logger.info("[STREAM DEBUG] Sending persona_actions")
             yield f"data: {json.dumps({'persona_actions': polly._last_persona_actions})}\n\n"
         
-        logger.info("[STREAM DEBUG] Sending [DONE]")
         yield "data: [DONE]\n\n"
 
     # Store indexing state
@@ -4845,6 +4837,142 @@ def create_app(polly_instance=None) -> FastAPI:
         except Exception as e:
             logger.error(f"Prune graph failed: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to prune graph: {str(e)}")
+    
+    @app.get("/polly/graph/entities")
+    async def list_entities(
+        type: str = None,
+        domain: str = None,
+        q: str = None,
+        min_authority: float = 0,
+        sort: str = "authority",
+        limit: int = 100,
+        offset: int = 0
+    ):
+        """
+        List entities in the knowledge graph with optional filters.
+        
+        Query params:
+        - type: Entity type filter (comma-separated: "concept,tool,framework")
+        - domain: Domain filter
+        - q: Text search in entity name/description
+        - min_authority: Minimum authority score (0.0-1.0)
+        - sort: Sort order (authority, recent, alpha, mentions)
+        - limit: Max results
+        - offset: Pagination offset
+        
+        Response: {
+            "entities": [{
+                "id": "...",
+                "name": "...",
+                "entity_type": "concept",
+                "description": "...",
+                "domains": ["sigils"],
+                "authority_score": 0.85,
+                "mention_count": 12,
+                "tags": [],
+                "last_seen": "2026-02-15T...",
+                "created": "2026-01-10T..."
+            }],
+            "total_count": 45
+        }
+        """
+        try:
+            from core.entities.models import EntityQuery, EntityType
+            
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+            
+            # Build query
+            entity_types = None
+            if type:
+                type_strs = [t.strip() for t in type.split(",")]
+                entity_types = []
+                for t in type_strs:
+                    try:
+                        entity_types.append(EntityType(t))
+                    except ValueError:
+                        pass
+            
+            domains_list = None
+            if domain:
+                domains_list = [d.strip() for d in domain.split(",")]
+            
+            query = EntityQuery(
+                text=q or None,
+                entity_types=entity_types,
+                domains=domains_list,
+                min_authority=min_authority,
+                limit=limit + offset  # Fetch enough for offset
+            )
+            
+            entities = entity_store.search(query)
+            
+            # Apply sort
+            if sort == "recent":
+                entities.sort(key=lambda e: e.last_seen or "", reverse=True)
+            elif sort == "alpha":
+                entities.sort(key=lambda e: e.name.lower())
+            elif sort == "mentions":
+                entities.sort(key=lambda e: e.mention_count, reverse=True)
+            # Default: authority (already sorted by search)
+            
+            # Apply offset
+            total_count = len(entities)
+            entities = entities[offset:offset + limit]
+            
+            return {
+                "entities": [
+                    {
+                        "id": e.id,
+                        "name": e.name,
+                        "entity_type": e.entity_type.value if e.entity_type else "unknown",
+                        "description": e.description or "",
+                        "domains": e.domains or [],
+                        "authority_score": round(e.authority_score, 3) if e.authority_score else 0,
+                        "mention_count": e.mention_count or 0,
+                        "tags": e.tags or [],
+                        "last_seen": e.last_seen or "",
+                        "created": e.created or ""
+                    }
+                    for e in entities
+                ],
+                "total_count": total_count
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"List entities failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to list entities: {str(e)}")
+    
+    @app.delete("/polly/graph/entities/{entity_id}")
+    async def delete_entity(entity_id: str):
+        """Delete a specific entity and all its relationships."""
+        try:
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+            
+            entity = entity_store.get_entity(entity_id)
+            if not entity:
+                raise HTTPException(404, f"Entity not found: {entity_id}")
+            
+            entity_store.delete_entity(entity_id)
+            logger.info(f"Deleted entity: {entity.name} ({entity_id})")
+            
+            return {
+                "success": True,
+                "message": f"Deleted entity: {entity.name}"
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Delete entity failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to delete entity: {str(e)}")
     
     @app.get("/polly/graph/state")
     async def get_graph_state():

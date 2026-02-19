@@ -160,14 +160,17 @@ class PatternEngine:
             existing.metadata.update(pattern.metadata)
 
             self.json_backend.save(existing)
-            if self.mem0_backend:
+            # Skip Mem0 for ROUTING_OUTCOME patterns — they are structured data
+            # that don't benefit from semantic search and Mem0's add_memory()
+            # is extremely slow (~25s due to LLM extraction + embedding).
+            if self.mem0_backend and existing.pattern_type != PatternType.ROUTING_OUTCOME:
                 self.mem0_backend.save(existing)
 
             return existing
         else:
             # New pattern
             self.json_backend.save(pattern)
-            if self.mem0_backend:
+            if self.mem0_backend and pattern.pattern_type != PatternType.ROUTING_OUTCOME:
                 self.mem0_backend.save(pattern)
 
             logger.info(

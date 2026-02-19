@@ -141,7 +141,8 @@ class IntelligentRouter:
         ollama_host: str = "http://localhost:11434",
         anthropic_api_key: Optional[str] = None,
         openai_api_key: Optional[str] = None,
-        default_mode: RoutingMode = RoutingMode.AUTO
+        default_mode: RoutingMode = RoutingMode.AUTO,
+        local_models: Optional[Dict[str, str]] = None,
     ):
         self.ollama_host = ollama_host
         self.anthropic_api_key = anthropic_api_key or os.environ.get('ANTHROPIC_API_KEY')
@@ -149,6 +150,26 @@ class IntelligentRouter:
         self.default_mode = default_mode
 
         self.models = self.DEFAULT_MODELS.copy()
+        
+        # Override Ollama model names from config if provided
+        if local_models:
+            for tier_key in ('fast', 'balanced', 'quality'):
+                model_name = local_models.get(tier_key)
+                if model_name and tier_key in self.models.get('ollama', {}):
+                    self.models['ollama'][tier_key] = ModelConfig(
+                        name=model_name,
+                        provider='ollama',
+                        tier=self.models['ollama'][tier_key].tier,
+                        context_window=self.models['ollama'][tier_key].context_window,
+                    )
+            # Expose the configured local model name for metadata
+            self.local_model = local_models.get(
+                local_models.get('default', 'balanced'),
+                local_models.get('balanced', self.DEFAULT_MODELS['ollama']['balanced'].name)
+            )
+        else:
+            self.local_model = self.DEFAULT_MODELS['ollama']['balanced'].name
+        
         self._ollama_available: Optional[bool] = None
         self._cloud_available: Optional[bool] = None
 
@@ -406,10 +427,14 @@ class UnifiedLLM:
                 async for line in response.aiter_lines():
                     if line:
                         data = json.loads(line)
+                        if 'error' in data:
+                            raise RuntimeError(f"Ollama error: {data['error']}")
                         if 'message' in data and 'content' in data['message']:
                             yield data['message']['content']
             else:
                 data = response.json()
+                if 'error' in data:
+                    raise RuntimeError(f"Ollama error: {data['error']}")
                 yield data['message']['content']
 
     async def _call_anthropic(
