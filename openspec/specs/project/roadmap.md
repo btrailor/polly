@@ -125,6 +125,32 @@ Defense-in-depth infrastructure layer for Polly's query pipeline. Formalizes and
 
 Change folder: [changes/hardened-knowledge-infrastructure/](../../changes/hardened-knowledge-infrastructure/)
 
+### Cross-Cutting: Scalable Memory Layers (NEW — Feb 2026)
+
+Tiered memory persistence and rolling relevance-weighted context assembly for Polly's query pipeline. Built on top of Mem0, adds three-tier memory (stable/episodic/working), strict token budget management, 5-component relevance scoring with decay, and session-end fact extraction.
+
+| Phase | Name | Status | Components |
+|-------|------|--------|------------|
+| 1 | Token Budget Foundation | ✅ Done | `core/context/token_counter.py`, `core/context/budget_allocator.py`, tiktoken integration, ContextContributor `token_budget` param |
+| 2 | Tiered Memory Store | ✅ Done | `core/memory/tiers.py` (stable/episodic/working → Mem0), `core/memory/retriever.py` (ContextContributor priority 50) |
+| 3 | Rolling Relevance-Weighted Context | ✅ Done | `core/context/relevance_scorer.py` (5-component scoring), `core/context/rolling_context.py` (decay, amplification, bin-packing) |
+| 4 | Extraction & Wiring | ✅ Done | `core/memory/extractor.py` (session-end extraction, local/cloud model selection), `core/polly.py` integration (budget allocation, dual-path _gather_context, retrieval tier wiring, cleanup extraction) |
+| 5 | Testing & Documentation | ✅ ~90% | 112/112 tests passing (7 test files). Documentation updates in progress. Manual quality validation deferred. |
+
+**Key deliverables:**
+- ✅ Accurate token counting via tiktoken (replaced all `len//4` approximations)
+- ✅ 3-pass budget allocator: guarantee minimums → proportional distribution → cap and redistribute
+- ✅ TieredMemoryStore with namespaced Mem0 storage (`tier:stable`, `tier:episodic`, `tier:working:{session_id}`)
+- ✅ MemoryRetriever as ContextContributor (priority 50) with cross-tier search
+- ✅ 5-component relevance scoring: recency, similarity, frequency, source_priority, type_bonus
+- ✅ Per-turn decay/amplification with greedy bin-packing in RollingContext
+- ✅ SessionExtractor with tiered model selection (local llama3.2 for simple, Claude Haiku for complex)
+- ✅ Retrieval classifier integration: ADJACENT score adjustment (×0.7), ABSENT memory boosting
+- ✅ Mental model persona name fix (`"teacher"` → `"professor"`)
+- ✅ Backward compatible (`token_budget=0` means no limit)
+
+Change folder: [changes/scalable-memory-layers/](../../changes/scalable-memory-layers/)
+
 ### Cross-Cutting: Code Library & Development Philosophy
 | Component | Status | OpenSpec / Notes |
 |-----------|--------|-------------------|

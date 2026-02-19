@@ -11,6 +11,7 @@ Source of truth for Polly's system architecture. **Current Architecture** descri
 | Current architecture (stack, query flow, storage) | ✅ Implemented | This spec |
 | Integration contracts (ContextContributor, _gather_context) | ✅ Implemented | `core/protocols/`, `core/polly.py` |
 | Hardened knowledge infrastructure | ✅ Implemented | `core/hardened/`, `config/retry.yaml`, `config/validation.yaml`, `migrations/` |
+| Scalable memory layers (tiered memory, budget allocator, rolling context) | ✅ Implemented | `core/memory/tiers.py`, `core/context/`, `core/memory/retriever.py`, `core/memory/extractor.py` |
 | Planned subsystems (Agent Swarms, DRM, Canvas, etc.) | 💭 Vision | See Planned Architecture below |
 
 ---
@@ -38,23 +39,44 @@ User → Electron (app.js) → REST (server.py) → Polly.query()
    (detect domains)                          (hybrid search + optional compression)       (ContextContributor)
    core/domains.py                           core/rag.py                                   core/polly.py
          │                                             │                                            │
-         │                                             │              ┌─────────────────────────────┼─────────────────────────────┐
-         │                                             │              │                             │                             │
-         │                                             │              ▼                             ▼                             ▼
-         │                                             │       MentalModelManager            EntityContextBuilder           PatternEngine
-         │                                             │       (priority 60)                 (priority 40)                   (priority 20)
-         │                                             │       core/mental_models.py         core/entities/context.py         core/patterns/
-         │                                             │              │                             │                             │
-         │                                             │              └─────────────────────────────┼─────────────────────────────┘
-         │                                             │                                            │
-         │                                             │                                            ▼
-         │                                             │                                    CompressionManager
-         │                                             │                                    (priority 10, conversation summary)
-         │                                             │                                    core/compression/
-         │                                             │                                            │
-         └────────────────────────────────────────────┴────────────────────────────────────────────┘
-                                                      │
-                                                      ▼
+         │                                             │              ┌─────────────────────────────┼──────────────────────────────────────────┐
+         │                                             │              │                             │                             │            │
+         │                                             │              ▼                             ▼                             ▼            ▼
+         │                                             │       MentalModelManager            EntityContextBuilder           PatternEngine  MemoryRetriever
+         │                                             │       (priority 60)                 (priority 40)                   (priority 20) (priority 50)
+         │                                             │       core/mental_models.py         core/entities/context.py         core/patterns/ core/memory/retriever.py
+         │                                             │              │                             │                             │            │
+         │                                             │              └─────────────────────────────┼─────────────────────────────┘            │
+         │                                             │                                            │                                         │
+         │                                             │                                            ▼                                         │
+         │                                             │                                    CompressionManager                                │
+         │                                             │                                    (priority 10, conversation summary)               │
+         │                                             │                                    core/compression/                                 │
+         │                                             │                                            │                                         │
+         └────────────────────────────────────────────┴────────────────────────────────────────────┘                                         │
+                                                       │                                                                                     │
+                                                       ▼                                                                                     │
+                                         ┌──── BudgetAllocator ────┐                                                                        │
+                                         │  core/context/          │                                                                        │
+                                         │  budget_allocator.py    │◄───── TieredMemoryStore ──────────────────────────────────────────────┘
+                                         │  (3-pass allocation)    │       core/memory/tiers.py
+                                         └──────────┬─────────────┘       (stable/episodic/working → Mem0)
+                                                     │
+                                                     ▼
+                                         ┌──── RelevanceScorer ────┐
+                                         │  core/context/          │
+                                         │  relevance_scorer.py    │
+                                         │  (5-component scoring)  │
+                                         └──────────┬─────────────┘
+                                                     │
+                                                     ▼
+                                         ┌──── RollingContext ─────┐
+                                         │  core/context/          │
+                                         │  rolling_context.py     │
+                                         │  (decay, bin-packing)   │
+                                         └──────────┬─────────────┘
+                                                     │
+                                                     ▼
                                               Build augmented prompt
                                                       │
                                                       ▼
@@ -68,6 +90,10 @@ User → Electron (app.js) → REST (server.py) → Polly.query()
                                                       ▼
                                               _record_routing_outcome() → PatternEngine (ROUTING_OUTCOME)
                                               Optional: KnowledgeWriter (save to KB), AutonomyMetrics
+                                                      │
+                                                      ▼
+                                              RollingContext.on_new_turn() → decay/amplification
+                                              SessionExtractor (at session end) → stable/episodic facts → TieredMemoryStore
 ```
 
 ---
@@ -80,16 +106,22 @@ Actual data flow when a user sends a message:
 2. **Detect domains** — `domains.detect_domains(query, context)` → list of domain IDs; optionally `detect_domains_with_scores`.
 3. **Notify persona-aware systems** — `_notify_persona_context(persona, persona_mode)` → PatternEngine, EntityContextBuilder, MentalModelManager (integration-contracts).
 4. **RAG retrieval** — `rag.search(search_query, domain_names, n_results, ...)` → hybrid search (ChromaDB + BM25), optional LLMLingua compression → `rag_context` string.
-5. **Gather context** — `_gather_context(query, domain_names, persona=..., mode=...)`:
+5. **Retrieval classification** — `RetrievalClassifier.classify(query, rag_context)` → `TierResult` (DIRECT / ADJACENT / ABSENT). Determines how aggressively to search memory and how to score non-memory context.
+6. **Budget allocation** — `BudgetAllocator.allocate(total_tokens, sections_config)` → `BudgetPlan` with per-section token budgets (system_prompt, rag, mental_models, memory, entities, patterns, compression, conversation_history). 3-pass algorithm: guarantee minimums by priority, proportional distribution by target_pct, cap at max and redistribute surplus.
+7. **Gather context** — `_gather_context(query, domain_names, persona=..., mode=..., budget_plan=..., retrieval_tier=...)`:
+   - **Budget-aware path** (when budget_plan provided): Each contributor receives its section's token budget.
+   - Memory retriever (priority 50, NEW): `MemoryRetriever.build_context(...)` — queries TieredMemoryStore across stable/episodic/working tiers. ABSENT tier → expanded episodic search (limit 10, min_similarity 0.3).
    - Mental models (priority 60): `mental_model_manager.build_context(...)`.
    - Entity context (priority 40): `entity_context.build_context(...)`.
    - Pattern engine (priority 20): `pattern_engine.build_context(...)`.
    - Compression (priority 10): `compression_manager.build_context(...)` (conversation summary if available).
-   - Sorted by priority, concatenated.
-6. **Build augmented prompt** — Domain prompt + integration note + RAG context + gathered context + practices/instruction overrides.
-7. **Route** — `router_v2.route(...)` or direct provider; LiteLLM adapter or legacy per-provider adapters; tier (Fast/Balanced/Thorough), optional provider override.
-8. **LLM call** — Async completion (streaming); response chunks yielded to caller.
-9. **Post-response** — `_record_routing_outcome(response_metadata, ...)` → PatternEngine learns ROUTING_OUTCOME; optional KnowledgeWriter save; AutonomyMetrics.
+   - **Scoring & bin-packing**: `RelevanceScorer.score()` produces `ScoredEntry` list (5-component weighted score: recency, similarity, frequency, source_priority, type_bonus). ADJACENT tier → non-memory scores × 0.7. `RollingContext.ingest()` applies per-turn decay/amplification. Greedy bin-packing selects highest-scored entries that fit within each section's token budget.
+   - **Fallback path** (no budget_plan): Original concatenation behavior, sorted by priority.
+8. **Build augmented prompt** — Domain prompt + integration note + RAG context + gathered context + practices/instruction overrides.
+9. **Route** — `router_v2.route(...)` or direct provider; LiteLLM adapter or legacy per-provider adapters; tier (Fast/Balanced/Thorough), optional provider override.
+10. **LLM call** — Async completion (streaming); response chunks yielded to caller.
+11. **Post-response** — `_record_routing_outcome(response_metadata, ...)` → PatternEngine learns ROUTING_OUTCOME; optional KnowledgeWriter save; AutonomyMetrics. `RollingContext.on_new_turn()` → decay existing entries, amplify referenced ones.
+12. **Session end** — `SessionExtractor.extract_and_store()` (called from `cleanup()`): Assesses session value, selects extraction model (local llama3.2 for simple sessions, cloud Claude Haiku for complex), extracts factual statements, writes stable/episodic facts to TieredMemoryStore, flushes working tier.
 
 Reference: `core/polly.py` — `query()` (≈1207), `_gather_context()` (≈738), `_record_routing_outcome()` (≈811).
 

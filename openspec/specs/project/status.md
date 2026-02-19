@@ -11,7 +11,7 @@
 | | |
 |---|---|
 | **Overall** | ~90% Tier 1 complete, production-ready |
-| **Completed** | 16.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22, 23) + Core Framework Waves 1–3 + Knowledge Graph Navigation + Knowledge Graph Refinement |
+| **Completed** | 16.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22, 23) + Core Framework Waves 1–3 + Knowledge Graph Navigation + Knowledge Graph Refinement + Scalable Memory Layers |
 | **Current priority** | Core Framework Wave 4 (remaining tasks), Phase 24 (Agent Swarms), or Phase 12b (Knowledge Graph Advanced) |
 | **Next recommended** | Complete Wave 4 remaining tasks (#21 Autonomy Dashboard frontend, #22 Auto-Linking, #24 Persona Memory) |
 | **Spec integration** | Feb 2026 — Knowledge management, DRM, BAD Canvas, knowledge quality specs integrated into OpenSpec |
@@ -45,6 +45,12 @@
 - **Scope:** Defense-in-depth infrastructure layer: observable failure modes, unified retry manager with circuit breaker, dual-phenomenology validation (provenance + content), three-tier retrieval classification (DIRECT/ADJACENT/ABSENT), performance metrics with percentiles, persistent state with schema migration.
 - **Impact:** `core/hardened/` (8 modules), `config/retry.yaml`, `config/validation.yaml`, `migrations/001_initial_hardened.sql`. Constitutional checks reconciled with ethics spec: epistemological enrichment, not content filtering. All hardened tables in `~/.polly/hardened.db` with WAL mode and automatic migration.
 - **OpenSpec:** [openspec/changes/hardened-knowledge-infrastructure/](../../changes/hardened-knowledge-infrastructure/)
+
+### Scalable Memory Layers ✅ (NEW — Feb 2026)
+- **Status:** Substantially complete. 15 of 17 tasks done (Phases 1–5). 112/112 tests passing. Documentation updates in progress (Task 17). Manual quality validation (Task 16) deferred to next server run.
+- **Scope:** Two complementary systems built on top of Mem0: (1) **Tiered Memory Store** — three persistence layers (stable/long-term, episodic/medium-term, working/short-term) with namespaced Mem0 storage. (2) **Rolling Relevance-Weighted Context Assembler** — strict token budget allocator with 3-pass allocation, 5-component relevance scoring (recency, similarity, frequency, source_priority, type_bonus), per-turn decay/amplification, and greedy bin-packing. Also includes: session-end extraction pipeline (local/cloud model selection), tiered extraction (llama3.2 for simple, Claude Haiku for complex), retrieval classifier integration (ADJACENT score adjustment, ABSENT memory boosting), accurate token counting via tiktoken, and mental model persona name fix.
+- **Impact:** `core/context/` (4 modules: token_counter, budget_allocator, relevance_scorer, rolling_context), `core/memory/` (3 modules: tiers, retriever, extractor). Major changes to `core/polly.py` (init, _gather_context dual path, query budget allocation, cleanup extraction). All `ContextContributor` implementations updated with `token_budget` parameter. Replaced approximate `len//4` token counting across compressor, llmlingua_strategy, rag.py. Config expanded with `memory` and `context_budget` sections.
+- **OpenSpec:** [openspec/changes/scalable-memory-layers/](../../changes/scalable-memory-layers/)
 
 ### Knowledge Graph Navigation ✅ ~95% (Feb 2026)
 - **Status:** Substantially complete. All backend endpoints and frontend graph page implemented. Spec updates pending (Task 15).

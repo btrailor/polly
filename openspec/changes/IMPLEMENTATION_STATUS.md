@@ -29,6 +29,7 @@
 | **mem0-multi-provider-config** | Complete | Multi-provider config structure, 4 helper methods in mem0_adapter.py, 17 unit tests (all passing), backward compatibility, integration verified | — |
 | **oss-tool-integration-research** | Merged | Research done; execution lives in core-framework-refinement (LiteLLM, LLMLingua, Mem0 done) | Tier 2+ items in core-framework-refinement |
 | **phase-17-monaco-code-workspace** | Not started | — | Backend workspace/file APIs, git/terminal (optional), frontend Code page, file tree, Monaco, chat panel, terminal, polish |
+| **scalable-memory-layers** | ~90% Complete | Token counter, budget allocator, relevance scorer, rolling context, tiered memory store, memory retriever, session extractor, polly.py integration (budget allocation, dual-path _gather_context, retrieval tier wiring, cleanup extraction), ContextContributor token_budget param, tiktoken replacement, retrieval classifier wiring, mental model persona fix, 112/112 tests | Task 16 (manual quality validation), Task 17 (documentation — in progress) |
 | **spec-integration-2026-02** | Specs only | New/updated domain specs and roadmap in OpenSpec | No implementation tasks in this change; work is in other changes |
 | **unified-pattern-engine** | Complete | All tasks (core/patterns/, engine, storage, migration, polly/rag/domains/server, tests, spec); Task 14 archive optional | Task 14 (archive old files) optional |
 | **ux-pivot-cursor-patterns** | Not started | — | Pattern list doc, chat layout/thread list, model/persona at input, context pills, visual pass; Code profile in phase-17 |
@@ -53,6 +54,7 @@ These changes have their implementation complete per their tasks; they can be ar
 ## Substantially Complete
 
 - **knowledge-graph-navigation** — ~95% complete. Tasks 2–14 all implemented (all backend endpoints, Cytoscape.js graph page, Browse list, Garden view, filters, navigation wiring, CSS). Tasks 0–1 (prep cleanup) were not formally executed but cleanup happened during implementation. Task 15 (spec updates) in progress. Can be archived once Task 15 is finished.
+- **scalable-memory-layers** — ~90% complete. Tasks 1–15 all implemented (token budget foundation, tiered memory store, rolling relevance-weighted context, extraction pipeline, polly.py integration, retrieval classifier wiring, persona fix, 112/112 unit + integration tests). Task 16 (manual quality validation) deferred to next server run. Task 17 (documentation updates) in progress. New packages: `core/context/` (4 modules), `core/memory/` (3 new modules). Major `core/polly.py` changes for budget allocation, dual-path context gathering, session-end extraction.
 
 ---
 
