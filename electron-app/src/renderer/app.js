@@ -3822,9 +3822,7 @@ function updateLeftSidebar(view) {
       title: "Notes",
       content: `
         <div id="notes-browse-list" style="flex: 1; overflow-y: auto; padding: 0 12px;">
-          <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
-            Loading notes...
-          </div>
+          ${SkeletonLoader.forView('notes')}
         </div>
         ${renderLowerPanel("notes", [
           {id: "filters", label: "Filters"},
@@ -3839,9 +3837,7 @@ function updateLeftSidebar(view) {
       content: `
         <div id="learning-sidebar-curricula" class="learning-sidebar-panel">
           <div id="learning-curricula-list" style="margin-bottom: 12px;">
-            <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
-              Loading curricula...
-            </div>
+            ${SkeletonLoader.forView('curricula')}
           </div>
         </div>
         <div id="learning-sidebar-progress" class="learning-sidebar-panel hidden">
@@ -3890,9 +3886,7 @@ function updateLeftSidebar(view) {
               </select>
             </div>
             <div class="topics-browser-list" id="topics-browser-list">
-              <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
-                Loading topics...
-              </div>
+              ${SkeletonLoader.forView('learning')}
             </div>
           </div>
         </div>
@@ -6927,8 +6921,7 @@ async function loadCurriculaView() {
   }
 
   // Show loading state
-  container.innerHTML =
-    '<div class="loading-spinner">Loading curricula...</div>';
+  container.innerHTML = SkeletonLoader.forView('curricula');
 
   try {
     const curricula = await fetchCurricula();
@@ -19163,9 +19156,7 @@ function renderGraphSidebar() {
   return `
     <div id="graph-sidebar-browse" class="graph-sidebar-panel">
       <div id="graph-browse-list" style="flex: 1; overflow-y: auto; padding: 0 12px;">
-        <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
-          Loading graph...
-        </div>
+        ${SkeletonLoader.forView('graph')}
       </div>
     </div>
     <div id="graph-sidebar-garden" class="graph-sidebar-panel hidden">
@@ -19196,9 +19187,7 @@ function renderGraphSidebar() {
             <button class="garden-tab" data-tab="enrichment">Enrichment</button>
           </div>
           <div id="garden-suggestions-content" style="margin-top: 12px;">
-            <div class="loading-spinner" style="text-align: center; padding: 20px; color: #808080; font-size: 11px;">
-              Loading suggestions...
-            </div>
+            ${SkeletonLoader.forView('garden-suggestions')}
           </div>
         </div>
         
@@ -21741,7 +21730,7 @@ async function loadGardenEntities() {
   const type = typeFilter?.value || '';
   const sort = sortSelect?.value || 'authority';
   
-  listEl.innerHTML = '<div style="text-align: center; padding: 16px; color: #808080; font-size: 11px;">Loading entities...</div>';
+  listEl.innerHTML = SkeletonLoader.forView('graph');
   
   try {
     const params = new URLSearchParams({ limit: '50', sort });

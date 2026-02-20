@@ -969,11 +969,7 @@ class NotesManager {
     } = options;
 
     // Show loading state
-    container.innerHTML = `
-      <div class="browse-list-loading" style="padding: 24px; text-align: center; color: var(--text-secondary);">
-        <div class="loading-spinner" style="font-size: 13px;">Loading...</div>
-      </div>
-    `;
+    container.innerHTML = SkeletonLoader.forView('notes');
 
     try {
       // Build query params
