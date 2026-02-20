@@ -599,7 +599,7 @@ class UnifiedRAG:
 
         return True
 
-    def index_single_document(self, filepath_str: str, source_type: str = 'notes') -> bool:
+    def index_single_document(self, filepath_str: str, source_type: str = 'notes', base_path: Optional[str] = None) -> bool:
         """
         Incrementally index a single document into RAG.
         
@@ -609,6 +609,10 @@ class UnifiedRAG:
         Args:
             filepath_str: Absolute path to the document
             source_type: 'notes', 'documents', or 'codebase'
+            base_path: Root path to compute the relative path from. When provided,
+                       rel_path = filepath.relative_to(base_path), which matches
+                       the path key used by the bulk indexer (_index_markdown_file).
+                       If omitted, falls back to filepath.name (filename only).
         
         Returns:
             True if indexing succeeded
@@ -628,8 +632,19 @@ class UnifiedRAG:
                 logger.warning(f"Empty file, skipping: {filepath}")
                 return False
             
-            # Use the filename as the relative path key
-            rel_path = filepath.name
+            # Derive relative path consistently with _index_markdown_file.
+            # Using only filepath.name (the old behaviour) means domain sub-directory
+            # info is lost, breaking domain-match scoring in the RetrievalClassifier
+            # and making the chunk invisible to any path-prefix domain filters.
+            if base_path:
+                try:
+                    rel_path = str(filepath.relative_to(Path(base_path)))
+                except ValueError:
+                    # filepath is not under base_path — fall back to name
+                    logger.warning(f"filepath {filepath} is not under base_path {base_path}, using filename only")
+                    rel_path = filepath.name
+            else:
+                rel_path = filepath.name
             
             # Chunk the content
             if source_type == 'notes':

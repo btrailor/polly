@@ -1251,13 +1251,18 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         1. Good RAG context exists (high-scoring results)
         2. Query is straightforward retrieval/summarization
         3. No explicit cloud provider override
-        4. Retrieval tier is DIRECT (if tier classification is available)
+        4. Retrieval tier is DIRECT or ADJACENT with a simple query
+        5. No RAG results at all (local uses parametric knowledge)
         
         Cloud providers preferred when:
-        1. Weak or no RAG context
-        2. Complex reasoning required
-        3. User explicitly selects cloud provider
-        4. Retrieval tier is ADJACENT or ABSENT (topic needs analytical depth)
+        1. Complex reasoning required (with weak/no RAG)
+        2. User explicitly selects cloud provider
+        3. Query is analytically complex AND RAG provides no grounding
+        
+        The retrieval tier is a signal, not an override:
+        - DIRECT  → local is ideal (RAG provides strong grounding)
+        - ADJACENT → local is fine for simple queries; complex queries may use cloud
+        - ABSENT  → local handles via parametric knowledge
         
         Args:
             query: User's query
@@ -1273,25 +1278,23 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             logger.info(f"Using cloud: provider override = {provider_override}")
             return False
         
-        # Rule 1.5: If retrieval tier says content is not directly relevant,
-        # use cloud — the query needs analytical depth that local models
-        # can't provide. A 7B model can't do nuanced structural analysis.
-        if retrieval_tier is not None and retrieval_tier != RetrievalTier.DIRECT:
-            logger.info(
-                f"Using cloud: retrieval tier is {retrieval_tier.value} "
-                f"(not DIRECT) — query needs analytical depth"
-            )
-            print(
-                f"[Model Routing] Using CLOUD: retrieval tier is {retrieval_tier.value} "
-                f"(not DIRECT)",
-                flush=True,
-            )
-            return False
+        # Rule 1.5: Retrieval tier informs routing but is not a hard override.
+        # ABSENT: no relevant content found — still try local (model's parametric knowledge).
+        # ADJACENT: tangential content — local can handle this with its own knowledge.
+        # Only force cloud when ADJACENT AND query is analytically complex (needs depth
+        # that a small local model genuinely can't provide).
+        # DIRECT: trust RAG context, local is ideal.
+        if retrieval_tier is not None and retrieval_tier == RetrievalTier.ABSENT:
+            # No relevant notes found — local can still answer from parametric knowledge.
+            # Continue to RAG quality checks below (will likely route local for simple queries).
+            logger.info("Retrieval tier ABSENT: will rely on local parametric knowledge")
+            print("[Model Routing] Retrieval tier ABSENT: checking local capability", flush=True)
         
         # Rule 2: Check RAG context quality
         if not rag_results or len(rag_results) == 0:
-            logger.info("Using cloud: No RAG results found")
-            return False
+            logger.info("Using local: No RAG results (parametric knowledge mode)")
+            print("[Model Routing] Using LOCAL: no RAG results, parametric knowledge mode", flush=True)
+            return True
         
         # Get thresholds from config
         min_top_score = self.config.get("hybrid_routing.thresholds.min_top_score", 0.75)
@@ -1340,16 +1343,27 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         # Decision logic
         if has_strong_rag and is_retrieval_query:
             logger.info("Using local: Strong RAG + retrieval query")
+            print("[Model Routing] Using LOCAL: strong RAG + retrieval query", flush=True)
             return True
         elif has_strong_rag and not is_complex_query:
             logger.info("Using local: Strong RAG + simple query")
+            print("[Model Routing] Using LOCAL: strong RAG + simple query", flush=True)
             return True
         elif top_score > exceptional_score and high_quality_count >= exceptional_min_results:
             logger.info(f"Using local: Exceptional RAG quality (score={top_score:.3f}, count={high_quality_count})")
+            print(f"[Model Routing] Using LOCAL: exceptional RAG (score={top_score:.3f})", flush=True)
+            return True
+        elif not is_complex_query:
+            # Simple query with no strong RAG: local handles via parametric knowledge.
+            # Wave 3 already handled truly complex queries; anything reaching here
+            # is simple enough that a local model can answer without RAG grounding.
+            logger.info("Using local: Simple query — local handles via parametric knowledge")
+            print("[Model Routing] Using LOCAL: simple query, parametric knowledge mode", flush=True)
             return True
         else:
-            reason = "weak RAG" if not has_strong_rag else "complex query"
+            reason = "complex query with weak RAG"
             logger.info(f"Using cloud: {reason}")
+            print(f"[Model Routing] Using CLOUD: {reason}", flush=True)
             return False
 
     def _manage_conversation_context(self) -> None:
@@ -2055,7 +2069,12 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
 
         # 2.5. Classify retrieval quality using three-tier system (DIRECT/ADJACENT/ABSENT)
         # This determines how strongly the LLM should rely on RAG results
-        retrieval_classifier = RetrievalClassifier()
+        retrieval_classifier = RetrievalClassifier(
+            direct_threshold=self.config.get("rag.retrieval_classifier.direct_threshold", 0.72),
+            adjacent_threshold=self.config.get("rag.retrieval_classifier.adjacent_threshold", 0.5),
+            domain_match_boost=self.config.get("rag.retrieval_classifier.domain_match_boost", 0.1),
+            cross_domain_penalty=self.config.get("rag.retrieval_classifier.cross_domain_penalty", 0.15),
+        )
         classifier_results_dicts = [
             {
                 "score": r.score,

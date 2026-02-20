@@ -66,6 +66,20 @@ class UpdateAIFeaturesRequest(BaseModel):
     autonomy_dashboard_show_in_status_bar: Optional[bool] = None
 
 
+class UpdateRAGRequest(BaseModel):
+    """Request model for RAG & retrieval classifier settings."""
+    # Retrieval
+    n_results: Optional[int] = None          # chunks returned per query (1–20)
+    # Retrieval classifier thresholds
+    direct_threshold: Optional[float] = None    # score → DIRECT  (0.5–0.95)
+    adjacent_threshold: Optional[float] = None  # score → ADJACENT (0.3–0.8)
+    domain_match_boost: Optional[float] = None  # same-domain bonus (0–0.3)
+    cross_domain_penalty: Optional[float] = None  # cross-domain penalty (0–0.3)
+    # Wave-3 decomposition
+    decomposition_enabled: Optional[bool] = None
+    min_complexity_score: Optional[float] = None  # 0.0–1.0
+
+
 class ToggleProviderRequest(BaseModel):
     """Request model for toggling provider enabled status."""
     provider: str
@@ -975,5 +989,74 @@ def create_settings_router() -> APIRouter:
         except Exception as e:
             logger.error(f"Message save failed: {e}", exc_info=True)
             raise HTTPException(500, f"Message save failed: {str(e)}")
+
+    @router.get("/rag")
+    async def get_rag_settings():
+        """Get current RAG & retrieval classifier settings."""
+        try:
+            config = get_config()
+            rag = config._config.get("rag", {})
+            clf = rag.get("retrieval_classifier", {})
+            decomp = config._config.get("routing", {}).get("decomposition", {})
+            return {
+                "success": True,
+                "settings": {
+                    "n_results": rag.get("n_results", 5),
+                    "direct_threshold": clf.get("direct_threshold", 0.72),
+                    "adjacent_threshold": clf.get("adjacent_threshold", 0.5),
+                    "domain_match_boost": clf.get("domain_match_boost", 0.1),
+                    "cross_domain_penalty": clf.get("cross_domain_penalty", 0.15),
+                    "decomposition_enabled": decomp.get("enabled", True),
+                    "min_complexity_score": decomp.get("min_complexity_score", 0.6),
+                }
+            }
+        except Exception as e:
+            logger.error(f"Failed to get RAG settings: {e}")
+            raise HTTPException(500, f"Failed to get RAG settings: {str(e)}")
+
+    @router.post("/rag")
+    async def update_rag_settings(request: UpdateRAGRequest):
+        """Update RAG & retrieval classifier settings."""
+        try:
+            config = get_config()
+            cfg = config._config
+
+            rag = cfg.setdefault("rag", {})
+            clf = rag.setdefault("retrieval_classifier", {})
+            decomp = cfg.setdefault("routing", {}).setdefault("decomposition", {})
+
+            if request.n_results is not None:
+                rag["n_results"] = max(1, min(20, request.n_results))
+            if request.direct_threshold is not None:
+                clf["direct_threshold"] = round(max(0.5, min(0.95, request.direct_threshold)), 3)
+            if request.adjacent_threshold is not None:
+                clf["adjacent_threshold"] = round(max(0.3, min(0.8, request.adjacent_threshold)), 3)
+            if request.domain_match_boost is not None:
+                clf["domain_match_boost"] = round(max(0.0, min(0.3, request.domain_match_boost)), 3)
+            if request.cross_domain_penalty is not None:
+                clf["cross_domain_penalty"] = round(max(0.0, min(0.3, request.cross_domain_penalty)), 3)
+            if request.decomposition_enabled is not None:
+                decomp["enabled"] = request.decomposition_enabled
+            if request.min_complexity_score is not None:
+                decomp["min_complexity_score"] = round(max(0.0, min(1.0, request.min_complexity_score)), 3)
+
+            config.save()
+
+            return {
+                "success": True,
+                "settings": {
+                    "n_results": rag.get("n_results", 5),
+                    "direct_threshold": clf.get("direct_threshold", 0.72),
+                    "adjacent_threshold": clf.get("adjacent_threshold", 0.5),
+                    "domain_match_boost": clf.get("domain_match_boost", 0.1),
+                    "cross_domain_penalty": clf.get("cross_domain_penalty", 0.15),
+                    "decomposition_enabled": decomp.get("enabled", True),
+                    "min_complexity_score": decomp.get("min_complexity_score", 0.6),
+                },
+                "message": "RAG settings updated. Classifier changes take effect immediately; n_results requires restart."
+            }
+        except Exception as e:
+            logger.error(f"Failed to update RAG settings: {e}")
+            raise HTTPException(500, f"Failed to update RAG settings: {str(e)}")
 
     return router

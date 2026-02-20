@@ -15,6 +15,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union
+import asyncio
 import logging
 import re
 
@@ -547,11 +548,30 @@ class KnowledgeWriter:
             return False
 
         try:
-            # Try incremental single-document indexing
+            # Determine the notes root (base_path) so index_single_document
+            # stores the full relative path (e.g. science/quantum.md) rather
+            # than just the filename — matching the path key used by the bulk
+            # indexer and ensuring domain-match scoring works correctly.
+            if self.notes_source:
+                base_path = str(Path(self.notes_source.get_notes_path()).expanduser())
+            else:
+                base_path = str(Path.home() / ".polly" / "notes")
+
+            # Try incremental single-document indexing.
+            # index_single_document is synchronous (blocking I/O + Ollama embed);
+            # run it in a thread pool to avoid blocking the async event loop.
             if hasattr(self.rag, 'index_single_document'):
-                await self.rag.index_single_document(note_path, source_type='notes')
-                logger.info(f"Incrementally indexed: {note_path}")
-                return True
+                success = await asyncio.to_thread(
+                    self.rag.index_single_document,
+                    note_path,
+                    'notes',
+                    base_path,
+                )
+                if success:
+                    logger.info(f"Incrementally indexed: {note_path}")
+                else:
+                    logger.warning(f"Incremental indexing returned False for: {note_path}")
+                return success
 
             # Fallback: rebuild notes index (slower but works)
             if self.notes_source:
@@ -561,7 +581,7 @@ class KnowledgeWriter:
 
             from core.notes_index import get_notes_index
             notes_idx = get_notes_index()
-            notes_idx.build_index(notes_path, recursive=True)
+            await asyncio.to_thread(notes_idx.build_index, notes_path, recursive=True)
             logger.info(f"Rebuilt notes index after adding: {note_path}")
             return True
 

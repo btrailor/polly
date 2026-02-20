@@ -223,11 +223,15 @@ Respond with ONLY a JSON object (no markdown code blocks):
         - Multiple sentences or clauses (and, then, also)
         - Multiple question words (what, how, why)
         - Both retrieval and generation aspects
+        - Explanatory/analytical verbs (explain, analyze, compare, describe)
+        - Multiple named concepts joined by 'and'
+        - Sufficient length (long queries are rarely simple lookups)
         - Semantically complex topics (requires structural/historical analysis)
         """
         query_lower = query.lower()
+        word_count = len(query.split())
         
-        # Simple heuristics
+        # Simple heuristics — syntactic patterns
         complexity_indicators = [
             ' and ' in query_lower and any(word in query_lower for word in ['then', 'can you', 'write', 'create', 'also']),
             ' then ' in query_lower,
@@ -237,6 +241,25 @@ Respond with ONLY a JSON object (no markdown code blocks):
             'first' in query_lower and ('second' in query_lower or 'then' in query_lower),
             'can you' in query_lower and ' and ' in query_lower,
         ]
+
+        # Analytical/explanatory verbs: queries starting with or containing these
+        # almost always require multi-step reasoning, not a simple factual lookup.
+        analytical_verbs = [
+            'explain', 'describe', 'analyze', 'analyse', 'compare', 'contrast',
+            'discuss', 'elaborate', 'evaluate', 'summarize', 'summarise',
+            'outline', 'walk me through', 'break down', 'help me understand',
+            'tell me about', 'what is the relationship', 'how does', 'how do',
+            'why does', 'why do', 'what are the implications', 'what is the difference',
+        ]
+        has_analytical_verb = any(query_lower.startswith(v) or f' {v} ' in query_lower for v in analytical_verbs)
+
+        # Multi-concept: "X and Y" where the conjunction links substantial noun phrases
+        # Detected by 'and' appearing after at least 3 words (not just "A and B")
+        words_before_and = query_lower.find(' and ')
+        has_multi_concept_and = (words_before_and > 15)  # at least ~3 words before 'and'
+
+        # Long queries are rarely simple factual lookups
+        is_long_query = word_count >= 12
         
         # Count question words (including duplicates for multi-part questions)
         question_words = ['what', 'how', 'why', 'when', 'where', 'who', 'which']
@@ -253,16 +276,38 @@ Respond with ONLY a JSON object (no markdown code blocks):
         # a complex topic still needs analytical depth.
         semantic_score = self._semantic_complexity_score(query_lower)
         
+        # When an analytical verb AND a multi-concept conjunction both appear,
+        # the query is definitionally complex (e.g. "Explain X and Y") — add a
+        # small interaction bonus so this combination reliably clears the threshold.
+        analytical_and_multi = has_analytical_verb and has_multi_concept_and
+
         complexity_score = (
             sum(complexity_indicators) * 0.25 +
             min(question_count * 0.15, 0.4) +
-            (0.3 if has_multiple_questions else 0.0) +  # Bonus for multiple questions
-            semantic_score  # Semantic/topic complexity boost
+            (0.3 if has_multiple_questions else 0.0) +    # Bonus for multiple questions
+            (0.35 if has_analytical_verb else 0.0) +      # Explanatory/analytical intent
+            (0.2 if has_multi_concept_and else 0.0) +     # Multi-concept conjunction
+            (0.1 if analytical_and_multi else 0.0) +      # Interaction: analytical verb + multi-concept = definitely complex
+            (0.15 if is_long_query else 0.0) +            # Length signal
+            semantic_score                                  # Semantic/topic complexity boost
         )
         
         is_complex = complexity_score >= self.min_complexity_score
-        print(f"[Complexity] Query: '{query[:60]}...' score={complexity_score:.2f} (semantic={semantic_score:.2f}), threshold={self.min_complexity_score}, complex={is_complex}, qcount={question_count}, multi_q={has_multiple_questions}", flush=True)
-        logger.debug(f"Complexity check: score={complexity_score:.2f}, semantic={semantic_score:.2f}, threshold={self.min_complexity_score}, complex={is_complex}, question_count={question_count}, has_multiple_questions={has_multiple_questions}")
+        print(
+            f"[Complexity] Query: '{query[:60]}...' score={complexity_score:.2f} "
+            f"(semantic={semantic_score:.2f}), threshold={self.min_complexity_score}, "
+            f"complex={is_complex}, qcount={question_count}, multi_q={has_multiple_questions}, "
+            f"analytical={has_analytical_verb}, multi_concept={has_multi_concept_and}, "
+            f"analytical_and_multi={analytical_and_multi}, long={is_long_query}",
+            flush=True,
+        )
+        logger.debug(
+            f"Complexity check: score={complexity_score:.2f}, semantic={semantic_score:.2f}, "
+            f"threshold={self.min_complexity_score}, complex={is_complex}, "
+            f"question_count={question_count}, has_multiple_questions={has_multiple_questions}, "
+            f"has_analytical_verb={has_analytical_verb}, has_multi_concept_and={has_multi_concept_and}, "
+            f"is_long_query={is_long_query}"
+        )
         
         return is_complex
     
