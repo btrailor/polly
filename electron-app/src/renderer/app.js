@@ -237,43 +237,139 @@ function getEffectivePage() {
  * @param {string} type - Type of toast: 'success', 'error', 'info', 'warning'
  * @param {number} duration - Auto-dismiss duration in ms (0 = no auto-dismiss)
  */
-function showToast(message, type = "info", duration = 4000) {
+let _toastIdCounter = 0;
+
+/**
+ * Show a toast notification.
+ *
+ * showToast(message, type, options)
+ *   - options.duration    {number}   Auto-dismiss ms (default 4000). 0 = persistent.
+ *   - options.persistent  {boolean}  Stay until manually dismissed (same as duration:0).
+ *   - options.action      {function} Callback for an inline action button.
+ *   - options.actionLabel {string}   Label for the action button (default "Undo").
+ *   - options.icon        {string}   Custom icon character (overrides type default).
+ *
+ * Returns the toast's unique string ID for use with dismissToast(id).
+ * Backward-compatible: if third argument is a number it is treated as duration.
+ */
+function showToast(message, type = "info", options = {}) {
+  // Backward compat: showToast(msg, type, 3000)
+  if (typeof options === "number") {
+    options = { duration: options };
+  }
+
+  const {
+    duration = 4000,
+    persistent = false,
+    action = null,
+    actionLabel = "Undo",
+    icon: customIcon = null,
+  } = options;
+
   const icons = {
     success: "\u2713",
     error: "\u2717",
     warning: "\u26A0",
     info: "\u2139",
   };
-  const icon = icons[type] || icons.info;
+  const icon = customIcon || icons[type] || icons.info;
 
   console.log(`[${type.toUpperCase()}] ${message}`);
 
-  const container = document.getElementById("toast-container");
+  let container = document.getElementById("toast-container");
   if (!container) {
-    // Fallback for errors if container not yet in DOM
-    if (type === "error") alert(`${icon} ${message}`);
-    return;
+    container = document.createElement("div");
+    container.id = "toast-container";
+    container.style.cssText =
+      "position:fixed;bottom:60px;right:16px;z-index:10001;display:flex;flex-direction:column-reverse;gap:8px;pointer-events:none;";
+    document.body.appendChild(container);
   }
 
+  // Enforce max 3 visible toasts — dismiss oldest extras
+  const existing = container.querySelectorAll(".polly-toast:not(.removing)");
+  if (existing.length >= 3) {
+    // oldest is last child in column-reverse layout (visually top-most)
+    const oldest = container.lastElementChild;
+    if (oldest) _dismissToastEl(oldest);
+  }
+
+  const toastId = `toast-${++_toastIdCounter}`;
   const toast = document.createElement("div");
   toast.className = `polly-toast toast-${type}`;
+  toast.dataset.toastId = toastId;
+
+  let actionHtml = "";
+  if (action && typeof action === "function") {
+    actionHtml = `<button class="polly-toast-action">${actionLabel}</button>`;
+  }
+
   toast.innerHTML = `
-    <span class="polly-toast-icon">${icon}</span>
+    <span class="polly-toast-icon" aria-hidden="true">${icon}</span>
     <span class="polly-toast-message">${message}</span>
-    <button class="polly-toast-close">&times;</button>
+    ${actionHtml}
+    <button class="polly-toast-close" aria-label="Dismiss notification">&times;</button>
   `;
 
+  if (action && typeof action === "function") {
+    const actionBtn = toast.querySelector(".polly-toast-action");
+    actionBtn.addEventListener("click", () => {
+      action();
+      _dismissToastEl(toast);
+    });
+  }
+
   const closeBtn = toast.querySelector(".polly-toast-close");
-  const dismiss = () => {
-    toast.classList.add("removing");
-    setTimeout(() => toast.remove(), 200);
-  };
-  closeBtn.addEventListener("click", dismiss);
+  closeBtn.addEventListener("click", () => _dismissToastEl(toast));
 
   container.appendChild(toast);
 
-  if (duration > 0) {
-    setTimeout(dismiss, duration);
+  const effectiveDuration = persistent ? 0 : duration;
+  if (effectiveDuration > 0) {
+    toast._dismissTimer = setTimeout(() => _dismissToastEl(toast), effectiveDuration);
+  }
+
+  return toastId;
+}
+
+function _dismissToastEl(toast) {
+  if (!toast || toast.classList.contains("removing")) return;
+  if (toast._dismissTimer) clearTimeout(toast._dismissTimer);
+  toast.classList.add("removing");
+  setTimeout(() => toast.remove(), 200);
+}
+
+/**
+ * Programmatically dismiss a toast by the ID returned from showToast().
+ */
+function dismissToast(id) {
+  const container = document.getElementById("toast-container");
+  if (!container) return;
+  const toast = container.querySelector(`[data-toast-id="${id}"]`);
+  if (toast) _dismissToastEl(toast);
+}
+
+/**
+ * Show a loading spinner on a button while an async operation runs.
+ * Restores the button text/state afterward regardless of success or failure.
+ *
+ * @param {HTMLButtonElement} button
+ * @param {function(): Promise<any>} asyncFn
+ * @param {string} [loadingText="Saving..."]
+ * @returns {Promise<any>} resolves/rejects with the result of asyncFn
+ */
+async function withButtonLoading(button, asyncFn, loadingText = "Saving...") {
+  if (!button) return asyncFn();
+  const originalHTML = button.innerHTML;
+  const originalDisabled = button.disabled;
+  button.disabled = true;
+  button.classList.add("btn-loading");
+  button.innerHTML = `<span class="btn-spinner" aria-hidden="true"></span> ${loadingText}`;
+  try {
+    return await asyncFn();
+  } finally {
+    button.disabled = originalDisabled;
+    button.classList.remove("btn-loading");
+    button.innerHTML = originalHTML;
   }
 }
 
@@ -1392,6 +1488,45 @@ function setupSettingsTabs() {
 /**
  * Render the conversation list in the sidebar
  */
+
+/**
+ * Roving tabindex keyboard navigation for lists.
+ * Supports ArrowUp/ArrowDown to move focus, Home/End to jump to boundaries.
+ * Only attaches one listener per container (idempotent via data attribute).
+ *
+ * @param {HTMLElement} container - The scrollable list container.
+ * @param {string} itemSelector - CSS selector for navigable items.
+ */
+function setupListKeyboardNav(container, itemSelector) {
+  if (!container || container.dataset.keynavAttached) return;
+  container.dataset.keynavAttached = "1";
+
+  container.addEventListener("keydown", (e) => {
+    if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) return;
+
+    const items = Array.from(container.querySelectorAll(itemSelector));
+    if (!items.length) return;
+
+    e.preventDefault();
+    const active = document.activeElement;
+    let idx = items.indexOf(active);
+
+    if (e.key === "ArrowDown") {
+      idx = idx < items.length - 1 ? idx + 1 : 0;
+    } else if (e.key === "ArrowUp") {
+      idx = idx > 0 ? idx - 1 : items.length - 1;
+    } else if (e.key === "Home") {
+      idx = 0;
+    } else if (e.key === "End") {
+      idx = items.length - 1;
+    }
+
+    items[idx].focus();
+    // Scroll into view if needed
+    items[idx].scrollIntoView({ block: "nearest" });
+  });
+}
+
 function renderConversationList(searchQuery = "") {
   const listEl = document.getElementById("conversations-list");
 
@@ -1481,11 +1616,20 @@ function renderConversationList(searchQuery = "") {
   // Add conversation click listeners
   listEl.querySelectorAll(".conversation-item").forEach((item) => {
     const convId = item.dataset.id;
+    item.setAttribute("tabindex", "0");
+    item.setAttribute("role", "button");
 
     item.addEventListener("click", async (e) => {
       if (!e.target.closest(".conversation-menu-btn")) {
         // Switch to conversation (displays in sidebar automatically)
         await switchToConversation(convId);
+      }
+    });
+
+    item.addEventListener("keydown", (e) => {
+      if ((e.key === "Enter" || e.key === " ") && !e.target.closest(".conversation-menu-btn")) {
+        e.preventDefault();
+        switchToConversation(convId);
       }
     });
 
@@ -1498,6 +1642,7 @@ function renderConversationList(searchQuery = "") {
     // Menu button
     const menuBtn = item.querySelector(".conversation-menu-btn");
     if (menuBtn) {
+      menuBtn.setAttribute("aria-label", "Conversation options");
       menuBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         const rect = menuBtn.getBoundingClientRect();
@@ -1505,6 +1650,9 @@ function renderConversationList(searchQuery = "") {
       });
     }
   });
+
+  // Apply roving tabindex keyboard nav to the conversation list
+  setupListKeyboardNav(listEl, ".conversation-item");
 
   // Re-initialize icons
   if (typeof lucide !== "undefined") {
@@ -1578,16 +1726,22 @@ function renderAgentsSidebar() {
   listEl.querySelectorAll(".agent-delete-btn").forEach((btn) => {
     const agentId = btn.dataset.agentId;
     if (!agentId) return;
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const agent = getAgentById(agentId);
-      const name = agent ? agent.display_name : agentId;
-      if (confirm(`Delete agent "${name}" and all its conversations?`)) {
-        deleteAgent(agentId);
-        renderAgentsSidebar();
-        if (typeof renderChatTabs === "function") renderChatTabs();
-      }
+      btn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const agent = getAgentById(agentId);
+        const name = agent ? agent.display_name : agentId;
+        const confirmed = await ConfirmDialog.show({
+          title: `Delete agent`,
+          message: `Delete agent "${name}" and all its conversations?`,
+          confirmLabel: 'Delete',
+          destructive: true,
+        });
+        if (confirmed) {
+          deleteAgent(agentId);
+          renderAgentsSidebar();
+          if (typeof renderChatTabs === "function") renderChatTabs();
+        }
     });
   });
 
@@ -1687,6 +1841,12 @@ function openNewAgentDialog() {
   modal.classList.remove("hidden");
   modal.setAttribute("aria-hidden", "false");
   if (displayNameInput) displayNameInput.focus();
+
+  // Store trigger and trap focus
+  const trigger = document.activeElement;
+  modal._focusTrapCleanup = typeof trapFocus === "function"
+    ? trapFocus(modal, { onEscape: () => closeNewAgentDialog(), returnFocusTo: trigger })
+    : null;
 }
 
 /**
@@ -1712,6 +1872,10 @@ function closeNewAgentDialog() {
   if (modal) {
     modal.classList.add("hidden");
     modal.setAttribute("aria-hidden", "true");
+    if (modal._focusTrapCleanup) {
+      modal._focusTrapCleanup();
+      modal._focusTrapCleanup = null;
+    }
   }
 }
 
@@ -1792,14 +1956,14 @@ function createConversationItemHTML(conv) {
     <div class="conversation-item${isActive ? " active" : ""}${starred}${overrideClass}" data-id="${conv.id}">
       <div class="conversation-header">
         <div class="conversation-title">${conv.title}</div>
-        <button class="conversation-menu-btn">
-          <i data-lucide="more-vertical" style="width: 14px; height: 14px;"></i>
+        <button class="conversation-menu-btn" aria-label="Conversation options">
+          <i data-lucide="more-vertical" style="width: 14px; height: 14px;" aria-hidden="true"></i>
         </button>
       </div>
       <div class="conversation-meta">
         ${pageBadge}
         <span class="conversation-message-count">
-          <i data-lucide="message-circle" style="width: 10px; height: 10px;"></i>
+          <i data-lucide="message-circle" style="width: 10px; height: 10px;" aria-hidden="true"></i>
           ${conv.message_count || 0}
         </span>
         <span class="conversation-date">${date}</span>
@@ -1970,7 +2134,7 @@ async function handleConversationAction(action, conversationId) {
     }
   } catch (error) {
     console.error("Failed to perform action:", error);
-    alert(`Failed to ${action} conversation: ${error.message}`);
+    showToast(`Failed to ${action} conversation: ${error.message}`, "error");
   }
 }
 
@@ -1993,6 +2157,7 @@ async function renameConversation(conversationId) {
 
   // Show modal
   modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
 
   // Focus input and select text
   setTimeout(() => {
@@ -2000,12 +2165,20 @@ async function renameConversation(conversationId) {
     input.select();
   }, 100);
 
+  // Focus trap
+  const trigger = document.activeElement;
+  const cleanupTrap = typeof trapFocus === "function"
+    ? trapFocus(modal, { onEscape: () => closeModal(), returnFocusTo: trigger })
+    : null;
+
   // Setup submit handler
   const submitRename = async () => {
     const newTitle = input.value.trim();
 
     if (!newTitle || newTitle === conv.title) {
       modal.classList.add("hidden");
+      modal.setAttribute("aria-hidden", "true");
+      if (cleanupTrap) cleanupTrap();
       return;
     }
 
@@ -2028,15 +2201,19 @@ async function renameConversation(conversationId) {
       if (typeof renderAgentsSidebar === "function") renderAgentsSidebar();
       if (typeof renderChatTabs === "function") renderChatTabs();
       modal.classList.add("hidden");
+      modal.setAttribute("aria-hidden", "true");
+      if (cleanupTrap) cleanupTrap();
     } catch (error) {
       console.error("Failed to rename conversation:", error);
-      alert(`Failed to rename conversation: ${error.message}`);
+      showToast(`Failed to rename conversation: ${error.message}`, "error");
     }
   };
 
   // Setup close handlers
   const closeModal = () => {
     modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+    if (cleanupTrap) cleanupTrap();
   };
 
   document.getElementById("close-rename-modal").onclick = closeModal;
@@ -2096,7 +2273,7 @@ async function changeConversationCategory(conversationId) {
   console.log("changeConversationCategory: categories =", categories);
 
   if (!categories || categories.length === 0) {
-    alert("No categories available. Please check if categories are loaded.");
+    showToast("No categories available. Please check if categories are loaded.", "warning");
     return;
   }
 
@@ -2149,9 +2326,11 @@ async function changeConversationCategory(conversationId) {
 
         // Close modal
         modal.classList.add("hidden");
+        modal.setAttribute("aria-hidden", "true");
+        if (modal._focusTrapCleanup) { modal._focusTrapCleanup(); modal._focusTrapCleanup = null; }
       } catch (error) {
         console.error("Failed to update category:", error);
-        alert(`Failed to update category: ${error.message}`);
+        showToast(`Failed to update category: ${error.message}`, "error");
       }
     });
 
@@ -2160,10 +2339,19 @@ async function changeConversationCategory(conversationId) {
 
   // Show modal
   modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+
+  // Focus trap
+  const trigger = document.activeElement;
+  modal._focusTrapCleanup = typeof trapFocus === "function"
+    ? trapFocus(modal, { onEscape: () => closeModal(), returnFocusTo: trigger })
+    : null;
 
   // Setup close handlers
   const closeModal = () => {
     modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+    if (modal._focusTrapCleanup) { modal._focusTrapCleanup(); modal._focusTrapCleanup = null; }
   };
 
   document.getElementById("close-category-modal").onclick = closeModal;
@@ -2184,7 +2372,12 @@ async function deleteConversation(conversationId) {
   const conv = conversations.find((c) => c.id === conversationId);
   if (!conv) return;
 
-  if (!confirm(`Delete "${conv.title}"?`)) return;
+  if (!(await ConfirmDialog.show({
+    title: 'Delete conversation',
+    message: `Delete "${conv.title}"? This cannot be undone.`,
+    confirmLabel: 'Delete',
+    destructive: true,
+  }))) return;
 
   await window.polly.conversationDelete(conversationId, true);
 
@@ -2517,10 +2710,26 @@ function setupEventListeners() {
     sendBtn.addEventListener("click", sendQuery);
   }
 
+  // Chat - Stop generation
+  const chatStopBtn = document.getElementById("chat-stop");
+  if (chatStopBtn) {
+    chatStopBtn.addEventListener("click", () => {
+      if (_streamAbortController) {
+        _streamAbortController.abort("user");
+      }
+    });
+  }
+
   // Chat - Save to Obsidian
   const saveBtn = document.getElementById("btn-save-conversation");
   if (saveBtn) {
     saveBtn.addEventListener("click", openSaveConversationModal);
+  }
+
+  // Accessibility: keyboard navigation for ribbon (ArrowUp/ArrowDown)
+  const ribbon = document.getElementById("icon-ribbon");
+  if (ribbon) {
+    setupListKeyboardNav(ribbon, ".ribbon-item, .ribbon-logo");
   }
 
   // Chat - Toggle Related Notes (legacy buttons - removed in new UI)
@@ -2773,7 +2982,12 @@ function setupEventListeners() {
   document
     .getElementById("btn-reset-setup")
     .addEventListener("click", async () => {
-      if (confirm("This will reset all settings. Are you sure?")) {
+      if (await ConfirmDialog.show({
+        title: 'Reset all settings',
+        message: 'This will reset all settings to defaults. Are you sure?',
+        confirmLabel: 'Reset',
+        destructive: true,
+      })) {
         await window.polly.setStore("setupComplete", false);
         location.reload();
       }
@@ -3059,6 +3273,17 @@ function showView(view) {
 
   document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === view);
+  });
+
+  // Update ribbon active state and aria-current
+  document.querySelectorAll(".ribbon-item, .ribbon-logo").forEach((btn) => {
+    const isActive = btn.dataset.view === view;
+    btn.classList.toggle("active", isActive);
+    if (isActive) {
+      btn.setAttribute("aria-current", "page");
+    } else {
+      btn.removeAttribute("aria-current");
+    }
   });
 
   // Update adaptive left sidebar
@@ -3835,6 +4060,8 @@ function updateLeftSidebar(view) {
           } else if (tab === "compression") {
             loadCompressionSettings();
             loadCompressionStats();
+          } else if (tab === "rag") {
+            loadRAGSettings();
           } else if (tab === "memory") {
             loadMemorySettings();
           } else if (tab === "mental-models") {
@@ -4039,6 +4266,10 @@ function renderSettingsSidebar() {
         <button class="nav-item settings-nav-item" data-tab="ai-features" style="width: 100%; justify-content: flex-start;">
           <i data-lucide="sparkles" class="nav-icon"></i>
           <span class="nav-label">AI Features</span>
+        </button>
+        <button class="nav-item settings-nav-item" data-tab="rag" style="width: 100%; justify-content: flex-start;">
+          <i data-lucide="search" class="nav-icon"></i>
+          <span class="nav-label">RAG &amp; Retrieval</span>
         </button>
         <button class="nav-item settings-nav-item" data-tab="memory" style="width: 100%; justify-content: flex-start;">
           <i data-lucide="database" class="nav-icon"></i>
@@ -4569,11 +4800,11 @@ async function runInstall() {
     if (result.success) {
       goToStep(4);
     } else {
-      alert(`Setup failed: ${result.error}`);
+      showToast(`Setup failed: ${result.error}`, "error");
       btn.disabled = false;
     }
   } catch (error) {
-    alert(`Setup failed: ${error.message}`);
+    showToast(`Setup failed: ${error.message}`, "error");
     btn.disabled = false;
   }
 }
@@ -4888,7 +5119,7 @@ async function handlePersonaChange(e) {
     }
   } catch (error) {
     console.error("[Persona] Failed to activate persona:", error);
-    alert(`Failed to activate ${personaName}: ${error.message}`);
+    showToast(`Failed to activate ${personaName}: ${error.message}`, "error");
 
     // Reset persona selects
     e.target.value = "";
@@ -4945,7 +5176,7 @@ async function handleModeChange(e) {
     console.error("[Persona] Failed to switch mode:", error);
     // Don't show alert if persona not active - this is expected during initialization
     if (!error.message.includes("No persona is active")) {
-      alert(`Failed to switch to ${mode} mode: ${error.message}`);
+      showToast(`Failed to switch to ${mode} mode: ${error.message}`, "error");
     }
   }
 }
@@ -5828,16 +6059,15 @@ async function saveNoteToKnowledgeBase(noteData) {
       // Show duplicate detection UI
       console.log("[Persona] Similar notes found:", result.similar_notes);
 
-      const message =
-        `Found ${result.similar_notes.length} similar note(s):\n` +
-        result.similar_notes
-          .map(
-            (n) => `- ${n.title} (${Math.round(n.similarity * 100)}% similar)`,
-          )
-          .join("\n") +
-        "\n\nDo you still want to create this note?";
-
-      if (!confirm(message)) {
+      const similarList = result.similar_notes
+        .map((n) => `${n.title} (${Math.round(n.similarity * 100)}% similar)`)
+        .join(", ");
+      if (!(await ConfirmDialog.show({
+        title: 'Similar notes found',
+        message: `Found ${result.similar_notes.length} similar note(s): ${similarList}. Do you still want to create this note?`,
+        confirmLabel: 'Create anyway',
+        cancelLabel: 'Cancel',
+      }))) {
         console.log("[Persona] User cancelled note creation due to duplicates");
         return;
       }
@@ -5864,11 +6094,11 @@ async function saveNoteToKnowledgeBase(noteData) {
       }
 
       console.log("[Persona] Note created:", createResult.note.path);
-      alert(`Note saved: ${createResult.note.title}`);
+      showToast(`Note saved: ${createResult.note.title}`, "success");
     } else if (result.success) {
       // Note created successfully
       console.log("[Persona] Note created:", result.note.path);
-      alert(`Note saved: ${result.note.title}`);
+      showToast(`Note saved: ${result.note.title}`, "success");
     } else {
       throw new Error(result.error || "Failed to create note");
     }
@@ -5888,7 +6118,7 @@ async function saveNoteToKnowledgeBase(noteData) {
     }, 1000);
   } catch (error) {
     console.error("[Persona] Failed to save note:", error);
-    alert(`Failed to save note: ${error.message}`);
+    showToast(`Failed to save note: ${error.message}`, "error");
   }
 }
 
@@ -6516,7 +6746,12 @@ async function loadLearningSidebarCurricula() {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const id = btn.dataset.id;
-        if (confirm("Are you sure you want to delete this curriculum?")) {
+        if (await ConfirmDialog.show({
+          title: 'Delete curriculum',
+          message: 'Are you sure you want to delete this curriculum? This cannot be undone.',
+          confirmLabel: 'Delete',
+          destructive: true,
+        })) {
           await handleDeleteCurriculum(id);
           await loadLearningSidebarCurricula(); // Reload
         }
@@ -7212,11 +7447,12 @@ async function handlePauseCurriculum(curriculumId) {
  * Handle delete curriculum button
  */
 async function handleDeleteCurriculum(curriculumId) {
-  if (
-    !confirm(
-      "Are you sure you want to delete this curriculum? This cannot be undone.",
-    )
-  ) {
+  if (!(await ConfirmDialog.show({
+    title: 'Delete curriculum',
+    message: 'Are you sure you want to delete this curriculum? This cannot be undone.',
+    confirmLabel: 'Delete',
+    destructive: true,
+  }))) {
     return;
   }
 
@@ -8588,7 +8824,105 @@ async function sendQueryCore(query) {
  * @param {string} apiQuery - Message to send to backend (may differ for slash commands)
  * @param {{ personaOverride?: string, modeOverride?: string }|null} overrides - From slash command
  */
-async function sendQueryInternal(displayQuery, apiQuery, overrides) {
+// ============================================================================
+// STREAMING CHAT — module-level state
+// ============================================================================
+
+/** AbortController for the in-flight streaming request, or null when idle. */
+let _streamAbortController = null;
+
+/** Last query context saved for retry. */
+let _lastQueryContext = null;
+
+/** Per-request timeout handle. */
+let _streamTimeoutHandle = null;
+
+/** Streaming timeout in milliseconds (default 120 s). */
+const STREAM_TIMEOUT_MS = 120_000;
+
+/**
+ * Show the stop button and hide the send button.
+ */
+function _showStopButton() {
+  const sendBtn = document.getElementById("chat-send");
+  const stopBtn = document.getElementById("chat-stop");
+  if (sendBtn) sendBtn.style.display = "none";
+  if (stopBtn) stopBtn.classList.remove("hidden");
+}
+
+/**
+ * Show the send button and hide the stop button.
+ */
+function _hideStopButton() {
+  const sendBtn = document.getElementById("chat-send");
+  const stopBtn = document.getElementById("chat-stop");
+  if (sendBtn) sendBtn.style.display = "";
+  if (stopBtn) stopBtn.classList.add("hidden");
+}
+
+/**
+ * Build the metadata footer HTML from a metadata object.
+ */
+function _buildMetadataFooterHtml(metadata) {
+  if (!metadata) return "";
+  const costStr = metadata.cost ? `$${metadata.cost.toFixed(4)}` : "-";
+  const tokensStr =
+    metadata.tokens_in && metadata.tokens_out
+      ? `${metadata.tokens_in + metadata.tokens_out} tokens`
+      : "-";
+  const providerStr = metadata.provider || "-";
+  const modelStr = metadata.model || "-";
+  const estimatedStr = metadata.estimated ? " (estimated)" : "";
+  let routingReasonHtml = "";
+  if (metadata.routing_reason) {
+    routingReasonHtml = `<br><span style="color: #606060; font-style: italic;">→ ${metadata.routing_reason}</span>`;
+  }
+  return `<div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #2a2a2a; font-size: 11px; color: #808080; font-family: monospace;">✓ ${providerStr} (${modelStr}) • ${costStr} • ${tokensStr}${estimatedStr}${routingReasonHtml}</div>`;
+}
+
+/**
+ * Show an error message with an inline retry button below it.
+ * Returns the container element so the caller can remove it later.
+ */
+function _showStreamError(errorText) {
+  const container = getChatMessagesContainer();
+  const id = `stream-error-${Date.now()}`;
+  const div = document.createElement("div");
+  div.id = id;
+  div.className = "message system";
+  div.innerHTML = `
+    <div class="message-error">
+      <span class="error-text">${errorText}</span>
+      <button class="retry-btn" onclick="retryLastQuery()" aria-label="Retry query">
+        <i data-lucide="refresh-cw" style="width:12px;height:12px;"></i> Retry
+      </button>
+    </div>
+  `;
+  container.appendChild(div);
+  requestAnimationFrame(() => {
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+  });
+  if (typeof lucide !== "undefined") setTimeout(() => lucide.createIcons(), 0);
+  return div;
+}
+
+/**
+ * Public: re-send the last query using the saved context.
+ * Called by inline retry buttons.
+ */
+async function retryLastQuery() {
+  if (!_lastQueryContext) return;
+  // Remove all existing error messages
+  document.querySelectorAll(".message.system .message-error").forEach(el => {
+    el.closest(".message.system")?.remove();
+  });
+  const { displayQuery, apiQuery, overrides } = _lastQueryContext;
+  await sendQueryInternal(displayQuery, apiQuery, overrides, /* isRetry= */ true);
+}
+
+// ============================================================================
+
+async function sendQueryInternal(displayQuery, apiQuery, overrides, isRetry = false) {
   // Ensure we have a conversation
   if (!currentConversationId) {
     console.log("No conversation, creating new one...");
@@ -8605,14 +8939,23 @@ async function sendQueryInternal(displayQuery, apiQuery, overrides) {
     }
   }
 
-  // Add user message to UI
-  addMessageToUI("user", displayQuery);
+  // On a fresh (non-retry) send, add user message to UI + DB
+  if (!isRetry) {
+    addMessageToUI("user", displayQuery);
+    await addMessageToConversation("user", displayQuery);
+  }
 
-  // Add to conversation in database
-  await addMessageToConversation("user", displayQuery);
+  // Save context for potential retry
+  _lastQueryContext = { displayQuery, apiQuery, overrides };
 
   // Add typing indicator
   const loadingId = addTypingIndicator();
+
+  // ---- Abort any previous in-flight request ----
+  if (_streamAbortController) {
+    _streamAbortController.abort();
+    _streamAbortController = null;
+  }
 
   try {
     // Persona: from slash command overrides or dropdown
@@ -8621,10 +8964,8 @@ async function sendQueryInternal(displayQuery, apiQuery, overrides) {
     const activePersona = overrides?.personaOverride ?? (chatPersonaSelect || personaSelect)?.value ?? null;
     const activeMode = overrides?.modeOverride ?? null;
 
-    // Get conversation history (excluding the message we just added - it will be included in the query)
+    // Get conversation history (excluding the message we just added)
     const messages = getCurrentConversationMessages();
-    // Convert to format expected by backend: [{role: 'user', content: '...'}, {role: 'assistant', content: '...'}]
-    // Exclude the last message (the one we just added)
     const conversationHistory = messages.slice(0, -1).map((msg) => ({
       role: msg.role,
       content: msg.content,
@@ -8671,89 +9012,334 @@ async function sendQueryInternal(displayQuery, apiQuery, overrides) {
     const queryOptions = {
       mode: currentMode,
       conversation_history: conversationHistory,
-      page: getEffectivePage(), // Resolved page for mental models & RAG filtering
-      confidence: confidence, // Router v2: fast/balanced/thorough
-      provider_override: providerOverride, // Router v2: force specific provider
+      page: getEffectivePage(),
+      confidence: confidence,
+      provider_override: providerOverride,
     };
 
-    // Add mental models override if present (per-conversation or global defaults)
     if (mentalModelsOverride && !mentalModelsOverride.useDefaults) {
       queryOptions.mental_models_override = mentalModelsOverride.modelIds;
     } else {
-      // Check for global default models
       const globalDefaults = getGlobalDefaultModels();
       if (globalDefaults && globalDefaults.enabled && globalDefaults.modelIds.length > 0) {
         queryOptions.mental_models_override = globalDefaults.modelIds;
       }
     }
 
-    const result = await window.polly.query(apiQuery, queryOptions);
+    // ---- Attempt streaming ----
+    await _sendQueryStreaming(apiQuery, queryOptions, loadingId);
 
-    // Remove loading and add response
+  } catch (error) {
+    removeMessage(loadingId);
+    _hideStopButton();
+    _streamAbortController = null;
+    _clearStreamTimeout();
+    console.error("[sendQueryInternal] Unhandled error:", error);
+    _showStreamError(`Error: ${error.message}`);
+  }
+}
+
+/**
+ * Core streaming implementation.
+ * Falls back to window.polly.query() IPC if the server is unreachable.
+ */
+async function _sendQueryStreaming(apiQuery, queryOptions, loadingId) {
+  _streamAbortController = new AbortController();
+  const { signal } = _streamAbortController;
+
+  // Show stop button
+  _showStopButton();
+
+  // Set hard timeout
+  _streamTimeoutHandle = setTimeout(() => {
+    if (_streamAbortController) {
+      _streamAbortController.abort("timeout");
+    }
+  }, STREAM_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(`${API_URL}/polly/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: apiQuery, stream: true, ...queryOptions }),
+      signal,
+    });
+  } catch (fetchErr) {
+    _clearStreamTimeout();
+    _hideStopButton();
+    _streamAbortController = null;
+
+    if (fetchErr.name === "AbortError") {
+      // Timed out before even connecting
+      removeMessage(loadingId);
+      _showStreamError("Request timed out. The server may be busy.");
+      return;
+    }
+
+    // Server unreachable — fall back to IPC
+    console.warn("[Streaming] fetch failed, falling back to IPC:", fetchErr.message);
+    await _sendQueryFallbackIPC(apiQuery, queryOptions, loadingId);
+    return;
+  }
+
+  // Check for non-streaming response (older server / content-type mismatch)
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("text/event-stream")) {
+    _clearStreamTimeout();
+    _hideStopButton();
+    _streamAbortController = null;
+    console.warn("[Streaming] Server returned non-SSE content-type:", contentType, "— falling back to IPC");
+    removeMessage(loadingId);
+    await _sendQueryFallbackIPC(apiQuery, queryOptions, loadingId);
+    return;
+  }
+
+  if (!response.ok) {
+    _clearStreamTimeout();
+    _hideStopButton();
+    _streamAbortController = null;
+    removeMessage(loadingId);
+    _showStreamError(`Server error: ${response.status} ${response.statusText}`);
+    return;
+  }
+
+  // ---- Replace typing indicator with an empty assistant bubble ----
+  const container = getChatMessagesContainer();
+  const msgId = `msg-${Date.now()}`;
+  const msgDiv = document.createElement("div");
+  msgDiv.className = "message assistant";
+  msgDiv.id = msgId;
+  msgDiv.dataset.timestamp = new Date().toISOString();
+  msgDiv.innerHTML = `
+    <div class="message-content" id="${msgId}-content"></div>
+    <div class="message-timestamp" title="${new Date().toLocaleString()}">${getRelativeTime(new Date())}</div>
+  `;
+  // Swap typing indicator → message bubble
+  const typingEl = document.getElementById(loadingId);
+  if (typingEl) {
+    container.replaceChild(msgDiv, typingEl);
+  } else {
+    container.appendChild(msgDiv);
+  }
+
+  const contentEl = document.getElementById(`${msgId}-content`);
+
+  // Add blinking cursor
+  const cursor = document.createElement("span");
+  cursor.className = "stream-cursor";
+  contentEl.appendChild(cursor);
+
+  // ---- Read SSE stream ----
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let textBuffer = "";       // Raw accumulated text
+  let metadata = null;
+  let personaActions = [];
+  let aborted = false;
+  let lastRenderTime = 0;
+  const RENDER_INTERVAL_MS = 100;
+
+  // Throttled markdown render
+  let rafPending = false;
+  function scheduleRender() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      const now = Date.now();
+      if (now - lastRenderTime >= RENDER_INTERVAL_MS) {
+        _renderStreamContent(contentEl, textBuffer, cursor, /* final= */ false);
+        lastRenderTime = now;
+      }
+      // Scroll to bottom
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    });
+  }
+
+  try {
+    outer: while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete SSE lines
+      let newlineIdx;
+      while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, newlineIdx).trimEnd();
+        buffer = buffer.slice(newlineIdx + 1);
+
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+
+        if (raw === "[DONE]") break outer;
+
+        let event;
+        try {
+          event = JSON.parse(raw);
+        } catch {
+          continue;
+        }
+
+        // The actual SSE format uses "chunk" not "content"
+        if (event.chunk !== undefined) {
+          textBuffer += event.chunk;
+          scheduleRender();
+        } else if (event.metadata) {
+          metadata = event.metadata;
+          console.log("[Streaming] metadata:", metadata);
+        } else if (event.persona_actions) {
+          personaActions = event.persona_actions;
+        } else if (event.error) {
+          throw new Error(event.error);
+        }
+      }
+    }
+  } catch (streamErr) {
+    if (streamErr.name === "AbortError" || signal.aborted) {
+      aborted = true;
+    } else {
+      // Mid-stream error
+      _clearStreamTimeout();
+      _hideStopButton();
+      _streamAbortController = null;
+      // Keep partial content, then show error
+      _renderStreamContent(contentEl, textBuffer, cursor, /* final= */ true);
+      _showStreamError(`Error during generation: ${streamErr.message}`);
+      // Save partial to DB
+      if (textBuffer) {
+        await addMessageToConversation("assistant", textBuffer).catch(() => {});
+      }
+      return;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  _clearStreamTimeout();
+  _hideStopButton();
+  _streamAbortController = null;
+
+  if (aborted) {
+    // User stopped — keep partial, add indicator
+    _renderStreamContent(contentEl, textBuffer, cursor, /* final= */ true);
+    // Append stopped badge
+    const stopBadge = document.createElement("span");
+    stopBadge.className = "stream-stopped-indicator";
+    stopBadge.textContent = "(stopped)";
+    contentEl.appendChild(stopBadge);
+    // Save partial to DB
+    if (textBuffer) {
+      await addMessageToConversation("assistant", textBuffer + " (stopped)").catch(() => {});
+    }
+    // Re-enable
+    const chatInputEl = document.getElementById("chat-input");
+    if (chatInputEl) chatInputEl.disabled = false;
+    return;
+  }
+
+  // ---- Final render ----
+  _renderStreamContent(contentEl, textBuffer, cursor, /* final= */ true);
+
+  // Add metadata footer if present
+  if (metadata) {
+    const footerHtml = _buildMetadataFooterHtml(metadata);
+    if (footerHtml) {
+      const footer = document.createElement("div");
+      footer.innerHTML = footerHtml;
+      contentEl.appendChild(footer.firstElementChild);
+    }
+    console.log("[Streaming] Router v2 metadata:", metadata);
+  }
+
+  // Save full response to DB
+  await addMessageToConversation("assistant", textBuffer);
+
+  // Process persona_actions (knowledge gap suggestions)
+  if (personaActions.length > 0) {
+    for (const action of personaActions) {
+      if (action.type === "suggest_kb_write" && window.showKnowledgeSuggestion && msgDiv) {
+        window.showKnowledgeSuggestion(msgDiv, action);
+      }
+    }
+  }
+
+  // Re-init Lucide icons that may have been rendered into markdown
+  if (typeof lucide !== "undefined") setTimeout(() => lucide.createIcons(), 0);
+
+  // Auto-categorize (non-blocking)
+  setTimeout(() => autoCategorizeConversation(currentConversationId), 100);
+}
+
+/**
+ * Render accumulated stream text into contentEl.
+ * During streaming (final=false): renders as-is with a cursor appended.
+ * On completion (final=true): runs full marked.js + cursor removed.
+ */
+function _renderStreamContent(contentEl, text, cursor, final) {
+  if (final) {
+    // Remove cursor first
+    if (cursor && cursor.parentNode) cursor.remove();
+    // Full markdown render
+    contentEl.innerHTML = formatResponse(text);
+  } else {
+    // Remove cursor temporarily, render markdown, re-append cursor
+    if (cursor && cursor.parentNode) cursor.remove();
+    if (text) {
+      contentEl.innerHTML = formatResponse(text);
+    }
+    contentEl.appendChild(cursor);
+  }
+}
+
+/**
+ * Fallback: use the existing window.polly.query() IPC path.
+ */
+async function _sendQueryFallbackIPC(apiQuery, queryOptions, loadingId) {
+  console.log("[Streaming] Using IPC fallback");
+  try {
+    const result = await window.polly.query(apiQuery, queryOptions);
     removeMessage(loadingId);
 
     if (result.success) {
       const response = formatResponse(result.result.response);
-
-      // Check if we have router v2 metadata
       let metadata = result.result.metadata;
       let messageContent = response;
 
       if (metadata) {
-        // Add metadata footer to response
-        const costStr = metadata.cost ? `$${metadata.cost.toFixed(4)}` : "-";
-        const tokensStr =
-          metadata.tokens_in && metadata.tokens_out
-            ? `${metadata.tokens_in + metadata.tokens_out} tokens`
-            : "-";
-        const providerStr = metadata.provider || "-";
-        const modelStr = metadata.model || "-";
-        const estimatedStr = metadata.estimated ? " (estimated)" : "";
-        
-        // Add routing reason if available (shows why Polly chose this provider)
-        let routingReasonHtml = "";
-        if (metadata.routing_reason) {
-          routingReasonHtml = `<br><span style="color: #606060; font-style: italic;">→ ${metadata.routing_reason}</span>`;
-        }
-
-        messageContent += `
-          <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #2a2a2a; font-size: 11px; color: #808080; font-family: monospace;">
-            ✓ ${providerStr} (${modelStr}) • ${costStr} • ${tokensStr}${estimatedStr}${routingReasonHtml}
-          </div>
-        `;
-
-        console.log("Router v2 metadata:", metadata);
+        messageContent += _buildMetadataFooterHtml(metadata);
       }
 
       const messageDiv = addMessageToUI("assistant", messageContent);
-
-      // Add to conversation in database
       await addMessageToConversation("assistant", result.result.response);
 
-      // Check for knowledge gap suggestions (persona_actions)
       if (result.result.persona_actions && result.result.persona_actions.length > 0) {
         for (const action of result.result.persona_actions) {
-          if (action.type === 'suggest_kb_write' && window.showKnowledgeSuggestion && messageDiv) {
-            // Show knowledge suggestion card below the message
+          if (action.type === "suggest_kb_write" && window.showKnowledgeSuggestion && messageDiv) {
             window.showKnowledgeSuggestion(messageDiv, action);
           }
         }
       }
 
-      // Auto-categorize conversation after response
-      // Use setTimeout to not block the UI
-      setTimeout(() => {
-        autoCategorizeConversation(currentConversationId);
-      }, 100);
-
-      // Related notes feature temporarily disabled in new UI
-      // Will be reimplemented in a future update
+      setTimeout(() => autoCategorizeConversation(currentConversationId), 100);
     } else {
-      addMessageToUI("system", `Error: ${result.error}`);
+      _showStreamError(`Error: ${result.error}`);
     }
-  } catch (error) {
+  } catch (err) {
     removeMessage(loadingId);
-    addMessageToUI("system", `Error: ${error.message}`);
+    _showStreamError(`Error: ${err.message}`);
+  }
+}
+
+/**
+ * Clear the streaming timeout handle.
+ */
+function _clearStreamTimeout() {
+  if (_streamTimeoutHandle !== null) {
+    clearTimeout(_streamTimeoutHandle);
+    _streamTimeoutHandle = null;
   }
 }
 
@@ -8814,6 +9400,8 @@ function addTypingIndicator() {
   const div = document.createElement("div");
   div.className = "message assistant";
   div.id = id;
+  div.setAttribute("role", "status");
+  div.setAttribute("aria-label", "Assistant is typing");
   div.innerHTML = `
     <div class="typing-indicator">
       <div class="typing-dots">
@@ -10232,7 +10820,7 @@ async function exportPatterns() {
   try {
     const response = await fetch("http://127.0.0.1:11436/polly/patterns");
     if (!response.ok) {
-      alert("Could not export patterns");
+      showToast("Could not export patterns", "error");
       return;
     }
 
@@ -10262,14 +10850,12 @@ async function exportPatterns() {
  * Reset all patterns with confirmation
  */
 async function resetPatterns() {
-  const confirmed = confirm(
-    "Are you sure you want to reset all learned patterns?\n\n" +
-      "This will:\n" +
-      "• Delete all patterns\n" +
-      "• Clear query history\n" +
-      "• Create a backup first\n\n" +
-      "This action cannot be undone.",
-  );
+  const confirmed = await ConfirmDialog.show({
+    title: 'Reset all patterns',
+    message: 'This will delete all patterns, clear query history, and create a backup first. This action cannot be undone.',
+    confirmLabel: 'Reset',
+    destructive: true,
+  });
 
   if (!confirmed) return;
 
@@ -10307,13 +10893,7 @@ async function resetPatterns() {
  * Show notification to user
  */
 function showNotification(message, type = "success") {
-  // Simple alert-based notification
-  // In the future, this could be replaced with a toast notification
-  if (type === "error") {
-    alert(`Error: ${message}`);
-  } else {
-    alert(message);
-  }
+  showToast(message, type === "error" ? "error" : type);
 }
 
 /**
@@ -10351,11 +10931,11 @@ async function saveSettings() {
     await saveDedupSettings();
   } catch (error) {
     console.error("Failed to save dedup settings:", error);
-    alert("Settings saved, but deduplication settings failed to save.");
+    showToast("Settings saved, but deduplication settings failed to save.", "warning");
     return;
   }
 
-  alert("Settings saved!");
+  showToast("Settings saved!", "success");
 }
 
 /**
@@ -10749,13 +11329,13 @@ async function saveRoutingSettings() {
       throw new Error(`Failed to save: ${response.status}`);
     }
 
-    alert("Routing settings saved successfully!");
+    showToast("Routing settings saved successfully!", "success");
 
     // Reload stats to show impact
     await loadRoutingStats();
   } catch (error) {
     console.error("Error saving routing settings:", error);
-    alert(`Failed to save routing settings: ${error.message}`);
+    showToast(`Failed to save routing settings: ${error.message}`, "error");
   }
 }
 
@@ -10763,7 +11343,12 @@ async function saveRoutingSettings() {
  * Reset routing settings to defaults
  */
 async function resetRoutingSettings() {
-  if (!confirm("Reset routing settings to defaults?")) {
+  if (!(await ConfirmDialog.show({
+    title: 'Reset routing settings',
+    message: 'Reset routing settings to defaults?',
+    confirmLabel: 'Reset',
+    destructive: true,
+  }))) {
     return;
   }
 
@@ -11142,11 +11727,11 @@ async function syncCalendar(daysAhead = 7) {
       });
     } else {
       console.error("Calendar sync failed:", result);
-      alert(`Sync failed: ${result.detail || "Unknown error"}`);
+      showToast(`Sync failed: ${result.detail || "Unknown error"}`, "error");
     }
   } catch (error) {
     console.error("Calendar sync error:", error);
-    alert("Sync failed. Is the server running?");
+    showToast("Sync failed. Is the server running?", "error");
   } finally {
     if (syncBtn) {
       syncBtn.disabled = false;
@@ -11190,11 +11775,11 @@ async function syncReminders(includeCompleted = false) {
       });
     } else {
       console.error("Reminders sync failed:", result);
-      alert(`Sync failed: ${result.detail || "Unknown error"}`);
+      showToast(`Sync failed: ${result.detail || "Unknown error"}`, "error");
     }
   } catch (error) {
     console.error("Reminders sync error:", error);
-    alert("Sync failed. Is the server running?");
+    showToast("Sync failed. Is the server running?", "error");
   } finally {
     if (syncBtn) {
       syncBtn.disabled = false;
@@ -11241,11 +11826,11 @@ async function syncContext7Documentation(
       });
     } else {
       console.error("Context7 sync failed:", result);
-      alert(`Sync failed: ${result.detail || "Unknown error"}`);
+      showToast(`Sync failed: ${result.detail || "Unknown error"}`, "error");
     }
   } catch (error) {
     console.error("Context7 sync error:", error);
-    alert("Sync failed. Is the server running?");
+    showToast("Sync failed. Is the server running?", "error");
   } finally {
     if (syncBtn) {
       syncBtn.disabled = false;
@@ -11311,11 +11896,11 @@ async function syncObsidian() {
       }
     } else {
       console.error("Obsidian sync failed:", result);
-      alert(`Sync failed: ${result.detail || "Unknown error"}`);
+      showToast(`Sync failed: ${result.detail || "Unknown error"}`, "error");
     }
   } catch (error) {
     console.error("Obsidian sync error:", error);
-    alert("Sync failed. Is the server running?");
+    showToast("Sync failed. Is the server running?", "error");
   } finally {
     if (syncBtn) {
       syncBtn.disabled = false;
@@ -11369,7 +11954,7 @@ function initIntegrationPlaceholders() {
         .value.trim();
 
       if (!clientId || !clientSecret) {
-        alert("Please enter both Client ID and Client Secret");
+        showToast("Please enter both Client ID and Client Secret", "warning");
         return;
       }
 
@@ -11377,9 +11962,7 @@ function initIntegrationPlaceholders() {
       await window.polly.setStore("github_oauth_client_id", clientId);
       await window.polly.setStore("github_oauth_client_secret", clientSecret);
 
-      alert(
-        'GitHub OAuth configuration saved! You can now click "connect" to authenticate.',
-      );
+      showToast('GitHub OAuth configuration saved! You can now click "connect" to authenticate.', "success");
 
       // Show the connect button and hide config panel
       const configPanel = document.getElementById("github-config");
@@ -11414,9 +11997,7 @@ function initIntegrationPlaceholders() {
         );
 
         if (!clientId || !clientSecret) {
-          alert(
-            'Please configure GitHub OAuth first. Click the "configure" button to set up your Client ID and Secret.',
-          );
+          showToast('Please configure GitHub OAuth first. Click the "configure" button to set up your Client ID and Secret.', "warning");
 
           // Show config panel if available
           const configBtn = document.getElementById("github-config-btn");
@@ -11452,14 +12033,14 @@ function initIntegrationPlaceholders() {
             });
           }
 
-          alert(`Successfully connected to GitHub as @${result.username}`);
+          showToast(`Successfully connected to GitHub as @${result.username}`, "success");
         } else {
-          alert(`Failed to connect to GitHub: ${result.error}`);
+          showToast(`Failed to connect to GitHub: ${result.error}`, "error");
           githubBtn.disabled = false;
           githubBtn.textContent = "connect";
         }
       } catch (error) {
-        alert(`Error: ${error.message}`);
+        showToast(`Error: ${error.message}`, "error");
         githubBtn.disabled = false;
         githubBtn.textContent = "connect";
       }
@@ -11553,9 +12134,7 @@ function initIntegrationPlaceholders() {
         });
 
         if (result.success) {
-          alert(
-            `Synced ${result.fetched} items from GitHub. Indexed ${result.indexed} documents.`,
-          );
+          showToast(`Synced ${result.fetched} items from GitHub. Indexed ${result.indexed} documents.`, "success");
 
           // Update last sync time
           updateIntegrationCard("github", {
@@ -11564,13 +12143,13 @@ function initIntegrationPlaceholders() {
             lastSync: new Date().toISOString(),
           });
         } else {
-          alert(`Sync failed: ${result.error}`);
+          showToast(`Sync failed: ${result.error}`, "error");
         }
 
         githubSyncBtn.disabled = false;
         githubSyncBtn.textContent = "sync now";
       } catch (error) {
-        alert(`Error: ${error.message}`);
+        showToast(`Error: ${error.message}`, "error");
         console.error("Sync error:", error);
         githubSyncBtn.disabled = false;
         githubSyncBtn.textContent = "sync now";
@@ -11878,7 +12457,7 @@ function initIntegrationPlaceholders() {
       }
 
       if (libraries.length === 0) {
-        alert("Please select at least one library");
+        showToast("Please select at least one library", "warning");
         return;
       }
 
@@ -11925,12 +12504,12 @@ function initIntegrationPlaceholders() {
         } else {
           console.error("Obsidian connection failed:", result);
           updateIntegrationStatus("obsidian", "error");
-          alert(`Connection failed: ${result.error || "Unknown error"}`);
+          showToast(`Connection failed: ${result.error || "Unknown error"}`, "error");
         }
       } catch (error) {
         console.error("Obsidian connection error:", error);
         updateIntegrationStatus("obsidian", "error");
-        alert("Connection failed. Is the server running?");
+        showToast("Connection failed. Is the server running?", "error");
       } finally {
         obsidianConnectBtn.disabled = false;
         obsidianConnectBtn.textContent = "connect";
@@ -11964,7 +12543,7 @@ function initIntegrationPlaceholders() {
         }
       } catch (error) {
         console.error("Error choosing folder:", error);
-        alert("Failed to choose folder");
+        showToast("Failed to choose folder", "error");
       }
     });
   }
@@ -11983,7 +12562,7 @@ function initIntegrationPlaceholders() {
       const syncEnabled = syncEnabledCheckbox?.checked || false;
 
       if (syncEnabled && !vaultPath) {
-        alert("Please select a vault folder when sync is enabled");
+        showToast("Please select a vault folder when sync is enabled", "warning");
         return;
       }
 
@@ -12045,23 +12624,19 @@ function initIntegrationPlaceholders() {
             // Update vault path display
             updateObsidianVaultDisplay(vaultPath);
 
-            alert(
-              "Obsidian sync enabled! New notes will be copied to your vault.",
-            );
+            showToast("Obsidian sync enabled! New notes will be copied to your vault.", "success");
           } else {
             console.error("Obsidian connection failed:", result);
-            alert(
-              `Failed to connect to vault: ${result.error || "Unknown error"}`,
-            );
+            showToast(`Failed to connect to vault: ${result.error || "Unknown error"}`, "error");
           }
         } else {
           // Sync disabled
           updateIntegrationStatus("obsidian", "not connected");
-          alert("Configuration saved. Obsidian sync is disabled.");
+          showToast("Configuration saved. Obsidian sync is disabled.", "info");
         }
       } catch (error) {
         console.error("Error saving Obsidian config:", error);
-        alert("Failed to save configuration");
+        showToast("Failed to save configuration", "error");
       } finally {
         obsidianSaveConfigBtn.disabled = false;
         obsidianSaveConfigBtn.textContent = "Save Configuration";
@@ -12093,7 +12668,7 @@ function initIntegrationPlaceholders() {
       const folder = document.getElementById("obsidian-test-folder").value;
 
       if (!title) {
-        alert("Please enter a note title");
+        showToast("Please enter a note title", "warning");
         return;
       }
 
@@ -12121,8 +12696,11 @@ function initIntegrationPlaceholders() {
         console.log("Note preview:", preview);
 
         // Step 2: Show confirmation dialog
-        const confirmMsg = `Create note: ${preview.note_path}\n\nPreview:\n${preview.content_preview}\n\nProceed?`;
-        if (!confirm(confirmMsg)) {
+        if (!(await ConfirmDialog.show({
+          title: 'Create test note',
+          message: `Create note at ${preview.note_path}? Preview: ${preview.content_preview}`,
+          confirmLabel: 'Create',
+        }))) {
           obsidianTestCreateBtn.disabled = false;
           obsidianTestCreateBtn.textContent = "Create Test Note";
           return;
@@ -12145,17 +12723,17 @@ function initIntegrationPlaceholders() {
         console.log("Create result:", result);
 
         if (result.success) {
-          alert(`Note created successfully!\n${result.note_path}`);
+          showToast(`Note created successfully! ${result.note_path}`, "success");
           // Clear form
           document.getElementById("obsidian-test-title").value = "";
           document.getElementById("obsidian-test-content").value = "";
           document.getElementById("obsidian-test-folder").value = "";
         } else {
-          alert(`Failed to create note: ${result.error || "Unknown error"}`);
+          showToast(`Failed to create note: ${result.error || "Unknown error"}`, "error");
         }
       } catch (error) {
         console.error("Error creating note:", error);
-        alert("Failed to create note. Check console for details.");
+        showToast("Failed to create note. Check console for details.", "error");
       } finally {
         obsidianTestCreateBtn.disabled = false;
         obsidianTestCreateBtn.textContent = "Create Test Note";
@@ -12202,14 +12780,12 @@ function initIntegrationPlaceholders() {
           // Auto-sync
           setTimeout(() => syncCalendar(), 500);
         } else {
-          alert(
-            `Calendar connection failed: ${result.error || "Unknown error"}`,
-          );
+          showToast(`Calendar connection failed: ${result.error || "Unknown error"}`, "error");
           updateIntegrationStatus("calendar", "error");
         }
       } catch (error) {
         console.error("Calendar connection error:", error);
-        alert("Connection failed. Is the server running?");
+        showToast("Connection failed. Is the server running?", "error");
       } finally {
         calendarConnectBtn.disabled = false;
         calendarConnectBtn.textContent = "enable";
@@ -12274,14 +12850,12 @@ function initIntegrationPlaceholders() {
           // Auto-sync
           setTimeout(() => syncReminders(), 500);
         } else {
-          alert(
-            `Reminders connection failed: ${result.error || "Unknown error"}`,
-          );
+          showToast(`Reminders connection failed: ${result.error || "Unknown error"}`, "error");
           updateIntegrationStatus("reminders", "error");
         }
       } catch (error) {
         console.error("Reminders connection error:", error);
-        alert("Connection failed. Is the server running?");
+        showToast("Connection failed. Is the server running?", "error");
       } finally {
         remindersConnectBtn.disabled = false;
         remindersConnectBtn.textContent = "enable";
@@ -12311,14 +12885,14 @@ function initIntegrationPlaceholders() {
   const icalBtn = document.getElementById("ical-connect-btn");
   if (icalBtn) {
     icalBtn.addEventListener("click", () => {
-      alert("Calendar account modal will be implemented in Phase 4");
+      showToast("Calendar account modal will be implemented in Phase 4", "info");
     });
   }
 
   const macosBtn = document.getElementById("macos-enable-btn");
   if (macosBtn) {
     macosBtn.addEventListener("click", () => {
-      alert("macOS permissions will be implemented in Phase 9");
+      showToast("macOS permissions will be implemented in Phase 9", "info");
     });
   }
 
@@ -12328,7 +12902,7 @@ function initIntegrationPlaceholders() {
       const newKey =
         "polly-local-" + Math.random().toString(36).substring(2, 15);
       document.getElementById("opencode-api-key").value = newKey;
-      alert("New API key generated!");
+      showToast("New API key generated!", "success");
     });
   }
 }
@@ -12344,6 +12918,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupMigration(); // Phase 16 - Migration UI
   setupCompressionSettings(); // Compression settings UI
   setupMemorySettings(); // Memory provider settings UI
+  setupRAGSettings(); // RAG & Retrieval settings UI
   setupSettingsCrossLinks(); // Cross-navigation between settings pages
 
   // Ensure all integration config panels start hidden
@@ -12367,7 +12942,7 @@ function openSaveConversationModal() {
   const messages = getCurrentConversationMessages();
 
   if (messages.length === 0) {
-    alert("No conversation to save. Start chatting first!");
+    showToast("No conversation to save. Start chatting first!", "warning");
     return;
   }
 
@@ -12754,7 +13329,7 @@ async function openNoteInObsidian(notePath) {
     // Use Obsidian URI protocol
     const vaultPath = await window.polly.getStore("vaultPath");
     if (!vaultPath) {
-      alert("Obsidian vault not configured");
+      showToast("Obsidian vault not configured", "warning");
       return;
     }
 
@@ -12771,7 +13346,7 @@ async function openNoteInObsidian(notePath) {
     window.open(uri, "_blank");
   } catch (error) {
     console.error("Error opening note:", error);
-    alert(`Could not open note: ${error.message}`);
+    showToast(`Could not open note: ${error.message}`, "error");
   }
 }
 
@@ -13051,6 +13626,13 @@ function clearModalForm() {
   document.getElementById("mental-model-keywords").value = "";
   document.getElementById("mental-model-enabled").checked = true;
 
+  // Clear field-error highlights
+  ["mental-model-id", "mental-model-name", "mental-model-description",
+   "mental-model-principles", "mental-model-prompt"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("field-error");
+  });
+
   // Clear all checkboxes
   document
     .querySelectorAll(".domain-checkbox")
@@ -13160,34 +13742,30 @@ async function saveMentalModel() {
       .value.trim();
     const enabled = document.getElementById("mental-model-enabled").checked;
 
-    // Validation
-    if (!id) {
-      alert("ID is required");
-      return;
+    // Validation — collect all errors, highlight fields, show as a single toast
+    const validationErrors = [];
+    const fieldMap = {
+      "mental-model-id": !id || !/^[a-z0-9_]+$/.test(id),
+      "mental-model-name": !name,
+      "mental-model-description": !description,
+      "mental-model-principles": !principlesText,
+      "mental-model-prompt": !promptInjection,
+    };
+    for (const [fieldId, hasError] of Object.entries(fieldMap)) {
+      const el = document.getElementById(fieldId);
+      if (el) {
+        if (hasError) el.classList.add("field-error");
+        else el.classList.remove("field-error");
+      }
     }
-
-    if (!/^[a-z0-9_]+$/.test(id)) {
-      alert("ID must be lowercase letters, numbers, and underscores only");
-      return;
-    }
-
-    if (!name) {
-      alert("Name is required");
-      return;
-    }
-
-    if (!description) {
-      alert("Description is required");
-      return;
-    }
-
-    if (!principlesText) {
-      alert("Principles are required");
-      return;
-    }
-
-    if (!promptInjection) {
-      alert("Prompt injection is required");
+    if (!id) validationErrors.push("ID is required");
+    else if (!/^[a-z0-9_]+$/.test(id)) validationErrors.push("ID must be lowercase letters, numbers, and underscores only");
+    if (!name) validationErrors.push("Name is required");
+    if (!description) validationErrors.push("Description is required");
+    if (!principlesText) validationErrors.push("Principles are required");
+    if (!promptInjection) validationErrors.push("Prompt injection is required");
+    if (validationErrors.length > 0) {
+      showToast(`Please fix ${validationErrors.length} validation error${validationErrors.length > 1 ? "s" : ""}: ${validationErrors[0]}`, "warning");
       return;
     }
 
@@ -13261,7 +13839,7 @@ async function saveMentalModel() {
     await loadMentalModels();
   } catch (error) {
     console.error("Error saving mental model:", error);
-    alert(`Failed to save mental model: ${error.message}`);
+    showToast(`Failed to save mental model: ${error.message}`, "error");
   }
 }
 
@@ -13285,7 +13863,7 @@ async function toggleMentalModel(modelId) {
     await loadMentalModels();
   } catch (error) {
     console.error("Error toggling mental model:", error);
-    alert(`Failed to toggle mental model: ${error.message}`);
+    showToast(`Failed to toggle mental model: ${error.message}`, "error");
   }
 }
 
@@ -13296,9 +13874,12 @@ async function deleteMentalModel(modelId) {
   const model = mentalModels.find((m) => m.id === modelId);
   if (!model) return;
 
-  if (
-    !confirm(`Delete mental model "${model.name}"?\n\nThis cannot be undone.`)
-  ) {
+  if (!(await ConfirmDialog.show({
+    title: 'Delete mental model',
+    message: `Delete mental model "${model.name}"? This cannot be undone.`,
+    confirmLabel: 'Delete',
+    destructive: true,
+  }))) {
     return;
   }
 
@@ -13318,7 +13899,7 @@ async function deleteMentalModel(modelId) {
     await loadMentalModels();
   } catch (error) {
     console.error("Error deleting mental model:", error);
-    alert(`Failed to delete mental model: ${error.message}`);
+    showToast(`Failed to delete mental model: ${error.message}`, "error");
   }
 }
 
@@ -13668,7 +14249,7 @@ async function loadGlobalDefaultsPicker() {
           modelIds: selectedModelIds,
         });
         console.log(`[Global Defaults] Saved ${selectedModelIds.length} default models`);
-        alert(`Saved ${selectedModelIds.length} global default model(s).`);
+        showToast(`Saved ${selectedModelIds.length} global default model(s).`, "success");
       };
     }
 
@@ -13896,11 +14477,16 @@ async function deleteDomain(domainId) {
   if (!domain) return;
 
   if (domainsConfig.domains.length <= 1) {
-    alert("Cannot delete the last domain");
+    showToast("Cannot delete the last domain", "warning");
     return;
   }
 
-  if (!confirm(`Delete domain "${domain.name}"? This cannot be undone.`)) {
+  if (!(await ConfirmDialog.show({
+    title: 'Delete domain',
+    message: `Delete domain "${domain.name}"? This cannot be undone.`,
+    confirmLabel: 'Delete',
+    destructive: true,
+  }))) {
     return;
   }
 
@@ -13921,7 +14507,7 @@ async function deleteDomain(domainId) {
     await loadDomainsConfig();
   } catch (error) {
     console.error("Failed to delete domain:", error);
-    alert(`Failed to delete domain: ${error.message}`);
+    showToast(`Failed to delete domain: ${error.message}`, "error");
   }
 }
 
@@ -14154,7 +14740,7 @@ async function suggestDomainKeywords() {
 
   const name = nameInput.value.trim();
   if (!name) {
-    alert("Please enter a domain name first");
+    showToast("Please enter a domain name first", "warning");
     return;
   }
 
@@ -14189,7 +14775,7 @@ async function suggestDomainKeywords() {
     const suggestions = result.suggestedKeywords || [];
 
     if (suggestions.length === 0) {
-      alert("No keyword suggestions available");
+      showToast("No keyword suggestions available", "info");
       return;
     }
 
@@ -14212,7 +14798,7 @@ async function suggestDomainKeywords() {
     }
   } catch (error) {
     console.error("Failed to suggest keywords:", error);
-    alert(`Failed to suggest keywords: ${error.message}`);
+    showToast(`Failed to suggest keywords: ${error.message}`, "error");
   } finally {
     btn.classList.remove("loading");
     btn.disabled = false;
@@ -14258,7 +14844,7 @@ async function toggleFolderNumbering(enabled) {
     await loadDomainsConfig();
   } catch (error) {
     console.error("Failed to toggle folder numbering:", error);
-    alert(`Failed to update folder numbering: ${error.message}`);
+    showToast(`Failed to update folder numbering: ${error.message}`, "error");
 
     // Reset toggle
     document.getElementById("folder-numbering-toggle").checked = !enabled;
@@ -14351,7 +14937,7 @@ async function saveDomainsOrder() {
     await loadDomainsConfig();
   } catch (error) {
     console.error("Failed to save domain order:", error);
-    alert(`Failed to save order: ${error.message}`);
+    showToast(`Failed to save order: ${error.message}`, "error");
     // Reload to restore correct order
     await loadDomainsConfig();
   }
@@ -15675,7 +16261,12 @@ async function saveCompressionSettings() {
  * Reset compression settings to defaults
  */
 async function resetCompressionSettings() {
-  if (!confirm("Reset compression settings to defaults?")) {
+  if (!(await ConfirmDialog.show({
+    title: 'Reset compression settings',
+    message: 'Reset compression settings to defaults?',
+    confirmLabel: 'Reset',
+    destructive: true,
+  }))) {
     return;
   }
 
@@ -16209,6 +16800,83 @@ function setupMemorySettings() {
   if (saveBtn) saveBtn.addEventListener("click", saveMemorySettings);
 }
 
+// ── RAG & Retrieval settings ──────────────────────────────────────────────────
+
+async function loadRAGSettings() {
+  try {
+    const response = await fetch(`${API_URL}/api/settings/rag`);
+    if (!response.ok) throw new Error("Failed to load RAG settings");
+    const data = await response.json();
+    if (data.success && data.settings) {
+      const s = data.settings;
+      const setSlider = (id, valId, value, decimals) => {
+        const el = document.getElementById(id);
+        const display = document.getElementById(valId);
+        if (el) el.value = value;
+        if (display) display.textContent = decimals > 0 ? parseFloat(value).toFixed(decimals) : value;
+      };
+      setSlider("rag-n-results",            "rag-n-results-value",            s.n_results            ?? 5,    0);
+      setSlider("rag-direct-threshold",     "rag-direct-threshold-value",     s.direct_threshold     ?? 0.72, 2);
+      setSlider("rag-adjacent-threshold",   "rag-adjacent-threshold-value",   s.adjacent_threshold   ?? 0.50, 2);
+      setSlider("rag-domain-boost",         "rag-domain-boost-value",         s.domain_match_boost   ?? 0.10, 2);
+      setSlider("rag-cross-domain-penalty", "rag-cross-domain-penalty-value", s.cross_domain_penalty ?? 0.15, 2);
+      setSlider("rag-complexity-score",     "rag-complexity-score-value",     s.min_complexity_score ?? 0.60, 2);
+      const decomp = document.getElementById("rag-decomposition-enabled");
+      if (decomp) decomp.checked = s.decomposition_enabled !== false;
+    }
+  } catch (error) {
+    console.error("Error loading RAG settings:", error);
+    showToast("Failed to load RAG settings", "error");
+  }
+}
+
+async function saveRAGSettings() {
+  const statusEl = document.getElementById("rag-settings-status");
+  try {
+    const getVal = (id) => document.getElementById(id)?.value;
+    const payload = {
+      n_results:            parseInt(getVal("rag-n-results"), 10),
+      direct_threshold:     parseFloat(getVal("rag-direct-threshold")),
+      adjacent_threshold:   parseFloat(getVal("rag-adjacent-threshold")),
+      domain_match_boost:   parseFloat(getVal("rag-domain-boost")),
+      cross_domain_penalty: parseFloat(getVal("rag-cross-domain-penalty")),
+      min_complexity_score: parseFloat(getVal("rag-complexity-score")),
+      decomposition_enabled: document.getElementById("rag-decomposition-enabled")?.checked !== false,
+    };
+    const response = await fetch(`${API_URL}/api/settings/rag`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error("Failed to save RAG settings");
+    const data = await response.json();
+    if (data.success) {
+      showToast("RAG settings saved. Changes take effect on next restart.", "success");
+      if (statusEl) {
+        statusEl.textContent = "Saved successfully.";
+        statusEl.style.display = "block";
+        statusEl.style.color = "#81c784";
+        setTimeout(() => { statusEl.style.display = "none"; }, 3000);
+      }
+    } else {
+      throw new Error(data.message || "Unknown error");
+    }
+  } catch (error) {
+    console.error("Error saving RAG settings:", error);
+    showToast("Failed to save RAG settings: " + error.message, "error");
+    if (statusEl) {
+      statusEl.textContent = "Save failed: " + error.message;
+      statusEl.style.display = "block";
+      statusEl.style.color = "#e57373";
+    }
+  }
+}
+
+function setupRAGSettings() {
+  const saveBtn = document.getElementById("btn-save-rag-settings");
+  if (saveBtn) saveBtn.addEventListener("click", saveRAGSettings);
+}
+
 // Make functions globally accessible
 window.editDomain = editDomain;
 window.deleteDomain = deleteDomain;
@@ -16241,6 +16909,13 @@ document.addEventListener("DOMContentLoaded", () => {
   if (saveBtn) {
     saveBtn.addEventListener("click", saveMentalModel);
   }
+
+  // Clear field-error highlights when user edits a field
+  ["mental-model-id", "mental-model-name", "mental-model-description",
+   "mental-model-principles", "mental-model-prompt"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", () => el.classList.remove("field-error"));
+  });
 
   // Template selection
   const templateSelect = document.getElementById("mental-model-template");
@@ -20576,7 +21251,7 @@ function setupSuggestionHandlers() {
           btn.disabled = false;
           btn.innerHTML = '<i data-lucide="check" style="width: 12px; height: 12px;"></i>';
           if (typeof lucide !== 'undefined') lucide.createIcons();
-          alert(`Failed to apply suggestion: ${error.message}`);
+          showToast(`Failed to apply suggestion: ${error.message}`, "error");
         }
       }
     });
@@ -20692,7 +21367,12 @@ function setupGardenMaintenance() {
   
   if (pruneWeakBtn) {
     pruneWeakBtn.addEventListener('click', async () => {
-      if (!confirm('Remove all connections with strength below 0.3? This cannot be undone.')) return;
+      if (!(await ConfirmDialog.show({
+        title: 'Prune weak links',
+        message: 'Remove all connections with strength below 0.3? This cannot be undone.',
+        confirmLabel: 'Prune',
+        destructive: true,
+      }))) return;
       
       pruneWeakBtn.disabled = true;
       pruneWeakBtn.innerHTML = '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Pruning...</span>';
@@ -20705,13 +21385,13 @@ function setupGardenMaintenance() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         
-        alert(data.message);
+        showToast(data.message, "success");
         await loadGardenStats();
         if (cytoscapeInstance) await initGraphCanvas();
         
       } catch (error) {
         console.error('[Garden] Prune weak failed:', error);
-        alert(`Failed to prune weak links: ${error.message}`);
+        showToast(`Failed to prune weak links: ${error.message}`, "error");
       } finally {
         pruneWeakBtn.disabled = false;
         pruneWeakBtn.innerHTML = '<i data-lucide="scissors" style="width: 14px; height: 14px;"></i><span>Prune Weak Links</span>';
@@ -20722,7 +21402,12 @@ function setupGardenMaintenance() {
   
   if (pruneStaleBtn) {
     pruneStaleBtn.addEventListener('click', async () => {
-      if (!confirm('Remove entities not seen in 180 days with <3 mentions? This cannot be undone.')) return;
+      if (!(await ConfirmDialog.show({
+        title: 'Remove stale entities',
+        message: 'Remove entities not seen in 180 days with fewer than 3 mentions? This cannot be undone.',
+        confirmLabel: 'Remove',
+        destructive: true,
+      }))) return;
       
       pruneStaleBtn.disabled = true;
       pruneStaleBtn.innerHTML = '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Pruning...</span>';
@@ -20735,12 +21420,12 @@ function setupGardenMaintenance() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         
-        alert(data.message);
+        showToast(data.message, "success");
         await loadGardenStats();
         
       } catch (error) {
         console.error('[Garden] Prune stale failed:', error);
-        alert(`Failed to prune stale entities: ${error.message}`);
+        showToast(`Failed to prune stale entities: ${error.message}`, "error");
       } finally {
         pruneStaleBtn.disabled = false;
         pruneStaleBtn.innerHTML = '<i data-lucide="trash-2" style="width: 14px; height: 14px;"></i><span>Remove Stale Entities</span>';
@@ -20753,11 +21438,15 @@ function setupGardenMaintenance() {
     enrichAllBtn.addEventListener('click', async () => {
       const suggestions = window.gardenSuggestions?.enrichment_candidates || [];
       if (suggestions.length === 0) {
-        alert('No notes need enrichment!');
+        showToast('No notes need enrichment!', "info");
         return;
       }
       
-      if (!confirm(`Enrich ${suggestions.length} unenriched notes? This may take a while.`)) return;
+      if (!(await ConfirmDialog.show({
+        title: 'Enrich notes',
+        message: `Enrich ${suggestions.length} unenriched notes? This may take a while.`,
+        confirmLabel: 'Enrich',
+      }))) return;
       
       enrichAllBtn.disabled = true;
       enrichAllBtn.innerHTML = '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Enriching...</span>';
@@ -20773,13 +21462,13 @@ function setupGardenMaintenance() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         
-        alert(`Enriched ${data.enriched_count} notes with ${data.entities_added} entities!`);
+        showToast(`Enriched ${data.enriched_count} notes with ${data.entities_added} entities!`, "success");
         await loadGardenStats();
         await loadGardenSuggestions();
         
       } catch (error) {
         console.error('[Garden] Enrich all failed:', error);
-        alert(`Failed to enrich notes: ${error.message}`);
+        showToast(`Failed to enrich notes: ${error.message}`, "error");
       } finally {
         enrichAllBtn.disabled = false;
         enrichAllBtn.innerHTML = '<i data-lucide="sparkles" style="width: 14px; height: 14px;"></i><span>Enrich Unenriched Notes</span>';
@@ -20909,7 +21598,12 @@ async function loadGardenEntities() {
         e.stopPropagation();
         const entityId = btn.dataset.entityId;
         const entityName = btn.dataset.entityName;
-        if (!confirm(`Delete entity "${entityName}"? This will also remove all its relationships.`)) return;
+        if (!(await ConfirmDialog.show({
+          title: 'Delete entity',
+          message: `Delete entity "${entityName}"? This will also remove all its relationships.`,
+          confirmLabel: 'Delete',
+          destructive: true,
+        }))) return;
         
         try {
           const resp = await fetch(`http://127.0.0.1:11436/polly/graph/entities/${encodeURIComponent(entityId)}`, { method: 'DELETE' });
@@ -20925,7 +21619,7 @@ async function loadGardenEntities() {
           loadGardenStats();
         } catch (error) {
           console.error('[Garden] Delete entity failed:', error);
-          alert(`Failed to delete entity: ${error.message}`);
+          showToast(`Failed to delete entity: ${error.message}`, "error");
         }
       });
     });
@@ -20971,7 +21665,12 @@ function updateDeleteSelectedBtn() {
 async function deleteSelectedEntities() {
   if (gardenSelectedEntities.size === 0) return;
   
-  if (!confirm(`Delete ${gardenSelectedEntities.size} selected entities? This cannot be undone.`)) return;
+  if (!(await ConfirmDialog.show({
+    title: 'Delete selected entities',
+    message: `Delete ${gardenSelectedEntities.size} selected entities? This cannot be undone.`,
+    confirmLabel: 'Delete',
+    destructive: true,
+  }))) return;
   
   const btn = document.getElementById('garden-delete-selected-btn');
   if (btn) {
@@ -21005,7 +21704,7 @@ async function deleteSelectedEntities() {
   }
   
   const msg = `Deleted ${deleted} entities` + (failed > 0 ? `, ${failed} failed` : '');
-  alert(msg);
+  showToast(msg, failed > 0 ? "warning" : "success");
   
   // Refresh stats
   loadGardenStats();

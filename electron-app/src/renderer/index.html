@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="styles/template-gallery.css">
   <link rel="stylesheet" href="styles/curriculum.css">
   <link rel="stylesheet" href="components/mental-models-editor.css">
+  <link rel="stylesheet" href="components/confirm-dialog.css">
   <script src="lucide.min.js"></script>
   <script src="marked.js"></script>
   <script src="mermaid.min.js"></script>
@@ -26,6 +27,8 @@
   <script src="pyodide-loader.js"></script>
   <!-- API Client Utility - Load before other components -->
   <script src="utils/api-client.js"></script>
+  <!-- Accessibility: Focus trap utility -->
+  <script src="utils/focus-trap.js"></script>
   <script src="components/question-form.js"></script>
   <script src="components/preview-modal.js"></script>
   <script src="components/template-gallery.js"></script>
@@ -34,8 +37,11 @@
   <script src="components/mental-models-editor.js"></script>
   <!-- Phase 23.5: Security Hardening - Package Approval Dialog -->
   <script src="components/package-approval-dialog.js"></script>
+  <script src="components/confirm-dialog.js"></script>
 </head>
 <body>
+  <!-- Skip to main content (accessibility) -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
   <!-- Polly Initialization Overlay -->
   <div id="polly-init-overlay" class="polly-init-overlay hidden">
     <div class="init-content">
@@ -73,39 +79,39 @@
     <!-- Main Layout Container -->
     <div class="app-layout-container">
       <!-- Icon Ribbon (Far Left Vertical - Main Page Navigation) -->
-      <div class="ribbon" id="icon-ribbon">
-      <button class="ribbon-logo glitch" data-view="dashboard" title="Polly Home">
-        <i data-lucide="zap"></i>
+      <nav class="ribbon" id="icon-ribbon" role="navigation" aria-label="Main navigation">
+      <button class="ribbon-logo glitch" data-view="dashboard" title="Polly Home" aria-label="Polly Home">
+        <i data-lucide="zap" aria-hidden="true"></i>
       </button>
       
       <div class="ribbon-divider"></div>
       
-      <button class="ribbon-item active glitch" data-view="dashboard" title="Dashboard">
-        <i data-lucide="layout-dashboard"></i>
+      <button class="ribbon-item active glitch" data-view="dashboard" title="Dashboard" aria-label="Dashboard" aria-current="page">
+        <i data-lucide="layout-dashboard" aria-hidden="true"></i>
       </button>
-      <button class="ribbon-item" data-view="code" title="Code">
-        <i data-lucide="code-2"></i>
+      <button class="ribbon-item" data-view="code" title="Code" aria-label="Code">
+        <i data-lucide="code-2" aria-hidden="true"></i>
       </button>
-      <button class="ribbon-item" data-view="knowledge" title="Knowledge Graph">
-        <i data-lucide="network"></i>
+      <button class="ribbon-item" data-view="knowledge" title="Knowledge Graph" aria-label="Knowledge Graph">
+        <i data-lucide="network" aria-hidden="true"></i>
       </button>
-      <button class="ribbon-item" data-view="notes" title="Notes">
-        <i data-lucide="book-open"></i>
+      <button class="ribbon-item" data-view="notes" title="Notes" aria-label="Notes">
+        <i data-lucide="book-open" aria-hidden="true"></i>
       </button>
-      <button class="ribbon-item" data-view="graph" title="Graph">
-        <i data-lucide="git-graph"></i>
+      <button class="ribbon-item" data-view="graph" title="Graph" aria-label="Graph">
+        <i data-lucide="git-graph" aria-hidden="true"></i>
       </button>
-      <button class="ribbon-item" data-view="learning" title="Learning">
-        <i data-lucide="graduation-cap"></i>
+      <button class="ribbon-item" data-view="learning" title="Learning" aria-label="Learning">
+        <i data-lucide="graduation-cap" aria-hidden="true"></i>
       </button>
-      <button class="ribbon-item" data-view="search" title="Search">
-        <i data-lucide="search"></i>
+      <button class="ribbon-item" data-view="search" title="Search" aria-label="Search">
+        <i data-lucide="search" aria-hidden="true"></i>
       </button>
-      <button class="ribbon-item" data-view="patterns" title="Patterns">
-        <i data-lucide="sparkles"></i>
+      <button class="ribbon-item" data-view="patterns" title="Patterns" aria-label="Patterns">
+        <i data-lucide="sparkles" aria-hidden="true"></i>
       </button>
-      <button class="ribbon-item" data-view="domains" title="Domains">
-        <i data-lucide="folder-tree"></i>
+      <button class="ribbon-item" data-view="domains" title="Domains" aria-label="Domains">
+        <i data-lucide="folder-tree" aria-hidden="true"></i>
       </button>
       
       <div class="ribbon-spacer"></div>
@@ -115,16 +121,16 @@
         <div class="status-dot" id="status-dot"></div>
       </div>
       
-      <button class="ribbon-item" data-view="settings" title="Settings">
-        <i data-lucide="settings"></i>
+      <button class="ribbon-item" data-view="settings" title="Settings" aria-label="Settings">
+        <i data-lucide="settings" aria-hidden="true"></i>
       </button>
-      </div>
+      </nav>
 
       <!-- Main Content -->
       <div class="main-container">
       <div class="three-column-layout">
         <!-- Left Sidebar -->
-        <aside class="left-sidebar" id="left-sidebar">
+        <aside class="left-sidebar" id="left-sidebar" aria-label="Sidebar">
           <div class="sidebar-header">
             <span class="sidebar-title">Navigation</span>
           </div>
@@ -160,6 +166,7 @@
 
         <!-- Main Content Area -->
         <main class="main-content-area" id="main-content-area">
+        <a id="main-content" tabindex="-1" style="position:absolute;"></a>
         <!-- Setup View (shown first if not configured) -->
         <div class="view" id="view-setup">
           <div class="setup-container">
@@ -770,6 +777,114 @@
                 </div>
               </div>
             </div>
+
+              <!-- Section: RAG & Retrieval -->
+              <div class="settings-section-content hidden" id="settings-section-rag">
+                <h2 class="settings-page-title">RAG &amp; Retrieval</h2>
+
+                <div class="settings-section">
+                  <h3>Retrieval</h3>
+                  <p class="section-description">Control how many chunks are pulled from your knowledge base per query.</p>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Results per query</label>
+                      <span class="settings-value-display" id="rag-n-results-value">5</span>
+                    </div>
+                    <input type="range" id="rag-n-results" min="1" max="20" step="1" value="5"
+                      class="settings-slider"
+                      oninput="document.getElementById('rag-n-results-value').textContent = this.value">
+                    <p class="settings-description">Number of knowledge base chunks retrieved per query (1–20). Higher values give more context but increase latency. Requires restart to take effect.</p>
+                  </div>
+                </div>
+
+                <div class="settings-section">
+                  <h3>Retrieval Tier Thresholds</h3>
+                  <p class="section-description">
+                    Every query is classified as <strong>Direct</strong>, <strong>Adjacent</strong>, or <strong>Absent</strong> based on how closely your knowledge base matches it.
+                    <strong>Direct</strong> means Polly answers locally from your notes. Lowering the Direct threshold makes it easier for saved knowledge to be used.
+                  </p>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Direct threshold</label>
+                      <span class="settings-value-display" id="rag-direct-threshold-value">0.72</span>
+                    </div>
+                    <input type="range" id="rag-direct-threshold" min="0.5" max="0.95" step="0.01" value="0.72"
+                      class="settings-slider"
+                      oninput="document.getElementById('rag-direct-threshold-value').textContent = parseFloat(this.value).toFixed(2)">
+                    <p class="settings-description">Minimum similarity score to classify a result as a Direct (high-confidence) match. Lower = more queries answered from your knowledge base.</p>
+                  </div>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Adjacent threshold</label>
+                      <span class="settings-value-display" id="rag-adjacent-threshold-value">0.50</span>
+                    </div>
+                    <input type="range" id="rag-adjacent-threshold" min="0.3" max="0.8" step="0.01" value="0.50"
+                      class="settings-slider"
+                      oninput="document.getElementById('rag-adjacent-threshold-value').textContent = parseFloat(this.value).toFixed(2)">
+                    <p class="settings-description">Minimum score for Adjacent (related but not a direct answer). Results below this are considered Absent.</p>
+                  </div>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Domain match boost</label>
+                      <span class="settings-value-display" id="rag-domain-boost-value">0.10</span>
+                    </div>
+                    <input type="range" id="rag-domain-boost" min="0" max="0.3" step="0.01" value="0.10"
+                      class="settings-slider"
+                      oninput="document.getElementById('rag-domain-boost-value').textContent = parseFloat(this.value).toFixed(2)">
+                    <p class="settings-description">Score bonus added when a result comes from the same domain as the query (0–0.30).</p>
+                  </div>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Cross-domain penalty</label>
+                      <span class="settings-value-display" id="rag-cross-domain-penalty-value">0.15</span>
+                    </div>
+                    <input type="range" id="rag-cross-domain-penalty" min="0" max="0.3" step="0.01" value="0.15"
+                      class="settings-slider"
+                      oninput="document.getElementById('rag-cross-domain-penalty-value').textContent = parseFloat(this.value).toFixed(2)">
+                    <p class="settings-description">Score penalty applied when a result comes from a different domain (0–0.30).</p>
+                  </div>
+                </div>
+
+                <div class="settings-section">
+                  <h3>Query Decomposition (Wave 3)</h3>
+                  <p class="section-description">Complex queries are automatically broken into sub-queries and routed in parallel — some to local, some to cloud — then synthesised into one answer.</p>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Enable decomposition</label>
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="rag-decomposition-enabled" checked>
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                    <p class="settings-description">When enabled, multi-part or analytical queries are decomposed and routed via the Wave 3 hybrid pipeline.</p>
+                  </div>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Complexity threshold</label>
+                      <span class="settings-value-display" id="rag-complexity-score-value">0.60</span>
+                    </div>
+                    <input type="range" id="rag-complexity-score" min="0" max="1" step="0.05" value="0.60"
+                      class="settings-slider"
+                      oninput="document.getElementById('rag-complexity-score-value').textContent = parseFloat(this.value).toFixed(2)">
+                    <p class="settings-description">Score above which a query is considered complex enough for decomposition (0–1). Lower = more queries decomposed.</p>
+                  </div>
+                </div>
+
+                <div class="settings-actions">
+                  <div id="rag-settings-status" class="settings-status" style="display:none;"></div>
+                  <button class="btn btn-primary" id="btn-save-rag-settings"
+                    style="background: #2d5a27; color: #c8e6c9; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                    Save RAG Settings
+                  </button>
+                </div>
+              </div>
           
           <!-- Legacy tab content (will be migrated) -->
           <div class="settings-tab-content hidden" id="tab-general">
@@ -2263,10 +2378,10 @@
             
             <!-- Graph controls overlay -->
             <div class="graph-controls">
-              <button id="graph-zoom-in" title="Zoom In"><i data-lucide="zoom-in"></i></button>
-              <button id="graph-zoom-out" title="Zoom Out"><i data-lucide="zoom-out"></i></button>
-              <button id="graph-fit" title="Fit to View"><i data-lucide="maximize-2"></i></button>
-              <button id="graph-reset" title="Reset Layout"><i data-lucide="refresh-cw"></i></button>
+              <button id="graph-zoom-in" title="Zoom In" aria-label="Zoom in"><i data-lucide="zoom-in" aria-hidden="true"></i></button>
+              <button id="graph-zoom-out" title="Zoom Out" aria-label="Zoom out"><i data-lucide="zoom-out" aria-hidden="true"></i></button>
+              <button id="graph-fit" title="Fit to View" aria-label="Fit to view"><i data-lucide="maximize-2" aria-hidden="true"></i></button>
+              <button id="graph-reset" title="Reset Layout" aria-label="Reset layout"><i data-lucide="refresh-cw" aria-hidden="true"></i></button>
             </div>
           </div>
         </div>
@@ -2279,7 +2394,7 @@
           </div>
           
           <!-- Chat Panel (Right sub-column) -->
-          <div class="chat-panel" id="chat-panel">
+          <div class="chat-panel" id="chat-panel" role="complementary" aria-label="Chat">
             <div class="chat-panel-header">
               <span class="chat-panel-title">Chat</span>
             </div>
@@ -2289,7 +2404,7 @@
               
               <!-- Chat messages area -->
               <div class="chat-messages-panel" id="chat-messages-panel">
-                <div class="chat-messages" id="chat-messages-main">
+                <div class="chat-messages" id="chat-messages-main" role="log" aria-live="polite" aria-label="Chat messages">
                   <div class="message system">
                     <div class="message-content">
                       Hi! I'm Polly, your personal AI assistant. I have access to your Obsidian vault,
@@ -2314,16 +2429,19 @@
                 </div>
                 <div class="context-pills-container">
                   <div class="context-pills" id="context-pills"></div>
-                  <button class="context-picker-btn" id="context-picker-btn" title="Add context">
-                    <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>
+                  <button class="context-picker-btn" id="context-picker-btn" title="Add context" aria-label="Add context">
+                    <i data-lucide="plus-circle" style="width: 14px; height: 14px;" aria-hidden="true"></i>
                   </button>
                 </div>
                 <div class="chat-input-wrap" style="position: relative; flex: 1;">
                   <textarea class="chat-input" id="chat-input" placeholder="Ask anything... or /teach, /learning-path, /save for modes" rows="2"></textarea>
                   <div id="slash-command-autocomplete" class="slash-command-autocomplete hidden"></div>
                 </div>
-                <button class="send-button" id="chat-send">
-                  <i data-lucide="send"></i>
+                <button class="send-button" id="chat-send" aria-label="Send message">
+                  <i data-lucide="send" aria-hidden="true"></i>
+                </button>
+                <button class="chat-stop-btn hidden" id="chat-stop" aria-label="Stop generation">
+                  <i data-lucide="square" aria-hidden="true"></i>
                 </button>
               </div>
             </div>
@@ -2347,11 +2465,11 @@
         </aside>
 
         <!-- New Agent Modal -->
-        <div id="new-agent-modal" class="modal hidden" aria-hidden="true">
+        <div id="new-agent-modal" class="modal hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="new-agent-modal-title">
           <div class="modal-backdrop" id="new-agent-modal-backdrop"></div>
           <div class="modal-content" style="max-width: 400px;">
             <div class="modal-header">
-              <h3>New Agent</h3>
+              <h3 id="new-agent-modal-title">New Agent</h3>
               <button type="button" class="modal-close" id="new-agent-modal-close" aria-label="Close">&times;</button>
             </div>
             <div class="modal-body">
@@ -2525,11 +2643,11 @@
   </div>
 
   <!-- Save Conversation Modal -->
-  <div id="save-conversation-modal" class="modal hidden">
+  <div id="save-conversation-modal" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="save-conversation-modal-title">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Save Conversation to Obsidian</h3>
-        <button class="modal-close" id="close-save-modal">&times;</button>
+        <h3 id="save-conversation-modal-title">Save Conversation to Obsidian</h3>
+        <button class="modal-close" id="close-save-modal" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
@@ -2626,11 +2744,11 @@
   </div>
 
   <!-- Category Selection Modal -->
-  <div id="category-modal" class="modal hidden">
+  <div id="category-modal" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="category-modal-title">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Change Category</h3>
-        <button class="modal-close" id="close-category-modal">&times;</button>
+        <h3 id="category-modal-title">Change Category</h3>
+        <button class="modal-close" id="close-category-modal" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
         <div id="category-list" class="category-list"></div>
@@ -2681,11 +2799,11 @@
   </div>
 
   <!-- Rename Conversation Modal -->
-  <div id="rename-modal" class="modal hidden">
+  <div id="rename-modal" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="rename-modal-title">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Rename Conversation</h3>
-        <button class="modal-close" id="close-rename-modal">&times;</button>
+        <h3 id="rename-modal-title">Rename Conversation</h3>
+        <button class="modal-close" id="close-rename-modal" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
         <label for="rename-input" style="display: block; margin-bottom: 8px; font-size: 13px; color: var(--text-secondary);">Enter new title:</label>
@@ -2736,24 +2854,24 @@
             <div class="form-group">
               <label>Icon</label>
               <div class="icon-picker">
-                <button type="button" class="icon-preview" id="domain-icon-preview"><i data-lucide="folder" style="width: 20px; height: 20px;"></i></button>
-                <div class="icon-grid hidden" id="domain-icon-grid">
-                  <button type="button" class="icon-option" data-icon="zap"><i data-lucide="zap"></i></button>
-                  <button type="button" class="icon-option" data-icon="radio"><i data-lucide="radio"></i></button>
-                  <button type="button" class="icon-option" data-icon="scroll"><i data-lucide="scroll"></i></button>
-                  <button type="button" class="icon-option" data-icon="sparkles"><i data-lucide="sparkles"></i></button>
-                  <button type="button" class="icon-option" data-icon="folder-open"><i data-lucide="folder-open"></i></button>
-                  <button type="button" class="icon-option" data-icon="folder"><i data-lucide="folder"></i></button>
-                  <button type="button" class="icon-option" data-icon="wrench"><i data-lucide="wrench"></i></button>
-                  <button type="button" class="icon-option" data-icon="lightbulb"><i data-lucide="lightbulb"></i></button>
-                  <button type="button" class="icon-option" data-icon="palette"><i data-lucide="palette"></i></button>
-                  <button type="button" class="icon-option" data-icon="bar-chart"><i data-lucide="bar-chart"></i></button>
-                  <button type="button" class="icon-option" data-icon="flask"><i data-lucide="flask-conical"></i></button>
-                  <button type="button" class="icon-option" data-icon="target"><i data-lucide="target"></i></button>
-                  <button type="button" class="icon-option" data-icon="star"><i data-lucide="star"></i></button>
-                  <button type="button" class="icon-option" data-icon="rocket"><i data-lucide="rocket"></i></button>
-                  <button type="button" class="icon-option" data-icon="book-open"><i data-lucide="book-open"></i></button>
-                  <button type="button" class="icon-option" data-icon="graduation-cap"><i data-lucide="graduation-cap"></i></button>
+                <button type="button" class="icon-preview" id="domain-icon-preview" aria-label="Select icon"><i data-lucide="folder" style="width: 20px; height: 20px;" aria-hidden="true"></i></button>
+                <div class="icon-grid hidden" id="domain-icon-grid" role="listbox" aria-label="Choose domain icon">
+                  <button type="button" class="icon-option" data-icon="zap" aria-label="Zap"><i data-lucide="zap" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="radio" aria-label="Radio"><i data-lucide="radio" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="scroll" aria-label="Scroll"><i data-lucide="scroll" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="sparkles" aria-label="Sparkles"><i data-lucide="sparkles" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="folder-open" aria-label="Folder open"><i data-lucide="folder-open" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="folder" aria-label="Folder"><i data-lucide="folder" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="wrench" aria-label="Wrench"><i data-lucide="wrench" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="lightbulb" aria-label="Lightbulb"><i data-lucide="lightbulb" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="palette" aria-label="Palette"><i data-lucide="palette" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="bar-chart" aria-label="Bar chart"><i data-lucide="bar-chart" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="flask" aria-label="Flask"><i data-lucide="flask-conical" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="target" aria-label="Target"><i data-lucide="target" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="star" aria-label="Star"><i data-lucide="star" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="rocket" aria-label="Rocket"><i data-lucide="rocket" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="book-open" aria-label="Book open"><i data-lucide="book-open" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-option" data-icon="graduation-cap" aria-label="Graduation cap"><i data-lucide="graduation-cap" aria-hidden="true"></i></button>
                 </div>
               </div>
             </div>
@@ -3210,7 +3328,7 @@
   </div>
 
   <!-- Toast notification container (Task #22) -->
-  <div id="toast-container" style="position: fixed; bottom: 60px; right: 16px; z-index: 10001; display: flex; flex-direction: column-reverse; gap: 8px; pointer-events: none;"></div>
+  <div id="toast-container" role="status" aria-live="polite" aria-atomic="false" style="position: fixed; bottom: 60px; right: 16px; z-index: 10001; display: flex; flex-direction: column-reverse; gap: 8px; pointer-events: none;"></div>
 
   <script src="marked.js"></script>
   <script src="markdown-editor-cm6.bundle.js"></script>
