@@ -87,15 +87,15 @@
 @keyframes glitch-glow {
   0%, 100% {
     box-shadow: 
-      0 0 5px var(--accent-purple),
-      0 0 10px var(--accent-purple),
-      0 0 15px var(--accent-purple);
+      0 0 5px var(--accent-primary),
+      0 0 10px var(--accent-primary),
+      0 0 15px var(--accent-primary);
   }
   50% {
     box-shadow: 
-      0 0 10px var(--accent-purple),
-      0 0 20px var(--accent-purple),
-      0 0 30px var(--accent-purple);
+      0 0 10px var(--accent-primary),
+      0 0 20px var(--accent-primary),
+      0 0 30px var(--accent-primary);
   }
 }
 
@@ -159,8 +159,8 @@
 
 .btn-primary.glitch:hover {
   box-shadow: 
-    0 0 8px var(--accent-purple),
-    0 0 16px var(--accent-purple);
+    0 0 8px var(--accent-primary),
+    0 0 16px var(--accent-primary);
 }
 
 .btn-primary.glitch::before {
@@ -203,7 +203,7 @@
   background: linear-gradient(
     90deg,
     transparent,
-    var(--accent-purple),
+    var(--accent-primary),
     transparent
   );
   animation: glitch-glow 2s ease-in-out infinite;
@@ -215,8 +215,8 @@
 
 .ribbon-item.active.glitch::before {
   box-shadow: 
-    0 0 4px var(--accent-purple),
-    0 0 8px var(--accent-purple);
+    0 0 4px var(--accent-primary),
+    0 0 8px var(--accent-primary);
   animation: glitch-glow 2s ease-in-out infinite;
 }
 

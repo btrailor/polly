@@ -21,12 +21,14 @@
   /* Accent colors */
   --accent-primary: #f0903b;
   --accent-secondary: #e67612;
+  --accent-red: #e06c75;    /* destructive actions, errors */
+  --accent-green: #98c379;  /* success states */
+  --accent-yellow: #e5c07b; /* warnings */
 
   /* Glitch effect colors */
   --glitch-primary: rgba(0, 255, 136, 0.6);
   --glitch-secondary: rgba(255, 0, 255, 0.6);
-  --accent-purple: #f0903b;
-  --accent-purple-hover: #ff9f4d;
+  /* --accent-purple removed: was duplicate of --accent-primary (#f0903b) */
 
   /* Domain colors */
   --sigils: #61afef;
@@ -48,11 +50,13 @@
   --spacing-lg: 24px;
   --spacing-xl: 32px;
 
-  /* Border radius - minimal */
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-xl: 0px;
+  /* Border radius */
+  --radius-xs:   2px;    /* subtle rounding on small tags/badges */
+  --radius-sm:   4px;    /* buttons, inputs, tags */
+  --radius-md:   6px;    /* cards, panels */
+  --radius-lg:   8px;    /* larger cards, dialog panels */
+  --radius-xl:   12px;   /* feature cards, overlays */
+  --radius-full: 9999px; /* pills, avatars, toggles */
 
   /* Transitions */
   --transition-fast: 150ms ease;
@@ -62,6 +66,19 @@
   --shadow-sm: 2px 2px 0 rgba(10, 10, 10, 0.1);
   --shadow-md: 4px 4px 0 rgba(10, 10, 10, 0.15);
   --shadow-lg: 6px 6px 0 rgba(10, 10, 10, 0.2);
+
+  /* ── z-index layer scale ────────────────────────────────
+   * Use these tokens — never raw numbers.
+   * Each layer is a clear step above the last.
+   * ─────────────────────────────────────────────────────── */
+  --z-base:     0;      /* normal document flow */
+  --z-dropdown: 100;    /* autocomplete, context menus, select dropdowns */
+  --z-sticky:   200;    /* sticky headers, pinned elements */
+  --z-overlay:  300;    /* modal backdrops, drawer overlays */
+  --z-modal:    400;    /* modal dialogs, confirm dialogs */
+  --z-toast:    500;    /* toast notifications (above modals) */
+  --z-tooltip:  600;    /* tooltips (above everything) */
+  --z-titlebar: 700;    /* Electron titlebar (always on top) */
 }
 
 /* Reset */
@@ -112,7 +129,7 @@ select:focus-visible {
   position: absolute;
   top: -100%;
   left: 0;
-  z-index: 10000;
+  z-index: var(--z-tooltip);  /* skip-link: above all content */
   padding: 8px 16px;
   background: var(--accent-primary);
   color: var(--bg-primary);
@@ -193,7 +210,7 @@ body {
   border-bottom: 1px solid #2a2a2a;
   -webkit-app-region: drag;
   position: relative;
-  z-index: 1000;
+  z-index: var(--z-titlebar);
   flex-shrink: 0; /* Don't shrink */
   overflow: visible; /* Allow buttons to be clickable */
 }
@@ -220,7 +237,7 @@ body {
   align-items: center !important;
   gap: 4px !important; /* Small gap between buttons */
   -webkit-app-region: no-drag !important;
-  z-index: 1002 !important;
+  z-index: var(--z-titlebar) !important;
   position: relative !important;
   pointer-events: auto !important;
   padding-right: 8px !important; /* Small padding from edge */
@@ -241,7 +258,7 @@ body {
   border-radius: 3px;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   -webkit-app-region: no-drag !important;
-  z-index: 1003;
+  z-index: var(--z-titlebar);
   position: relative;
   pointer-events: auto !important;
 }
@@ -905,7 +922,7 @@ body {
   border: 1px solid var(--border-color);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 100;
+  z-index: var(--z-dropdown);
 }
 
 .slash-command-autocomplete.hidden {
@@ -1068,7 +1085,7 @@ body {
   padding: 0 8px;
   font-size: 12px;
   flex-shrink: 0;
-  z-index: 100;
+  z-index: var(--z-dropdown);
 }
 
 .status-left,
@@ -4260,7 +4277,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  z-index: var(--z-overlay);
   backdrop-filter: blur(4px);
 }
 
@@ -4672,7 +4689,7 @@ body {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   padding: var(--spacing-xs);
-  z-index: 10000;
+  z-index: var(--z-dropdown);
   min-width: 160px;
 }
 
@@ -4931,7 +4948,7 @@ body {
   background: var(--bg-primary);
   border: 2px solid var(--border-color);
   padding: var(--spacing-sm);
-  z-index: 100;
+  z-index: var(--z-dropdown);
   box-shadow: var(--shadow-md);
 }
 
@@ -5561,7 +5578,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
+  z-index: var(--z-overlay);
 }
 
 .modal-container {
@@ -6059,7 +6076,7 @@ body {
 
 /* Mental Models Override Modal — sits above other overlays */
 #mental-models-override-modal {
-  z-index: 10001;
+  z-index: var(--z-modal);
 }
 
 #override-models-list {
@@ -6155,7 +6172,7 @@ body {
   bottom: 0;
   background: rgba(30, 30, 30, 0.98);
   backdrop-filter: blur(8px);
-  z-index: 10000;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6343,7 +6360,7 @@ body {
   border: 2px solid var(--color-accent);
   padding: 1rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
+  z-index: var(--z-toast);
   border-radius: 4px;
   animation: slideIn 0.3s ease;
 }
@@ -7446,7 +7463,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 10000;
+  z-index: var(--z-overlay);
 }
 
 #learning-note-modal.show {
@@ -7689,7 +7706,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  z-index: 100;
+  z-index: var(--z-dropdown);
 }
 
 .graph-controls button {

@@ -281,7 +281,7 @@ function showToast(message, type = "info", options = {}) {
     container = document.createElement("div");
     container.id = "toast-container";
     container.style.cssText =
-      "position:fixed;bottom:60px;right:16px;z-index:10001;display:flex;flex-direction:column-reverse;gap:8px;pointer-events:none;";
+      "position:fixed;bottom:60px;right:16px;z-index:var(--z-toast);display:flex;flex-direction:column-reverse;gap:8px;pointer-events:none;";
     document.body.appendChild(container);
   }
 
@@ -19702,7 +19702,7 @@ async function initGraphCanvas(skipFilterRestore = false) {
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 16px 24px;
-      z-index: 1000;
+      z-index: var(--z-toast);
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
       display: flex;
       align-items: center;
@@ -20368,7 +20368,7 @@ function showGraphTooltip(event, data) {
       border-radius: 4px;
       font-size: 11px;
       pointer-events: none;
-      z-index: 10000;
+      z-index: var(--z-tooltip);
       max-width: 200px;
     `;
     document.body.appendChild(tooltipElement);
@@ -20416,7 +20416,7 @@ function showGraphContextMenu(event, data) {
     border: 1px solid var(--border-primary);
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    z-index: 10000;
+    z-index: var(--z-dropdown);
     min-width: 180px;
     padding: 4px 0;
     font-size: 13px;
@@ -20622,11 +20622,8 @@ function showBackToGraphButton() {
       position: fixed;
       bottom: 24px;
       left: 24px;
-      z-index: 1000;
+      z-index: var(--z-toast);
       background: var(--bg-secondary);
-      border: 1px solid var(--border-primary);
-      color: var(--text-primary);
-      padding: 8px 16px;
       border-radius: 6px;
       font-size: 13px;
       display: flex;
