@@ -636,6 +636,11 @@ async function startOllamaServer() {
     ollamaProcess = spawn("ollama", ["serve"], {
       detached: false,
       stdio: "pipe",
+      env: {
+        ...process.env,
+        OLLAMA_DEBUG: "",        // suppress verbose model-loader/KV dumps
+        OLLAMA_NOHISTORY: "1",   // don't log request history to stderr
+      },
     });
 
     ollamaStartedByUs = true;
