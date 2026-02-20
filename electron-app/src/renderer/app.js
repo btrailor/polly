@@ -200,6 +200,9 @@ let conversations = []; // List of all conversations
 let categories = []; // Available categories
 let needsMigration = false; // Flag for old data migration
 
+// Persona auto-advance cancellation token
+let _personaAutoAdvanceTimer = null;
+
 // Agent Management State (agents = personas + custom; each agent has conversations)
 const AGENTS_STORAGE_KEY = "polly-agents";
 let agents = []; // { id, persona_name, display_name, icon, created_at }
@@ -1126,6 +1129,9 @@ async function switchToConversation(conversationId, options = {}) {
   try {
     const { restoreScroll = false } = options;
 
+    // Cancel any pending persona auto-advance (conversation is switching)
+    cancelPersonaAutoAdvance();
+
     // Save current scroll position before switching
     if (currentConversationId) {
       saveUIState();
@@ -1157,9 +1163,10 @@ async function switchToConversation(conversationId, options = {}) {
       );
     }
 
-    // Restore scroll position if requested and available
+    // Restore scroll position if requested and available.
+    // rAF ensures the new conversation DOM has been painted before scrolling.
     if (restoreScroll && preservedUIState.scrollPosition > 0) {
-      setTimeout(() => {
+      requestAnimationFrame(() => {
         if (container) {
           container.scrollTop = preservedUIState.scrollPosition;
           console.log(
@@ -1167,7 +1174,7 @@ async function switchToConversation(conversationId, options = {}) {
             preservedUIState.scrollPosition,
           );
         }
-      }, 100); // Small delay to ensure DOM is ready
+      });
     }
 
     // Update conversation list and agents sidebar to show active state
@@ -1686,9 +1693,7 @@ function renderConversationList(searchQuery = "") {
   setupListKeyboardNav(listEl, ".conversation-item");
 
   // Re-initialize icons
-  if (typeof lucide !== "undefined") {
-    setTimeout(() => lucide.createIcons(), 0);
-  }
+  refreshIcons();
 }
 
 /**
@@ -1806,7 +1811,7 @@ function renderAgentsSidebar() {
   });
 
   if (typeof lucide !== "undefined") {
-    setTimeout(() => lucide.createIcons(), 0);
+    refreshIcons();
   }
 }
 
@@ -1856,7 +1861,7 @@ function renderChatTabs() {
   }
 
   if (typeof lucide !== "undefined") {
-    setTimeout(() => lucide.createIcons(), 0);
+    refreshIcons();
   }
 }
 
@@ -2127,7 +2132,7 @@ function showConversationContextMenu(conversationId, x, y) {
 
   // Re-initialize icons
   if (typeof lucide !== "undefined") {
-    setTimeout(() => lucide.createIcons(), 0);
+    refreshIcons();
   }
 
   // Close on click outside
@@ -2613,7 +2618,7 @@ function setupEventListeners() {
     }
 
     // Re-init lucide icons
-    setTimeout(() => lucide.createIcons(), 50);
+    refreshIcons();
   }
 
   function toggleLeftSidebar() {
@@ -2629,7 +2634,7 @@ function setupEventListeners() {
       updateTitlebarButtons();
 
       // Re-init icons
-      setTimeout(() => lucide.createIcons(), 50);
+      refreshIcons();
 
       // If expanding left sidebar, clamp chat panel first (before transition) so it doesn't overflow
       if (isCollapsed) clampChatPanelToMax(false, true);
@@ -2649,7 +2654,7 @@ function setupEventListeners() {
       updateTitlebarButtons();
 
       // Re-init icons
-      setTimeout(() => lucide.createIcons(), 50);
+      refreshIcons();
 
       // If expanding right sidebar, clamp chat panel first (before transition) so it doesn't overflow
       if (isCollapsed) clampChatPanelToMax(true, false);
@@ -2856,7 +2861,7 @@ function setupEventListeners() {
             "data-lucide",
             section.style.display === "none" ? "chevron-right" : "chevron-down",
           );
-          setTimeout(() => lucide.createIcons(), 10);
+          refreshIcons();
         }
       }
     });
@@ -2936,12 +2941,6 @@ function setupEventListeners() {
 
     // Only handle shortcuts when not typing in an input
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
-      // Exception: Allow Cmd/Ctrl+B even when in input (toggle sidebar)
-      if (modifier && e.key === "b") {
-        e.preventDefault();
-        toggleConversationsSidebar();
-        return;
-      }
       // Don't handle other shortcuts when typing
       return;
     }
@@ -2956,10 +2955,10 @@ function setupEventListeners() {
       (chatInput || queryInput)?.focus();
     }
 
-    // Cmd/Ctrl+B: Toggle sidebar
+    // Cmd/Ctrl+B: Toggle left sidebar (handled by sidebar keydown listener above; kept here as fallback)
     if (modifier && e.key === "b") {
       e.preventDefault();
-      toggleConversationsSidebar();
+      toggleLeftSidebar();
     }
 
     // Cmd/Ctrl+F: Focus search
@@ -2969,8 +2968,26 @@ function setupEventListeners() {
       if (searchInput) searchInput.focus();
     }
 
-    // /: Focus query input (like Slack/Discord)
-    if (e.key === "/" && currentView === "chat") {
+    // Cmd+1-6: Navigate to views
+    if (modifier && !e.shiftKey && ["1","2","3","4","5","6"].includes(e.key)) {
+      e.preventDefault();
+      const viewMap = { "1": "dashboard", "2": "code", "3": "notes", "4": "knowledge", "5": "patterns", "6": "settings" };
+      showView(viewMap[e.key]);
+    }
+
+    // Cmd+? (Cmd+Shift+/): Toggle shortcut help panel
+    if (modifier && e.shiftKey && e.key === "?") {
+      e.preventDefault();
+      if (window.ShortcutPanel) ShortcutPanel.toggle();
+    }
+
+    // /: Focus query input (like Slack/Discord) — guard against interactive elements
+    if (e.key === "/" && currentView === "chat" &&
+        !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName) &&
+        !document.activeElement.isContentEditable &&
+        document.activeElement.tagName !== "BUTTON" &&
+        document.activeElement.tagName !== "A" &&
+        document.activeElement.getAttribute("role") !== "button") {
       e.preventDefault();
       const chatInput = document.getElementById("chat-input");
       const queryInput = document.getElementById("query-input");
@@ -3307,6 +3324,9 @@ function showView(view) {
   currentView = view;
   currentPage = view; // Track page changes for conversation context
 
+  // Cancel any pending persona auto-advance (user navigated away)
+  cancelPersonaAutoAdvance();
+
   // Remove "Back to Graph" button when navigating away from notes
   if (view !== 'notes') {
     const backBtn = document.getElementById('back-to-graph-btn');
@@ -3387,15 +3407,17 @@ function showView(view) {
       // Load curricula list (Phase 23)
       loadCurriculaView();
     } else if (view === "notes") {
-      // Initialize notes manager when showing notes view
-      // Add small delay to ensure DOM is ready
-      setTimeout(() => {
-        if (window.notesManager) {
-          window.notesManager.init().catch((err) => {
-            console.error("[Notes] Failed to initialize:", err);
-          });
-        }
-      }, 100);
+      // Initialize notes manager when showing notes view.
+      // Double-rAF ensures the browser has painted the new DOM before init.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (window.notesManager) {
+            window.notesManager.init().catch((err) => {
+              console.error("[Notes] Failed to initialize:", err);
+            });
+          }
+        });
+      });
     } else if (view === "settings") {
       // Load domains config if domains tab is active
       const domainsTab = document.querySelector(
@@ -3930,7 +3952,7 @@ function updateLeftSidebar(view) {
 
   // Re-initialize icons
   if (typeof lucide !== "undefined") {
-    setTimeout(() => lucide.createIcons(), 50);
+    refreshIcons();
   }
 
   // Setup sidebar ribbon handlers
@@ -3976,12 +3998,14 @@ function updateLeftSidebar(view) {
     
     // Re-initialize icons for lower panel
     if (typeof lucide !== "undefined") {
-      setTimeout(() => lucide.createIcons(), 60);
+      refreshIcons();
     }
   }
 
-  // Attach event handlers based on view
-  setTimeout(() => {
+  // Attach event handlers based on view.
+  // Double-rAF ensures sidebar DOM rendered by updateLeftSidebar() is fully painted.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
     if (view === "dashboard") {
       // Quick links navigation
       document
@@ -4146,7 +4170,8 @@ function updateLeftSidebar(view) {
       // Graph page event handlers will be set up in initGraphPage()
       console.log("[Graph] Sidebar initialized, waiting for initGraphPage()");
     }
-  }, 100);
+    });
+  });
 }
 
 function renderConversationsSidebar() {
@@ -4521,13 +4546,16 @@ function updateRightSidebar(view) {
 
   // Re-initialize icons
   if (typeof lucide !== "undefined") {
-    setTimeout(() => lucide.createIcons(), 50);
+    refreshIcons();
   }
 
-  // Reattach event listeners after restoring HTML
-  setTimeout(() => {
-    reattachChatEventListeners();
-  }, 100);
+  // Reattach event listeners after restoring HTML.
+  // Double-rAF ensures the replaced innerHTML is fully painted before wiring listeners.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      reattachChatEventListeners();
+    });
+  });
 }
 
 function renderChatRightSidebar() {
@@ -5530,6 +5558,16 @@ async function sendToPersona(query, conversationHistory, loadingId, personaName,
 }
 
 /**
+ * Cancel any pending persona auto-advance timer.
+ */
+function cancelPersonaAutoAdvance() {
+  if (_personaAutoAdvanceTimer) {
+    clearTimeout(_personaAutoAdvanceTimer);
+    _personaAutoAdvanceTimer = null;
+  }
+}
+
+/**
  * Handle persona action (show_questions, show_preview, etc.)
  */
 async function handlePersonaAction(action, responseContent) {
@@ -5643,11 +5681,25 @@ async function handlePersonaAction(action, responseContent) {
           }
 
           // Auto-trigger next step in workflow
-          // Send a follow-up query to continue the persona workflow
-          setTimeout(async () => {
+          // Send a follow-up query to continue the persona workflow.
+          // Cancellable: if the user sends a new message or switches conversation
+          // before 500ms, the advance will be aborted (stale state check).
+          cancelPersonaAutoAdvance();
+          const _advanceConvId = currentConversationId;
+          const _advanceMode = targetMode;
+          _personaAutoAdvanceTimer = setTimeout(async () => {
+            _personaAutoAdvanceTimer = null;
+            // State validation: abort if conversation or mode changed
+            if (
+              currentConversationId !== _advanceConvId ||
+              document.getElementById("mode-select")?.value !== _advanceMode
+            ) {
+              console.log("[Persona] Auto-advance aborted: state changed");
+              return;
+            }
             console.log(
               "[Persona] Auto-triggering next step in",
-              targetMode,
+              _advanceMode,
               "mode",
             );
             const messages = getCurrentConversationMessages();
@@ -8373,7 +8425,7 @@ function handleReviewCurriculumAction(action) {
 
     // Initialize Lucide icons in dialog
     if (window.lucide) {
-      setTimeout(() => lucide.createIcons(), 50);
+      refreshIcons();
     }
   }
 }
@@ -8702,7 +8754,7 @@ function toggleSectionEdit(sectionId) {
 
   // Reinitialize icons
   if (window.lucide) {
-    setTimeout(() => lucide.createIcons(), 50);
+    refreshIcons();
   }
 }
 
@@ -8863,9 +8915,12 @@ async function regenerateCurriculum() {
  */
 let _sendQueryInProgress = false;
 
-async function sendQuery() {
+ async function sendQuery() {
   if (_sendQueryInProgress) return;
   _sendQueryInProgress = true;
+
+  // Cancel any pending persona auto-advance (user is sending a new message)
+  cancelPersonaAutoAdvance();
 
   try {
     const chatInput = document.getElementById("chat-input");
@@ -8986,7 +9041,7 @@ function _showStreamError(errorText) {
   requestAnimationFrame(() => {
     container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   });
-  if (typeof lucide !== "undefined") setTimeout(() => lucide.createIcons(), 0);
+  if (typeof lucide !== "undefined") refreshIcons();
   return div;
 }
 
@@ -9351,10 +9406,10 @@ async function _sendQueryStreaming(apiQuery, queryOptions, loadingId) {
   }
 
   // Re-init Lucide icons that may have been rendered into markdown
-  if (typeof lucide !== "undefined") setTimeout(() => lucide.createIcons(), 0);
+  if (typeof lucide !== "undefined") refreshIcons();
 
-  // Auto-categorize (non-blocking)
-  setTimeout(() => autoCategorizeConversation(currentConversationId), 100);
+  // Auto-categorize (non-blocking) — run when browser is idle, within 1s
+  requestIdleCallback(() => autoCategorizeConversation(currentConversationId), { timeout: 1000 });
 }
 
 /**
@@ -9407,7 +9462,7 @@ async function _sendQueryFallbackIPC(apiQuery, queryOptions, loadingId) {
         }
       }
 
-      setTimeout(() => autoCategorizeConversation(currentConversationId), 100);
+      requestIdleCallback(() => autoCategorizeConversation(currentConversationId), { timeout: 1000 });
     } else {
       _showStreamError(`Error: ${result.error}`);
     }
@@ -9468,7 +9523,7 @@ function addMessageToUI(role, content) {
 
   // Re-initialize icons if any were added
   if (typeof lucide !== "undefined") {
-    setTimeout(() => lucide.createIcons(), 0);
+    refreshIcons();
   }
 
   return div;
@@ -10325,7 +10380,7 @@ async function runVaultHealthScan() {
           if (sourceName && window.notesManager) {
             modal.classList.add("hidden");
             showView("notes");
-            setTimeout(() => window.notesManager.openNote(sourceName), 200);
+            requestAnimationFrame(() => requestAnimationFrame(() => window.notesManager.openNote(sourceName)));
           }
         });
       });
@@ -10347,7 +10402,7 @@ async function runVaultHealthScan() {
           if (name && window.notesManager) {
             modal.classList.add("hidden");
             showView("notes");
-            setTimeout(() => window.notesManager.openNote(name), 200);
+            requestAnimationFrame(() => requestAnimationFrame(() => window.notesManager.openNote(name)));
           }
         });
       });
@@ -13103,9 +13158,7 @@ function openSaveConversationModal() {
   document.getElementById("save-conversation-modal").classList.remove("hidden");
 
   // Re-initialize icons
-  if (typeof lucide !== "undefined") {
-    setTimeout(() => lucide.createIcons(), 0);
-  }
+  refreshIcons();
 }
 
 /**
@@ -13156,7 +13209,7 @@ async function suggestFolder() {
 
     // Re-initialize icons
     if (typeof lucide !== "undefined") {
-      setTimeout(() => lucide.createIcons(), 0);
+      refreshIcons();
     }
   } catch (error) {
     console.error("Error suggesting folder:", error);
@@ -13349,7 +13402,7 @@ async function updateRelatedNotes() {
     `;
     listEl.innerHTML = "";
     if (typeof lucide !== "undefined") {
-      setTimeout(() => lucide.createIcons(), 0);
+      refreshIcons();
     }
     return;
   }
@@ -13403,7 +13456,7 @@ async function updateRelatedNotes() {
 
     // Re-initialize icons
     if (typeof lucide !== "undefined") {
-      setTimeout(() => lucide.createIcons(), 0);
+      refreshIcons();
     }
   } catch (error) {
     console.error("Error finding related notes:", error);
@@ -13416,7 +13469,7 @@ async function updateRelatedNotes() {
     listEl.innerHTML = "";
 
     if (typeof lucide !== "undefined") {
-      setTimeout(() => lucide.createIcons(), 0);
+      refreshIcons();
     }
   }
 }
@@ -17208,8 +17261,9 @@ function setupChatOverlayListeners() {
     };
   }
 
-  // Expand button (opens full-screen overlay from sidebar)
-  setTimeout(() => {
+  // Expand button (opens full-screen overlay from sidebar).
+  // rAF ensures the chat sidebar DOM is painted before wiring the button.
+  requestAnimationFrame(() => {
     const expandBtn = document.getElementById("chat-expand-btn");
     if (expandBtn) {
       expandBtn.onclick = function (e) {
@@ -17221,7 +17275,7 @@ function setupChatOverlayListeners() {
         return false;
       };
     }
-  }, 500);
+  });
 }
 
 // ========================================
@@ -17606,7 +17660,7 @@ function addMessageToOverlay(role, content) {
 
   // Re-initialize icons if any were added
   if (typeof lucide !== "undefined") {
-    setTimeout(() => lucide.createIcons(), 0);
+    refreshIcons();
   }
 
   // Smooth scroll to bottom
@@ -17640,8 +17694,9 @@ function removeMessageFromOverlay(messageId) {
 function setupSidebarResize() {
   console.log("[Sidebar Resize] Setting up...");
 
-  // Use setTimeout to ensure DOM is fully ready
-  setTimeout(() => {
+  // Double-rAF ensures DOM is fully painted before attaching resize listeners
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
     const resizeHandle = document.getElementById("sidebar-resize-handle");
     const conversationsSection = document.getElementById(
       "chat-conversations-section",
@@ -17724,7 +17779,8 @@ function setupSidebarResize() {
     };
 
     console.log("[Sidebar Resize] Initialized successfully");
-  }, 500); // Wait 500ms to ensure DOM is ready
+    });
+  });
 }
 
 const AGENTS_SIDEBAR_WIDTH = 280;
@@ -17774,7 +17830,9 @@ function clampChatPanelToMax(expandingRight = false, expandingLeft = false) {
  * Set up center resize handle (between main content and chat panel)
  */
 function setupCenterResizeHandle() {
-  setTimeout(() => {
+  // Double-rAF ensures DOM is painted before attaching resize listeners
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
     const resizeHandle = document.getElementById("center-resize-handle");
     const chatPanel = document.getElementById("chat-panel");
     const mainContent = document.getElementById("main-content-area");
@@ -17833,7 +17891,8 @@ function setupCenterResizeHandle() {
       document.addEventListener("mouseup", onMouseUp);
       e.preventDefault();
     };
-  }, 500);
+    });
+  });
 }
 
 // ========================================
@@ -19130,11 +19189,14 @@ function updateLearningNotesUI(notes) {
     card.addEventListener("click", () => {
       const notePath = card.dataset.path;
       if (notePath && window.notesManager) {
-        // Switch to notes view and open this note
+        // Switch to notes view and open this note.
+        // Double-rAF waits for notes init (triggered by showView) to complete.
         showView("notes");
-        setTimeout(() => {
-          window.notesManager.openNote(notePath);
-        }, 200);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.notesManager.openNote(notePath);
+          });
+        });
       }
     });
   });
@@ -19468,7 +19530,7 @@ function initGraphPage() {
   
   // Re-initialize icons
   if (typeof lucide !== "undefined") {
-    setTimeout(() => lucide.createIcons(), 100);
+    refreshIcons();
   }
 }
 

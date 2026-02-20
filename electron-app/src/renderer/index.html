@@ -31,6 +31,8 @@
   <script src="pyodide-loader.js"></script>
   <!-- API Client Utility - Load before other components -->
   <script src="utils/api-client.js"></script>
+  <!-- DOM helpers: waitForElement, refreshIcons, requestIdleCallback polyfill -->
+  <script src="utils/dom-helpers.js"></script>
   <!-- Accessibility: Focus trap utility -->
   <script src="utils/focus-trap.js"></script>
   <!-- Undo manager for destructive actions -->
@@ -54,6 +56,10 @@
   <script src="components/version-history.js"></script>
   <!-- Conflict resolution dialog for notes -->
   <script src="components/conflict-dialog.js"></script>
+  <!-- Keyboard shortcut registry and panel -->
+  <link rel="stylesheet" href="components/shortcut-panel.css">
+  <script src="utils/shortcut-registry.js"></script>
+  <script src="components/shortcut-panel.js"></script>
 </head>
 <body>
   <!-- Skip to main content (accessibility) -->
@@ -102,16 +108,16 @@
       
       <div class="ribbon-divider"></div>
       
-      <button class="ribbon-item active glitch" data-view="dashboard" title="Dashboard" aria-label="Dashboard" aria-current="page">
+      <button class="ribbon-item active glitch" data-view="dashboard" title="Dashboard (⌘1)" aria-label="Dashboard" aria-current="page">
         <i data-lucide="layout-dashboard" aria-hidden="true"></i>
       </button>
-      <button class="ribbon-item" data-view="code" title="Code" aria-label="Code">
+      <button class="ribbon-item" data-view="code" title="Code (⌘2)" aria-label="Code">
         <i data-lucide="code-2" aria-hidden="true"></i>
       </button>
-      <button class="ribbon-item" data-view="knowledge" title="Knowledge Graph" aria-label="Knowledge Graph">
+      <button class="ribbon-item" data-view="knowledge" title="Knowledge Graph (⌘4)" aria-label="Knowledge Graph">
         <i data-lucide="network" aria-hidden="true"></i>
       </button>
-      <button class="ribbon-item" data-view="notes" title="Notes" aria-label="Notes">
+      <button class="ribbon-item" data-view="notes" title="Notes (⌘3)" aria-label="Notes">
         <i data-lucide="book-open" aria-hidden="true"></i>
       </button>
       <button class="ribbon-item" data-view="graph" title="Graph" aria-label="Graph">
@@ -123,7 +129,7 @@
       <button class="ribbon-item" data-view="search" title="Search" aria-label="Search">
         <i data-lucide="search" aria-hidden="true"></i>
       </button>
-      <button class="ribbon-item" data-view="patterns" title="Patterns" aria-label="Patterns">
+      <button class="ribbon-item" data-view="patterns" title="Patterns (⌘5)" aria-label="Patterns">
         <i data-lucide="sparkles" aria-hidden="true"></i>
       </button>
       <button class="ribbon-item" data-view="domains" title="Domains" aria-label="Domains">
@@ -146,7 +152,7 @@
         <div class="status-dot" id="status-dot"></div>
       </div>
       
-      <button class="ribbon-item" data-view="settings" title="Settings" aria-label="Settings">
+      <button class="ribbon-item" data-view="settings" title="Settings (⌘6)" aria-label="Settings">
         <i data-lucide="settings" aria-hidden="true"></i>
       </button>
       </nav>
@@ -2637,7 +2643,7 @@
             </select>
             <div class="orchestrator-toggle" id="orchestrator-toggle" role="switch" aria-checked="false"></div>
             <textarea id="query-input" style="display: none;"></textarea>
-            <button id="btn-send" style="display: none;"></button>
+            <button id="btn-send" title="Send (Enter)" style="display: none;"></button>
           </div>
 
         </div>

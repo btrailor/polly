@@ -1009,7 +1009,7 @@ class NotesManager {
         
         // Re-initialize icons when showing menu
         if (!isVisible && typeof lucide !== 'undefined') {
-          setTimeout(() => lucide.createIcons(), 10);
+          refreshIcons();
         }
       });
       
