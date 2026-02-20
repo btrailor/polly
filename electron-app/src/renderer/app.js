@@ -883,6 +883,10 @@ const initialize = withErrorBoundary(async function () {
     if (currentConversationId) {
       saveUIState();
     }
+    // Flush all pending undo-manager deletions so nothing is left in limbo
+    if (window.undoManager) {
+      window.undoManager.executePending();
+    }
   });
 
   // Listen for setup progress
@@ -1536,16 +1540,15 @@ function renderConversationList(searchQuery = "") {
   }
 
   if (!conversations || conversations.length === 0) {
-    listEl.innerHTML = `
-      <div class="conversations-empty">
-        <i data-lucide="message-square" style="width: 32px; height: 32px;"></i>
-        <p>No conversations yet</p>
-        <p style="margin-top: 8px;">Click "New Chat" to start</p>
-      </div>
-    `;
-    if (typeof lucide !== "undefined") {
-      setTimeout(() => lucide.createIcons(), 0);
-    }
+    listEl.innerHTML = "";
+    listEl.appendChild(EmptyState.render({
+      icon: "message-square",
+      title: "No conversations yet",
+      description: "Start a conversation with Polly to see it appear here.",
+      actionLabel: "New Chat",
+      onAction: () => createNewConversation(),
+      size: "small",
+    }));
     return;
   }
 
@@ -1579,6 +1582,34 @@ function renderConversationList(searchQuery = "") {
 
   // Render groups
   listEl.innerHTML = "";
+
+  // Handle filtered-to-zero cases
+  if (filteredConvs.length === 0) {
+    if (searchQuery) {
+      const searchInputEl = document.getElementById("conversations-search-input");
+      listEl.appendChild(EmptyState.render({
+        icon: "search",
+        title: `No results for "${searchQuery}"`,
+        description: "Try a different search term or clear the search.",
+        actionLabel: "Clear",
+        onAction: () => {
+          if (searchInputEl) { searchInputEl.value = ""; searchInputEl.classList.remove("input-searching"); }
+          searchConversations();
+        },
+        size: "small",
+      }));
+    } else {
+      listEl.appendChild(EmptyState.render({
+        icon: "filter",
+        title: "No conversations on this page",
+        description: "Start a new conversation from this view to see it here.",
+        actionLabel: "New Chat",
+        onAction: () => createNewConversation(),
+        size: "small",
+      }));
+    }
+    return;
+  }
 
   Object.entries(grouped).forEach(([catId, convs]) => {
     const category = categories.find((c) => c.id === catId) || {
@@ -1730,18 +1761,26 @@ function renderAgentsSidebar() {
         e.preventDefault();
         e.stopPropagation();
         const agent = getAgentById(agentId);
-        const name = agent ? agent.display_name : agentId;
-        const confirmed = await ConfirmDialog.show({
-          title: `Delete agent`,
-          message: `Delete agent "${name}" and all its conversations?`,
-          confirmLabel: 'Delete',
-          destructive: true,
+        if (!agent) return;
+        const name = agent.display_name || agentId;
+
+        // Hide agent from local state immediately
+        agents = agents.filter((a) => a.id !== agentId);
+        if (currentAgentId === agentId) currentAgentId = "default";
+        renderAgentsSidebar();
+        if (typeof renderChatTabs === "function") renderChatTabs();
+
+        window.undoManager.schedule(`agent-${agentId}`, {
+          label: name,
+          onDelete: () => {
+            saveAgents();
+          },
+          onRestore: () => {
+            agents.push(agent);
+            renderAgentsSidebar();
+            if (typeof renderChatTabs === "function") renderChatTabs();
+          },
         });
-        if (confirmed) {
-          deleteAgent(agentId);
-          renderAgentsSidebar();
-          if (typeof renderChatTabs === "function") renderChatTabs();
-        }
     });
   });
 
@@ -2372,19 +2411,10 @@ async function deleteConversation(conversationId) {
   const conv = conversations.find((c) => c.id === conversationId);
   if (!conv) return;
 
-  if (!(await ConfirmDialog.show({
-    title: 'Delete conversation',
-    message: `Delete "${conv.title}"? This cannot be undone.`,
-    confirmLabel: 'Delete',
-    destructive: true,
-  }))) return;
-
-  await window.polly.conversationDelete(conversationId, true);
-
-  // Remove from local state
+  // Hide immediately from local state
   conversations = conversations.filter((c) => c.id !== conversationId);
 
-  // If we deleted the current conversation, switch to another
+  // If we hid the current conversation, switch to another
   if (currentConversationId === conversationId) {
     if (conversations.length > 0) {
       await switchToConversation(conversations[0].id);
@@ -2396,6 +2426,24 @@ async function deleteConversation(conversationId) {
   renderConversationList();
   if (typeof renderAgentsSidebar === "function") renderAgentsSidebar();
   if (typeof renderChatTabs === "function") renderChatTabs();
+
+  window.undoManager.schedule(`conv-${conversationId}`, {
+    label: conv.title || "Conversation",
+    onDelete: async () => {
+      try {
+        await window.polly.conversationDelete(conversationId, true);
+      } catch (e) {
+        console.error("[deleteConversation] permanent delete failed:", e);
+      }
+    },
+    onRestore: () => {
+      conversations.push(conv);
+      conversations.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+      renderConversationList();
+      if (typeof renderAgentsSidebar === "function") renderAgentsSidebar();
+      if (typeof renderChatTabs === "function") renderChatTabs();
+    },
+  });
 }
 
 /**
@@ -2817,7 +2865,14 @@ function setupEventListeners() {
   // Conversations - Search
   const searchInput = document.getElementById("conversations-search-input");
   if (searchInput) {
-    searchInput.addEventListener("input", searchConversations);
+    const debouncedSearch = debounce(() => {
+      searchConversations();
+      searchInput.classList.remove("input-searching");
+    }, 200);
+    searchInput.addEventListener("input", () => {
+      searchInput.classList.add("input-searching");
+      debouncedSearch();
+    });
   } else {
     console.warn(
       "Conversations search input not found (may not be on chat view)",
@@ -3266,6 +3321,24 @@ function showView(view) {
   const viewElement = document.getElementById(`view-${view}`);
   if (viewElement) {
     viewElement.classList.remove("hidden");
+    // Populate placeholder views with empty state on first visit
+    const placeholder = viewElement.querySelector(".view-placeholder-container");
+    if (placeholder && !placeholder.hasChildNodes()) {
+      const placeholderDefs = {
+        calendar: { icon: "calendar", title: "Calendar", desc: "Calendar integration is planned for a future release." },
+        mail: { icon: "mail", title: "Mail", desc: "Mail integration is planned for a future release." },
+        projects: { icon: "kanban", title: "Projects", desc: "Projects is planned for a future release." },
+      };
+      const def = placeholderDefs[view];
+      if (def) {
+        placeholder.appendChild(EmptyState.render({
+          icon: def.icon,
+          title: def.title,
+          description: def.desc,
+          size: "large",
+        }));
+      }
+    }
   } else {
     console.error(`[showView] View element not found: view-${view}`);
     return;
@@ -3728,22 +3801,22 @@ function updateLeftSidebar(view) {
     calendar: {
       title: "Timeline",
       content:
-        '<div style="padding: 16px; color: #808080; font-size: 13px;">Calendar navigation coming soon</div>',
+        '<div class="sidebar-coming-soon"><i data-lucide="clock" class="sidebar-coming-soon__icon"></i><p class="sidebar-coming-soon__title">Coming soon</p><p class="sidebar-coming-soon__desc">Calendar navigation is planned for a future release.</p></div>',
     },
     mail: {
       title: "Folders",
       content:
-        '<div style="padding: 16px; color: #808080; font-size: 13px;">Mail folders coming soon</div>',
+        '<div class="sidebar-coming-soon"><i data-lucide="clock" class="sidebar-coming-soon__icon"></i><p class="sidebar-coming-soon__title">Coming soon</p><p class="sidebar-coming-soon__desc">Mail folders are planned for a future release.</p></div>',
     },
     code: {
       title: "Files",
       content:
-        '<div style="padding: 16px; color: #808080; font-size: 13px;">File browser coming soon</div>',
+        '<div class="sidebar-coming-soon"><i data-lucide="clock" class="sidebar-coming-soon__icon"></i><p class="sidebar-coming-soon__title">Coming soon</p><p class="sidebar-coming-soon__desc">File browser is planned for a future release.</p></div>',
     },
     projects: {
       title: "Projects",
       content:
-        '<div style="padding: 16px; color: #808080; font-size: 13px;">Project list coming soon</div>',
+        '<div class="sidebar-coming-soon"><i data-lucide="clock" class="sidebar-coming-soon__icon"></i><p class="sidebar-coming-soon__title">Coming soon</p><p class="sidebar-coming-soon__desc">Project list is planned for a future release.</p></div>',
     },
     notes: {
       title: "Notes",
@@ -3833,12 +3906,12 @@ function updateLeftSidebar(view) {
     search: {
       title: "Recent",
       content:
-        '<div style="padding: 16px; color: #808080; font-size: 13px;">Recent searches coming soon</div>',
+        '<div class="sidebar-coming-soon"><i data-lucide="clock" class="sidebar-coming-soon__icon"></i><p class="sidebar-coming-soon__title">Coming soon</p><p class="sidebar-coming-soon__desc">Recent searches are planned for a future release.</p></div>',
     },
     domains: {
       title: "Domains",
       content:
-        '<div style="padding: 16px; color: #808080; font-size: 13px;">Domain list coming soon</div>',
+        '<div class="sidebar-coming-soon"><i data-lucide="clock" class="sidebar-coming-soon__icon"></i><p class="sidebar-coming-soon__title">Coming soon</p><p class="sidebar-coming-soon__desc">Domain list is planned for a future release.</p></div>',
     },
     graph: {
       title: "Graph",
@@ -4126,7 +4199,7 @@ function renderDashboardSidebar() {
       </div>
     </div>
   `
-      : '<div style="margin-top: 16px; padding: 12px; color: #606060; font-size: 12px; text-align: center;">No conversations on this page yet</div>';
+      : '<div style="margin-top: 16px;" class="conversations-page-empty"><p style="padding: 12px; color: var(--text-muted, #606060); font-size: 12px; text-align: center;">No conversations on this page yet</p></div>';
 
   return `
     <div style="padding: 16px;">
@@ -4336,16 +4409,6 @@ function reattachChatEventListeners() {
       renderConversationList(
         document.getElementById("conversations-search-input")?.value || "",
       );
-    });
-  }
-
-  // Conversations search
-  const conversationsSearchInput = document.getElementById(
-    "conversations-search-input",
-  );
-  if (conversationsSearchInput) {
-    conversationsSearchInput.addEventListener("input", (e) => {
-      renderConversationList(e.target.value);
     });
   }
 
@@ -6340,7 +6403,6 @@ async function deleteCurriculum(curriculumId) {
 
     const result = await response.json();
     if (result.status === "success") {
-      showToast("Curriculum deleted", "success");
       return true;
     } else {
       throw new Error(result.error || "Failed to delete curriculum");
@@ -6586,14 +6648,19 @@ async function loadLearningSidebarCurricula() {
     const curricula = await fetchCurricula();
 
     if (!curricula || curricula.length === 0) {
-      container.innerHTML = `
-        <div style="text-align: center; padding: 20px; color: #808080; font-size: 13px;">
-          <p style="margin-bottom: 12px;">No curricula yet</p>
-          <p style="font-size: 12px; color: #606060;">
-            Create one by chatting with the Professor persona in "curriculum" mode
-          </p>
-        </div>
-      `;
+      container.innerHTML = "";
+      container.appendChild(EmptyState.render({
+        icon: "graduation-cap",
+        title: "No curricula created",
+        description: "Use the Professor persona to create structured learning paths.",
+        actionLabel: "Start with /curriculum",
+        onAction: () => {
+          const chatInput = document.getElementById("chat-input");
+          if (chatInput) { chatInput.value = "/curriculum "; chatInput.focus(); }
+          showView("chat");
+        },
+        size: "small",
+      }));
       return;
     }
 
@@ -7447,22 +7514,46 @@ async function handlePauseCurriculum(curriculumId) {
  * Handle delete curriculum button
  */
 async function handleDeleteCurriculum(curriculumId) {
-  if (!(await ConfirmDialog.show({
-    title: 'Delete curriculum',
-    message: 'Are you sure you want to delete this curriculum? This cannot be undone.',
-    confirmLabel: 'Delete',
-    destructive: true,
-  }))) {
-    return;
+  // Fetch curriculum data for potential undo restore
+  let curriculumSnapshot = null;
+  try {
+    const snapRes = await fetch(`${API_URL}/polly/curricula/${curriculumId}`);
+    if (snapRes.ok) curriculumSnapshot = await snapRes.json();
+  } catch (e) {
+    console.warn("[Curriculum] Could not snapshot for undo:", e);
   }
 
-  try {
-    await deleteCurriculum(curriculumId);
-    // Go back to list
-    await loadCurriculaView();
-  } catch (error) {
-    console.error("[Curriculum] Delete failed:", error);
-  }
+  // Delete immediately
+  const deleted = await deleteCurriculum(curriculumId);
+  if (!deleted) return;
+
+  // Go back to list
+  await loadCurriculaView();
+
+  if (!curriculumSnapshot) return;
+
+  window.undoManager.schedule(`curriculum-${curriculumId}`, {
+    label: curriculumSnapshot.title || curriculumSnapshot.topic || "Curriculum",
+    onDelete: () => { /* already deleted */ },
+    onRestore: async () => {
+      try {
+        const res = await fetch(`${API_URL}/polly/curricula/create`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            topic: curriculumSnapshot.topic || curriculumSnapshot.title,
+            template_id: curriculumSnapshot.template_id,
+            sections: curriculumSnapshot.sections,
+          }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        await loadCurriculaView();
+      } catch (err) {
+        console.error("[Curriculum] Undo restore failed:", err);
+        showToast("Could not restore curriculum", "error");
+      }
+    },
+  });
 }
 
 /**
@@ -9743,6 +9834,26 @@ const loadDashboardData = withErrorBoundary(async function () {
     if (statPatterns) statPatterns.textContent = data.patterns || 0;
     if (statEntities) statEntities.textContent = data.graph?.entities || 0;
 
+    // Show dashboard empty state when nothing is indexed
+    const dashboardEmptyEl = document.getElementById("dashboard-empty-state");
+    if (dashboardEmptyEl) {
+      const totalIndexed = (notesStats.count || 0) + (data.rag?.codebase?.count || 0) + (data.patterns || 0) + (data.graph?.entities || 0);
+      if (totalIndexed === 0) {
+        dashboardEmptyEl.classList.remove("hidden");
+        dashboardEmptyEl.innerHTML = "";
+        dashboardEmptyEl.appendChild(EmptyState.render({
+          icon: "layout-dashboard",
+          title: "Welcome to Polly",
+          description: "Index your knowledge base to see stats and insights here.",
+          actionLabel: "Go to Knowledge Base",
+          onAction: () => showView("knowledge"),
+          size: "medium",
+        }));
+      } else {
+        dashboardEmptyEl.classList.add("hidden");
+      }
+    }
+
     // Update right sidebar if on dashboard (NOT on chat view to avoid re-renders)
     if (currentView === "dashboard") {
       updateRightSidebar("dashboard");
@@ -10486,14 +10597,13 @@ async function loadPatterns() {
 
     if (data.total_count === 0) {
       // Show empty state
-      patternsList.innerHTML = `
-        <div class="pattern-empty">
-          <i data-lucide="sparkles" class="pattern-empty-icon"></i>
-          <p>No patterns learned yet.</p>
-          <p class="pattern-empty-hint">Keep using Polly and patterns will emerge from your queries and knowledge base.</p>
-        </div>
-      `;
-      lucide.createIcons();
+      patternsList.innerHTML = "";
+      patternsList.appendChild(EmptyState.render({
+        icon: "brain",
+        title: "No patterns learned yet",
+        description: "Polly learns patterns from your conversations over time. Have a few conversations and check back.",
+        size: "medium",
+      }));
       return;
     }
 
@@ -10718,13 +10828,13 @@ async function filterPatterns() {
     patternsList.innerHTML = "";
 
     if (filteredPatterns.length === 0) {
-      patternsList.innerHTML = `
-        <div class="pattern-empty">
-          <i data-lucide="calendar" class="pattern-empty-icon"></i>
-          <p>No patterns in this time range.</p>
-          <p class="pattern-empty-hint">Try a different time filter.</p>
-        </div>
-      `;
+      patternsList.innerHTML = "";
+      patternsList.appendChild(EmptyState.render({
+        icon: "calendar",
+        title: "No patterns in this time range",
+        description: "Try a different time filter.",
+        size: "medium",
+      }));
       lucide.createIcons();
       return;
     }
@@ -10852,19 +10962,29 @@ async function exportPatterns() {
 async function resetPatterns() {
   const confirmed = await ConfirmDialog.show({
     title: 'Reset all patterns',
-    message: 'This will delete all patterns, clear query history, and create a backup first. This action cannot be undone.',
+    message: 'This will delete all patterns and clear query history. A backup will be created first. You will have 10 seconds to undo.',
     confirmLabel: 'Reset',
     destructive: true,
   });
 
   if (!confirmed) return;
 
+  // Snapshot current patterns before reset
+  let patternSnapshot = null;
+  try {
+    const snapRes = await fetch("http://127.0.0.1:11436/polly/patterns");
+    if (snapRes.ok) {
+      const snapData = await snapRes.json();
+      patternSnapshot = snapData.patterns || [];
+    }
+  } catch (e) {
+    console.warn("[Patterns] Could not snapshot for undo:", e);
+  }
+
   try {
     const response = await fetch(
       "http://127.0.0.1:11436/polly/patterns/reset",
-      {
-        method: "POST",
-      },
+      { method: "POST" },
     );
 
     if (!response.ok) {
@@ -10873,16 +10993,39 @@ async function resetPatterns() {
 
     const result = await response.json();
 
+    // Reload patterns (should show empty state)
+    await loadPatterns();
+
+    const label = "All patterns";
+    window.undoManager.schedule("patterns-reset", {
+      label,
+      timeout: 10000,
+      onDelete: () => { /* reset already executed */ },
+      onRestore: async () => {
+        if (!patternSnapshot || patternSnapshot.length === 0) {
+          showToast("No pattern snapshot available to restore", "warning");
+          return;
+        }
+        try {
+          const res = await fetch("http://127.0.0.1:11436/polly/patterns/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ patterns: patternSnapshot }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          await loadPatterns();
+        } catch (err) {
+          console.error("[Patterns] Undo restore failed:", err);
+          showToast("Could not restore patterns", "error");
+        }
+      },
+    });
+
     if (result.backup_path) {
       showNotification(
         `Patterns reset. Backup saved to: ${result.backup_path}`,
       );
-    } else {
-      showNotification("Patterns reset successfully");
     }
-
-    // Reload patterns (should show empty state)
-    await loadPatterns();
   } catch (error) {
     console.error("Error resetting patterns:", error);
     showNotification("Failed to reset patterns", "error");
@@ -13428,7 +13571,6 @@ let editingModelId = null;
  */
 async function loadMentalModels() {
   const listContainer = document.getElementById("mental-models-list");
-  const countEl = document.querySelector(".mental-models-count");
 
   try {
     // Show loading state
@@ -13446,54 +13588,7 @@ async function loadMentalModels() {
     const data = await response.json();
     mentalModels = data.models || [];
 
-    // Update count
-    const enabledCount = mentalModels.filter((m) => m.enabled).length;
-    countEl.textContent = `${mentalModels.length} models (${enabledCount} enabled)`;
-
-    // Render models
-    if (mentalModels.length === 0) {
-      listContainer.innerHTML = `
-        <div class="mental-models-empty">
-          <h3>No Mental Models</h3>
-          <p>Click "Add Model" to create your first mental model</p>
-        </div>
-      `;
-    } else {
-      listContainer.innerHTML = mentalModels
-        .map(renderMentalModelCard)
-        .join("");
-
-      // Attach event listeners
-      mentalModels.forEach((model) => {
-        // Toggle
-        const toggleEl = document.getElementById(
-          `mental-model-toggle-${model.id}`,
-        );
-        if (toggleEl) {
-          toggleEl.addEventListener("click", () => toggleMentalModel(model.id));
-        }
-
-        // Edit
-        const editBtn = document.getElementById(
-          `mental-model-edit-${model.id}`,
-        );
-        if (editBtn) {
-          editBtn.addEventListener("click", () =>
-            openMentalModelModal(model.id),
-          );
-        }
-
-        // Delete
-        const deleteBtn = document.getElementById(
-          `mental-model-delete-${model.id}`,
-        );
-        if (deleteBtn) {
-          deleteBtn.addEventListener("click", () =>
-            deleteMentalModel(model.id),
-          );
-        }
-      });
-    }
+    renderMentalModelsList();
   } catch (error) {
     console.error("Error loading mental models:", error);
     listContainer.innerHTML = `
@@ -13502,6 +13597,70 @@ async function loadMentalModels() {
         <p>${error.message}</p>
       </div>
     `;
+  }
+}
+
+/**
+ * Render the mental models list from the current in-memory mentalModels array.
+ */
+function renderMentalModelsList() {
+  const listContainer = document.getElementById("mental-models-list");
+  const countEl = document.querySelector(".mental-models-count");
+  if (!listContainer) return;
+
+  // Update count
+  const enabledCount = mentalModels.filter((m) => m.enabled).length;
+  if (countEl) countEl.textContent = `${mentalModels.length} models (${enabledCount} enabled)`;
+
+  // Render models
+  if (mentalModels.length === 0) {
+    listContainer.innerHTML = "";
+    listContainer.appendChild(EmptyState.render({
+      icon: "lightbulb",
+      title: "Using default mental models",
+      description: "Polly applies 12 built-in mental models. Create custom ones to personalize your thinking.",
+      actionLabel: "Create Model",
+      onAction: () => {
+        const addBtn = document.getElementById("add-mental-model-btn");
+        if (addBtn) addBtn.click();
+      },
+      size: "medium",
+    }));
+  } else {
+    listContainer.innerHTML = mentalModels
+      .map(renderMentalModelCard)
+      .join("");
+
+    // Attach event listeners
+    mentalModels.forEach((model) => {
+      // Toggle
+      const toggleEl = document.getElementById(
+        `mental-model-toggle-${model.id}`,
+      );
+      if (toggleEl) {
+        toggleEl.addEventListener("click", () => toggleMentalModel(model.id));
+      }
+
+      // Edit
+      const editBtn = document.getElementById(
+        `mental-model-edit-${model.id}`,
+      );
+      if (editBtn) {
+        editBtn.addEventListener("click", () =>
+          openMentalModelModal(model.id),
+        );
+      }
+
+      // Delete
+      const deleteBtn = document.getElementById(
+        `mental-model-delete-${model.id}`,
+      );
+      if (deleteBtn) {
+        deleteBtn.addEventListener("click", () =>
+          deleteMentalModel(model.id),
+        );
+      }
+    });
   }
 }
 
@@ -13874,33 +14033,33 @@ async function deleteMentalModel(modelId) {
   const model = mentalModels.find((m) => m.id === modelId);
   if (!model) return;
 
-  if (!(await ConfirmDialog.show({
-    title: 'Delete mental model',
-    message: `Delete mental model "${model.name}"? This cannot be undone.`,
-    confirmLabel: 'Delete',
-    destructive: true,
-  }))) {
-    return;
-  }
+  // Hide from displayed list immediately
+  mentalModels = mentalModels.filter((m) => m.id !== modelId);
+  renderMentalModelsList();
 
-  try {
-    const response = await fetch(
-      `http://127.0.0.1:11436/polly/mental-models/${modelId}`,
-      {
-        method: "DELETE",
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    // Reload models
-    await loadMentalModels();
-  } catch (error) {
-    console.error("Error deleting mental model:", error);
-    showToast(`Failed to delete mental model: ${error.message}`, "error");
-  }
+  window.undoManager.schedule(`model-${modelId}`, {
+    label: model.name || modelId,
+    onDelete: async () => {
+      try {
+        const response = await fetch(
+          `http://127.0.0.1:11436/polly/mental-models/${modelId}`,
+          { method: "DELETE" },
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      } catch (error) {
+        console.error("Error deleting mental model:", error);
+        showToast(`Failed to delete mental model: ${error.message}`, "error");
+        // Restore to local state since the actual delete failed
+        mentalModels.push(model);
+        renderMentalModelsList();
+      }
+    },
+    onRestore: () => {
+      mentalModels.push(model);
+      mentalModels.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+      renderMentalModelsList();
+    },
+  });
 }
 
 /**
@@ -14321,6 +14480,23 @@ function renderDomainsList() {
     (a, b) => a.order - b.order,
   );
 
+  // Empty domains state
+  if (sortedDomains.length === 0) {
+    listContainer.innerHTML = "";
+    listContainer.appendChild(EmptyState.render({
+      icon: "layers",
+      title: "No custom domains",
+      description: "Domains organize your knowledge into practice areas.",
+      actionLabel: "Create Domain",
+      onAction: () => {
+        const addBtn = document.getElementById("add-domain-btn");
+        if (addBtn) addBtn.click();
+      },
+      size: "medium",
+    }));
+    return;
+  }
+
   // Render cards
   listContainer.innerHTML = sortedDomains
     .map(
@@ -14481,34 +14657,36 @@ async function deleteDomain(domainId) {
     return;
   }
 
-  if (!(await ConfirmDialog.show({
-    title: 'Delete domain',
-    message: `Delete domain "${domain.name}"? This cannot be undone.`,
-    confirmLabel: 'Delete',
-    destructive: true,
-  }))) {
-    return;
-  }
+  // Hide from local state immediately
+  domainsConfig.domains = domainsConfig.domains.filter((d) => d.id !== domainId);
+  renderDomainsList();
 
-  try {
-    const response = await fetch(
-      `http://127.0.0.1:11436/polly/domains/${domainId}`,
-      {
-        method: "DELETE",
-      },
-    );
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || "Failed to delete domain");
-    }
-
-    // Reload domains
-    await loadDomainsConfig();
-  } catch (error) {
-    console.error("Failed to delete domain:", error);
-    showToast(`Failed to delete domain: ${error.message}`, "error");
-  }
+  window.undoManager.schedule(`domain-${domainId}`, {
+    label: domain.name || domainId,
+    onDelete: async () => {
+      try {
+        const response = await fetch(
+          `http://127.0.0.1:11436/polly/domains/${domainId}`,
+          { method: "DELETE" },
+        );
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.detail || "Failed to delete domain");
+        }
+      } catch (error) {
+        console.error("Failed to delete domain:", error);
+        showToast(`Failed to delete domain: ${error.message}`, "error");
+        // Restore domain in UI since the actual delete failed
+        domainsConfig.domains.push(domain);
+        renderDomainsList();
+      }
+    },
+    onRestore: () => {
+      domainsConfig.domains.push(domain);
+      domainsConfig.domains.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+      renderDomainsList();
+    },
+  });
 }
 
 /**
@@ -18359,8 +18537,19 @@ function updateTopicsUI(topics) {
   if (!topicsContent) return;
 
   if (topics.length === 0) {
-    topicsContent.innerHTML =
-      '<p class="no-topics">No topics yet. Start learning!</p>';
+    topicsContent.innerHTML = "";
+    topicsContent.appendChild(EmptyState.render({
+      icon: "book-open",
+      title: "No learning topics tracked",
+      description: "Use the Professor persona to start a learning path, or add topics manually.",
+      actionLabel: "Start Learning",
+      onAction: () => {
+        const chatInput = document.getElementById("chat-input");
+        if (chatInput) chatInput.focus();
+        showView("chat");
+      },
+      size: "small",
+    }));
     return;
   }
 
@@ -18724,8 +18913,13 @@ function renderTopicsBrowser(topics) {
   if (!listEl) return;
 
   if (topics.length === 0) {
-    listEl.innerHTML =
-      '<p class="no-topics">No topics match the current filters</p>';
+    listEl.innerHTML = "";
+    listEl.appendChild(EmptyState.render({
+      icon: "search",
+      title: "No topics match the current filters",
+      description: "Try adjusting your search or filters.",
+      size: "small",
+    }));
     return;
   }
 
@@ -18908,8 +19102,13 @@ function updateLearningNotesUI(notes) {
   if (!notesContainer) return;
 
   if (notes.length === 0) {
-    notesContainer.innerHTML =
-      '<p class="no-topics" style="font-size: 12px; color: #666;">No learning notes yet. Complete a teaching session and create notes to capture your learning.</p>';
+    notesContainer.innerHTML = "";
+    notesContainer.appendChild(EmptyState.render({
+      icon: "file-text",
+      title: "No learning notes yet",
+      description: "Complete a teaching session and create notes to capture your learning.",
+      size: "small",
+    }));
     return;
   }
 
@@ -21508,12 +21707,9 @@ function setupEntityBrowser() {
   }
   
   // Debounced search
-  let searchTimeout;
   if (searchInput) {
-    searchInput.addEventListener('input', () => {
-      clearTimeout(searchTimeout);
-      searchTimeout = setTimeout(() => loadGardenEntities(), 300);
-    });
+    const debouncedGardenSearch = debounce(() => loadGardenEntities(), 300);
+    searchInput.addEventListener('input', debouncedGardenSearch);
   }
   
   if (typeFilter) {
@@ -21560,7 +21756,15 @@ async function loadGardenEntities() {
     updateDeleteSelectedBtn();
     
     if (!data.entities || data.entities.length === 0) {
-      listEl.innerHTML = '<div style="text-align: center; padding: 16px; color: #808080; font-size: 11px;">No entities found</div>';
+      listEl.innerHTML = "";
+      listEl.appendChild(EmptyState.render({
+        icon: "git-branch",
+        title: "No entities in the graph",
+        description: "Entities are extracted from your conversations and notes. Start chatting to build your knowledge graph.",
+        actionLabel: "Go to Chat",
+        onAction: () => showView("chat"),
+        size: "small",
+      }));
       return;
     }
     

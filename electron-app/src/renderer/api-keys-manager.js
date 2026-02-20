@@ -85,14 +85,18 @@ async function loadAPIKeys() {
     console.log('[API Keys] Data received:', data);
     
     if (!data.keys || data.keys.length === 0) {
-      listContainer.innerHTML = `
-        <div style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
-          <i data-lucide="key" style="width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
-          <p style="font-size: 14px;">No API keys configured yet.</p>
-          <p style="font-size: 12px; margin-top: 8px;">Click "Add API Key" to get started.</p>
-        </div>
-      `;
-      lucide.createIcons();
+      listContainer.innerHTML = "";
+      listContainer.appendChild(EmptyState.render({
+        icon: "key",
+        title: "No API keys configured",
+        description: "Add keys for AI providers to enable cloud model routing.",
+        actionLabel: "Add API Key",
+        onAction: () => {
+          const addBtn = document.getElementById("add-api-key-btn");
+          if (addBtn) addBtn.click();
+        },
+        size: "medium",
+      }));
       return;
     }
     
@@ -449,33 +453,33 @@ async function testAPIKey(provider) {
  * Delete an API key
  */
 async function deleteAPIKey(provider) {
-  if (!(await ConfirmDialog.show({
-    title: 'Delete API key',
-    message: `Delete API key for ${formatProviderName(provider)}?`,
-    confirmLabel: 'Delete',
-    destructive: true,
-  }))) {
-    return;
-  }
-  
-  try {
-    const response = await fetch(`${SETTINGS_API_BASE_URL}/keys/${provider}`, {
-      method: 'DELETE'
-    });
-    
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to delete API key');
-    }
-    
-    // Refresh the list
-    showToast(`API key for ${formatProviderName(provider)} deleted`, 'info');
-    loadAPIKeys();
-    
-  } catch (error) {
-    console.error('Error deleting API key:', error);
-    showToast(`Error: ${error.message}`, "error");
-  }
+  // Hide the item from the list immediately
+  const item = document.querySelector(`.api-key-item[data-provider="${provider}"]`);
+  if (item) item.style.display = 'none';
+
+  window.undoManager.schedule(`apikey-${provider}`, {
+    label: `${formatProviderName(provider)} API key`,
+    onDelete: async () => {
+      try {
+        const response = await fetch(`${SETTINGS_API_BASE_URL}/keys/${provider}`, {
+          method: 'DELETE'
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.detail || 'Failed to delete API key');
+        }
+        loadAPIKeys();
+      } catch (error) {
+        console.error('Error deleting API key:', error);
+        showToast(`Error: ${error.message}`, "error");
+        loadAPIKeys(); // Refresh to show current state
+      }
+    },
+    onRestore: () => {
+      if (item) item.style.display = '';
+      else loadAPIKeys(); // Fallback: reload from server
+    },
+  });
 }
 
 /**

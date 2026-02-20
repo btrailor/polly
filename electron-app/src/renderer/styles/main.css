@@ -1663,6 +1663,15 @@ body {
   display: none;
 }
 
+.view-placeholder-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 400px;
+}
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -8692,6 +8701,12 @@ body {
 .field-success {
   border-color: var(--success, #98c379) !important;
   box-shadow: 0 0 0 1px var(--success, #98c379) !important;
+}
+
+/* Debounce visual indicator: subtle feedback while search is pending */
+.input-searching {
+  opacity: 0.75;
+  cursor: wait;
 }
 
 /* ==================== Per-Note Validation Banner (Task #22b) ==================== */

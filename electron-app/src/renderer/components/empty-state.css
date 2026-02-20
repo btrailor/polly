@@ -1,0 +1,100 @@
+/* ==================== EmptyState Component ==================== */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px;
+  min-height: 200px;
+}
+
+.empty-state--small {
+  padding: 24px 16px;
+  min-height: 120px;
+}
+
+.empty-state--large {
+  padding: 64px 32px;
+  min-height: 300px;
+}
+
+.empty-state__icon {
+  color: var(--text-muted, #555);
+  margin-bottom: 16px;
+}
+
+.empty-state__icon svg {
+  width: 48px;
+  height: 48px;
+}
+
+.empty-state--small .empty-state__icon svg {
+  width: 32px;
+  height: 32px;
+}
+
+.empty-state__title {
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+}
+
+.empty-state--small .empty-state__title {
+  font-size: 13px;
+}
+
+.empty-state__description {
+  color: var(--text-secondary);
+  font-size: 13px;
+  max-width: 320px;
+  margin: 0 0 20px 0;
+  line-height: 1.5;
+}
+
+.empty-state--small .empty-state__description {
+  font-size: 12px;
+  margin-bottom: 14px;
+}
+
+.empty-state__action {
+  margin-bottom: 8px;
+}
+
+.empty-state__secondary {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* Sidebar "coming soon" stub — compact variant used in HTML template strings */
+.sidebar-coming-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 24px 16px;
+  gap: 6px;
+}
+
+.sidebar-coming-soon__icon {
+  width: 24px;
+  height: 24px;
+  color: var(--text-muted, #555);
+  margin-bottom: 4px;
+}
+
+.sidebar-coming-soon__title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.sidebar-coming-soon__desc {
+  color: var(--text-secondary);
+  font-size: 11px;
+  margin: 0;
+  line-height: 1.4;
+}

@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="styles/curriculum.css">
   <link rel="stylesheet" href="components/mental-models-editor.css">
   <link rel="stylesheet" href="components/confirm-dialog.css">
+  <link rel="stylesheet" href="components/empty-state.css">
   <script src="lucide.min.js"></script>
   <script src="marked.js"></script>
   <script src="mermaid.min.js"></script>
@@ -29,6 +30,10 @@
   <script src="utils/api-client.js"></script>
   <!-- Accessibility: Focus trap utility -->
   <script src="utils/focus-trap.js"></script>
+  <!-- Undo manager for destructive actions -->
+  <script src="utils/undo-manager.js"></script>
+  <!-- Debounce utility for search/input operations -->
+  <script src="utils/debounce.js"></script>
   <script src="components/question-form.js"></script>
   <script src="components/preview-modal.js"></script>
   <script src="components/template-gallery.js"></script>
@@ -38,6 +43,8 @@
   <!-- Phase 23.5: Security Hardening - Package Approval Dialog -->
   <script src="components/package-approval-dialog.js"></script>
   <script src="components/confirm-dialog.js"></script>
+  <!-- Empty state component for all views -->
+  <script src="components/empty-state.js"></script>
 </head>
 <body>
   <!-- Skip to main content (accessibility) -->
@@ -112,6 +119,15 @@
       </button>
       <button class="ribbon-item" data-view="domains" title="Domains" aria-label="Domains">
         <i data-lucide="folder-tree" aria-hidden="true"></i>
+      </button>
+      <button class="ribbon-item" data-view="calendar" title="Calendar" aria-label="Calendar">
+        <i data-lucide="calendar" aria-hidden="true"></i>
+      </button>
+      <button class="ribbon-item" data-view="mail" title="Mail" aria-label="Mail">
+        <i data-lucide="mail" aria-hidden="true"></i>
+      </button>
+      <button class="ribbon-item" data-view="projects" title="Projects" aria-label="Projects">
+        <i data-lucide="kanban" aria-hidden="true"></i>
       </button>
       
       <div class="ribbon-spacer"></div>
@@ -312,6 +328,9 @@
                 <div class="stat-label">Graph Entities</div>
               </div>
             </div>
+
+            <!-- Empty state shown when nothing is indexed yet -->
+            <div id="dashboard-empty-state" class="hidden"></div>
 
             <!-- Autonomy Dashboard Section (Task #21) -->
             <div class="autonomy-section" id="autonomy-section">
@@ -2370,10 +2389,24 @@
           </div>
         </div>
 
+        <!-- Calendar View (placeholder) -->
+        <div class="view hidden" id="view-calendar">
+          <div class="view-placeholder-container"></div>
+        </div>
+
+        <!-- Mail View (placeholder) -->
+        <div class="view hidden" id="view-mail">
+          <div class="view-placeholder-container"></div>
+        </div>
+
+        <!-- Projects View (placeholder) -->
+        <div class="view hidden" id="view-projects">
+          <div class="view-placeholder-container"></div>
+        </div>
+
         <!-- Graph View -->
         <div class="view hidden" id="view-graph">
           <div class="graph-container">
-            <!-- Cytoscape canvas -->
             <div id="graph-canvas" class="graph-canvas"></div>
             
             <!-- Graph controls overlay -->

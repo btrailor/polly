@@ -842,13 +842,10 @@ class NotesManager {
     // Search input
     const searchInput = document.getElementById('notes-search-input');
     if (searchInput) {
-      let searchTimeout;
-      searchInput.addEventListener('input', (e) => {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {
-          this.searchNotes(e.target.value);
-        }, 300); // Debounce 300ms
-      });
+      const debouncedNotesSearch = debounce((e) => {
+        this.searchNotes(e.target.value);
+      }, 250);
+      searchInput.addEventListener('input', debouncedNotesSearch);
     }
 
     // Validation banner close button (Task #22b)
@@ -1029,29 +1026,23 @@ class NotesManager {
 
       // Handle empty state
       if (items.length === 0) {
-        container.innerHTML = `
-          <div class="browse-list-empty" style="padding: 24px; text-align: center; color: var(--text-secondary);">
-            <i data-lucide="search-x" style="width: 48px; height: 48px; margin: 0 auto 16px; opacity: 0.3; display: block;"></i>
-            <p style="font-size: 13px; margin: 0;">No items match filters</p>
-            ${(domain || type || maturity || connectionStatus || q) ? 
-              '<button class="btn-reset-filters" style="margin-top: 12px; padding: 6px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); cursor: pointer; font-size: 12px;">Reset Filters</button>' : 
-              '<p style="font-size: 11px; margin: 8px 0 0; opacity: 0.7;">No notes found in the index.</p>'}
-          </div>
-        `;
-        
-        // Re-initialize icons
-        if (typeof lucide !== 'undefined') {
-          lucide.createIcons();
-        }
-        
-        // Wire reset filters button
-        const resetBtn = container.querySelector('.btn-reset-filters');
-        if (resetBtn) {
-          resetBtn.addEventListener('click', () => {
-            this.updateBrowseList(container, { sort });
-          });
-        }
-        
+        container.innerHTML = "";
+        const hasFilters = domain || type || maturity || connectionStatus || q;
+        container.appendChild(EmptyState.render({
+          icon: hasFilters ? "search" : "file-text",
+          title: hasFilters ? "No items match filters" : "No notes found",
+          description: hasFilters
+            ? "Try adjusting your search or filters."
+            : "Create your first note or connect your Obsidian vault.",
+          actionLabel: hasFilters ? "Clear Filters" : "New Note",
+          onAction: hasFilters
+            ? () => this.updateBrowseList(container, { sort })
+            : () => {
+                const newNoteBtn = document.getElementById("new-note-btn");
+                if (newNoteBtn) newNoteBtn.click();
+              },
+          size: "small",
+        }));
         return;
       }
 

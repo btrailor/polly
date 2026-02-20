@@ -1207,9 +1207,42 @@ def create_app(polly_instance=None) -> FastAPI:
         except Exception as e:
             logger.error(f"Error resetting patterns: {e}")
             raise HTTPException(500, f"Failed to reset patterns: {str(e)}")
-    
+
+    @app.post("/polly/patterns/import")
+    async def import_patterns(request: Request):
+        """
+        Bulk-import patterns from a list of pattern dicts (for undo after reset).
+
+        Request body:
+        {
+            "patterns": [ <pattern dict>, ... ]
+        }
+        """
+        polly = get_polly()
+
+        if not polly.pattern_engine:
+            raise HTTPException(503, "Pattern engine not initialized")
+
+        try:
+            from core.patterns.models import Pattern
+            body = await request.json()
+            patterns_data = body.get("patterns", [])
+            imported = 0
+            for p_data in patterns_data:
+                try:
+                    pattern = Pattern.from_dict(p_data)
+                    polly.pattern_engine.json_backend.save(pattern)
+                    polly.pattern_engine.patterns[pattern.id] = pattern
+                    imported += 1
+                except Exception as pe:
+                    logger.warning(f"Skipped pattern during import: {pe}")
+            return {"status": "success", "imported": imported}
+        except Exception as e:
+            logger.error(f"Error importing patterns: {e}")
+            raise HTTPException(500, f"Failed to import patterns: {str(e)}")
+
     # ==================== Learning Tracker Endpoints (Phase 22) ====================
-    
+
     @app.get("/polly/learning/stats")
     async def get_learning_stats():
         """
