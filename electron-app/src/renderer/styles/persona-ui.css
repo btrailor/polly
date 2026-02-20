@@ -184,7 +184,6 @@
 }
 
 .question-form-custom-input:focus {
-  outline: none;
   border-color: var(--accent-color, #4a9eff);
 }
 
@@ -435,7 +434,6 @@
 }
 
 .preview-edit-textarea:focus {
-  outline: none;
 }
 
 /* Raw Tab (Pre) */
@@ -509,7 +507,6 @@
 }
 
 .persona-selector:focus {
-  outline: none;
   border-color: var(--accent-color, #4a9eff);
 }
 
@@ -530,7 +527,6 @@
 }
 
 .mode-selector:focus {
-  outline: none;
   border-color: var(--accent-color, #4a9eff);
 }
 
@@ -567,7 +563,6 @@
 }
 
 .chat-textarea:focus {
-  outline: none;
   border-color: var(--accent-color, #4a9eff);
 }
 

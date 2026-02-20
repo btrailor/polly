@@ -32,7 +32,6 @@
 }
 
 .notes-search input:focus {
-  outline: none;
   border-color: var(--accent);
 }
 
@@ -157,7 +156,6 @@
   border: 2px solid var(--accent);
   border-radius: 4px;
   padding: 4px 8px;
-  outline: none;
 }
 
 .btn-icon {
@@ -210,7 +208,6 @@
   font-size: 14px;
   line-height: 1.6;
   resize: none;
-  outline: none;
 }
 
 .notes-editor-view {

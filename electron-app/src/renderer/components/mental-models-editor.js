@@ -816,11 +816,12 @@ const MentalModelsEditor = {
    * Delete a model
    */
   async deleteModel(modelId) {
-    if (
-      !confirm(
-        "Are you sure you want to delete this mental model? This cannot be undone.",
-      )
-    ) {
+    if (!(await ConfirmDialog.show({
+      title: 'Delete mental model',
+      message: 'Are you sure you want to delete this mental model? This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    }))) {
       return;
     }
 

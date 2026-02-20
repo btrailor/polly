@@ -398,13 +398,11 @@ async function saveAPIKey() {
       throw new Error(error.detail || 'Failed to save API key');
     }
     
-    statusElement.innerHTML = '<p style="color: #4ade80;">✓ API key saved successfully!</p>';
-    
-    // Close modal and refresh list after a short delay
-    setTimeout(() => {
-      closeAddAPIKeyModal();
-      loadAPIKeys();
-    }, 1000);
+    statusElement.innerHTML = '';
+
+    showToast(`API key for ${formatProviderName(provider)} saved`, 'success');
+    closeAddAPIKeyModal();
+    loadAPIKeys();
     
   } catch (error) {
     console.error('Error saving API key:', error);
@@ -420,7 +418,6 @@ async function testAPIKey(provider) {
   if (!item) return;
   
   const statusElement = item.querySelector('.api-key-status');
-  const originalHTML = statusElement.innerHTML;
   
   statusElement.innerHTML = '<span style="color: var(--text-secondary);">Testing...</span>';
   
@@ -435,22 +432,16 @@ async function testAPIKey(provider) {
     
     if (result.success) {
       statusElement.innerHTML = '<span style="color: #4ade80;">✓ Connection successful!</span>';
-      setTimeout(() => {
-        statusElement.innerHTML = originalHTML;
-      }, 3000);
+      showToast(`API key valid for ${formatProviderName(provider)}`, 'success');
     } else {
       statusElement.innerHTML = `<span style="color: var(--error);">✗ ${result.error || 'Connection failed'}</span>`;
-      setTimeout(() => {
-        statusElement.innerHTML = originalHTML;
-      }, 5000);
+      showToast(`API key invalid for ${formatProviderName(provider)}`, 'error');
     }
     
   } catch (error) {
     console.error('Error testing API key:', error);
     statusElement.innerHTML = `<span style="color: var(--error);">✗ ${error.message}</span>`;
-    setTimeout(() => {
-      statusElement.innerHTML = originalHTML;
-    }, 5000);
+    showToast(`Test failed: ${error.message}`, 'error');
   }
 }
 
@@ -458,7 +449,12 @@ async function testAPIKey(provider) {
  * Delete an API key
  */
 async function deleteAPIKey(provider) {
-  if (!confirm(`Delete API key for ${formatProviderName(provider)}?`)) {
+  if (!(await ConfirmDialog.show({
+    title: 'Delete API key',
+    message: `Delete API key for ${formatProviderName(provider)}?`,
+    confirmLabel: 'Delete',
+    destructive: true,
+  }))) {
     return;
   }
   
@@ -473,11 +469,12 @@ async function deleteAPIKey(provider) {
     }
     
     // Refresh the list
+    showToast(`API key for ${formatProviderName(provider)} deleted`, 'info');
     loadAPIKeys();
     
   } catch (error) {
     console.error('Error deleting API key:', error);
-    alert(`Error: ${error.message}`);
+    showToast(`Error: ${error.message}`, "error");
   }
 }
 
@@ -489,11 +486,13 @@ async function saveBudgetSettings() {
   const monthlyLimit = parseFloat(document.getElementById('budget-monthly-limit').value);
   
   if (isNaN(dailyLimit) || isNaN(monthlyLimit) || dailyLimit <= 0 || monthlyLimit <= 0) {
-    alert('Please enter valid budget limits.');
+    showToast('Please enter valid budget limits.', "warning");
     return;
   }
-  
-  try {
+
+  const button = document.getElementById('btn-save-budget');
+
+  await withButtonLoading(button, async () => {
     const response = await fetch(`${SETTINGS_API_BASE_URL}/budget`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -502,30 +501,18 @@ async function saveBudgetSettings() {
         monthly_limit: monthlyLimit
       })
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || 'Failed to save budget settings');
     }
-    
-    // Refresh budget display
+
     loadBudgetStatus();
-    
-    // Show success message
-    const button = document.getElementById('btn-save-budget');
-    const originalText = button.textContent;
-    button.textContent = '✓ Saved!';
-    button.disabled = true;
-    
-    setTimeout(() => {
-      button.textContent = originalText;
-      button.disabled = false;
-    }, 2000);
-    
-  } catch (error) {
+    showToast('Budget settings saved', 'success');
+  }).catch((error) => {
     console.error('[Budget] Error saving budget:', error);
-    alert(`Failed to save budget: ${error.message}`);
-  }
+    showToast(`Failed to save budget: ${error.message}`, "error");
+  });
 }
 
 /**

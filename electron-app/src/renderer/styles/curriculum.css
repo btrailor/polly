@@ -12,7 +12,6 @@
 
 /* Curriculum Input Fields */
 .curriculum-input:focus {
-  outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-translucent);
 }
@@ -233,7 +232,6 @@
 
 .curriculum-form-input:focus,
 .curriculum-form-textarea:focus {
-  outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-translucent);
 }
@@ -651,7 +649,6 @@
 }
 
 .reflection-textarea:focus {
-  outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-translucent);
 }

@@ -2616,7 +2616,7 @@ class NotesManager {
    */
   async appendToSelectedNote() {
     if (!this.selectedSimilarNote) {
-      alert('Please select a note to append to');
+      showToast('Please select a note to append to', "warning");
       return;
     }
     
