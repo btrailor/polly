@@ -925,6 +925,48 @@ body {
   z-index: var(--z-dropdown);
 }
 
+.context-picker-menu {
+  position: fixed;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 400;
+  min-width: 200px;
+  max-width: 280px;
+}
+
+.context-picker-menu .context-picker-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-color);
+  transition: background 0.15s;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.context-picker-menu .context-picker-item:last-child {
+  border-bottom: none;
+}
+
+.context-picker-menu .context-picker-item:hover,
+.context-picker-menu .context-picker-item:focus {
+  background: var(--bg-hover);
+  outline: none;
+}
+
+.context-picker-menu .context-picker-item .item-type {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.5;
+  color: var(--text-secondary);
+}
+
 .slash-command-autocomplete.hidden {
   display: none !important;
 }

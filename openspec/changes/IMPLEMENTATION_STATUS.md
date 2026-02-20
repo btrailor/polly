@@ -1,7 +1,7 @@
 # OpenSpec Changes — Implementation Status
 
 **Generated:** February 2026  
-**Last Updated:** February 18, 2026  
+**Last Updated:** February 20, 2026  
 **Purpose:** Single view of what has been implemented vs. pending across all active changes.
 
 ---
@@ -32,7 +32,7 @@
 | **scalable-memory-layers** | ~90% Complete | Token counter, budget allocator, relevance scorer, rolling context, tiered memory store, memory retriever, session extractor, polly.py integration (budget allocation, dual-path _gather_context, retrieval tier wiring, cleanup extraction), ContextContributor token_budget param, tiktoken replacement, retrieval classifier wiring, mental model persona fix, 112/112 tests | Task 16 (manual quality validation), Task 17 (documentation — in progress) |
 | **spec-integration-2026-02** | Specs only | New/updated domain specs and roadmap in OpenSpec | No implementation tasks in this change; work is in other changes |
 | **unified-pattern-engine** | Complete | All tasks (core/patterns/, engine, storage, migration, polly/rag/domains/server, tests, spec); Task 14 archive optional | Task 14 (archive old files) optional |
-| **ux-pivot-cursor-patterns** | Not started | — | Pattern list doc, chat layout/thread list, model/persona at input, context pills, visual pass; Code profile in phase-17 |
+| **ux-pivot-cursor-patterns** | ~95% Complete | Chat layout (persistent right-column panel + tab strip + agents sidebar), model/persona at input (pill dropdowns), context pills (`ContextPills` module: add/remove/clear, picker, payload sent to backend), visual/hierarchy pass (Lucide, dark theme, density), thread list keyboard nav + rename/delete context menu | Code profile (Task 6) deferred to phase-17; first-time setup simplification deferred to Phase 18 |
 
 ---
 
@@ -55,6 +55,7 @@ These changes have their implementation complete per their tasks; they can be ar
 
 - **knowledge-graph-navigation** — ~95% complete. Tasks 2–14 all implemented (all backend endpoints, Cytoscape.js graph page, Browse list, Garden view, filters, navigation wiring, CSS). Tasks 0–1 (prep cleanup) were not formally executed but cleanup happened during implementation. Task 15 (spec updates) in progress. Can be archived once Task 15 is finished.
 - **scalable-memory-layers** — ~90% complete. Tasks 1–15 all implemented (token budget foundation, tiered memory store, rolling relevance-weighted context, extraction pipeline, polly.py integration, retrieval classifier wiring, persona fix, 112/112 unit + integration tests). Task 16 (manual quality validation) deferred to next server run. Task 17 (documentation updates) in progress. New packages: `core/context/` (4 modules), `core/memory/` (3 new modules). Major `core/polly.py` changes for budget allocation, dual-path context gathering, session-end extraction.
+- **ux-pivot-cursor-patterns** — ~95% complete. Tasks 1–5 done: chat layout (persistent `#chat-panel` with tab strip + agents sidebar), model/persona pill dropdowns at input, `ContextPills` module (add/remove/clear, picker, context sent to backend), visual/density pass (Lucide, dark theme, 48px ribbon), thread list keyboard nav + rename/delete context menu. Task 6 (Code profile) deferred to phase-17; first-time setup simplification deferred to Phase 18.
 
 ---
 
@@ -75,7 +76,6 @@ These changes have their implementation complete per their tasks; they can be ar
 - **designer-profile** — Full task list; no implementation.
 - **learning-and-administrator-profiles** — Full task list; no implementation.
 - **phase-17-monaco-code-workspace** — Backend + frontend task list; no implementation.
-- **ux-pivot-cursor-patterns** — High-level tasks; overlaps with cursor-ui-pattern-migration and phase-17.
 
 ---
 
@@ -89,9 +89,10 @@ These changes have their implementation complete per their tasks; they can be ar
 
 1. **Archive completed changes** (after updating `openspec/specs/project/status.md`, `roadmap.md`, and `docs/status/CHANGELOG.md`): architecture-integration-audit, entity-model-unification, integration-contracts, knowledge-graph-refinement, litellm-provider-adapter, mem0-adaptive-memory, mem0-multi-provider-config, unified-pattern-engine.
 2. **Finish knowledge-graph-navigation** — Complete Task 15 (spec updates), then archive.
-3. **Continue core-framework-refinement** — Wave 4 remaining: Autonomy Dashboard frontend (#21), Enhanced Auto-Linking write-back (#22), RAG Optimization (#23), Persona Memory write-back (#24), SKILL↔MM Bridge (#25).
-4. **Optional cleanup** — custom-domains: finish optional tasks and spec update; library-extraction: proceed with polly-patterns/polly-compression/polly-entities/polly-personas or pause and document current state.
-5. **Pick next big change** — When ready: code-library-and-dev-philosophy, learning-and-administrator-profiles, phase-17 (Monaco), or cursor-ui-pattern-migration.
+3. **Archive ux-pivot-cursor-patterns** — Tasks 1–5 complete; Task 6 deferred to phase-17. Can be archived with a note that Code profile work continues in phase-17-monaco-code-workspace.
+4. **Continue core-framework-refinement** — Wave 4 remaining: Autonomy Dashboard frontend (#21), Enhanced Auto-Linking write-back (#22), RAG Optimization (#23), Persona Memory write-back (#24), SKILL↔MM Bridge (#25).
+5. **Optional cleanup** — custom-domains: finish optional tasks and spec update; library-extraction: proceed with polly-patterns/polly-compression/polly-entities/polly-personas or pause and document current state.
+6. **Pick next big change** — When ready: code-library-and-dev-philosophy, learning-and-administrator-profiles, phase-17 (Monaco), or cursor-ui-pattern-migration.
 
 ---
 

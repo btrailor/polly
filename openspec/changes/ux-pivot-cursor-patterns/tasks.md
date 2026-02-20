@@ -2,35 +2,46 @@
 
 High-level order. Detailed Code profile tasks stay in [phase-17-monaco-code-workspace/tasks.md](../../phase-17-monaco-code-workspace/tasks.md).
 
-## 1. Document and lock the pattern list
+**Status: Substantially complete.** Tasks 1–5 are done (organically, across prior UX changes and this one). Task 6 is deferred to phase-17.
 
-- Finalize [design.md](design.md) pattern table with any additions.
-- Optional: add a one-page “Cursor pattern reference” (screenshots or bullet list) in this change folder for implementers.
-- **Void setup and model patterns:** Use [specs/VOID_SETUP_AND_MODEL_PATTERNS.md](specs/VOID_SETUP_AND_MODEL_PATTERNS.md) as the spec; optionally run the Void codebase audit (in `~/projects/polly-void`) and add a short “Void findings” section there.
+---
 
-## 2. Chat layout and thread list
+## 1. Document and lock the pattern list ✅
 
-- Rework chat UI so one primary panel has: thread list (top) → messages (middle) → input (bottom).
-- Ensure thread list is first-class: clear titles, optional preview, rename/delete, keyboard nav.
-- If we keep a floating/minimized mode, make it a toggle from this panel rather than the default.
+- Pattern table finalized in [design.md](design.md).
+- Void setup/model patterns documented in [specs/VOID_SETUP_AND_MODEL_PATTERNS.md](specs/VOID_SETUP_AND_MODEL_PATTERNS.md).
+- Void codebase audit is optional and has not been run; deferred indefinitely (Void fork abandoned).
 
-## 3. Model and persona at input
+## 2. Chat layout and thread list ✅
 
-- Add or refactor so model (and persona) are always visible at the input: chip or compact dropdown, one click to change.
-- Wire to existing model/persona APIs; no backend change.
+- Implemented as a persistent right-column `#chat-panel` (tab strip + agents sidebar → messages → input). This differs from the original "one panel, thread list on top" plan but achieves the same goal.
+- Thread list: conversations grouped under agents in the agents sidebar; tab strip (`#chat-tabs`) shows up to 12 recent conversations with close buttons and a + new tab.
+- Rename/delete/star/category available via the `⋮` context menu on each conversation item.
+- Keyboard nav: `tabindex="0"` and `Enter`/`Space` activation added to `.agent-conversation-item`; `setupListKeyboardNav` wired to the `.agent-conversations` container.
 
-## 4. Context pills (basic)
+## 3. Model and persona at input ✅
 
-- Design and implement context pill UI: show attached context above or beside input; add/remove.
-- First version: attach “domain” or “current note” (for Notes page) or similar; backend can accept context in existing or extended chat request.
-- Extended context (@file, @selection) comes with Code profile (Phase 17).
+- Both are small pill-shaped `<select>` dropdowns (`.persona-selector`, `.model-selector`) sitting directly above the textarea in `.chat-controls`.
+- Model selector populated with ~27 options (3 Auto tiers + 8 providers × 3 tiers). Persona selector has 4 options (Default, Architect, Scribe, Professor).
+- Wired to existing model/persona APIs; no backend change.
 
-## 5. Visual and hierarchy pass
+## 4. Context pills (basic) ✅
 
-- Apply Cursor-like density and hierarchy: consistent iconography (Lucide), spacing, and panel styling across Chat, Notes, Learning.
-- Reuse the same chat panel component (or pattern) everywhere chat is shown.
+- `ContextPills` module implemented in `app.js`: state management, `add`/`remove`/`clear`/`getContextPayload`.
+- Picker dropdown built from current open note (`window.notesManager.currentNote`) and available domains (DOM + sidebar filter).
+- Pills rendered as chips above the textarea with remove (×) button and Lucide icon per type.
+- Context payload (`{ attached: [{type, label, value}] }`) injected into `queryOptions.context` on every `sendQueryInternal` call; backend already accepts `context: Optional[Dict]` on `PollyQueryRequest`.
+- Pills cleared on `switchToConversation` (covers new conversation too).
+- Extended context (@file, @selection) deferred to Code profile (Phase 17).
 
-## 6. Code profile (separate change)
+## 5. Visual and hierarchy pass ✅
+
+- Dark, dense Cursor-like layout in place: 48px ribbon, 11–13px fonts, single orange accent, Lucide icons throughout, flat bordered sections.
+- All views (Notes, Learning, etc.) share the same persistent `#chat-panel` — no separate per-view chat UI.
+- Completed through prior UX change series (ux-css-architecture, ux-consistent-feedback, ux-empty-states, ux-skeleton-loading, etc.).
+
+## 6. Code profile (separate change — deferred)
 
 - Detailed planning: [phase-17-monaco-code-workspace/specs/CODE_PROFILE_CURSOR_FEATURES.md](../phase-17-monaco-code-workspace/specs/CODE_PROFILE_CURSOR_FEATURES.md).
-- Implementation: follow [phase-17-monaco-code-workspace/tasks.md](../phase-17-monaco-code-workspace/tasks.md) and the Code profile planning doc. Code page uses the same chat panel and context patterns from this UX pivot.
+- Implementation: follow [phase-17-monaco-code-workspace/tasks.md](../phase-17-monaco-code-workspace/tasks.md).
+- Not started; awaiting phase-17.

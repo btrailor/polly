@@ -1132,6 +1132,9 @@ async function switchToConversation(conversationId, options = {}) {
     // Cancel any pending persona auto-advance (conversation is switching)
     cancelPersonaAutoAdvance();
 
+    // Clear context pills when switching conversations
+    ContextPills.clear();
+
     // Save current scroll position before switching
     if (currentConversationId) {
       saveUIState();
@@ -1719,13 +1722,13 @@ function renderAgentsSidebar() {
                ${convs
                  .map(
                    (c) =>
-                     `<div class="agent-conversation-item ${
-                       c.id === currentConversationId ? "active" : ""
-                     }" data-conversation-id="${c.id}" title="${(c.title || "").replace(/"/g, "&quot;")}">
-                    <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i>
-                    <span class="agent-conversation-title">${escapeHtml((c.title || "New conversation").slice(0, 24))}${(c.title || "").length > 24 ? "…" : ""}</span>
-                    <button type="button" class="agent-conversation-menu-btn" aria-label="Conversation options" data-conversation-id="${c.id}"><i data-lucide="more-vertical" style="width: 14px; height: 14px;"></i></button>
-                  </div>`
+                      `<div class="agent-conversation-item ${
+                        c.id === currentConversationId ? "active" : ""
+                      }" data-conversation-id="${c.id}" title="${(c.title || "").replace(/"/g, "&quot;")}" tabindex="0" role="button">
+                     <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i>
+                     <span class="agent-conversation-title">${escapeHtml((c.title || "New conversation").slice(0, 24))}${(c.title || "").length > 24 ? "…" : ""}</span>
+                     <button type="button" class="agent-conversation-menu-btn" aria-label="Conversation options" data-conversation-id="${c.id}"><i data-lucide="more-vertical" style="width: 14px; height: 14px;"></i></button>
+                   </div>`
                  )
                  .join("")}
              </div>`
@@ -1797,7 +1800,19 @@ function renderAgentsSidebar() {
       e.stopPropagation();
       switchToConversation(convId);
     });
+    item.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        switchToConversation(convId);
+      }
+    });
   });
+
+  // Keyboard navigation for agent conversation list
+  const agentConvsContainer = listEl.querySelector(".agent-conversations");
+  if (agentConvsContainer) {
+    setupListKeyboardNav(agentConvsContainer, ".agent-conversation-item");
+  }
 
   listEl.querySelectorAll(".agent-conversation-menu-btn").forEach((btn) => {
     const convId = btn.dataset.conversationId;
@@ -4504,7 +4519,245 @@ function reattachChatEventListeners() {
 
   // Render conversation list
   renderConversationList();
+
+  // Context pills
+  ContextPills.init();
 }
+
+// ─── Context Pills ────────────────────────────────────────────────────────────
+// Manages the list of attached context items shown above the chat input.
+// Each pill: { id, type, label, value }
+//   type: "note" | "domain"
+//   value: path/name used when sending to the backend
+
+const ContextPills = (() => {
+  /** @type {Array<{id:string, type:string, label:string, value:string}>} */
+  let _pills = [];
+  let _pickerOpen = false;
+
+  // ── Rendering ──────────────────────────────────────────────────────────────
+
+  function _render() {
+    const container = document.getElementById("context-pills");
+    if (!container) return;
+
+    container.innerHTML = _pills
+      .map(
+        (pill) => `
+        <span class="context-pill" data-pill-id="${pill.id}" role="status">
+          <i data-lucide="${pill.type === "note" ? "file-text" : "folder"}"
+             style="width:12px;height:12px;" aria-hidden="true"></i>
+          ${escapeHtml(pill.label)}
+          <button class="pill-remove" data-pill-id="${pill.id}"
+                  title="Remove ${escapeHtml(pill.label)}"
+                  aria-label="Remove context: ${escapeHtml(pill.label)}">
+            <i data-lucide="x" style="width:10px;height:10px;" aria-hidden="true"></i>
+          </button>
+        </span>`,
+      )
+      .join("");
+
+    refreshIcons();
+
+    // Wire remove buttons
+    container.querySelectorAll(".pill-remove").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        remove(btn.dataset.pillId);
+      });
+    });
+  }
+
+  // ── Picker dropdown ────────────────────────────────────────────────────────
+
+  function _buildPickerOptions() {
+    const options = [];
+
+    // Current note (if on notes view and a note is open)
+    const nm = window.notesManager;
+    if (nm && nm.currentNote) {
+      const alreadyAttached = _pills.some(
+        (p) => p.type === "note" && p.value === nm.currentNote.name,
+      );
+      if (!alreadyAttached) {
+        options.push({
+          type: "note",
+          label: nm.currentNote.title || nm.currentNote.name,
+          value: nm.currentNote.name,
+        });
+      }
+    }
+
+    // Available domains
+    const domainItems = document.querySelectorAll(
+      "#domains-list .domain-item, .domain-card, [data-domain-name]",
+    );
+    const seenDomains = new Set(_pills.filter((p) => p.type === "domain").map((p) => p.value));
+    domainItems.forEach((el) => {
+      const name =
+        el.dataset.domainName ||
+        el.querySelector(".domain-name")?.textContent?.trim() ||
+        el.textContent?.trim();
+      if (name && !seenDomains.has(name)) {
+        seenDomains.add(name);
+        options.push({ type: "domain", label: name, value: name });
+      }
+    });
+
+    // Fallback: also pull from sidebar domain filter if present
+    const domainFilter = document.getElementById("sidebar-domain-filter");
+    if (domainFilter) {
+      Array.from(domainFilter.options).forEach((opt) => {
+        if (!opt.value) return; // skip "All domains" placeholder
+        if (_pills.some((p) => p.type === "domain" && p.value === opt.value)) return;
+        if (options.some((o) => o.type === "domain" && o.value === opt.value)) return;
+        options.push({ type: "domain", label: opt.text, value: opt.value });
+      });
+    }
+
+    return options;
+  }
+
+  function _openPicker() {
+    _closePicker();
+    const btn = document.getElementById("context-picker-btn");
+    if (!btn) return;
+
+    const options = _buildPickerOptions();
+    if (options.length === 0) {
+      showToast("No context available to attach. Open a note or add domains.", "info");
+      return;
+    }
+
+    const btnRect = btn.getBoundingClientRect();
+
+    const menu = document.createElement("div");
+    menu.id = "context-picker-menu";
+    menu.className = "context-picker-menu";
+    menu.setAttribute("role", "listbox");
+    menu.setAttribute("aria-label", "Attach context");
+    menu.style.left = `${btnRect.left}px`;
+    menu.style.bottom = `${window.innerHeight - btnRect.top + 6}px`;
+
+    options.forEach((opt, i) => {
+      const item = document.createElement("div");
+      item.className = "context-picker-item";
+      item.setAttribute("role", "option");
+      item.setAttribute("tabindex", "0");
+      item.dataset.index = i;
+      item.innerHTML = `
+        <i data-lucide="${opt.type === "note" ? "file-text" : "folder"}"
+           style="width:13px;height:13px;margin-right:6px;flex-shrink:0;" aria-hidden="true"></i>
+        <span>${escapeHtml(opt.label)}</span>
+        <span class="item-type">${opt.type}</span>
+      `;
+      item.addEventListener("click", () => {
+        add(opt.type, opt.label, opt.value);
+        _closePicker();
+      });
+      item.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          add(opt.type, opt.label, opt.value);
+          _closePicker();
+        }
+        if (e.key === "Escape") _closePicker();
+        if (e.key === "ArrowDown") {
+          const next = menu.querySelector(`[data-index="${i + 1}"]`);
+          if (next) next.focus();
+        }
+        if (e.key === "ArrowUp") {
+          const prev = menu.querySelector(`[data-index="${i - 1}"]`);
+          if (prev) prev.focus();
+          else btn.focus();
+        }
+      });
+      menu.appendChild(item);
+    });
+
+    document.body.appendChild(menu);
+    // Temporarily allow overflow on html/body so fixed-position menu isn't clipped
+    document.documentElement.style.overflow = "visible";
+    document.body.style.overflow = "visible";
+
+    refreshIcons();
+    _pickerOpen = true;
+
+    // Focus first item
+    requestAnimationFrame(() => {
+      const first = menu.querySelector(".context-picker-item");
+      if (first) first.focus();
+    });
+
+    // Close on outside mousedown — registered after this event cycle ends
+    // so the current click doesn't immediately trigger it.
+    setTimeout(() => {
+      document.addEventListener("mousedown", _onOutsideClick);
+    }, 0);
+  }
+
+  function _closePicker() {
+    const existing = document.getElementById("context-picker-menu");
+    if (existing) existing.remove();
+    // Restore overflow clipping
+    document.documentElement.style.overflow = "";
+    document.body.style.overflow = "";
+    document.removeEventListener("mousedown", _onOutsideClick);
+    _pickerOpen = false;
+  }
+
+  function _onOutsideClick(e) {
+    const menu = document.getElementById("context-picker-menu");
+    const btn = document.getElementById("context-picker-btn");
+    if (!menu) return;
+    // Ignore clicks on the menu itself or the toggle button
+    if (menu.contains(e.target) || btn?.contains(e.target)) return;
+    _closePicker();
+  }
+
+  // ── Public API ─────────────────────────────────────────────────────────────
+
+  function add(type, label, value) {
+    // Prevent duplicates
+    if (_pills.some((p) => p.type === type && p.value === value)) return;
+    const id = `pill-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    _pills.push({ id, type, label, value });
+    _render();
+  }
+
+  function remove(pillId) {
+    _pills = _pills.filter((p) => p.id !== pillId);
+    _render();
+  }
+
+  function clear() {
+    _pills = [];
+    _render();
+  }
+
+  /** Returns the current pills as a plain context object for the API. */
+  function getContextPayload() {
+    if (_pills.length === 0) return null;
+    return {
+      attached: _pills.map(({ type, label, value }) => ({ type, label, value })),
+    };
+  }
+
+  function init() {
+    const btn = document.getElementById("context-picker-btn");
+    if (!btn) return;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (_pickerOpen) {
+        _closePicker();
+      } else {
+        _openPicker();
+      }
+    });
+  }
+
+  return { init, add, remove, clear, getContextPayload };
+})();
 
 /**
  * Update right sidebar content based on view
@@ -9163,6 +9416,12 @@ async function sendQueryInternal(displayQuery, apiQuery, overrides, isRetry = fa
       if (globalDefaults && globalDefaults.enabled && globalDefaults.modelIds.length > 0) {
         queryOptions.mental_models_override = globalDefaults.modelIds;
       }
+    }
+
+    // Attach context pills if any are set
+    const pillContext = ContextPills.getContextPayload();
+    if (pillContext) {
+      queryOptions.context = pillContext;
     }
 
     // ---- Attempt streaming ----
