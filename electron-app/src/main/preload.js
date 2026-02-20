@@ -79,6 +79,14 @@ contextBridge.exposeInMainWorld('polly', {
   // Message Management
   messageAdd: (conversationId, role, content, metadata) => ipcRenderer.invoke('message-add', conversationId, role, content, metadata),
   messageList: (conversationId, limit, offset) => ipcRenderer.invoke('message-list', conversationId, limit, offset),
+
+  // Note Versions
+  noteVersions: {
+    save: (notePath, content, source) => ipcRenderer.invoke('note-versions:save', notePath, content, source),
+    list: (notePath) => ipcRenderer.invoke('note-versions:list', notePath),
+    get: (versionId) => ipcRenderer.invoke('note-versions:get', versionId),
+    revert: (notePath, versionId) => ipcRenderer.invoke('note-versions:revert', notePath, versionId),
+  },
   
   // Category Management
   categoryList: () => ipcRenderer.invoke('category-list'),

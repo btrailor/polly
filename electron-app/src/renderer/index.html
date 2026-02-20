@@ -15,6 +15,8 @@
   <link rel="stylesheet" href="components/mental-models-editor.css">
   <link rel="stylesheet" href="components/confirm-dialog.css">
   <link rel="stylesheet" href="components/empty-state.css">
+  <link rel="stylesheet" href="components/version-history.css">
+  <link rel="stylesheet" href="components/conflict-dialog.css">
   <link rel="stylesheet" href="styles/skeleton.css">
   <script src="lucide.min.js"></script>
   <script src="marked.js"></script>
@@ -48,6 +50,10 @@
   <script src="components/empty-state.js"></script>
   <!-- Skeleton loading component for view transitions -->
   <script src="components/skeleton-loader.js"></script>
+  <!-- Version history panel for notes -->
+  <script src="components/version-history.js"></script>
+  <!-- Conflict resolution dialog for notes -->
+  <script src="components/conflict-dialog.js"></script>
 </head>
 <body>
   <!-- Skip to main content (accessibility) -->
@@ -2267,7 +2273,11 @@
                   <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i>
                   <span>Vault Health</span>
                 </button>
-                <span id="notes-save-status" style="display: none;"></span>
+                <button id="notes-history-btn" class="btn-icon" title="Version history" style="padding: 4px 8px; font-size: 12px; cursor: pointer; background: transparent; border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-secondary); display: none; align-items: center; gap: 4px;">
+                  <i data-lucide="history" style="width: 14px; height: 14px;"></i>
+                  <span>History</span>
+                </button>
+                <span id="notes-save-status" class="notes-save-status" style="display: none;"></span>
                 <span id="notes-source-indicator">📚 Obsidian</span>
                 <span id="notes-sync-indicator">⚪ Idle</span>
               </div>
@@ -2296,6 +2306,14 @@
                     <span id="validation-banner-targets" class="validation-banner-targets"></span>
                   </div>
                   <button class="validation-banner-close" id="validation-banner-close" title="Dismiss">&times;</button>
+                </div>
+                <!-- Conflict banner: external change detected while editing -->
+                <div id="notes-conflict-banner" class="notes-conflict-banner hidden">
+                  <i data-lucide="alert-triangle" style="width: 16px; height: 16px;"></i>
+                  <span>This note was changed externally while you were editing.</span>
+                  <div class="notes-conflict-banner-actions">
+                    <button class="btn-resolve" id="notes-conflict-resolve-btn">Resolve conflict</button>
+                  </div>
                 </div>
                 <div id="notes-editor"></div>
               </div>

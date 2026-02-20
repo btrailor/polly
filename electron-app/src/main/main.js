@@ -20,6 +20,7 @@ const fs = require("fs");
 const Store = require("electron-store");
 const keytar = require("keytar");
 const ConversationManager = require("./conversation-manager");
+const NoteVersionsManager = require("./note-versions-manager");
 
 // Fix PATH for macOS GUI apps
 try {
@@ -66,6 +67,7 @@ let ollamaProcess = null;
 let isQuitting = false;
 let ollamaStartedByUs = false;
 let conversationManager = null;
+let noteVersionsManager = null;
 let vscodeView = null; // BrowserView for VSCode fork
 
 // Paths - detect if we're in development by checking if we're running from node_modules
@@ -1783,6 +1785,58 @@ ipcMain.handle("conversation-enforce-limit", async () => {
 });
 
 // ============================================
+// Note Versions IPC Handlers
+// ============================================
+
+ipcMain.handle("note-versions:save", async (event, notePath, content, source) => {
+  try {
+    if (!noteVersionsManager) {
+      throw new Error("NoteVersionsManager not initialized");
+    }
+    return noteVersionsManager.save(notePath, content, source);
+  } catch (error) {
+    console.error("Failed to save note version:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("note-versions:list", async (event, notePath) => {
+  try {
+    if (!noteVersionsManager) {
+      throw new Error("NoteVersionsManager not initialized");
+    }
+    return noteVersionsManager.list(notePath);
+  } catch (error) {
+    console.error("Failed to list note versions:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("note-versions:get", async (event, versionId) => {
+  try {
+    if (!noteVersionsManager) {
+      throw new Error("NoteVersionsManager not initialized");
+    }
+    return noteVersionsManager.get(versionId);
+  } catch (error) {
+    console.error("Failed to get note version:", error);
+    throw error;
+  }
+});
+
+ipcMain.handle("note-versions:revert", async (event, notePath, versionId) => {
+  try {
+    if (!noteVersionsManager) {
+      throw new Error("NoteVersionsManager not initialized");
+    }
+    return noteVersionsManager.revert(notePath, versionId);
+  } catch (error) {
+    console.error("Failed to revert note version:", error);
+    throw error;
+  }
+});
+
+// ============================================
 // App Lifecycle
 // ============================================
 
@@ -1806,6 +1860,10 @@ app.whenReady().then(async () => {
     console.log("ConversationManager type:", typeof conversationManager);
     console.log("ConversationManager.db:", conversationManager.db);
     console.log("=== ConversationManager Initialized ===");
+
+    // Initialize NoteVersionsManager on the same database connection
+    noteVersionsManager = new NoteVersionsManager(conversationManager.db);
+    console.log("NoteVersionsManager initialized successfully");
   } catch (error) {
     console.error("!!! FAILED to initialize ConversationManager !!!");
     console.error("Error:", error.message);

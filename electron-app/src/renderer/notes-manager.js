@@ -34,12 +34,16 @@ class NotesManager {
     };
     
     // Auto-save state
-    this.saveStatus = 'saved'; // 'saved', 'saving', 'unsaved'
+    this.saveStatus = 'saved'; // 'saved', 'saving', 'unsaved', 'error', 'external'
     this.saveTimeout = null;
     this.autoSaveDelay = 2000; // 2 seconds
     this.hasUnsavedChanges = false;
     /** Content last successfully saved (normalized). Used so we only save when content actually changed. */
     this.lastSavedContent = null;
+    /** Last known external (on-disk) content (normalized). Used for conflict detection. */
+    this.lastKnownExternalContent = null;
+    /** External content that arrived while user was editing (pending conflict). */
+    this.pendingExternalChange = null;
     
     // Quick switcher state
     this.quickSwitcherSelectedIndex = 0;
@@ -83,6 +87,16 @@ class NotesManager {
     // Check sync status and setup polling
     await this.checkSyncStatus();
     this.startSyncPolling();
+    
+    // Navigation guard: auto-save on app quit
+    window.addEventListener('beforeunload', (e) => {
+      if (this.hasUnsavedChanges && this.currentNote) {
+        // Trigger a synchronous-style save best-effort (async, but fires it)
+        this.saveCurrentNote();
+        // Some browsers require returnValue to be set to show a dialog,
+        // but in Electron we just fire the save and let it proceed.
+      }
+    });
     
     console.log('[Notes] Notes manager initialized');
   }
@@ -210,6 +224,24 @@ class NotesManager {
    */
   async openNote(noteName, heading = null, preserveScroll = false) {
     try {
+      // Navigation guard: auto-save unsaved changes before switching notes
+      if (this.hasUnsavedChanges && this.currentNote && this.currentNote.name !== noteName) {
+        try {
+          await this.saveCurrentNote();
+        } catch (saveErr) {
+          console.error('[Notes] Auto-save before navigation failed:', saveErr);
+          const leave = await ConfirmDialog.show({
+            title: 'Save failed',
+            message: 'Could not save your changes. Leave anyway and lose them?',
+            confirmLabel: 'Leave anyway',
+            cancelLabel: 'Stay',
+            destructive: true,
+            icon: 'alert-triangle',
+          });
+          if (!leave) return;
+        }
+      }
+
       // Find note in index (check name, title, and aliases)
       const note = this.notes.find(n => 
         n.name === noteName || 
@@ -253,6 +285,11 @@ class NotesManager {
       if (this.editor) {
         this.editor.setValue(content);
         this.lastSavedContent = this._normalizeContentForCompare(content);
+        this.lastKnownExternalContent = this.lastSavedContent;
+        this.hasUnsavedChanges = false;
+        this.pendingExternalChange = null;
+        this._hideConflictBanner();
+        this.updateSaveStatus('saved');
         
         // Restore scroll and cursor position or reset to top
         if (preserveScroll && savedScrollPosition) {
@@ -471,12 +508,6 @@ class NotesManager {
       return;
     }
     
-    // Don't reload if we're in edit mode - wait until user exits
-    if (this.editorMode === 'edit') {
-      console.log('[Notes] Skipping reload - currently in edit mode');
-      return;
-    }
-    
     const currentNoteName = this.currentNote ? this.currentNote.name : null;
     const currentContent = this.editor ? this.editor.getValue() : null;
     
@@ -490,14 +521,28 @@ class NotesManager {
     if (currentNoteName) {
       const note = this.notes.find(n => n.name === currentNoteName);
       if (note) {
-        // Read the file to check if content actually changed
+        // Read the file to check if content actually changed on disk
         const response = await window.polly.readFile(note.path);
-        if (response.success && response.content !== currentContent) {
-          console.log('[Notes] Note content changed, reloading...');
-          // Reload the current note, preserving scroll and cursor position
-          await this.openNote(currentNoteName, null, true);
-        } else {
-          console.log('[Notes] Note content unchanged, skipping reload');
+        if (response.success) {
+          const externalNormalized = this._normalizeContentForCompare(response.content);
+          const hasExternalChange = externalNormalized !== this.lastKnownExternalContent;
+          
+          if (hasExternalChange) {
+            if (this.hasUnsavedChanges) {
+              // Conflict: user is editing and external content changed
+              console.log('[Notes] Conflict detected: external change while editing');
+              this.pendingExternalChange = response.content;
+              this.updateSaveStatus('external');
+              this._showConflictBanner();
+            } else {
+              // No unsaved changes: safe to reload silently
+              console.log('[Notes] External change detected, reloading...');
+              this.lastKnownExternalContent = externalNormalized;
+              await this.openNote(currentNoteName, null, true);
+            }
+          } else {
+            console.log('[Notes] Note content unchanged, skipping reload');
+          }
         }
       } else {
         // Note was deleted, clear editor
@@ -514,6 +559,24 @@ class NotesManager {
     }
     
     console.log('[Notes] Reload after sync complete');
+  }
+
+  /**
+   * Show the conflict banner when an external change arrives during editing
+   */
+  _showConflictBanner() {
+    let banner = document.getElementById('notes-conflict-banner');
+    if (!banner) return;
+    banner.classList.remove('hidden');
+  }
+
+  /**
+   * Hide the conflict banner
+   */
+  _hideConflictBanner() {
+    const banner = document.getElementById('notes-conflict-banner');
+    if (banner) banner.classList.add('hidden');
+    this.pendingExternalChange = null;
   }
 
   /**
@@ -558,7 +621,7 @@ class NotesManager {
           }, 500); // Update TOC 500ms after user stops typing
         },
         onSave: async (content) => {
-          await this.saveCurrentNote();
+          await this.saveCurrentNote('manual-save');
         },
         onWikiLinkClick: (noteName) => {
           // Handle wiki link clicks
@@ -846,6 +909,53 @@ class NotesManager {
         this.searchNotes(e.target.value);
       }, 250);
       searchInput.addEventListener('input', debouncedNotesSearch);
+    }
+
+    // Version history button
+    const historyBtn = document.getElementById('notes-history-btn');
+    if (historyBtn) {
+      historyBtn.addEventListener('click', () => {
+        if (!this.currentNote) return;
+        VersionHistory.show(this.currentNote.path, async (revertedContent) => {
+          // Update the editor with the reverted content and save it
+          if (this.editor) {
+            this.editor.setValue(revertedContent);
+            this.hasUnsavedChanges = true;
+            this.updateSaveStatus('unsaved');
+            await this.saveCurrentNote('revert');
+          }
+        });
+      });
+    }
+
+    // Conflict resolution banner button
+    const conflictResolveBtn = document.getElementById('notes-conflict-resolve-btn');
+    if (conflictResolveBtn) {
+      conflictResolveBtn.addEventListener('click', async () => {
+        if (!this.pendingExternalChange) return;
+        const myContent = this.editor ? this.editor.getValue() : '';
+        const theirContent = this.pendingExternalChange;
+
+        const result = await ConflictDialog.show({ myContent, theirContent });
+
+        if (result === 'mine') {
+          // Keep user's edits — save them
+          this._hideConflictBanner();
+          this.updateSaveStatus('unsaved');
+          await this.saveCurrentNote('manual-save');
+        } else if (result === 'theirs') {
+          // Load external version into editor
+          this._hideConflictBanner();
+          if (this.editor) {
+            this.editor.setValue(theirContent);
+            this.hasUnsavedChanges = false;
+            this.lastSavedContent = this._normalizeContentForCompare(theirContent);
+            this.lastKnownExternalContent = this.lastSavedContent;
+            this.updateSaveStatus('saved');
+          }
+        }
+        // null = dismissed: leave banner visible
+      });
     }
 
     // Validation banner close button (Task #22b)
@@ -1856,6 +1966,13 @@ class NotesManager {
 
   updateNoteHeader() {
     const header = document.getElementById('notes-current-note-header');
+    
+    // Show/hide history button based on whether a note is open
+    const historyBtn = document.getElementById('notes-history-btn');
+    if (historyBtn) {
+      historyBtn.style.display = this.currentNote ? 'flex' : 'none';
+    }
+    
     if (header && this.currentNote) {
       header.innerHTML = `
         <div class="note-header-title">
@@ -2086,8 +2203,9 @@ class NotesManager {
 
   /**
    * Save the current note
+   * @param {string} [source='auto-save'] - Version source: 'auto-save' or 'manual-save'
    */
-  async saveCurrentNote() {
+  async saveCurrentNote(source = 'auto-save') {
     if (!this.currentNote) {
       console.warn('[Notes] No current note to save');
       return;
@@ -2106,7 +2224,6 @@ class NotesManager {
     if (this.lastSavedContent !== null && normalized === this.lastSavedContent) {
       this.hasUnsavedChanges = false;
       this.updateSaveStatus('saved');
-      setTimeout(() => { if (this.saveStatus === 'saved') this.updateSaveStatus(null); }, 1500);
       return;
     }
     
@@ -2141,7 +2258,15 @@ class NotesManager {
       // Mark as saved and remember content so we don't re-save unchanged
       this.hasUnsavedChanges = false;
       this.lastSavedContent = this._normalizeContentForCompare(content);
+      this.lastKnownExternalContent = this.lastSavedContent;
       this.updateSaveStatus('saved');
+      
+      // Fire-and-forget: save a version for history (non-blocking)
+      if (window.polly && window.polly.noteVersions) {
+        window.polly.noteVersions.save(this.currentNote.path, content, source).catch(err => {
+          console.warn('[Notes] Version save failed (non-critical):', err);
+        });
+      }
       
       // Set flag to prevent reload from our own save
       this.justSaved = true;
@@ -2149,29 +2274,15 @@ class NotesManager {
         this.justSaved = false;
       }, 6000); // Clear flag after 6 seconds (longer than sync interval)
       
-      // Hide save status after 2 seconds
-      setTimeout(() => {
-        if (this.saveStatus === 'saved') {
-          this.updateSaveStatus(null);
-        }
-      }, 2000);
-      
     } catch (error) {
       console.error('[Notes] Failed to save note:', error);
       this.updateSaveStatus('error');
       this.showError(`Failed to save: ${error.message}`);
-      
-      // Keep error visible for 5 seconds
-      setTimeout(() => {
-        if (this.saveStatus === 'error') {
-          this.updateSaveStatus('unsaved');
-        }
-      }, 5000);
     }
   }
 
   /**
-   * Update save status indicator
+   * Update save status indicator (persistent — always visible when a note is open)
    */
   updateSaveStatus(status) {
     this.saveStatus = status;
@@ -2184,24 +2295,31 @@ class NotesManager {
       return;
     }
     
-    statusEl.style.display = 'inline';
+    statusEl.style.display = 'inline-flex';
+    
+    // Remove all state classes and re-apply the current one
+    statusEl.className = 'notes-save-status';
     
     switch (status) {
       case 'unsaved':
         statusEl.textContent = '● Unsaved';
-        statusEl.style.color = 'var(--text-secondary, #888)';
+        statusEl.classList.add('notes-save-status--unsaved');
         break;
       case 'saving':
         statusEl.textContent = '⏳ Saving...';
-        statusEl.style.color = 'var(--text-primary, #fff)';
+        statusEl.classList.add('notes-save-status--saving');
         break;
       case 'saved':
         statusEl.textContent = '✓ Saved';
-        statusEl.style.color = 'var(--success-color, #98c379)';
+        statusEl.classList.add('notes-save-status--saved');
         break;
       case 'error':
-        statusEl.textContent = '✗ Error';
-        statusEl.style.color = 'var(--error-color, #e06c75)';
+        statusEl.textContent = '✗ Save failed';
+        statusEl.classList.add('notes-save-status--error');
+        break;
+      case 'external':
+        statusEl.textContent = '⚠ External change';
+        statusEl.classList.add('notes-save-status--external');
         break;
     }
   }
