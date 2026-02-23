@@ -11,8 +11,9 @@ Priority: 50 (between mental_models at 60 and entity_context at 40).
 import hashlib
 import logging
 import math
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.context.token_counter import TokenCounter
 from core.memory.tiers import MemoryEntry, MemoryTier, TieredMemoryStore
@@ -151,45 +152,49 @@ class MemoryRetriever:
         """
         episodic_limit = override_episodic_limit or self.episodic_limit
         min_similarity = override_min_similarity if override_min_similarity is not None else self.min_similarity
+        working_limit = 50 if self.working_include_all else 5
 
-        all_entries: List[MemoryEntry] = []
-
-        # 1. Search stable tier (no decay)
-        try:
-            stable_entries = self.store.read(
+        # Define the three independent tier searches as (name, kwargs) pairs
+        tier_searches: List[Tuple[str, dict]] = [
+            ("stable", dict(
                 query=query,
                 tiers=[MemoryTier.STABLE],
                 limit=self.stable_limit,
                 min_score=min_similarity,
-            )
-            all_entries.extend(stable_entries)
-        except Exception as e:
-            logger.warning(f"Stable tier retrieval failed: {e}")
-
-        # 2. Search episodic tier (time decay already applied by TieredMemoryStore.read)
-        try:
-            episodic_entries = self.store.read(
+            )),
+            ("episodic", dict(
                 query=query,
                 tiers=[MemoryTier.EPISODIC],
                 limit=episodic_limit,
                 min_score=min_similarity,
-            )
-            all_entries.extend(episodic_entries)
-        except Exception as e:
-            logger.warning(f"Episodic tier retrieval failed: {e}")
-
-        # 3. Get working tier entries
-        try:
-            working_limit = 50 if self.working_include_all else 5
-            working_entries = self.store.read(
+            )),
+            ("working", dict(
                 query=query,
                 tiers=[MemoryTier.WORKING],
                 limit=working_limit,
                 min_score=0.0,  # Include all working entries
-            )
-            all_entries.extend(working_entries)
-        except Exception as e:
-            logger.warning(f"Working tier retrieval failed: {e}")
+            )),
+        ]
+
+        all_entries: List[MemoryEntry] = []
+
+        # Run all three tier searches concurrently.
+        # Each search is independent (separate Mem0 namespaces), so there are no
+        # cross-dependencies. ThreadPoolExecutor is appropriate here because
+        # store.read() is I/O-bound (Ollama embedding + ChromaDB lookup).
+        # If Ollama serialises embedding requests internally, this degrades
+        # gracefully to the same wall-clock time as the sequential path.
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            future_to_tier = {
+                pool.submit(self.store.read, **kwargs): name
+                for name, kwargs in tier_searches
+            }
+            for future in as_completed(future_to_tier):
+                tier_name = future_to_tier[future]
+                try:
+                    all_entries.extend(future.result())
+                except Exception as e:
+                    logger.warning(f"{tier_name.capitalize()} tier retrieval failed: {e}")
 
         # 4. Deduplicate across tiers (prefer stable > episodic > working)
         deduped = self._deduplicate_across_tiers(all_entries)
