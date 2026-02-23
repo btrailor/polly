@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import logging
 from datetime import datetime
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
 
 from .models import Entity, EntityType, Relationship, RelationshipType, entity_id
 from .store import EntityStore
@@ -211,6 +211,164 @@ class EntityExtractor:
                     created=datetime.now(),
                 ))
         return out
+
+    def batch_extract_and_store(
+        self,
+        items: List[Tuple[str, str]],  # (text, source_type) pairs
+        source_id: str,
+        domains: Optional[List[str]] = None,
+        extract_relationships: bool = True,
+    ) -> List[Entity]:
+        """
+        Extract entities from multiple texts in a single spaCy pipeline pass.
+
+        Compared to calling extract_and_store() N times, this method runs the
+        spaCy nlp.pipe() batch call once across all texts, halving the per-call
+        overhead for two-item batches (query + response).
+
+        All non-spaCy extraction steps (regex, keywords, wiki-links) are still
+        run per-text before the batch NER pass so that per-text deduplication
+        works correctly.  Entities from all texts are merged and stored once.
+
+        Args:
+            items: List of (text, source_type) pairs to process together.
+            source_id: Common source identifier for all items.
+            domains: Domain tags to apply to extracted entities.
+            extract_relationships: Whether to write co-occurrence relationships.
+
+        Returns:
+            Deduplicated list of stored Entity objects (union across all texts).
+        """
+        if not items:
+            return []
+
+        domains = domains or []
+
+        # --- Per-text non-spaCy extraction (regex, keywords, wiki-links) ---
+        per_text_entities: List[List[Entity]] = []
+        for text, _source_type in items:
+            text_entities: List[Entity] = []
+            text_entities.extend(self._extract_keywords_and_regex(text, domains))
+
+            text_lower = text.lower()
+            for term in TECHNICAL_TERMS:
+                if term in text_lower and len(term) >= 3:
+                    eid = entity_id(term.title(), EntityType.TOOL.value)
+                    if not any(ex.id == eid for ex in text_entities):
+                        text_entities.append(Entity(
+                            id=eid,
+                            name=term.title(),
+                            entity_type=EntityType.TOOL,
+                            domains=domains,
+                            mention_count=1,
+                            source_count=1,
+                            last_seen=datetime.now(),
+                            created=datetime.now(),
+                        ))
+
+            for link in re.findall(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]", text):
+                name = link.strip()
+                if len(name) >= 2:
+                    eid = entity_id(name, EntityType.CONCEPT.value)
+                    if not any(ex.id == eid for ex in text_entities):
+                        text_entities.append(Entity(
+                            id=eid,
+                            name=name,
+                            entity_type=EntityType.CONCEPT,
+                            domains=domains,
+                            mention_count=1,
+                            source_count=1,
+                            last_seen=datetime.now(),
+                            created=datetime.now(),
+                        ))
+
+            per_text_entities.append(text_entities)
+
+        # --- Batch spaCy NER across all texts in one pipe() call ---
+        self._ensure_nlp()
+        if self._nlp:
+            # Prepare cleaned texts (same cleaning as _extract_spacy)
+            cleaned_texts = []
+            for text, _ in items:
+                text_clean = re.sub(r"```[^`]*```", "", text)
+                text_clean = re.sub(r"`[^`]+`", "", text_clean)
+                cleaned_texts.append(text_clean[:10000])
+
+            for doc, text_entities in zip(self._nlp.pipe(cleaned_texts), per_text_entities):
+                # Named entities
+                for ent in doc.ents:
+                    if ent.label_ in ("ORG", "PRODUCT", "GPE", "PERSON", "NORP"):
+                        name = ent.text.strip()
+                        if len(name) < 2:
+                            continue
+                        et = (
+                            EntityType.ORGANIZATION if ent.label_ == "ORG"
+                            else EntityType.PERSON if ent.label_ == "PERSON"
+                            else EntityType.CONCEPT
+                        )
+                        eid = entity_id(name, et.value)
+                        if not any(ex.id == eid for ex in text_entities):
+                            text_entities.append(Entity(
+                                id=eid,
+                                name=name,
+                                entity_type=et,
+                                domains=domains,
+                                mention_count=1,
+                                source_count=1,
+                                last_seen=datetime.now(),
+                                created=datetime.now(),
+                            ))
+                # Noun chunks
+                for chunk in doc.noun_chunks:
+                    phrase = chunk.text.lower().strip()
+                    if " " not in phrase or len(phrase) < 5:
+                        continue
+                    if phrase in TECHNICAL_TERMS or any(t in phrase for t in TECHNICAL_TERMS):
+                        name = phrase.title()
+                        eid = entity_id(name, EntityType.CONCEPT.value)
+                        if not any(ex.id == eid for ex in text_entities):
+                            text_entities.append(Entity(
+                                id=eid,
+                                name=name,
+                                entity_type=EntityType.CONCEPT,
+                                domains=domains,
+                                mention_count=1,
+                                source_count=1,
+                                last_seen=datetime.now(),
+                                created=datetime.now(),
+                            ))
+
+        # --- Merge all per-text entities, deduplicate, store ---
+        global_seen: Set[str] = set()
+        stored: List[Entity] = []
+
+        for (text, source_type), text_entities in zip(items, per_text_entities):
+            for e in text_entities:
+                if e.id in global_seen:
+                    continue
+                global_seen.add(e.id)
+                e.domains = list(set(e.domains + domains))
+                self.store.upsert_entity(e)
+                self.store.record_mention(e.id, source_type, source_id, context=text[:200])
+                stored.append(e)
+
+        # Co-occurrence relationships across the combined entity set
+        if extract_relationships and len(stored) >= 2:
+            for i, e1 in enumerate(stored):
+                for e2 in stored[i + 1:]:
+                    rel = Relationship(
+                        source_id=e1.id,
+                        target_id=e2.id,
+                        relationship_type=RelationshipType.RELATED_TO,
+                        strength=0.5,
+                        context="Co-occurrence in same text batch",
+                        mention_count=1,
+                        created=datetime.now(),
+                        last_seen=datetime.now(),
+                    )
+                    self.store.upsert_relationship(rel)
+
+        return stored
 
     def extract_entities_only(self, text: str) -> List[Entity]:
         """Extract entities without storing (preview)."""

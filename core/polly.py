@@ -2642,13 +2642,17 @@ If you suggest an exercise, copy the description directly from the context above
                 except Exception as e:
                     logger.error(f"Failed to record pattern: {e}")
 
-            # Entity extraction
+            # Entity extraction — process query and response together in one spaCy
+            # batch call to halve the nlp.pipe() overhead vs. two sequential calls.
             if self.entity_extractor:
                 try:
                     source_id = f"session_{self.session_start.isoformat()}"
                     domain_ids = [d for d in detected_domains if (d or "").strip().lower() not in ("", "unknown")]
-                    self.entity_extractor.extract_and_store(query, "query", source_id, domain_ids)
-                    self.entity_extractor.extract_and_store(full_response, "response", source_id, domain_ids)
+                    self.entity_extractor.batch_extract_and_store(
+                        items=[(query, "query"), (full_response, "response")],
+                        source_id=source_id,
+                        domains=domain_ids,
+                    )
                 except Exception as e:
                     logger.debug(f"Entity extraction failed (non-critical): {e}")
 
