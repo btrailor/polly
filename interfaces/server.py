@@ -1220,6 +1220,42 @@ def create_app(polly_instance=None) -> FastAPI:
             'patterns': '?',
             'graph': graph_stats
         }
+
+    @app.get("/api/metrics/context")
+    async def get_context_metrics(days: int = 7):
+        """
+        Get aggregated context metrics for a time period.
+        
+        Returns budget utilisation, contributor breakdown, RAG quality metrics.
+        """
+        from core.context_metrics import get_context_metrics
+        
+        metrics = get_context_metrics()
+        if not metrics:
+            raise HTTPException(503, "Context metrics not initialized")
+        
+        try:
+            return metrics.get_aggregated_metrics(days=days)
+        except Exception as e:
+            logger.warning(f"Failed to get context metrics: {e}")
+            raise HTTPException(500, str(e))
+
+    @app.get("/api/metrics/context/turns")
+    async def get_context_turns(limit: int = 20, session_id: Optional[str] = None):
+        """
+        Get recent context turn records for debugging.
+        """
+        from core.context_metrics import get_context_metrics
+        
+        metrics = get_context_metrics()
+        if not metrics:
+            raise HTTPException(503, "Context metrics not initialized")
+        
+        try:
+            return metrics.get_recent_turns(limit=limit, session_id=session_id)
+        except Exception as e:
+            logger.warning(f"Failed to get context turns: {e}")
+            raise HTTPException(500, str(e))
     
     @app.get("/polly/patterns")
     async def get_patterns():

@@ -715,6 +715,18 @@ class Polly:
             self.relevance_scorer = None
             self.rolling_context = None
 
+        # ------------------------------------------------------------------
+        # 3. Context metrics for observability (Spec 06)
+        # ------------------------------------------------------------------
+        try:
+            from core.context_metrics import init_context_metrics
+            db_path = Path(self.config.get("knowledge_base.path", "~/.polly")).expanduser() / "usage.db"
+            self.context_metrics = init_context_metrics(db_path=db_path)
+            logger.info("ContextMetrics initialized")
+        except Exception as e:
+            logger.warning(f"Context metrics init failed (non-critical): {e}")
+            self.context_metrics = None
+
     def _build_system_prompt(self) -> str:
         """Build the base system prompt with constitutional epistemology layer."""
         constitutional = get_constitutional_layer()
@@ -1026,6 +1038,43 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                 logger.debug(f"Context contributor {section} (priority {priority}) failed: {e}")
 
         # ------------------------------------------------------------------
+        # Collect contributor metrics for observability (Spec 06)
+        # ------------------------------------------------------------------
+        from core.context_metrics import ContributorMetrics
+        from core.context.token_counter import TokenCounter
+        
+        # Track metrics per contributor for this turn
+        contributor_metrics: List[ContributorMetrics] = []
+        
+        # Record metrics for each contributor that was called
+        for section, priority, text in raw_results:
+            section_key = section  # mental_models, memory, entities, compression
+            token_count = TokenCounter.count(text) if text else 0
+            
+            # Map section to contributor name for metrics
+            contrib_name = {
+                "mental_models": "mental_models",
+                "memory": "memory",
+                "entities": "entities",
+                "compression": "compression",
+            }.get(section_key, section_key)
+            
+            contributor_metrics.append(ContributorMetrics(
+                contributor=contrib_name,
+                items_returned=1,  # Each build_context call returns 1 text block in current impl
+                tokens_allocated=0,  # Will be filled by budget system if active
+                tokens_used=token_count,
+                utilisation=1.0 if token_count > 0 else 0.0,
+                top_score=priority / 100.0,
+                avg_score=priority / 100.0,
+                items_selected=0,  # Will be updated after bin-packing
+                items_evicted=0,
+            ))
+
+        # Store for later retrieval by _record_context_metrics
+        self._current_contributor_metrics = contributor_metrics
+
+        # ------------------------------------------------------------------
         # If budget system is inactive, fall back to simple concatenation
         # ------------------------------------------------------------------
         if not use_budget:
@@ -1093,10 +1142,35 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
 
         # Assemble selected entries and report usage
         parts: List[str] = []
+        
+        # Track selected content by section for metrics
+        selected_by_section: Dict[str, int] = {section: 0 for section in section_budgets.keys()}
+        
         for section_name, entries in selected.items():
             for entry in entries:
                 parts.append(entry.content)
                 budget_plan.report_usage(section_name, entry.token_count)
+                selected_by_section[section_name] += 1
+
+        # Update contributor metrics with selection info
+        for cm in contributor_metrics:
+            section_map = {
+                "mental_models": "mental_models",
+                "memory": "memory",
+                "entities": "entities",
+                "compression": "compression",
+            }
+            mapped = section_map.get(cm.contributor, cm.contributor)
+            if mapped in selected_by_section:
+                cm.items_selected = selected_by_section[mapped]
+                cm.items_evicted = cm.items_returned - cm.items_selected
+                cm.tokens_allocated = section_budgets.get(mapped, 0)
+                cm.utilisation = cm.tokens_used / cm.tokens_allocated if cm.tokens_allocated > 0 else 0.0
+
+        # Store updated metrics
+        self._current_contributor_metrics = contributor_metrics
+        self._current_context_total_tokens = sum(cm.tokens_used for cm in contributor_metrics)
+        self._current_budget_utilisation = budget_plan.total_used() / budget_plan.total_allocated() if budget_plan.total_allocated() > 0 else 0.0
 
         logger.debug(
             f"Budget-aware context: {len(parts)} entries selected, "
@@ -1142,6 +1216,63 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             logger.debug(f"Recorded ROUTING_OUTCOME pattern: {name}")
         except Exception as e:
             logger.debug(f"Record routing outcome failed: {e}")
+
+    def _record_context_metrics(
+        self,
+        query: str,
+        response: str,
+        domains: List[str],
+        persona: Optional[str],
+        response_metadata: Dict[str, Any],
+        decomposed: bool = False,
+        sub_query_count: int = 0,
+    ) -> None:
+        """Record context metrics for observability (Spec 06)."""
+        if not self.context_metrics:
+            return
+
+        try:
+            import json
+            from core.context_metrics import ContextTurnRecord
+
+            session_id = f"session_{self.session_start.isoformat()}"
+            turn_number = len(self.conversation_history) // 2 + 1
+
+            # Get contributor metrics from _gather_context
+            contributors = getattr(self, "_current_contributor_metrics", []) or []
+
+            # Get context tokens from _gather_context
+            total_context_tokens = getattr(self, "_current_context_total_tokens", 0)
+            budget_utilisation = getattr(self, "_current_budget_utilisation", 0.0)
+
+            turn_record = ContextTurnRecord(
+                session_id=session_id,
+                turn_number=turn_number,
+                query_length_tokens=len(query.split()) * 1.3,  # rough token estimate
+                response_length_tokens=len(response.split()) * 1.3,
+                domains=json.dumps(domains),
+                persona=persona,
+                model_used=response_metadata.get("model", ""),
+                routing_confidence=response_metadata.get("routing_confidence", ""),
+                cache_hit=False,  # Will be set by spec-01 when semantic cache is implemented
+                cache_similarity=0.0,
+                total_context_tokens=total_context_tokens,
+                budget_utilisation=budget_utilisation,
+                srs_at_turn=None,  # Will be set by spec-04 when semantic compression is implemented
+                decomposed=decomposed,
+                sub_query_count=sub_query_count,
+            )
+
+            # RAG metrics (optional - will be enhanced by spec-05)
+            rag_metrics = None
+            if hasattr(self, "_current_rag_metrics"):
+                rag_metrics = self._current_rag_metrics
+
+            self.context_metrics.record_turn(turn_record, contributors, rag_metrics)
+            logger.debug(f"Recorded context metrics for turn {turn_number}")
+
+        except Exception as e:
+            logger.debug(f"Record context metrics failed: {e}")
 
     async def _detect_and_suggest_knowledge_gap(
         self,
@@ -2665,6 +2796,18 @@ If you suggest an exercise, copy the description directly from the context above
                     )
                 except Exception as e:
                     logger.debug(f"Mental model effectiveness recording failed: {e}")
+
+            # Context metrics recording (Spec 06)
+            # Note: decomposed/sub_query_count tracked via Wave 3 when enabled
+            self._record_context_metrics(
+                query=query,
+                response=full_response,
+                domains=detected_domains,
+                persona=persona,
+                response_metadata=response_metadata,
+                decomposed=False,  # Will be enhanced when Wave 3 metrics tracking is added
+                sub_query_count=0,
+            )
 
             logger.info("Background post-response tasks completed")
 
