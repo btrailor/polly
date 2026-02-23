@@ -11,6 +11,7 @@ Priority: 50 (between mental_models at 60 and entity_context at 40).
 import hashlib
 import logging
 import math
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -51,6 +52,79 @@ class MemoryRetriever:
         self.episodic_halflife = tiers_config.get("episodic", {}).get(
             "decay_halflife_days", 90
         )
+
+        # ------------------------------------------------------------------
+        # Search result cache
+        # ------------------------------------------------------------------
+        # Keyed on sha256(query:tier:limit) → (inserted_at, List[MemoryEntry])
+        # Avoids redundant Ollama embedding round-trips for repeated queries
+        # within the same conversation.  TTL and size are configurable.
+        retrieval_cfg = config.get("retrieval", {})
+        self._cache_ttl: int = retrieval_cfg.get("cache_ttl", 300)       # seconds
+        self._cache_max: int = retrieval_cfg.get("cache_max_entries", 64)
+        self._cache: Dict[str, Tuple[float, List[MemoryEntry]]] = {}
+
+    # ------------------------------------------------------------------
+    # Search result cache helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _cache_key(query: str, tier: MemoryTier, limit: int) -> str:
+        """Stable cache key for a (query, tier, limit) triple."""
+        raw = f"{query}:{tier.value}:{limit}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _cache_get(self, key: str) -> Optional[List[MemoryEntry]]:
+        """Return cached results if present and not expired, else None."""
+        entry = self._cache.get(key)
+        if entry is None:
+            return None
+        inserted_at, results = entry
+        if time.monotonic() - inserted_at > self._cache_ttl:
+            del self._cache[key]
+            return None
+        return results
+
+    def _cache_put(self, key: str, results: List[MemoryEntry]) -> None:
+        """Insert results into the cache, evicting the oldest entry if full."""
+        if len(self._cache) >= self._cache_max:
+            oldest_key = min(self._cache, key=lambda k: self._cache[k][0])
+            del self._cache[oldest_key]
+        self._cache[key] = (time.monotonic(), results)
+
+    def invalidate(self, tier: Optional[MemoryTier] = None) -> None:
+        """
+        Invalidate cached search results.
+
+        Called by Polly._on_session_end() after new memories have been
+        written so that the next query sees fresh results.
+
+        Args:
+            tier: If given, only invalidate entries for that tier.
+                  If None, clear the entire cache.
+        """
+        if tier is None:
+            cleared = len(self._cache)
+            self._cache.clear()
+            logger.debug(f"MemoryRetriever cache cleared ({cleared} entries)")
+        else:
+            keys_to_drop = [
+                k for k, (_, results) in self._cache.items()
+                if results and results[0].tier == tier
+            ]
+            # Also drop entries whose key encodes the tier name (fast path for
+            # empty-result entries where we can't inspect results[0].tier)
+            tier_marker = f":{tier.value}:"
+            keys_to_drop += [
+                k for k in self._cache
+                if k not in keys_to_drop and tier_marker in k
+            ]
+            for k in keys_to_drop:
+                self._cache.pop(k, None)
+            logger.debug(
+                f"MemoryRetriever cache invalidated {len(keys_to_drop)} "
+                f"entries for tier={tier.value}"
+            )
 
     # ------------------------------------------------------------------
     # ContextContributor protocol
@@ -178,23 +252,43 @@ class MemoryRetriever:
 
         all_entries: List[MemoryEntry] = []
 
-        # Run all three tier searches concurrently.
-        # Each search is independent (separate Mem0 namespaces), so there are no
-        # cross-dependencies. ThreadPoolExecutor is appropriate here because
-        # store.read() is I/O-bound (Ollama embedding + ChromaDB lookup).
-        # If Ollama serialises embedding requests internally, this degrades
-        # gracefully to the same wall-clock time as the sequential path.
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            future_to_tier = {
-                pool.submit(self.store.read, **kwargs): name
-                for name, kwargs in tier_searches
-            }
-            for future in as_completed(future_to_tier):
-                tier_name = future_to_tier[future]
-                try:
-                    all_entries.extend(future.result())
-                except Exception as e:
-                    logger.warning(f"{tier_name.capitalize()} tier retrieval failed: {e}")
+        # Check cache before spawning threads.  Build cache keys now so we
+        # can populate the cache for misses inside the executor callback.
+        tier_enum_map = {
+            "stable": MemoryTier.STABLE,
+            "episodic": MemoryTier.EPISODIC,
+            "working": MemoryTier.WORKING,
+        }
+
+        uncached_searches: List[Tuple[str, dict]] = []
+        for name, kwargs in tier_searches:
+            tier_enum = tier_enum_map[name]
+            cache_key = self._cache_key(query, tier_enum, kwargs["limit"])
+            cached = self._cache_get(cache_key)
+            if cached is not None:
+                logger.debug(f"MemoryRetriever cache hit: tier={name}")
+                all_entries.extend(cached)
+            else:
+                uncached_searches.append((name, kwargs))
+
+        # Run only the uncached tier searches concurrently.
+        if uncached_searches:
+            with ThreadPoolExecutor(max_workers=len(uncached_searches)) as pool:
+                future_to_name = {
+                    pool.submit(self.store.read, **kwargs): name
+                    for name, kwargs in uncached_searches
+                }
+                for future in as_completed(future_to_name):
+                    name = future_to_name[future]
+                    tier_enum = tier_enum_map[name]
+                    kwargs = next(kw for n, kw in uncached_searches if n == name)
+                    try:
+                        results = future.result()
+                        cache_key = self._cache_key(query, tier_enum, kwargs["limit"])
+                        self._cache_put(cache_key, results)
+                        all_entries.extend(results)
+                    except Exception as e:
+                        logger.warning(f"{name.capitalize()} tier retrieval failed: {e}")
 
         # 4. Deduplicate across tiers (prefer stable > episodic > working)
         deduped = self._deduplicate_across_tiers(all_entries)

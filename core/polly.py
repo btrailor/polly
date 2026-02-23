@@ -3002,6 +3002,12 @@ If you suggest an exercise, copy the description directly from the context above
                 self.tiered_store.flush_working()
                 logger.info("Working memory flushed")
 
+            # Invalidate the retriever cache so the next query sees the
+            # newly written stable/episodic facts rather than stale results.
+            if self.memory_retriever and hasattr(self.memory_retriever, "invalidate"):
+                self.memory_retriever.invalidate()
+                logger.debug("MemoryRetriever cache invalidated after session extraction")
+
         except Exception as e:
             logger.warning(f"Session-end extraction failed: {e}")
 
