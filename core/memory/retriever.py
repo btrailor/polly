@@ -146,6 +146,70 @@ class MemoryRetriever:
     # ContextContributor protocol
     # ------------------------------------------------------------------
 
+    def build_context_items(
+        self,
+        query: str,
+        domains: list[str],
+        persona: Optional[str] = None,
+        mode: Optional[str] = None,
+        token_budget: int = 0,
+        **kwargs: Any,
+    ) -> list:
+        """
+        Per-item ContextContributor protocol (Spec 02).
+
+        Returns one ScoredEntry per memory item instead of a single blob.
+        Each item carries its own score, tier metadata, and token count,
+        allowing the budget allocator and RollingContext to operate at
+        individual-memory granularity.
+        """
+        from core.context.relevance_scorer import ScoredEntry
+
+        try:
+            retrieval_tier = kwargs.get("retrieval_tier")
+            override_episodic_limit = None
+            override_min_similarity = None
+            if retrieval_tier is not None:
+                try:
+                    from core.hardened.classifier import RetrievalTier
+                    if retrieval_tier.tier == RetrievalTier.ABSENT:
+                        override_episodic_limit = max(self.episodic_limit, 10)
+                        override_min_similarity = min(self.min_similarity, 0.3)
+                except Exception:
+                    pass
+
+            memories = self.retrieve(
+                query,
+                domains=domains,
+                override_episodic_limit=override_episodic_limit,
+                override_min_similarity=override_min_similarity,
+            )
+            if not memories:
+                return []
+
+            entries = []
+            for mem in memories:
+                text = self._format_single_entry(mem)
+                tc = TokenCounter.count(text)
+                entries.append(ScoredEntry(
+                    content=text,
+                    source=f"memory:{mem.tier.value}",
+                    raw_score=mem.score,
+                    composite_score=0.0,
+                    token_count=tc,
+                    metadata={
+                        "tier": mem.tier.value,
+                        "domain": mem.metadata.domain,
+                        "timestamp": mem.metadata.timestamp,
+                        "salience": mem.metadata.salience,
+                    },
+                ))
+            return entries
+
+        except Exception as e:
+            logger.warning(f"MemoryRetriever.build_context_items failed: {e}")
+            return []
+
     def build_context(
         self,
         query: str,

@@ -60,6 +60,98 @@ class EntityContextBuilder:
         """Return persona-specific context (e.g. entity affinities). Empty for now."""
         return {}
 
+    def build_context_items(
+        self,
+        query: str,
+        domains: List[str],
+        max_entities: int = 10,
+        include_relationships: bool = True,
+        include_cross_domain: bool = True,
+        persona: Optional[str] = None,
+        mode: Optional[str] = None,
+        token_budget: int = 0,
+        **kwargs: object,
+    ) -> List:
+        """
+        Per-item ContextContributor protocol (Spec 02).
+
+        Returns one ScoredEntry per entity instead of a single concatenated
+        blob. Each entity carries its own authority score for independent
+        budget allocation and RollingContext decay tracking.
+        """
+        from core.context.relevance_scorer import ScoredEntry
+
+        persona_name = persona or self._active_persona
+        affinity_terms = self._get_persona_affinity_terms(persona_name) if persona_name else set()
+
+        # Resolve matching entities (same logic as build_context)
+        query_lower = query.lower()
+        query_words = set(query_lower.split())
+        all_entities = self.store.get_top_entities(limit=max_entities * 3)
+        matching: List = []
+        for e in all_entities:
+            name_lower = e.name.lower()
+            if name_lower in query_lower or any(w in name_lower for w in query_words if len(w) > 2):
+                matching.append(e)
+            elif e.aliases and any(a.lower() in query_lower for a in e.aliases):
+                matching.append(e)
+        if domains:
+            for d in domains:
+                from .models import EntityQuery
+                eq = EntityQuery(domains=[d], min_authority=0.1, limit=5)
+                for e in self.store.search(eq):
+                    if e not in matching and len(matching) < max_entities:
+                        matching.append(e)
+        # Dedupe
+        seen: Set[str] = set()
+        unique: List = []
+        for e in matching:
+            if e.id not in seen:
+                seen.add(e.id)
+                unique.append(e)
+        if affinity_terms and unique:
+            def _affinity_score(entity) -> int:
+                name_lower = entity.name.lower()
+                if name_lower in affinity_terms:
+                    return 1
+                if entity.aliases and any(a.lower() in affinity_terms for a in entity.aliases):
+                    return 1
+                return 0
+            unique.sort(key=lambda e: _affinity_score(e), reverse=True)
+        matching = unique[:max_entities]
+        if not matching:
+            return []
+
+        entries = []
+        for entity in matching:
+            et = entity.entity_type.value if isinstance(entity.entity_type, EntityType) else entity.entity_type
+            parts = [f"### {entity.name} ({et})"]
+            if entity.description:
+                parts.append(entity.description)
+            if include_relationships:
+                related = self.store.get_related(entity.id, max_hops=1, min_strength=0.2)
+                if related:
+                    parts.append("Related:")
+                    for rel_entity, rel in related[:5]:
+                        rt = rel.relationship_type.value if hasattr(rel.relationship_type, "value") else rel.relationship_type
+                        parts.append(f"- {rel_entity.name} ({rt})")
+            text = "\n".join(parts)
+            authority = getattr(entity, "authority", 0.5)
+            entries.append(ScoredEntry(
+                content=text,
+                source="entity",
+                raw_score=float(authority),
+                composite_score=0.0,
+                token_count=TokenCounter.count(text),
+                metadata={
+                    "entity_id": entity.id,
+                    "entity_type": et,
+                    "domain": domains[0] if domains else "general",
+                    "authority": float(authority),
+                },
+            ))
+        return entries
+
     def build_context(
         self,
         query: str,

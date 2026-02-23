@@ -1,6 +1,6 @@
 # OpenSpec: Per-Item Granularity Context Assembly
 
-**Status:** 💭 Planned  
+**Status:** ✅ Implemented  
 **Priority:** P2 — Budget system precision  
 **Related:** `core/polly.py:923–1105` (`_gather_context`), `core/context/budget_allocator.py`, `core/context/rolling_context.py`, `core/context/relevance_scorer.py`, `core/mental_models.py`, `core/patterns/engine.py`, `core/memory/retriever.py`  
 **Motivation:** The current `_gather_context()` receives one text blob per contributor. The bin-packing and relevance scoring operates at contributor-block granularity, not individual knowledge item granularity. A highly relevant mental model cannot be selected independently from an irrelevant one — they arrive as a package. This undermines the precision of the entire budget and rolling context system.
@@ -295,11 +295,25 @@ Each migration step is independently testable and independently deployable.
 
 ---
 
+## Implementation Notes
+
+### Completed
+- `core/memory/retriever.py` — `build_context_items()` added; one `ScoredEntry` per `MemoryEntry` with tier, domain, timestamp, salience metadata
+- `core/mental_models.py` — `build_context_items()` added; one `ScoredEntry` per activated model with activation score normalised to 0–1. Added `get_models_for_context_scored()` helper returning `(model, score)` tuples to avoid discarding activation scores.
+- `core/patterns/engine.py` — `build_context_items()` added; one `ScoredEntry` per pattern with `confidence` as raw score
+- `core/entities/context.py` — `build_context_items()` added; one `ScoredEntry` per entity with `authority` as raw score
+- `core/polly.py` — `_gather_context()` refactored: calls `build_context_items()` when available, falls back to legacy `build_context()` blob wrapping. Flat pool of items scored, ingested, and bin-packed individually. Observability metrics now reflect real `items_returned` counts per contributor.
+
+### Not Migrated
+- `CompressionManager` — single summary string by nature; kept as single ScoredEntry via legacy fallback path.
+
+---
+
 ## Success Criteria
 
-- [ ] Each contributor returns `List[ScoredEntry]` with individual scores and token counts
-- [ ] `_gather_context()` operates on a flat pool of individually-scored items
-- [ ] RollingContext decay/amplification fires per-item, not per-contributor-blob
-- [ ] A low-relevance mental model does not prevent a high-relevance memory from being included when budget is tight
+- [x] Each contributor returns `List[ScoredEntry]` with individual scores and token counts
+- [x] `_gather_context()` operates on a flat pool of individually-scored items
+- [x] RollingContext decay/amplification fires per-item, not per-contributor-blob
+- [ ] A low-relevance mental model does not prevent a high-relevance memory from being included when budget is tight (observable via Spec 06 metrics)
 - [ ] Budget utilisation improves: less "allocated but unused" space within sections
 - [ ] No regression in context quality as measured by response coherence on standard queries

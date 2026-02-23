@@ -11,7 +11,7 @@
 | # | Spec | Priority | Status | Core Problem Solved |
 |---|------|----------|--------|---------------------|
 | 01 | [Semantic Cache Layer](./01-semantic-cache.md) | P1 — Highest ROI | ✅ Implemented (Phase A) | No caching exists between query intake and LLM call. Every query pays full cost. |
-| 02 | [Per-Item Granularity Context Assembly](./02-per-item-context-assembly.md) | P2 — Budget precision | 💭 Planned | Contributors return text blobs; bin-packing can't select individual items. |
+| 02 | [Per-Item Granularity Context Assembly](./02-per-item-context-assembly.md) | P2 — Budget precision | ✅ Implemented | Contributors return text blobs; bin-packing can't select individual items. |
 | 03 | [Persist RollingContext Across Sessions](./03-rolling-context-persistence.md) | P3 — Cross-session continuity | 💭 Planned | RollingContext working set dies at session end; every session starts cold. |
 | 04 | [Semantic Compression Trigger](./04-semantic-compression-trigger.md) | P4 — Preserve valuable conversations | 💭 Planned | Compression fires on message count/age, not semantic redundancy. |
 | 05 | [Pattern Boost Calibration & Negative Patterns](./05-pattern-boost-calibration.md) | P5 — Better retrieval learning | 💭 Planned | 1.1–1.5x boost too weak to influence ranking; no negative evidence mechanism. |

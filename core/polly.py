@@ -1025,36 +1025,32 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         contributor_specs.sort(key=lambda x: x[2], reverse=True)
 
         # ------------------------------------------------------------------
-        # Call each contributor
+        # Call each contributor — prefer build_context_items() (Spec 02)
         # ------------------------------------------------------------------
-        raw_results: List[tuple] = []  # (section, priority, text)
+        from core.context.relevance_scorer import ScoredEntry
+        from core.context.token_counter import TokenCounter
+        from core.context_metrics import ContributorMetrics
+
+        # (section_name, priority, List[ScoredEntry])
+        raw_items: List[tuple] = []
 
         for section, contributor, priority in contributor_specs:
             try:
-                # Determine token budget for this contributor
-                token_budget = 0
-                if use_budget:
-                    token_budget = budget_plan.remaining(section)
-
-                # Build call kwargs — forward everything except budget_plan
+                # Build call kwargs
                 call_kw: Dict[str, Any] = dict(kwargs)
-                call_kw["token_budget"] = token_budget
+                call_kw["token_budget"] = budget_plan.remaining(section) if use_budget else 0
 
-                # Mental model manager needs extra kwargs
                 if section == "mental_models":
                     if "keywords" not in call_kw:
                         call_kw["keywords"] = self._extract_keywords(query)
                     call_kw["domain"] = kwargs.get("domain") or (domains[0] if domains else None)
 
-                # Memory retriever: pass retrieval tier for ABSENT adjustment
                 if section == "memory" and retrieval_tier is not None:
                     call_kw["retrieval_tier"] = retrieval_tier
 
-                # Pattern engine needs user_name
                 if contributor is self.pattern_engine:
                     call_kw["user_name"] = self.user_name
 
-                # Compression manager needs conversation_id
                 if section == "compression":
                     conv_id = kwargs.get("conversation_id") or (
                         f"session_{self.session_start.isoformat()}" if self.session_start else None
@@ -1062,108 +1058,109 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                     if conv_id and hasattr(contributor, "set_current_conversation"):
                         contributor.set_current_conversation(conv_id)
 
-                ctx = contributor.build_context(
-                    query, domains, persona=persona, mode=mode, **call_kw
-                )
-                if ctx:
-                    raw_results.append((section, priority, ctx))
+                # --- Per-item protocol (Spec 02) ---
+                if hasattr(contributor, "build_context_items"):
+                    items = contributor.build_context_items(
+                        query, domains, persona=persona, mode=mode, **call_kw
+                    )
+                    # Apply retrieval tier adjustment per-item
+                    if retrieval_tier is not None:
+                        try:
+                            from core.hardened.classifier import RetrievalTier
+                            if retrieval_tier.tier == RetrievalTier.ADJACENT:
+                                for item in items:
+                                    if item.source in ("entity", "pattern", "mental_model"):
+                                        item.raw_score *= 0.7
+                        except Exception:
+                            pass
+                    if items:
+                        raw_items.append((section, priority, items))
+                else:
+                    # Legacy fallback: call build_context and wrap as single ScoredEntry
+                    ctx = contributor.build_context(
+                        query, domains, persona=persona, mode=mode, **call_kw
+                    )
+                    if ctx:
+                        source_map = {
+                            "mental_models": "mental_model",
+                            "memory": "memory:stable",
+                            "entities": "entity",
+                            "compression": "pattern",
+                        }
+                        source = source_map.get(section, "entity")
+                        raw_score = priority / 100.0
+                        if retrieval_tier is not None and source in ("entity", "pattern", "mental_model"):
+                            try:
+                                from core.hardened.classifier import RetrievalTier
+                                if retrieval_tier.tier == RetrievalTier.ADJACENT:
+                                    raw_score *= 0.7
+                            except Exception:
+                                pass
+                        entry = ScoredEntry(
+                            content=ctx,
+                            source=source,
+                            raw_score=raw_score,
+                            composite_score=0.0,
+                            token_count=TokenCounter.count(ctx),
+                            metadata={"priority": priority, "domain": domains[0] if domains else "general"},
+                        )
+                        raw_items.append((section, priority, [entry]))
+
             except Exception as e:
                 logger.debug(f"Context contributor {section} (priority {priority}) failed: {e}")
 
         # ------------------------------------------------------------------
         # Collect contributor metrics for observability (Spec 06)
+        # Updated to use real per-item counts from Spec 02
         # ------------------------------------------------------------------
-        from core.context_metrics import ContributorMetrics
-        from core.context.token_counter import TokenCounter
-        
-        # Track metrics per contributor for this turn
         contributor_metrics: List[ContributorMetrics] = []
-        
-        # Record metrics for each contributor that was called
-        for section, priority, text in raw_results:
-            section_key = section  # mental_models, memory, entities, compression
-            token_count = TokenCounter.count(text) if text else 0
-            
-            # Map section to contributor name for metrics
-            contrib_name = {
-                "mental_models": "mental_models",
-                "memory": "memory",
-                "entities": "entities",
-                "compression": "compression",
-            }.get(section_key, section_key)
-            
+        for section, priority, items in raw_items:
+            token_count = sum(i.token_count for i in items)
+            top_score = max((i.raw_score for i in items), default=priority / 100.0)
+            avg_score = (sum(i.raw_score for i in items) / len(items)) if items else priority / 100.0
             contributor_metrics.append(ContributorMetrics(
-                contributor=contrib_name,
-                items_returned=1,  # Each build_context call returns 1 text block in current impl
-                tokens_allocated=0,  # Will be filled by budget system if active
+                contributor=section,
+                items_returned=len(items),
+                tokens_allocated=0,
                 tokens_used=token_count,
                 utilisation=1.0 if token_count > 0 else 0.0,
-                top_score=priority / 100.0,
-                avg_score=priority / 100.0,
-                items_selected=0,  # Will be updated after bin-packing
+                top_score=top_score,
+                avg_score=avg_score,
+                items_selected=0,
                 items_evicted=0,
             ))
 
-        # Store for later retrieval by _record_context_metrics
         self._current_contributor_metrics = contributor_metrics
 
         # ------------------------------------------------------------------
         # If budget system is inactive, fall back to simple concatenation
         # ------------------------------------------------------------------
         if not use_budget:
-            raw_results.sort(key=lambda x: x[1], reverse=True)
-            return "\n\n".join(text for _, _, text in raw_results)
+            raw_items.sort(key=lambda x: x[1], reverse=True)
+            return "\n\n".join(
+                item.content
+                for _, _, items in raw_items
+                for item in items
+            )
 
         # ------------------------------------------------------------------
         # Budget-aware path: score → ingest → select via rolling context
         # ------------------------------------------------------------------
-        from core.context.relevance_scorer import ScoredEntry
-        from core.context.token_counter import TokenCounter
-
-        scored_entries = []
-        for section, priority, text in raw_results:
-            try:
-                # Map section to source names used by RelevanceScorer
-                source_map = {
-                    "mental_models": "mental_model",
-                    "memory": "memory:stable",  # generic; retriever adds per-tier detail
-                    "entities": "entity",
-                    "compression": "pattern",
-                }
-                source = source_map.get(section, "entity")
-                raw_score = priority / 100.0
-
-                # Retrieval tier adjustments:
-                #   ADJACENT → RAG-sourced raw_scores multiplied by 0.7
-                #   (DIRECT uses scores as-is, ABSENT doesn't affect scoring
-                #    but boosts memory retrieval aggressiveness above)
-                if retrieval_tier is not None and source in ("entity", "pattern", "mental_model"):
-                    try:
-                        from core.hardened.classifier import RetrievalTier
-                        if retrieval_tier.tier == RetrievalTier.ADJACENT:
-                            raw_score *= 0.7
-                    except Exception:
-                        pass
-
-                entry = ScoredEntry(
-                    content=text,
-                    source=source,
-                    raw_score=raw_score,
-                    composite_score=0.0,
-                    token_count=TokenCounter.count(text),
-                    metadata={"priority": priority, "domain": domains[0] if domains else "general"},
-                )
-                entry.composite_score = self.relevance_scorer.score(
-                    entry,
-                    query_domains=domains,
-                    current_turn=self.rolling_context.turn_count,
-                )
-                scored_entries.append(entry)
-            except Exception as e:
-                logger.debug(f"Scoring entry from {section} failed: {e}")
+        all_scored: List[ScoredEntry] = []
+        for section, priority, items in raw_items:
+            for item in items:
+                try:
+                    item.composite_score = self.relevance_scorer.score(
+                        item,
+                        query_domains=domains,
+                        current_turn=self.rolling_context.turn_count,
+                    )
+                    all_scored.append(item)
+                except Exception as e:
+                    logger.debug(f"Scoring item from {section} failed: {e}")
 
         # Ingest into rolling context (handles dedup and decay tracking)
-        self.rolling_context.ingest(scored_entries)
+        self.rolling_context.ingest(all_scored)
 
         # Build section budgets from budget_plan
         section_budgets: Dict[str, int] = {}
@@ -1175,35 +1172,36 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
 
         # Assemble selected entries and report usage
         parts: List[str] = []
-        
-        # Track selected content by section for metrics
-        selected_by_section: Dict[str, int] = {section: 0 for section in section_budgets.keys()}
-        
+        selected_by_section: Dict[str, int] = {s: 0 for s in section_budgets.keys()}
+
         for section_name, entries in selected.items():
             for entry in entries:
                 parts.append(entry.content)
                 budget_plan.report_usage(section_name, entry.token_count)
                 selected_by_section[section_name] += 1
 
-        # Update contributor metrics with selection info
-        for cm in contributor_metrics:
-            section_map = {
-                "mental_models": "mental_models",
-                "memory": "memory",
-                "entities": "entities",
-                "compression": "compression",
-            }
-            mapped = section_map.get(cm.contributor, cm.contributor)
-            if mapped in selected_by_section:
-                cm.items_selected = selected_by_section[mapped]
-                cm.items_evicted = cm.items_returned - cm.items_selected
-                cm.tokens_allocated = section_budgets.get(mapped, 0)
-                cm.utilisation = cm.tokens_used / cm.tokens_allocated if cm.tokens_allocated > 0 else 0.0
+        # Update contributor metrics with selection counts
+        items_returned_by_section: Dict[str, int] = {}
+        tokens_used_by_section: Dict[str, int] = {}
+        for section, priority, items in raw_items:
+            items_returned_by_section[section] = items_returned_by_section.get(section, 0) + len(items)
+            tokens_used_by_section[section] = tokens_used_by_section.get(section, 0) + sum(i.token_count for i in items)
 
-        # Store updated metrics
+        for cm in contributor_metrics:
+            n_selected = selected_by_section.get(cm.contributor, 0)
+            cm.items_selected = n_selected
+            cm.items_evicted = cm.items_returned - n_selected
+            cm.tokens_allocated = section_budgets.get(cm.contributor, 0)
+            cm.utilisation = (
+                cm.tokens_used / cm.tokens_allocated if cm.tokens_allocated > 0 else 0.0
+            )
+
         self._current_contributor_metrics = contributor_metrics
         self._current_context_total_tokens = sum(cm.tokens_used for cm in contributor_metrics)
-        self._current_budget_utilisation = budget_plan.total_used() / budget_plan.total_allocated() if budget_plan.total_allocated() > 0 else 0.0
+        self._current_budget_utilisation = (
+            budget_plan.total_used() / budget_plan.total_allocated()
+            if budget_plan.total_allocated() > 0 else 0.0
+        )
 
         logger.debug(
             f"Budget-aware context: {len(parts)} entries selected, "

@@ -540,6 +540,65 @@ class PatternEngine:
 
     context_priority = 20
 
+    def build_context_items(
+        self,
+        query: str,
+        domains: List[str],
+        persona: Optional[str] = None,
+        mode: Optional[str] = None,
+        user_name: str = "the user",
+        token_budget: int = 0,
+        **kwargs: object,
+    ) -> List:
+        """
+        Per-item ContextContributor protocol (Spec 02).
+
+        Returns one ScoredEntry per pattern instead of a single concatenated
+        blob. Each pattern carries its own confidence score for independent
+        budget allocation and RollingContext decay tracking.
+        """
+        from core.context.relevance_scorer import ScoredEntry
+        from core.context.token_counter import TokenCounter
+
+        domain_values = [d if isinstance(d, str) else getattr(d, "value", str(d)) for d in (domains or [])]
+        relevant = self.get_patterns_for_prompt(query, domain_values, limit=5)
+        if not relevant:
+            return []
+
+        entries = []
+        for p in relevant:
+            pt = p.pattern_type
+            pt_val = pt.value if hasattr(pt, "value") else pt
+            # Format single pattern (inline the per-pattern formatting from build_context)
+            if pt_val == "query":
+                text = f"- **{p.name}**: You ask this type of question often (seen {p.occurrences} times)\n"
+            elif pt_val == "code":
+                text = f"- **{p.name}**: {p.description} (found in {p.occurrences} files)\n"
+                if p.examples:
+                    text += f"  Example: `{p.examples[0][:150]}...`\n"
+            elif pt_val == "conceptual":
+                text = f"- **{p.name}**: {p.description}\n"
+            elif pt_val == "workflow":
+                text = f"- **{p.name}**: {p.description} (observed {p.occurrences} times)\n"
+            else:
+                text = f"- **{p.name}**: {p.description}\n"
+
+            tc = TokenCounter.count(text)
+            entries.append(ScoredEntry(
+                content=text,
+                source="pattern",
+                raw_score=p.confidence,
+                composite_score=0.0,
+                token_count=tc,
+                metadata={
+                    "pattern_id": p.id,
+                    "pattern_type": pt_val,
+                    "domain": p.domains[0] if p.domains else (domain_values[0] if domain_values else "general"),
+                    "occurrences": p.occurrences,
+                },
+            ))
+        return entries
+
     def build_context(
         self,
         query: str,

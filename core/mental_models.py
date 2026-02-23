@@ -140,6 +140,75 @@ class MentalModelManager:
     # ContextContributor (integration-contracts): priority 60
     context_priority = 60
 
+    def build_context_items(
+        self,
+        query: str,
+        domains: List[str],
+        persona: Optional[str] = None,
+        mode: Optional[str] = None,
+        token_budget: int = 0,
+        **kwargs: Any,
+    ) -> list:
+        """
+        Per-item ContextContributor protocol (Spec 02).
+
+        Returns one ScoredEntry per activated mental model instead of a single
+        concatenated blob. Each model carries its own activation score so the
+        budget allocator can include high-activation models and evict low-ones
+        independently.
+        """
+        from core.context.relevance_scorer import ScoredEntry
+
+        override_model_ids = kwargs.get("override_model_ids")
+        if override_model_ids is not None:
+            models_with_scores = []
+            for model_id in override_model_ids:
+                model = self.get_model(model_id)
+                if model:
+                    models_with_scores.append((model, 75.0))  # fixed score for explicit overrides
+        else:
+            keywords = kwargs.get("keywords")
+            if keywords is None:
+                keywords = [w for w in query.lower().split() if len(w) > 2][:20]
+            domain = domains[0] if domains else None
+            models_with_scores = self.get_models_for_context_scored(
+                domain=domain,
+                page=kwargs.get("page"),
+                persona=persona,
+                persona_mode=mode,
+                keywords=keywords,
+                enabled_only=True,
+            )
+
+        if not models_with_scores:
+            return []
+
+        entries = []
+        for model, activation_score in models_with_scores:
+            try:
+                if self.compressor:
+                    compressed = self.compressor.compress(model.to_dict(), type="mental_model")
+                else:
+                    compressed = f"{model.name}: {model.prompt_injection[:100]}"
+                tc = TokenCounter.count(compressed)
+                entries.append(ScoredEntry(
+                    content=compressed,
+                    source="mental_model",
+                    raw_score=min(activation_score / 34.0, 1.0),  # normalise: max possible score ~34
+                    composite_score=0.0,
+                    token_count=tc,
+                    metadata={
+                        "model_id": model.id,
+                        "model_name": model.name,
+                        "category": getattr(model, "category", "general"),
+                        "domain": domain or (domains[0] if domains else "general"),
+                    },
+                ))
+            except Exception as e:
+                logger.warning(f"Failed to build ScoredEntry for mental model {model.id}: {e}")
+
+        return entries
+
     def build_context(
         self,
         query: str,
@@ -309,6 +378,52 @@ class MentalModelManager:
             logger.info("No mental models met the activation threshold for this context")
         
         return top_models
+
+    def get_models_for_context_scored(
+        self,
+        domain: Optional[str] = None,
+        page: Optional[str] = None,
+        persona: Optional[str] = None,
+        persona_mode: Optional[str] = None,
+        keywords: Optional[List[str]] = None,
+        category: Optional[str] = None,
+        enabled_only: bool = True,
+    ) -> List[tuple]:
+        """
+        Like get_models_for_context() but returns (model, score) tuples (Spec 02).
+
+        Used by build_context_items() so each model's activation score can be
+        carried into the ScoredEntry for per-item budget allocation.
+        """
+        persona = persona or self._active_persona
+        persona_mode = persona_mode or self._active_mode
+
+        scored_models = []
+        for model in self.models.values():
+            if enabled_only and not model.enabled:
+                continue
+            score = 0.0
+            if page and page in model.active_on_pages:
+                score += 10
+            if persona and persona in model.active_for_personas:
+                score += 8
+            if persona_mode and persona_mode in model.active_for_modes:
+                score += 8
+            if category and category in model.category_triggers:
+                score += 5
+            if domain and domain in model.applies_to:
+                score += 3
+            if keywords and model.keywords:
+                kw_lower = {k.lower() for k in keywords}
+                model_kw_lower = {mk.lower() for mk in model.keywords}
+                keyword_matches = len(kw_lower & model_kw_lower)
+                if keyword_matches > 0:
+                    score += min(keyword_matches * 2, self.MAX_KEYWORD_SCORE)
+            if score >= self.MIN_SCORE_THRESHOLD:
+                scored_models.append((model, score))
+
+        scored_models.sort(key=lambda x: x[1], reverse=True)
+        return scored_models[:5]
     
     def add_model(self, model: MentalModel) -> None:
         """Add a new mental model."""
