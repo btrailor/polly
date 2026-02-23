@@ -2,11 +2,11 @@
 Unified Pattern Engine for Polly.
 
 Replaces both learners/patterns.PatternLearner and core/pattern_learning.PatternLearner
-with a single engine that uses pluggable storage backends (JSON + optional Mem0).
+with a single engine that uses JSON storage as the primary (and only) backend.
 
 Core responsibilities:
 - Learn patterns from queries, compressed conversations, code, and domain interactions
-- Search patterns via keyword (JSON) and semantic (Mem0) search
+- Search patterns via keyword (JSON) search
 - Score and rank patterns for prompt injection
 - Manage pattern lifecycle (decay, pruning)
 - Manage specialized pattern types (QueryChunkPattern, DomainPriorityPattern)
@@ -32,7 +32,6 @@ from .models import (
 )
 from .scorer import PatternScorer
 from .storage.json_backend import JSONBackend
-from .storage.mem0_backend import Mem0Backend
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +80,11 @@ class PatternEngine:
         # Primary storage (always active)
         self.json_backend = JSONBackend(json_path)
 
-        # Semantic storage (optional)
-        self.mem0_backend: Optional[Mem0Backend] = None
-        if mem0_config:
-            self.mem0_backend = Mem0Backend(mem0_config)
+        # mem0_config is accepted but intentionally unused.
+        # The Mem0 backend was removed because every pattern written to Mem0 was
+        # also written to JSON (the source of truth), making Mem0 a redundant
+        # duplicate store at ~25s cost per learn() call. JSON keyword search
+        # already covers all relevant patterns. See openspec task 7 for details.
 
         # Scorer for ranking patterns
         self._scorer = PatternScorer()
@@ -160,18 +160,10 @@ class PatternEngine:
             existing.metadata.update(pattern.metadata)
 
             self.json_backend.save(existing)
-            # Skip Mem0 for ROUTING_OUTCOME patterns — they are structured data
-            # that don't benefit from semantic search and Mem0's add_memory()
-            # is extremely slow (~25s due to LLM extraction + embedding).
-            if self.mem0_backend and existing.pattern_type != PatternType.ROUTING_OUTCOME:
-                self.mem0_backend.save(existing)
-
             return existing
         else:
             # New pattern
             self.json_backend.save(pattern)
-            if self.mem0_backend and pattern.pattern_type != PatternType.ROUTING_OUTCOME:
-                self.mem0_backend.save(pattern)
 
             logger.info(
                 f"Learned new pattern: [{pattern.pattern_type.value if isinstance(pattern.pattern_type, PatternType) else pattern.pattern_type}] {pattern.name}"
@@ -475,38 +467,13 @@ class PatternEngine:
     # ========== Search API ==========
 
     def search(self, query: PatternQuery) -> List[Pattern]:
-        """Search patterns across all backends, merge and deduplicate."""
-        # Get from JSON backend (primary)
+        """Search patterns via JSON backend."""
         results = self.json_backend.search(query)
-        seen_ids = {p.id for p in results}
-
-        # Merge Mem0 semantic results if available and text query provided
-        if self.mem0_backend and query.text:
-            mem0_results = self.mem0_backend.search_semantic(query.text, limit=query.limit)
-            for p in mem0_results:
-                if p.id not in seen_ids:
-                    # Apply query filters
-                    if query.pattern_types and p.pattern_type not in query.pattern_types:
-                        continue
-                    if query.domains and not set(p.domains or []) & set(query.domains):
-                        continue
-                    if p.confidence < query.min_confidence and not query.include_decayed:
-                        continue
-                    results.append(p)
-                    seen_ids.add(p.id)
-
-        # Sort by confidence, then occurrences
         results.sort(key=lambda p: (p.confidence, p.occurrences), reverse=True)
         return results[: query.limit]
 
     def search_semantic(self, text: str, limit: int = 10) -> List[Pattern]:
-        """Semantic search — Mem0 when available, keyword fallback."""
-        if self.mem0_backend:
-            results = self.mem0_backend.search_semantic(text, limit=limit)
-            if results:
-                return results
-
-        # Fallback to keyword search
+        """Keyword search over patterns (semantic/Mem0 backend removed — see task 7)."""
         return self.json_backend.search(PatternQuery(text=text, limit=limit))
 
     def get_patterns_for_prompt(
@@ -523,18 +490,6 @@ class PatternEngine:
         """
         # Gather all candidate patterns
         all_patterns = list(self.json_backend.load_all().values())
-
-        # Merge Mem0 semantic results
-        if self.mem0_backend:
-            try:
-                mem0_results = self.mem0_backend.search_semantic(query, limit=limit * 2)
-                seen_ids = {p.id for p in all_patterns}
-                for p in mem0_results:
-                    if p.id not in seen_ids:
-                        all_patterns.append(p)
-                        seen_ids.add(p.id)
-            except Exception as e:
-                logger.debug(f"Mem0 search for prompt patterns failed (non-critical): {e}")
 
         if not all_patterns:
             return []
@@ -700,7 +655,7 @@ class PatternEngine:
             "low_confidence": 0,
             "query_chunk_patterns": len(self.json_backend.query_chunk_patterns),
             "domain_priority_patterns": len(self.json_backend.domain_priority_patterns),
-            "has_mem0": self.mem0_backend is not None,
+            "has_mem0": False,  # Mem0 backend removed from pattern engine (task 7)
         }
 
         if not all_patterns:
