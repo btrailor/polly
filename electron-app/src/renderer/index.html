@@ -748,7 +748,7 @@
                       <label class="settings-label">Enable Suggestions</label>
                       <label class="toggle-switch">
                         <input type="checkbox" id="ai-feat-kb-suggestions-enabled" checked>
-                        <span class="toggle-slider"></span>
+                        <label for="ai-feat-kb-suggestions-enabled" class="toggle-label"></label>
                       </label>
                     </div>
                     <p class="settings-description">Show knowledge-save suggestions when cloud AI provides novel information.</p>
@@ -796,10 +796,66 @@
                       <label class="settings-label">Enable Dashboard</label>
                       <label class="toggle-switch">
                         <input type="checkbox" id="ai-feat-autonomy-enabled" checked>
-                        <span class="toggle-slider"></span>
+                        <label for="ai-feat-autonomy-enabled" class="toggle-label"></label>
                       </label>
                     </div>
                     <p class="settings-description">Show progressive autonomy metrics in the status bar.</p>
+                  </div>
+                </div>
+
+                <div class="settings-section">
+                  <h3>Semantic Cache</h3>
+                  <p class="section-description">
+                    Cache responses for semantically similar queries to reduce latency and LLM costs.
+                    When a new query closely matches a cached one, the stored response is returned instantly
+                    without calling the LLM.
+                  </p>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Enable Semantic Cache</label>
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="ai-feat-semantic-cache-enabled">
+                        <label for="ai-feat-semantic-cache-enabled" class="toggle-label"></label>
+                      </label>
+                    </div>
+                    <p class="settings-description">Return cached responses for semantically similar queries instead of calling the LLM. Requires restart to take effect.</p>
+                  </div>
+                  <div style="height: 1px;"></div>
+
+                  <div id="semantic-cache-options">
+                    <div class="settings-item">
+                      <div class="settings-item-header">
+                        <label class="settings-label">Similarity Threshold</label>
+                        <span id="ai-feat-semantic-cache-threshold-value" style="font-family: monospace; font-size: 14px;">0.92</span>
+                      </div>
+                      <input type="range" id="ai-feat-semantic-cache-threshold" min="80" max="100" step="1" value="92"
+                        style="width: 100%; margin-top: 4px;"
+                        oninput="document.getElementById('ai-feat-semantic-cache-threshold-value').textContent = (this.value / 100).toFixed(2)">
+                      <p class="settings-description">Minimum cosine similarity for a cache hit (0.80–1.0). Higher values are stricter and only match near-identical queries.</p>
+                    </div>
+
+                    <div class="settings-item">
+                      <div class="settings-item-header">
+                        <label class="settings-label">Cache TTL (hours)</label>
+                        <span id="ai-feat-semantic-cache-ttl-value" style="font-family: monospace; font-size: 14px;">24h</span>
+                      </div>
+                      <input type="range" id="ai-feat-semantic-cache-ttl" min="1" max="168" step="1" value="24"
+                        style="width: 100%; margin-top: 4px;"
+                        oninput="document.getElementById('ai-feat-semantic-cache-ttl-value').textContent = this.value + 'h'">
+                      <p class="settings-description">Cache entries older than this are considered stale (1–168 hours).</p>
+                    </div>
+
+                    <div class="settings-item">
+                      <div class="settings-item-header">
+                        <label class="settings-label">Max Cache Entries</label>
+                        <span id="ai-feat-semantic-cache-max-value" style="font-family: monospace; font-size: 14px;">500</span>
+                      </div>
+                      <input type="range" id="ai-feat-semantic-cache-max" min="100" max="5000" step="100" value="500"
+                        style="width: 100%; margin-top: 4px;"
+                        oninput="document.getElementById('ai-feat-semantic-cache-max-value').textContent = this.value">
+                      <p class="settings-description">LRU eviction applies above this count (100–5000 entries).</p>
+                    </div>
                   </div>
                 </div>
 
@@ -893,7 +949,7 @@
                       <label class="settings-label">Enable decomposition</label>
                       <label class="toggle-switch">
                         <input type="checkbox" id="rag-decomposition-enabled" checked>
-                        <span class="toggle-slider"></span>
+                        <label for="rag-decomposition-enabled" class="toggle-label"></label>
                       </label>
                     </div>
                     <p class="settings-description">When enabled, multi-part or analytical queries are decomposed and routed via the Wave 3 hybrid pipeline.</p>

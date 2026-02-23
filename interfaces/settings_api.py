@@ -715,6 +715,109 @@ def create_settings_router() -> APIRouter:
                 }
             }
     
+    # ===== Semantic Cache Settings =====
+    
+    @router.get("/semantic-cache")
+    async def get_semantic_cache_settings():
+        """Get semantic cache settings."""
+        try:
+            config = get_config()
+            cache = config._config.get("semantic_cache", {})
+            return {
+                "success": True,
+                "settings": {
+                    "enabled": cache.get("enabled", False),
+                    "similarity_threshold": cache.get("similarity_threshold", 0.92),
+                    "max_entries": cache.get("max_entries", 500),
+                    "ttl_hours": cache.get("ttl_hours", 24),
+                    "min_response_tokens": cache.get("min_response_tokens", 50),
+                }
+            }
+        except Exception as e:
+            logger.error(f"Failed to get semantic cache settings: {e}")
+            raise HTTPException(500, f"Failed to get semantic cache settings: {str(e)}")
+    
+    @router.post("/semantic-cache")
+    async def update_semantic_cache_settings(request: Dict[str, Any]):
+        """Update semantic cache settings."""
+        try:
+            config = get_config()
+            
+            if "semantic_cache" not in config._config:
+                config._config["semantic_cache"] = {}
+            
+            cache_config = config._config["semantic_cache"]
+            
+            if "enabled" in request:
+                cache_config["enabled"] = bool(request["enabled"])
+            
+            if "similarity_threshold" in request:
+                cache_config["similarity_threshold"] = float(request["similarity_threshold"])
+            
+            if "max_entries" in request:
+                cache_config["max_entries"] = int(request["max_entries"])
+            
+            if "ttl_hours" in request:
+                cache_config["ttl_hours"] = int(request["ttl_hours"])
+            
+            if "min_response_tokens" in request:
+                cache_config["min_response_tokens"] = int(request["min_response_tokens"])
+            
+            # Note: Changes require server restart to take effect
+            # Could be enhanced to dynamically update Polly.semantic_cache instance
+            return {
+                "success": True,
+                "message": "Semantic cache settings updated. Restart server to apply changes."
+            }
+        except Exception as e:
+            logger.error(f"Failed to update semantic cache settings: {e}")
+            raise HTTPException(500, f"Failed to update semantic cache settings: {str(e)}")
+    
+    @router.get("/semantic-cache/stats")
+    async def get_semantic_cache_stats():
+        """Get semantic cache statistics."""
+        try:
+            from core.cache import get_semantic_cache
+            
+            cache = get_semantic_cache()
+            if not cache:
+                return {
+                    "success": True,
+                    "stats": {
+                        "total_entries": 0,
+                        "hit_count": 0,
+                        "miss_count": 0,
+                        "hit_rate": 0,
+                        "tokens_saved": 0,
+                    }
+                }
+            
+            stats = cache.stats()
+            return {
+                "success": True,
+                "stats": {
+                    "total_entries": stats.total_entries,
+                    "hit_count": stats.hit_count,
+                    "miss_count": stats.miss_count,
+                    "hit_rate": round(stats.hit_rate * 100, 1),
+                    "tokens_saved": stats.tokens_saved,
+                    "oldest_entry_hours": round(stats.oldest_entry_hours, 1),
+                    "newest_entry_hours": round(stats.newest_entry_hours, 1),
+                }
+            }
+        except Exception as e:
+            logger.error(f"Failed to get semantic cache stats: {e}")
+            return {
+                "success": True,
+                "stats": {
+                    "total_entries": 0,
+                    "hit_count": 0,
+                    "miss_count": 0,
+                    "hit_rate": 0,
+                    "tokens_saved": 0,
+                }
+            }
+
     # ===== Memory Settings =====
 
     @router.get("/memory")

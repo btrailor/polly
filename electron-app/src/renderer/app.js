@@ -3271,6 +3271,42 @@ function setupEventListeners() {
     }
   }
 
+  // AI Features → Semantic Cache toggle + sliders (restore from localStorage)
+  const semanticCacheToggle = document.getElementById("ai-feat-semantic-cache-enabled");
+  if (semanticCacheToggle) {
+    const savedEnabled = localStorage.getItem("polly-semantic-cache-enabled");
+    if (savedEnabled !== null) {
+      semanticCacheToggle.checked = savedEnabled === "true";
+    }
+  }
+  const semanticCacheThreshold = document.getElementById("ai-feat-semantic-cache-threshold");
+  if (semanticCacheThreshold) {
+    const savedThreshold = localStorage.getItem("polly-semantic-cache-threshold");
+    if (savedThreshold !== null) {
+      semanticCacheThreshold.value = savedThreshold;
+      const display = document.getElementById("ai-feat-semantic-cache-threshold-value");
+      if (display) display.textContent = (parseInt(savedThreshold) / 100).toFixed(2);
+    }
+  }
+  const semanticCacheTtl = document.getElementById("ai-feat-semantic-cache-ttl");
+  if (semanticCacheTtl) {
+    const savedTtl = localStorage.getItem("polly-semantic-cache-ttl");
+    if (savedTtl !== null) {
+      semanticCacheTtl.value = savedTtl;
+      const display = document.getElementById("ai-feat-semantic-cache-ttl-value");
+      if (display) display.textContent = savedTtl + "h";
+    }
+  }
+  const semanticCacheMax = document.getElementById("ai-feat-semantic-cache-max");
+  if (semanticCacheMax) {
+    const savedMax = localStorage.getItem("polly-semantic-cache-max");
+    if (savedMax !== null) {
+      semanticCacheMax.value = savedMax;
+      const display = document.getElementById("ai-feat-semantic-cache-max-value");
+      if (display) display.textContent = savedMax;
+    }
+  }
+
   // AI Features → Save button
   const saveAiFeaturesBtn = document.getElementById("btn-save-ai-features");
   if (saveAiFeaturesBtn) {
@@ -11397,6 +11433,10 @@ async function saveAIFeaturesSettings() {
   const contextEnrichment = document.getElementById("ai-feat-context-enrichment");
   const gapScore = document.getElementById("ai-feat-kb-gap-score");
   const autonomyEnabled = document.getElementById("ai-feat-autonomy-enabled");
+  const semanticCacheEnabled = document.getElementById("ai-feat-semantic-cache-enabled");
+  const semanticCacheThreshold = document.getElementById("ai-feat-semantic-cache-threshold");
+  const semanticCacheTtl = document.getElementById("ai-feat-semantic-cache-ttl");
+  const semanticCacheMax = document.getElementById("ai-feat-semantic-cache-max");
 
   if (kbSuggestions) {
     localStorage.setItem("polly-kb-suggestions", kbSuggestions.checked ? "true" : "false");
@@ -11410,6 +11450,18 @@ async function saveAIFeaturesSettings() {
   if (autonomyEnabled) {
     localStorage.setItem("polly-autonomy-enabled", autonomyEnabled.checked ? "true" : "false");
   }
+  if (semanticCacheEnabled) {
+    localStorage.setItem("polly-semantic-cache-enabled", semanticCacheEnabled.checked ? "true" : "false");
+  }
+  if (semanticCacheThreshold) {
+    localStorage.setItem("polly-semantic-cache-threshold", semanticCacheThreshold.value);
+  }
+  if (semanticCacheTtl) {
+    localStorage.setItem("polly-semantic-cache-ttl", semanticCacheTtl.value);
+  }
+  if (semanticCacheMax) {
+    localStorage.setItem("polly-semantic-cache-max", semanticCacheMax.value);
+  }
 
   // Also push to backend if server is available
   const payload = {
@@ -11417,6 +11469,12 @@ async function saveAIFeaturesSettings() {
     context_enrichment: contextEnrichment ? contextEnrichment.checked : true,
     gap_score_threshold: gapScore ? parseInt(gapScore.value) / 100 : 0.5,
     autonomy_dashboard: autonomyEnabled ? autonomyEnabled.checked : true,
+    semantic_cache: {
+      enabled: semanticCacheEnabled ? semanticCacheEnabled.checked : false,
+      similarity_threshold: semanticCacheThreshold ? parseInt(semanticCacheThreshold.value) / 100 : 0.92,
+      ttl_hours: semanticCacheTtl ? parseInt(semanticCacheTtl.value) : 24,
+      max_entries: semanticCacheMax ? parseInt(semanticCacheMax.value) : 500,
+    },
   };
 
   const result = await safeFetch(

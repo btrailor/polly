@@ -56,7 +56,7 @@ function switchTab(tabName) {
     };
     const subtitles = {
         'keys': 'Store API keys securely in your system keyring',
-        'budget': 'Monitor spending and set budget limits',
+        'budget': 'Monitor spending, set budget limits, and configure semantic cache',
         'compression': 'Configure automatic conversation compression',
         'providers': 'View provider information and capabilities'
     };
@@ -68,6 +68,8 @@ function switchTab(tabName) {
         loadKeys();
     } else if (tabName === 'budget') {
         loadBudgetStatus();
+        loadSemanticCacheSettings();
+        loadSemanticCacheStats();
     } else if (tabName === 'compression') {
         loadCompressionSettings();
         loadCompressionStats();
@@ -577,6 +579,120 @@ function displayCompressionStats(stats) {
                 `).join('')}
             </div>
         ` : ''}
+    `;
+}
+
+async function loadSemanticCacheSettings() {
+    const settingsDiv = document.getElementById('semantic-cache-settings');
+    
+    try {
+        const response = await fetch(`${API_BASE}/semantic-cache`);
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error('Failed to load semantic cache settings');
+        }
+        
+        document.getElementById('semantic-cache-enabled').checked = data.settings.enabled;
+        document.getElementById('semantic-cache-threshold').value = data.settings.similarity_threshold;
+        document.getElementById('semantic-cache-ttl').value = data.settings.ttl_hours;
+        document.getElementById('semantic-cache-max').value = data.settings.max_entries;
+        
+        updateSemanticCacheEnabled();
+    } catch (error) {
+        showToast(`Failed to load semantic cache settings: ${error.message}`, 'error');
+    }
+}
+
+function updateSemanticCacheEnabled() {
+    const enabled = document.getElementById('semantic-cache-enabled').checked;
+    const settingsDiv = document.getElementById('semantic-cache-settings');
+    const inputs = settingsDiv.querySelectorAll('input');
+    
+    inputs.forEach(input => {
+        input.disabled = !enabled;
+    });
+    
+    settingsDiv.style.opacity = enabled ? '1' : '0.5';
+}
+
+async function saveSemanticCacheSettings() {
+    const statusEl = document.getElementById('semantic-cache-save-status');
+    statusEl.textContent = 'Saving...';
+    statusEl.className = 'status-message';
+    
+    try {
+        const settings = {
+            enabled: document.getElementById('semantic-cache-enabled').checked,
+            similarity_threshold: parseFloat(document.getElementById('semantic-cache-threshold').value),
+            ttl_hours: parseInt(document.getElementById('semantic-cache-ttl').value),
+            max_entries: parseInt(document.getElementById('semantic-cache-max').value),
+        };
+        
+        const response = await fetch(`${API_BASE}/semantic-cache`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to save');
+        }
+        
+        showStatus(statusEl, 'success', '✓ Settings saved. Restart server to apply changes.');
+    } catch (error) {
+        showStatus(statusEl, 'error', `✗ Error: ${error.message}`);
+    }
+}
+
+async function loadSemanticCacheStats() {
+    const container = document.getElementById('semantic-cache-stats');
+    container.innerHTML = '<div class="loading">Loading statistics...</div>';
+    
+    try {
+        const response = await fetch(`${API_BASE}/semantic-cache/stats`);
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error('Failed to load stats');
+        }
+        
+        displaySemanticCacheStats(data.stats);
+    } catch (error) {
+        container.innerHTML = `<div class="status-message error show">Failed to load statistics: ${error.message}</div>`;
+    }
+}
+
+function displaySemanticCacheStats(stats) {
+    const container = document.getElementById('semantic-cache-stats');
+    
+    if (stats.total_entries === 0) {
+        container.innerHTML = '<p class="hint">No cache entries yet. Enable semantic cache and make some queries to see statistics.</p>';
+        return;
+    }
+    
+    container.innerHTML = `
+        <div class="spending-stats-grid">
+            <div class="spending-stat">
+                <div class="spending-stat-value">${stats.total_entries}</div>
+                <div class="spending-stat-label">Cache Entries</div>
+            </div>
+            <div class="spending-stat">
+                <div class="spending-stat-value">${stats.hit_count}</div>
+                <div class="spending-stat-label">Hits</div>
+            </div>
+            <div class="spending-stat">
+                <div class="spending-stat-value">${stats.hit_rate}%</div>
+                <div class="spending-stat-label">Hit Rate</div>
+            </div>
+            <div class="spending-stat">
+                <div class="spending-stat-value">${(stats.tokens_saved / 1000).toFixed(1)}K</div>
+                <div class="spending-stat-label">Tokens Saved</div>
+            </div>
+        </div>
+        <p class="hint">Cache entries range from ${stats.newest_entry_hours.toFixed(1)}h to ${stats.oldest_entry_hours.toFixed(1)}h old</p>
     `;
 }
 

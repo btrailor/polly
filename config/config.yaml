@@ -70,6 +70,14 @@ compression:
   llmlingua:
     model: microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank
     device: cpu
+semantic_cache:
+  enabled: false  # Set to true to enable semantic caching
+  similarity_threshold: 0.92  # Cosine similarity threshold for cache hit (0.0-1.0)
+  max_entries: 500  # LRU eviction above this count
+  ttl_hours: 24  # Entries older than this are stale
+  exclude_personas: []  # Personas that should never be cached (e.g., "scribe")
+  exclude_domains: []  # Domains that should never be cached
+  min_response_tokens: 50  # Don't cache very short responses
 routing_v2:
   enabled: true
   use_litellm: true

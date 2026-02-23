@@ -727,6 +727,39 @@ class Polly:
             logger.warning(f"Context metrics init failed (non-critical): {e}")
             self.context_metrics = None
 
+        # ------------------------------------------------------------------
+        # 4. Semantic Cache (Spec 01)
+        # ------------------------------------------------------------------
+        self.semantic_cache = None
+        cache_config = config_dict.get("semantic_cache", {})
+        if cache_config.get("enabled", False):
+            try:
+                from core.cache import SemanticCache
+                cache_db_path = str(
+                    Path(self.config.get("knowledge_base.path", "~/.polly")).expanduser()
+                    / "semantic_cache"
+                )
+                
+                if self.rag and hasattr(self.rag, "embed_text"):
+                    from core.cache.semantic_cache import init_semantic_cache
+                    self.semantic_cache = SemanticCache(
+                        db_path=cache_db_path,
+                        embed_fn=self.rag.embed_text,
+                        similarity_threshold=cache_config.get("similarity_threshold", 0.92),
+                        max_entries=cache_config.get("max_entries", 500),
+                        ttl_hours=cache_config.get("ttl_hours", 24),
+                        exclude_personas=cache_config.get("exclude_personas", []),
+                        exclude_domains=cache_config.get("exclude_domains", []),
+                        min_response_tokens=cache_config.get("min_response_tokens", 50),
+                    )
+                    init_semantic_cache(self.semantic_cache)
+                    logger.info("SemanticCache initialized")
+                else:
+                    logger.info("SemanticCache skipped: RAG not available for embedding")
+            except Exception as e:
+                logger.warning(f"Semantic cache init failed (non-critical): {e}")
+                self.semantic_cache = None
+
     def _build_system_prompt(self) -> str:
         """Build the base system prompt with constitutional epistemology layer."""
         constitutional = get_constitutional_layer()
@@ -1839,13 +1872,75 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         
         # Clear persona actions from previous query
         self._last_persona_actions = []
-        
+
+        # ------------------------------------------------------------------
+        # 0. Semantic Cache Lookup (Spec 01) - short-circuit if cache hit
+        # ------------------------------------------------------------------
+        cache_hit_data = None
+        if self.semantic_cache:
+            try:
+                cache_hit = self.semantic_cache.lookup(
+                    query=query,
+                    persona=persona,
+                    domain=domain_names[0] if domain_names else None,
+                )
+                if cache_hit:
+                    logger.info(
+                        f"Semantic cache HIT: similarity={cache_hit.similarity:.3f}, "
+                        f"age={cache_hit.age_hours:.1f}h"
+                    )
+                    cache_hit_data = cache_hit
+            except Exception as e:
+                logger.debug(f"Cache lookup failed: {e}")
+
+        # ------------------------------------------------------------------
         # Resolve active persona when not passed (e.g. caller didn't send persona from UI)
+        # ------------------------------------------------------------------
         if persona is None and self.persona_manager and self.persona_manager.is_persona_active():
             persona = self.persona_manager.get_active_persona_name()
             persona_mode = persona_mode or self.persona_manager.get_current_mode() or ""
         else:
             persona_mode = persona_mode or ""
+
+        # If we have a cache hit, we can skip most processing and just return it
+        if cache_hit_data:
+            # Still do domain detection for logging/metrics but skip RAG/model
+            detected_domains = self.domains.detect_domains(query, context)
+            domain_names = [d for d in detected_domains if (d or "").strip().lower() not in ("", "unknown")]
+            
+            # Yield the cached response
+            yield cache_hit_data.response
+            
+            # Record metrics for cache hit
+            if self.context_metrics:
+                from core.context_metrics import ContextTurnRecord, ContributorMetrics
+                import json
+                session_id = f"session_{self.session_start.isoformat()}"
+                turn_number = len(self.conversation_history) // 2 + 1
+                
+                turn_record = ContextTurnRecord(
+                    session_id=session_id,
+                    turn_number=turn_number,
+                    query_length_tokens=len(query.split()) * 1.3,
+                    response_length_tokens=len(cache_hit_data.response.split()) * 1.3,
+                    domains=json.dumps(domain_names),
+                    persona=persona,
+                    model_used=cache_hit_data.metadata.get("model", "cached"),
+                    routing_confidence="",
+                    cache_hit=True,
+                    cache_similarity=cache_hit_data.similarity,
+                    total_context_tokens=0,
+                    budget_utilisation=0.0,
+                    srs_at_turn=None,
+                    decomposed=False,
+                    sub_query_count=0,
+                )
+                self.context_metrics.record_turn(turn_record, [], None)
+            
+            # Update conversation history with cached response
+            self.conversation_history.append({'role': 'user', 'content': query})
+            self.conversation_history.append({'role': 'assistant', 'content': cache_hit_data.response})
+            return
 
         # 1. Detect domains (list of domain ids)
         detected_domains = self.domains.detect_domains(query, context)
@@ -2744,6 +2839,23 @@ If you suggest an exercise, copy the description directly from the context above
         # 9. Update conversation history (must be inline — fast, needed for next query)
         self.conversation_history.append({'role': 'user', 'content': query})
         self.conversation_history.append({'role': 'assistant', 'content': full_response})
+
+        # ------------------------------------------------------------------
+        # Store response in Semantic Cache (Spec 01)
+        # ------------------------------------------------------------------
+        if self.semantic_cache and full_response:
+            try:
+                self.semantic_cache.store(
+                    query=query,
+                    response=full_response,
+                    metadata={
+                        "domains": detected_domains,
+                        "persona": persona,
+                        "model": response_metadata.get("model", ""),
+                    },
+                )
+            except Exception as e:
+                logger.debug(f"Cache store failed: {e}")
 
         # 9.5 Rolling context turn tracking — decay unreferenced, amplify referenced (fast, inline)
         if self.rolling_context:
