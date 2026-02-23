@@ -64,6 +64,13 @@ class UpdateAIFeaturesRequest(BaseModel):
     knowledge_suggestions_min_gap_score: Optional[float] = None
     autonomy_dashboard_enabled: Optional[bool] = None
     autonomy_dashboard_show_in_status_bar: Optional[bool] = None
+    # Semantic cache (Spec 01) — sent as nested dict from frontend
+    semantic_cache: Optional[Dict[str, Any]] = None
+    # Accept flat legacy fields from old frontend versions
+    kb_suggestions: Optional[bool] = None
+    context_enrichment: Optional[bool] = None
+    gap_score_threshold: Optional[float] = None
+    autonomy_dashboard: Optional[bool] = None
 
 
 class UpdateRAGRequest(BaseModel):
@@ -932,6 +939,29 @@ def create_settings_router() -> APIRouter:
                 ad['enabled'] = request.autonomy_dashboard_enabled
             if request.autonomy_dashboard_show_in_status_bar is not None:
                 ad['show_in_status_bar'] = request.autonomy_dashboard_show_in_status_bar
+            # Accept flat autonomy_dashboard bool from frontend POST payload
+            if request.autonomy_dashboard is not None:
+                ad['enabled'] = request.autonomy_dashboard
+            # Accept flat kb_suggestions / gap_score_threshold from frontend
+            if request.kb_suggestions is not None:
+                ks['enabled'] = request.kb_suggestions
+            if request.gap_score_threshold is not None:
+                ks['min_gap_score'] = request.gap_score_threshold
+
+            # Semantic cache settings (Spec 01)
+            if request.semantic_cache is not None:
+                sc = request.semantic_cache
+                if 'semantic_cache' not in config._config:
+                    config._config['semantic_cache'] = {}
+                cache_cfg = config._config['semantic_cache']
+                if 'enabled' in sc:
+                    cache_cfg['enabled'] = sc['enabled']
+                if 'similarity_threshold' in sc:
+                    cache_cfg['similarity_threshold'] = float(sc['similarity_threshold'])
+                if 'ttl_hours' in sc:
+                    cache_cfg['ttl_hours'] = int(sc['ttl_hours'])
+                if 'max_entries' in sc:
+                    cache_cfg['max_entries'] = int(sc['max_entries'])
 
             # Save config to file
             config.save()
@@ -963,6 +993,11 @@ def create_settings_router() -> APIRouter:
         except Exception as e:
             logger.error(f"Failed to update AI features: {e}")
             raise HTTPException(500, f"Failed to update AI features: {str(e)}")
+
+    @router.post("/ai-features")
+    async def post_ai_features(request: UpdateAIFeaturesRequest):
+        """POST alias for PUT /ai-features (frontend compatibility)."""
+        return await update_ai_features(request)
 
     # ===== Knowledge Writing Endpoints =====
 
