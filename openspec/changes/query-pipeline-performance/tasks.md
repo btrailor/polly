@@ -137,15 +137,23 @@ These don't affect user-visible latency but reduce resource consumption.
 **Goal:** Determine if Mem0 backend for patterns adds value. Remove or batch if not.
 
 **Steps:**
-- [ ] Search codebase for all `mem0_backend.search()` calls
-- [ ] For each call, check if it's doing semantic search (benefits from embeddings) or type/confidence filtering (JSON backend can handle)
-- [ ] If semantic search is unused: remove Mem0 backend from `PatternEngine.__init__()` and `learn()`
-- [ ] If partially used: make Mem0 save deferred (batch at session end via `SessionExtractor`)
-- [ ] Update tests if backend is removed
-- [ ] Measure background thread duration — expect ~25s reduction if Mem0 backend fully removed
+- [x] Search codebase for all `mem0_backend.search()` calls
+- [x] Confirmed: semantic search unused — `get_patterns_for_prompt()` loads all patterns from JSON first; sole `search()` caller in `polly.py` uses structured queries with no text field; `search_semantic()` had zero external callers
+- [x] Remove Mem0 backend from `PatternEngine.__init__()`, `learn()`, `search()`, `get_patterns_for_prompt()`, `search_semantic()`
+- [x] `mem0_config` param kept in `__init__` signature for backward compatibility (intentionally unused)
+- [ ] Measure background thread duration — expect ~25s reduction per session end
 
-**Files:** `core/patterns/engine.py`, `core/patterns/storage/mem0_backend.py`
-**Verification:** Pattern functionality unchanged (search, learn, confidence decay all work). Background tasks faster.
+**Files:** `core/patterns/engine.py`
+**Verification:** 53 pattern tests pass. Background tasks faster.
+
+**Pending cleanup — `core/patterns/storage/mem0_backend.py`:**
+`Mem0Backend` is now dead code. The file was intentionally left in place to
+avoid any import breakage from code not yet audited. It should be deleted in a
+dedicated cleanup pass once confirmed no external code imports it. Before
+deleting, also remove the re-export from `core/patterns/storage/__init__.py`
+and update any openspec documents that reference the class. See the
+`# TODO(cleanup)` comment at the top of `mem0_backend.py` for a matching
+pointer.
 
 ---
 

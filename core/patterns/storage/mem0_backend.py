@@ -5,6 +5,19 @@ Provides semantic search over patterns via Mem0 adaptive memory.
 Optional — only active when Mem0 is configured in user config.
 
 Migrated from core/pattern_learning.py PatternLearner (Mem0 integration).
+
+# TODO(cleanup): This file is dead code as of the query-pipeline-performance
+# optimisation (task 7). PatternEngine no longer creates or calls Mem0Backend —
+# every pattern is stored in and retrieved from the JSON backend, which already
+# contains the full pattern corpus and is sufficient for keyword search.
+#
+# To delete this file:
+#   1. Confirm no external code imports Mem0Backend (last checked: only
+#      core/patterns/engine.py imported it, and that import has been removed).
+#   2. Remove the re-export from core/patterns/storage/__init__.py.
+#   3. Delete this file.
+#   4. Update openspec documents that reference the class
+#      (openspec/changes/query-pipeline-performance/tasks.md already notes this).
 """
 
 from __future__ import annotations
