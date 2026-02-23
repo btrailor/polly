@@ -50,17 +50,26 @@ These target the critical path — `_gather_context` latency that directly affec
 **Goal:** Cache Mem0 search results for repeated/similar queries within a session.
 
 **Steps:**
-- [ ] Add `_search_cache: Dict[str, Tuple[float, List[MemoryEntry]]]` to `MemoryRetriever`
-- [ ] Cache key: `sha256(f"{query}:{tier}:{limit}")` — exact match only (no fuzzy)
-- [ ] TTL: 300 seconds (configurable via `config.yaml` at `memory.retrieval.cache_ttl`)
-- [ ] Max entries: 64 (LRU eviction)
-- [ ] Add `invalidate(tier: Optional[MemoryTier] = None)` method — called from `TieredMemoryStore.write()`
-- [ ] Wire invalidation: `TieredMemoryStore.write()` calls `retriever.invalidate(tier)` if retriever ref is available
+- [x] Add `_cache: Dict[str, Tuple[float, List[MemoryEntry]]]` to `MemoryRetriever`
+- [x] Cache key: `sha256(f"{query}:{tier}:{limit}")` — exact match only (no fuzzy)
+- [x] TTL: 300 seconds (configurable via `config.yaml` at `memory.retrieval.cache_ttl`)
+- [x] Max entries: 64 (LRU eviction, configurable via `memory.retrieval.cache_max_entries`)
+- [x] Add `invalidate(tier: Optional[MemoryTier] = None)` method
+- [x] Wire invalidation: called from `Polly._on_session_end()` after `SessionExtractor.extract_and_store()` completes (no bidirectional coupling to `TieredMemoryStore`)
 - [ ] Add unit tests: cache hit, cache miss, TTL expiry, invalidation on write
 - [ ] Run benchmark with repeated query — expect near-zero latency on second call
 
-**Files:** `core/memory/retriever.py`, `core/memory/tiers.py`
+**Files:** `core/memory/retriever.py`, `core/polly.py`
 **Verification:** Benchmark shows ~0s memory retrieval for repeated queries. Cache invalidation test passes.
+
+**Implementation note — surgical invalidation available:**
+`invalidate()` accepts an optional `tier: MemoryTier` argument. Calling
+`memory_retriever.invalidate(MemoryTier.STABLE)` evicts only entries for that
+tier, leaving the others warm. This is useful if a future code path writes to
+a single tier mid-session (e.g. a promoted working memory or a manual
+`TieredMemoryStore.write()` call) and only that tier's cached results need
+refreshing. See `core/memory/retriever.py` — `MemoryRetriever.invalidate()`
+for the full contract.
 
 ---
 

@@ -100,8 +100,24 @@ class MemoryRetriever:
         written so that the next query sees fresh results.
 
         Args:
-            tier: If given, only invalidate entries for that tier.
-                  If None, clear the entire cache.
+            tier: If given, only invalidate entries for that tier,
+                  leaving all other tiers' cached results warm.
+                  If None (default), clear the entire cache.
+
+        Surgical use:
+            Pass a specific tier when only that tier's data has changed
+            mid-session, e.g. after a targeted write or a working-memory
+            promotion.  Example::
+
+                polly.memory_retriever.invalidate(MemoryTier.STABLE)
+
+            This evicts only STABLE-tier cache entries; EPISODIC and
+            WORKING entries remain cached and avoid redundant Ollama
+            embedding calls on the next query.
+
+            The full-cache form (no argument) is the safe default and is
+            what _on_session_end() uses, since session-end extraction can
+            write to both STABLE and EPISODIC tiers.
         """
         if tier is None:
             cleared = len(self._cache)
