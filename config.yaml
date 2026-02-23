@@ -447,6 +447,10 @@ server:
   # Enable for mobile access via Tailscale
   enable_remote: true
 
+# Startup warm-up: pre-load Ollama models so first query avoids cold-start penalty
+startup:
+  warmup_ollama: true  # Set to false to skip warm-up (e.g. if Ollama not always running)
+
 # CLI settings
 cli:
   # Default output format: "text", "json", "markdown"

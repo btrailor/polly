@@ -254,6 +254,86 @@ class InputValidationMiddleware(BaseHTTPMiddleware):
         return False
 
 
+def _warmup_ollama_background(polly_instance) -> None:
+    """
+    Pre-load Ollama models into memory so the first real query avoids the
+    cold-start penalty (~5-10 s).  Runs in a daemon thread; any failure is
+    logged and silently swallowed — server startup must never be blocked.
+
+    Model names are read from the Polly config so there is no hard-coding:
+      models.local.chat_models.balanced  → chat warm-up
+      models.local.embedding_model       → embedding warm-up
+    """
+    import threading
+
+    def _do_warmup():
+        try:
+            # Check the config flag first
+            enabled = True
+            if polly_instance and hasattr(polly_instance, "config"):
+                enabled = polly_instance.config.get("startup.warmup_ollama", True)
+            if not enabled:
+                logger.info("Ollama warm-up disabled via config (startup.warmup_ollama=false)")
+                return
+
+            # Resolve model names from config; fall back to known defaults
+            chat_model = "qwen2.5:7b"
+            embed_model = "nomic-embed-text"
+            if polly_instance and hasattr(polly_instance, "config"):
+                chat_model = polly_instance.config.get(
+                    "models.local.chat_models.balanced", chat_model
+                )
+                embed_model = polly_instance.config.get(
+                    "models.local.embedding_model", embed_model
+                )
+
+            ollama_host = "http://localhost:11434"
+            if polly_instance and hasattr(polly_instance, "config"):
+                ollama_host = polly_instance.config.get(
+                    "models.local.host", ollama_host
+                ).rstrip("/")
+
+            import urllib.request
+            import urllib.error
+
+            def _post(url: str, payload: dict, label: str) -> None:
+                import json as _json
+                data = _json.dumps(payload).encode()
+                req = urllib.request.Request(
+                    url,
+                    data=data,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        resp.read()  # Drain the response
+                    logger.info(f"Ollama warm-up: {label} ready")
+                except urllib.error.URLError as e:
+                    logger.warning(f"Ollama warm-up: {label} failed ({e}) — Ollama may not be running")
+
+            # Warm up chat model (num_predict=1 means Ollama loads the model but
+            # generates only a single token — fast, cheap, sufficient to load weights)
+            _post(
+                f"{ollama_host}/api/generate",
+                {"model": chat_model, "prompt": "hi", "options": {"num_predict": 1}, "stream": False},
+                f"chat model ({chat_model})",
+            )
+
+            # Warm up embedding model
+            _post(
+                f"{ollama_host}/api/embeddings",
+                {"model": embed_model, "prompt": "warmup"},
+                f"embedding model ({embed_model})",
+            )
+
+        except Exception as e:
+            logger.warning(f"Ollama warm-up thread encountered unexpected error: {e}")
+
+    warmup_thread = threading.Thread(target=_do_warmup, daemon=True, name="OllamaWarmup")
+    warmup_thread.start()
+
+
 def create_app(polly_instance=None) -> FastAPI:
     """Create FastAPI app with Polly integration."""
 
@@ -520,7 +600,12 @@ def create_app(polly_instance=None) -> FastAPI:
                 except Exception as e:
                     print(f"[Background] ⚠️ Notes/graph index build failed: {e}", flush=True)
                     logger.error(f"Background: Notes/graph index build failed: {e}", exc_info=True)
-                
+
+                # Warm up Ollama models so the first real query avoids cold-start latency.
+                # Runs after all other init so we can read model names from config.
+                # Fire-and-forget in a daemon thread; failure is non-blocking.
+                _warmup_ollama_background(polly_instance)
+
             except Exception as e:
                 print(f"❌ [Background] Polly initialization failed: {e}", flush=True)
                 logger.error(f"Background: Polly initialization failed: {e}", exc_info=True)
