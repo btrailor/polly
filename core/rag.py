@@ -317,7 +317,8 @@ class UnifiedRAG:
         chunk_size: int = 800,
         pattern_learner = None,  # Optional PatternLearner instance
         use_hybrid_search: bool = True,  # Enable hybrid search by default
-        config: Optional[Dict] = None  # Configuration for compression
+        config: Optional[Dict] = None,  # Configuration for compression
+        bm25_index_path: Optional[str] = None,  # Path for BM25 persistence (Spec 08)
     ):
         self.db_path = Path(db_path)
         self.ollama_host = ollama_host
@@ -326,6 +327,7 @@ class UnifiedRAG:
         self.pattern_learner = pattern_learner  # Store pattern learner
         self.use_hybrid_search = use_hybrid_search and HYBRID_SEARCH_AVAILABLE
         self.config = config or {}
+        self._bm25_index_path = bm25_index_path  # Spec 08
 
         self.md_chunker = MarkdownChunker(chunk_size)
         self.code_chunker = CodeChunker(chunk_size)
@@ -335,11 +337,14 @@ class UnifiedRAG:
 
         # Metadata tracking
         self.metadata_cache: Dict[str, Dict] = {}
-        
-        # Initialize hybrid searcher
+
+        # Initialize hybrid searcher (Spec 08: use PersistentBM25Index if path given)
         if self.use_hybrid_search:
-            self.hybrid_searcher = HybridSearcher()
+            self.hybrid_searcher = HybridSearcher(index_path=self._bm25_index_path)
             logger.info("Hybrid search enabled (semantic + keyword)")
+            # Attempt to load persisted BM25 index from disk (Spec 08)
+            if self._bm25_index_path:
+                self._try_load_bm25_index()
         else:
             self.hybrid_searcher = None
             logger.info("Using semantic-only search")
@@ -707,8 +712,19 @@ class UnifiedRAG:
             
             # Update BM25 index if hybrid search is enabled
             if self.use_hybrid_search and self.hybrid_searcher:
-                self._rebuild_bm25_index()
-            
+                bm25_cfg = self.config.get("rag", {}).get("bm25", {})
+                if bm25_cfg.get("rebuild_on_index", False):
+                    # Full rebuild + save (used when corpora are small)
+                    self._rebuild_bm25_index()
+                else:
+                    # Mark dirty — triggers rebuild on next index run or startup (Spec 08)
+                    from core.hybrid_search import PersistentBM25Index
+                    if isinstance(self.hybrid_searcher.bm25_index, PersistentBM25Index):
+                        self.hybrid_searcher.bm25_index.mark_dirty()
+                        logger.debug("BM25 index marked dirty after single document index")
+                    else:
+                        self._rebuild_bm25_index()
+
             logger.info(f"Incrementally indexed {indexed_count} chunks from: {filepath.name}")
             return True
         
@@ -791,6 +807,42 @@ class UnifiedRAG:
 
         return True
 
+    def _get_current_doc_ids(self) -> List[str]:
+        """Fast: return all document IDs from searchable collections (IDs only — no content)."""
+        doc_ids: List[str] = []
+        for collection_name in ['notes', 'codebase', 'documents']:
+            if collection_name not in self.collections:
+                continue
+            try:
+                results = self.collections[collection_name].get(include=[])
+                doc_ids.extend(results.get('ids', []))
+            except Exception as e:
+                logger.debug(f"Could not get doc IDs from {collection_name}: {e}")
+        return doc_ids
+
+    def _try_load_bm25_index(self) -> bool:
+        """
+        Attempt to load a persisted BM25 index from disk (Spec 08).
+
+        Returns True if load succeeded and index is valid for current corpus.
+        On failure, logs and returns False — caller handles lazy rebuild fallback.
+        """
+        from core.hybrid_search import PersistentBM25Index
+        if not isinstance(self.hybrid_searcher.bm25_index, PersistentBM25Index):
+            return False
+        try:
+            current_doc_ids = self._get_current_doc_ids()
+            loaded = self.hybrid_searcher.bm25_index.load_if_valid(current_doc_ids)
+            if loaded:
+                doc_count = len(self.hybrid_searcher.bm25_index.corpus_docs)
+                logger.info(f"BM25 index restored from disk: {doc_count} docs")
+            else:
+                logger.info("BM25 index not loaded from disk — will build on first index run")
+            return loaded
+        except Exception as e:
+            logger.warning(f"BM25 index load attempt failed: {e}")
+            return False
+
     def _rebuild_bm25_index(self):
         """Rebuild BM25 index from all collections for hybrid search"""
         if not self.use_hybrid_search or not self.hybrid_searcher:
@@ -828,6 +880,11 @@ class UnifiedRAG:
         # Build BM25 index
         self.hybrid_searcher.index_for_keyword_search(documents)
         logger.info(f"BM25 index built with {len(documents)} documents")
+
+        # Persist to disk if using PersistentBM25Index (Spec 08)
+        from core.hybrid_search import PersistentBM25Index
+        if isinstance(self.hybrid_searcher.bm25_index, PersistentBM25Index):
+            self.hybrid_searcher.bm25_index.save()
 
     def search(
         self,

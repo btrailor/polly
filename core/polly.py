@@ -147,18 +147,32 @@ class Polly:
 
     def _init_rag(self):
         """Initialize RAG system."""
+        # Compute BM25 index path (Spec 08: persist alongside chroma_db)
+        bm25_persist = self.config.get("rag.bm25.persist", True)
+        bm25_index_path: Optional[str] = None
+        if bm25_persist:
+            _raw_index_path = self.config.get("rag.bm25.index_path", None)
+            if _raw_index_path:
+                bm25_index_path = str(Path(_raw_index_path).expanduser())
+            else:
+                # Default: sibling of chroma_db directory
+                bm25_index_path = str(Path(self.config.vector_db_path).expanduser().parent / "bm25_index.pkl")
+
         self.rag = UnifiedRAG(
             db_path=self.config.vector_db_path,
             ollama_host=self.config.ollama_host,
             embedding_model=self.config.embedding_model,
             chunk_size=self.config.get("rag.chunk_size", 800),
-            pattern_learner=self.pattern_engine  # Pass pattern engine for code pattern extraction
+            pattern_learner=self.pattern_engine,  # Pass pattern engine for code pattern extraction
+            bm25_index_path=bm25_index_path,
         )
-        
-        # Skip BM25 index rebuild at startup to avoid blocking
-        # Index will be built lazily on first search if needed
+
+        # BM25 startup: either loaded from disk or will build lazily on next index run
         if self.rag.use_hybrid_search:
-            logger.info("Hybrid search enabled - BM25 index will be built on first search")
+            if bm25_index_path and self.rag.hybrid_searcher and self.rag.hybrid_searcher.bm25_index.bm25:
+                logger.info("BM25 index loaded from disk — hybrid search ready immediately")
+            else:
+                logger.info("Hybrid search enabled — BM25 index will be built on next index run")
         
         logger.info("RAG system initialized")
 

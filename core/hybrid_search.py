@@ -4,7 +4,10 @@ Combines semantic search (vector embeddings) with keyword search (BM25)
 """
 
 from typing import List, Dict, Set, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+import hashlib
 import re
 import math
 from collections import Counter
@@ -167,16 +170,155 @@ class BM25Index:
         return results
 
 
+@dataclass
+class BM25IndexSnapshot:
+    """Serialisable snapshot of a BM25 index for disk persistence (Spec 08)."""
+    bm25: object                          # BM25Okapi instance
+    corpus_docs: List[Dict]
+    doc_id_to_idx: Dict[str, int]
+    tokenized_corpus: List[List[str]]
+    corpus_checksum: str
+    built_at: str
+    doc_count: int
+
+
+def _compute_corpus_checksum(doc_ids: List[str]) -> str:
+    """MD5 of sorted document IDs — detects additions/removals (Spec 08)."""
+    sorted_ids = sorted(doc_ids)
+    return hashlib.md5(",".join(sorted_ids).encode()).hexdigest()
+
+
+class PersistentBM25Index(BM25Index):
+    """
+    BM25Index with disk persistence (Spec 08).
+
+    Saves/loads index snapshots to avoid full rebuild on every startup.
+    Uses a corpus checksum to detect staleness.
+    Atomic writes (temp + rename) prevent corrupt files on write interruption.
+    """
+
+    MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024  # 200 MB hard limit
+
+    def __init__(self, index_path: str):
+        super().__init__()
+        self.index_path = Path(index_path)
+        self._dirty: bool = False
+        self._current_checksum: str = ""
+
+    def load_if_valid(self, current_doc_ids: List[str]) -> bool:
+        """
+        Attempt to load persisted index from disk.
+
+        Returns True if loaded and checksum matches current corpus.
+        Returns False if missing, corrupted, stale, or too large.
+        """
+        if not self.index_path.exists():
+            logger.debug("BM25 index file not found — will rebuild")
+            return False
+
+        # Guard against excessively large files
+        if self.index_path.stat().st_size > self.MAX_FILE_SIZE_BYTES:
+            logger.warning(
+                f"BM25 index file too large ({self.index_path.stat().st_size // (1024*1024)} MB), "
+                "will rebuild"
+            )
+            return False
+
+        try:
+            import pickle
+            with open(self.index_path, "rb") as f:
+                snapshot: BM25IndexSnapshot = pickle.load(f)
+
+            expected_checksum = _compute_corpus_checksum(current_doc_ids)
+
+            if snapshot.corpus_checksum != expected_checksum:
+                logger.info(
+                    f"BM25 index stale: stored doc_count={snapshot.doc_count} "
+                    f"current doc_count={len(current_doc_ids)} — rebuilding"
+                )
+                return False
+
+            # Checksum matches — restore state
+            self.bm25 = snapshot.bm25
+            self.corpus_docs = snapshot.corpus_docs
+            self.doc_id_to_idx = snapshot.doc_id_to_idx
+            self.tokenized_corpus = snapshot.tokenized_corpus
+            self._current_checksum = snapshot.corpus_checksum
+            self._dirty = False
+
+            logger.info(
+                f"BM25 index loaded from disk: {snapshot.doc_count} documents, "
+                f"built {snapshot.built_at}"
+            )
+            return True
+
+        except Exception as e:
+            logger.warning(f"BM25 index load failed: {e} — will rebuild")
+            return False
+
+    def save(self) -> bool:
+        """
+        Persist current index to disk using atomic temp+rename write.
+
+        Returns True on success (non-fatal on failure).
+        """
+        if not self.bm25:
+            return False
+
+        try:
+            import pickle
+            snapshot = BM25IndexSnapshot(
+                bm25=self.bm25,
+                corpus_docs=self.corpus_docs,
+                doc_id_to_idx=self.doc_id_to_idx,
+                tokenized_corpus=self.tokenized_corpus,
+                corpus_checksum=self._current_checksum,
+                built_at=datetime.now().isoformat(),
+                doc_count=len(self.corpus_docs),
+            )
+
+            self.index_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = self.index_path.with_suffix(".pkl.tmp")
+            with open(tmp_path, "wb") as f:
+                pickle.dump(snapshot, f, protocol=pickle.HIGHEST_PROTOCOL)
+            tmp_path.rename(self.index_path)
+
+            self._dirty = False
+            logger.info(f"BM25 index saved: {len(self.corpus_docs)} documents → {self.index_path}")
+            return True
+
+        except Exception as e:
+            logger.warning(f"BM25 index save failed (non-fatal): {e}")
+            return False
+
+    def index_documents(self, documents: List[Dict]):
+        """Build index and update checksum (overrides BM25Index.index_documents)."""
+        super().index_documents(documents)
+        doc_ids = [d["id"] for d in documents]
+        self._current_checksum = _compute_corpus_checksum(doc_ids)
+        self._dirty = True
+
+    def mark_dirty(self):
+        """Call when a document is added/removed without a full rebuild."""
+        self._dirty = True
+        self._current_checksum = ""  # Invalidate so next load_if_valid will rebuild
+
+
 class HybridSearcher:
     """Combines semantic and keyword search with Reciprocal Rank Fusion"""
     
-    def __init__(self, k_rrf: int = 60):
+    def __init__(self, k_rrf: int = 60, index_path: Optional[str] = None):
         """
         Args:
             k_rrf: Parameter for Reciprocal Rank Fusion (typically 60)
+            index_path: Optional path for BM25 index persistence (Spec 08).
+                        If provided, uses PersistentBM25Index; otherwise BM25Index.
         """
         self.k_rrf = k_rrf
-        self.bm25_index = BM25Index()
+        if index_path:
+            self.bm25_index: BM25Index = PersistentBM25Index(index_path)
+        else:
+            self.bm25_index = BM25Index()
         self.query_enhancer = QueryEnhancer()
     
     def index_for_keyword_search(self, documents: List[Dict]):

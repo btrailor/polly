@@ -17,7 +17,7 @@
 | 05 | [Pattern Boost Calibration & Negative Patterns](./05-pattern-boost-calibration.md) | P5 — Better retrieval learning | ✅ Implemented | 1.1–1.5x boost too weak to influence ranking; no negative evidence mechanism. |
 | 06 | [Context Quality Observability](./06-context-quality-observability.md) | P6 — Enable iteration | ✅ Implemented | No persistent metrics on context system performance. Can't optimise blind. |
 | 07 | [Mental Model Compression Validation](./07-mental-model-compression-validation.md) | P7 — Validate Compact Format | ✅ Implemented | Symbol substitution unvalidated for small local models (qwen2.5:7b). |
-| 08 | [BM25 Index Persistence](./08-bm25-index-persistence.md) | P8 — Cold-start latency | 💭 Planned | BM25 index rebuilds from scratch every session startup. |
+| 08 | [BM25 Index Persistence](./08-bm25-index-persistence.md) | P8 — Cold-start latency | ✅ Implemented | BM25 index rebuilds from scratch every session startup. |
 
 ---
 

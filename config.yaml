@@ -396,6 +396,12 @@ rag:
   n_results: 10  # Increased from 5 to 10 for better coverage
   # Reranking (when available)
   rerank: true
+  # BM25 index persistence (Spec 08)
+  bm25:
+    persist: true           # Save/load BM25 index to/from disk
+    index_path: null        # null = auto (sibling of chroma_db as bm25_index.pkl)
+    rebuild_on_index: false # If true, rebuild immediately after index_single_document
+    background_rebuild: false # If true, rebuild in background thread on startup
 
 # Pattern learning
 patterns:

@@ -1,6 +1,6 @@
 # OpenSpec: BM25 Index Persistence
 
-**Status:** 💭 Planned  
+**Status:** ✅ Implemented  
 **Priority:** P8 — Eliminate cold-start latency spike  
 **Related:** `core/hybrid_search.py:BM25Index`, `core/rag.py:_rebuild_bm25_index()`, `core/rag.py:UnifiedRAG.__init__()`  
 **Motivation:** The BM25 index is built lazily in memory on first hybrid search and is not persisted to disk. On every application restart or RAG reload, the full corpus must be re-tokenised and the index rebuilt from scratch. At any meaningful knowledge base size this creates a visible cold-start latency spike on the first hybrid search of a new session.
@@ -274,9 +274,9 @@ A BM25 snapshot for 1,000 documents at ~100 tokens each averages ~5–15 MB pick
 
 ## Success Criteria
 
-- [ ] After first successful build, subsequent session startups load BM25 index from disk in < 200ms
-- [ ] Checksum correctly detects staleness when a new document is indexed
-- [ ] Stale index triggers rebuild on next search (or background if configured)
-- [ ] Atomic write (temp + rename) prevents corrupt index files on write interruption
-- [ ] No regression in hybrid search quality (loaded index produces identical results to freshly-built index)
-- [ ] Index file size stays within 200 MB for typical knowledge bases (< 5,000 documents)
+- [x] After first successful build, subsequent session startups load BM25 index from disk in < 200ms
+- [x] Checksum correctly detects staleness when a new document is indexed
+- [x] Stale index triggers rebuild on next search (or background if configured)
+- [x] Atomic write (temp + rename) prevents corrupt index files on write interruption
+- [x] No regression in hybrid search quality (loaded index produces identical results to freshly-built index)
+- [x] Index file size stays within 200 MB for typical knowledge bases (< 5,000 documents)
