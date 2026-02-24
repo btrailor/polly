@@ -406,10 +406,29 @@ patterns:
   # Update frequency
   update_interval_hours: 24
 
-# Mental models (Phase 14)
+# Mental models (Phase 14 + Spec 07)
 mental_models:
   # Where to store mental models
   storage_path: "~/.polly/mental_models.yaml"
+  compression:
+    # "compact" | "full" — default format for all models
+    format: "compact"
+    # A/B validation framework (Spec 07)
+    ab_test:
+      enabled: true
+      sample_rate: 0.15     # 15% of turns use full-text format
+      min_samples: 50       # Minimum samples before drawing conclusions
+      per_model: true       # Track separately per model_used
+    # Per-model static profiles (used when A/B data is insufficient)
+    model_format_profiles:
+      "qwen2.5:7b": "full"          # Local small models: use full text
+      "qwen2.5:3b": "full"
+      "llama3": "full"
+      "mistral": "full"
+      "claude-sonnet-4": "compact"  # Claude handles symbols correctly
+      "claude-opus-4": "compact"
+      "gpt-4": "compact"
+      "default": "compact"          # Fallback for unknown models
 
 # Personal knowledge graph
 graph:

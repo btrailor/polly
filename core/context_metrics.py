@@ -48,6 +48,8 @@ class ContextTurnRecord:
     srs_at_turn: Optional[float] = None
     decomposed: bool = False
     sub_query_count: int = 0
+    mm_format: Optional[str] = None           # "compact" | "full" (Spec 07)
+    mm_reference_rate: Optional[float] = None  # 0.0–1.0 (Spec 07)
 
 
 class ContextMetrics:
@@ -91,9 +93,18 @@ class ContextMetrics:
                     budget_utilisation REAL,
                     srs_at_turn REAL,
                     decomposed INTEGER NOT NULL DEFAULT 0,
-                    sub_query_count INTEGER
+                    sub_query_count INTEGER,
+                    mm_format TEXT,
+                    mm_reference_rate REAL
                 )
             """)
+
+            # Migrate existing databases — add Spec 07 columns if absent
+            for col, col_def in [("mm_format", "TEXT"), ("mm_reference_rate", "REAL")]:
+                try:
+                    cursor.execute(f"ALTER TABLE context_turns ADD COLUMN {col} {col_def}")
+                except Exception:
+                    pass  # Column already exists
 
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_ct_timestamp
@@ -179,8 +190,9 @@ class ContextMetrics:
                     persona, model_used, routing_confidence,
                     cache_hit, cache_similarity,
                     total_context_tokens, budget_utilisation, srs_at_turn,
-                    decomposed, sub_query_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    decomposed, sub_query_count,
+                    mm_format, mm_reference_rate
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 turn.session_id,
                 turn.turn_number,
@@ -198,6 +210,8 @@ class ContextMetrics:
                 turn.srs_at_turn,
                 1 if turn.decomposed else 0,
                 turn.sub_query_count,
+                turn.mm_format,
+                turn.mm_reference_rate,
             ))
 
             turn_id = cursor.lastrowid
@@ -338,6 +352,76 @@ class ContextMetrics:
                     "thorough_pct": routing_dist.get("thorough", 0) / total_routed,
                 }
             }
+
+    def get_mm_ab_results(self, min_samples: int = 50) -> Dict[str, Any]:
+        """
+        Analyse A/B results for mental model format validation (Spec 07).
+
+        For each (model_used, mm_format) combination with at least min_samples,
+        compute mean mm_reference_rate and produce a recommendation:
+          - "full" if full-text reference rate is >10% higher than compact
+          - "compact" otherwise (compact is the default — it saves tokens)
+          - "inconclusive" if either group lacks min_samples
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+
+            # Aggregate per model_used × mm_format
+            cursor.execute("""
+                SELECT model_used, mm_format,
+                       COUNT(*) as samples,
+                       AVG(mm_reference_rate) as mean_rate,
+                       MIN(mm_reference_rate) as min_rate,
+                       MAX(mm_reference_rate) as max_rate
+                FROM context_turns
+                WHERE mm_format IS NOT NULL
+                  AND mm_reference_rate IS NOT NULL
+                GROUP BY model_used, mm_format
+                ORDER BY model_used, mm_format
+            """)
+            rows = cursor.fetchall()
+
+        # Organise by model_used
+        by_model: Dict[str, Dict[str, Any]] = {}
+        for model_used, mm_format, samples, mean_rate, min_rate, max_rate in rows:
+            if model_used not in by_model:
+                by_model[model_used] = {}
+            by_model[model_used][mm_format] = {
+                "samples": samples,
+                "mean_reference_rate": round(mean_rate or 0.0, 4),
+                "min_reference_rate": round(min_rate or 0.0, 4),
+                "max_reference_rate": round(max_rate or 0.0, 4),
+            }
+
+        results = {}
+        for model_used, formats in by_model.items():
+            compact_data = formats.get("compact", {})
+            full_data = formats.get("full", {})
+            compact_n = compact_data.get("samples", 0)
+            full_n = full_data.get("samples", 0)
+
+            if compact_n < min_samples or full_n < min_samples:
+                recommendation = "inconclusive"
+                reason = f"insufficient_samples (compact={compact_n}, full={full_n}, need={min_samples})"
+            else:
+                compact_mean = compact_data.get("mean_reference_rate", 0.0)
+                full_mean = full_data.get("mean_reference_rate", 0.0)
+                if full_mean > compact_mean * 1.10:
+                    recommendation = "full"
+                    pct = (full_mean / compact_mean - 1) * 100 if compact_mean > 0 else float("inf")
+                    reason = f"full_text {full_mean:.3f} > compact {compact_mean:.3f} (+{pct:.0f}%)"
+                else:
+                    recommendation = "compact"
+                    reason = f"compact {compact_mean:.3f} ≥ full {full_mean:.3f} (default to compact)"
+
+            results[model_used] = {
+                "recommendation": recommendation,
+                "reason": reason,
+                "compact": compact_data,
+                "full": full_data,
+            }
+
+        return {"min_samples_threshold": min_samples, "models": results}
 
     def get_recent_turns(self, limit: int = 20, session_id: Optional[str] = None) -> List[Dict]:
         """Get recent turn records for debugging."""

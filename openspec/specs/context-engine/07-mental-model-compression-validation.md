@@ -1,6 +1,6 @@
 # OpenSpec: Mental Model Compression Validation
 
-**Status:** 💭 Planned  
+**Status:** ✅ Implemented  
 **Priority:** P7 — Validate or replace Compact Format  
 **Related:** `core/mental_models.py`, `core/compression/compressor.py:_compress_mental_model()`, `config/config.yaml:models`  
 **Motivation:** The Compact Format uses symbol substitution (`→`, `↻`, `↑`, `⇄`) to reduce mental model token count by ~40–60%. This is elegant but unvalidated. Small local models (qwen2.5:7b) were not trained to interpret these symbols in this semantic context. If Compact Format degrades comprehension for local models, it is actively harmful — spending tokens on noise rather than signal. No A/B comparison mechanism exists.
@@ -245,9 +245,9 @@ This is ~40 tokens vs. ~90 for full-text and ~8 for Compact Format v1. The trade
 
 ## Success Criteria
 
-- [ ] A/B framework routes ~15% of turns to full-text format with no user-visible impact
-- [ ] `mm_reference_rate` is computed and stored for every turn where mental models are active
-- [ ] After 50+ samples per model, `analyse_ab_results()` produces a recommendation
-- [ ] Recommendation is persisted and applied automatically on subsequent sessions
-- [ ] Full-text turns are no more than 200ms slower than Compact-Format turns (format selection overhead negligible)
-- [ ] Static per-model format profiles apply correctly when A/B is disabled
+- [x] A/B framework routes ~15% of turns to full-text format with no user-visible impact
+- [x] `mm_reference_rate` is computed and stored for every turn where mental models are active
+- [x] After 50+ samples per model, `analyse_ab_results()` produces a recommendation
+- [x] Recommendation is persisted and applied automatically on subsequent sessions
+- [x] Full-text turns are no more than 200ms slower than Compact-Format turns (format selection overhead negligible)
+- [x] Static per-model format profiles apply correctly when A/B is disabled

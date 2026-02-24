@@ -85,22 +85,28 @@ class MentalModelManager:
     - Compact format compression integration
     """
     
-    def __init__(self, storage_path: str, compressor=None):
+    def __init__(self, storage_path: str, compressor=None, config: Optional[Dict] = None):
         """
         Initialize the mental model manager.
         
         Args:
             storage_path: Path to YAML file for storing models
             compressor: Optional ConversationCompressor instance for compact format compression
+            config: Full config dict for compression format and A/B test settings
         """
         self.storage_path = Path(storage_path).expanduser()
         self.compressor = compressor
+        self._config = config or {}
         self.models: Dict[str, MentalModel] = {}
         # Persona context (integration-contracts: PersonaAware)
         self._active_persona: Optional[str] = None
         self._active_mode: Optional[str] = None
         # Effectiveness tracking (integration-contracts: lightweight heuristic)
         self._effectiveness_log: List[Dict[str, Any]] = []
+        # A/B: last format used this session (for metrics recording)
+        self._last_mm_format: str = "compact"
+        # A/B: recommendations cache loaded from disk
+        self._format_recommendations: Dict[str, str] = self._load_format_recommendations()
 
         # Load existing models or create defaults
         if self.storage_path.exists():
@@ -136,6 +142,92 @@ class MentalModelManager:
     def get_effectiveness_summary(self) -> Dict[str, Any]:
         """Return summary of activation log for tuning (integration-contracts)."""
         return {"entries": len(self._effectiveness_log), "sample": self._effectiveness_log[-10:] if self._effectiveness_log else []}
+
+    # ------------------------------------------------------------------
+    # Compact Format A/B validation (Spec 07)
+    # ------------------------------------------------------------------
+
+    def _load_format_recommendations(self) -> Dict[str, str]:
+        """Load persisted per-model format recommendations from disk."""
+        import json
+        rec_path = Path(self.storage_path).parent / "mental_model_format_recommendations.json"
+        try:
+            if rec_path.exists():
+                data = json.loads(rec_path.read_text())
+                return {model: entry.get("recommendation", "compact") for model, entry in data.items()}
+        except Exception as e:
+            logger.debug(f"Could not load format recommendations: {e}")
+        return {}
+
+    def _save_format_recommendations(self, recommendations: Dict[str, Any]) -> None:
+        """Persist per-model format recommendations to disk."""
+        import json
+        rec_path = Path(self.storage_path).parent / "mental_model_format_recommendations.json"
+        try:
+            rec_path.write_text(json.dumps(recommendations, indent=2, default=str))
+        except Exception as e:
+            logger.warning(f"Could not save format recommendations: {e}")
+
+    def _select_format(self, model_used: str = "") -> str:
+        """
+        Select compact vs full-text format for this turn (Spec 07).
+
+        Priority:
+        1. A/B test: if enabled and random() < sample_rate → "full"
+        2. Persisted per-model recommendation (from analyse_ab_results)
+        3. Static per-model profile from config
+        4. Configured default (compact)
+        """
+        import random
+        compression_cfg = self._config.get("mental_models", {}).get("compression", {})
+        fmt_default = compression_cfg.get("format", "compact")
+
+        ab_cfg = compression_cfg.get("ab_test", {})
+        if ab_cfg.get("enabled", False):
+            sample_rate = ab_cfg.get("sample_rate", 0.15)
+            if random.random() < sample_rate:
+                self._last_mm_format = "full"
+                logger.debug(f"A/B test: using full-text format (rate={sample_rate})")
+                return "full"
+
+        # Persisted recommendation
+        if model_used and model_used in self._format_recommendations:
+            fmt = self._format_recommendations[model_used]
+            self._last_mm_format = fmt
+            return fmt
+
+        # Static per-model profile
+        profiles = compression_cfg.get("model_format_profiles", {})
+        for key, fmt in profiles.items():
+            if key.lower() in model_used.lower():
+                self._last_mm_format = fmt
+                return fmt
+        default_fmt = profiles.get("default", fmt_default)
+        self._last_mm_format = default_fmt
+        return default_fmt
+
+    def compute_mm_reference_rate(
+        self, response: str, active_models: List[Any]
+    ) -> float:
+        """
+        Compute how many active mental models are referenced in the response (Spec 07).
+
+        Returns fraction 0.0–1.0: models_referenced / models_injected.
+        """
+        if not active_models:
+            return 0.0
+        response_lower = response.lower()
+        referenced = 0
+        for model in active_models:
+            # Check name and key terms from keywords list
+            name_lower = model.name.lower()
+            if name_lower in response_lower:
+                referenced += 1
+                continue
+            kws = getattr(model, "keywords", []) or []
+            if any(kw.lower() in response_lower for kw in kws[:5]):
+                referenced += 1
+        return referenced / len(active_models)
 
     # ContextContributor (integration-contracts): priority 60
     context_priority = 60
@@ -183,11 +275,19 @@ class MentalModelManager:
         if not models_with_scores:
             return []
 
+        # Select format once for this turn (Spec 07 A/B)
+        model_used = kwargs.get("model_used", "")
+        mm_format = self._select_format(model_used)
+
         entries = []
         for model, activation_score in models_with_scores:
             try:
                 if self.compressor:
-                    compressed = self.compressor.compress(model.to_dict(), type="mental_model")
+                    compressed = self.compressor.compress(
+                        model.to_dict(),
+                        type="mental_model",
+                        metadata={"format": mm_format},
+                    )
                 else:
                     compressed = f"{model.name}: {model.prompt_injection[:100]}"
                 tc = TokenCounter.count(compressed)
@@ -202,6 +302,7 @@ class MentalModelManager:
                         "model_name": model.name,
                         "category": getattr(model, "category", "general"),
                         "domain": domain or (domains[0] if domains else "general"),
+                        "mm_format": mm_format,
                     },
                 ))
             except Exception as e:
@@ -243,11 +344,18 @@ class MentalModelManager:
             )
         if not models:
             return ""
+        # Select format once for this turn (Spec 07 A/B)
+        model_used = kwargs.get("model_used", "")
+        mm_format = self._select_format(model_used)
         compressed_models = []
         for model in models:
             try:
                 if self.compressor:
-                    compressed = self.compressor.compress(model.to_dict(), type="mental_model")
+                    compressed = self.compressor.compress(
+                        model.to_dict(),
+                        type="mental_model",
+                        metadata={"format": mm_format},
+                    )
                     compressed_models.append(compressed)
                 else:
                     compressed_models.append(f"{model.name}: {model.prompt_injection[:100]}")

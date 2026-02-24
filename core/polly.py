@@ -463,7 +463,8 @@ class Polly:
             # Initialize manager with compressor for PIL compression
             self.mental_model_manager = MentalModelManager(
                 storage_path=storage_path,
-                compressor=self.compression_manager.compressor if self.compression_manager else None
+                compressor=self.compression_manager.compressor if self.compression_manager else None,
+                config=self.config._config if hasattr(self.config, "_config") else {},
             )
             
             logger.info(f"Mental model manager initialized with {len(self.mental_model_manager.models)} models")
@@ -1415,7 +1416,7 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         decomposed: bool = False,
         sub_query_count: int = 0,
     ) -> None:
-        """Record context metrics for observability (Spec 06)."""
+        """Record context metrics for observability (Spec 06 + 07)."""
         if not self.context_metrics:
             return
 
@@ -1433,6 +1434,10 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             total_context_tokens = getattr(self, "_current_context_total_tokens", 0)
             budget_utilisation = getattr(self, "_current_budget_utilisation", 0.0)
 
+            # Spec 07: mental model format and reference rate
+            mm_format = getattr(self, "_last_mm_format", None)
+            mm_reference_rate = getattr(self, "_last_mm_reference_rate", None)
+
             turn_record = ContextTurnRecord(
                 session_id=session_id,
                 turn_number=turn_number,
@@ -1449,6 +1454,8 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                 srs_at_turn=None,  # Will be set by spec-04 when semantic compression is implemented
                 decomposed=decomposed,
                 sub_query_count=sub_query_count,
+                mm_format=mm_format,
+                mm_reference_rate=mm_reference_rate,
             )
 
             # RAG metrics (optional - will be enhanced by spec-05)
@@ -2523,6 +2530,14 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             page=page,
             override_model_ids=mental_models_override,
             conversation_id=f"session_{self.session_start.isoformat()}" if self.session_start else None,
+            model_used="",  # Not yet known; _select_format uses A/B + static profiles (Spec 07)
+        )
+
+        # Capture mm_format selected during _gather_context (Spec 07)
+        self._last_mm_format = (
+            self.mental_model_manager._last_mm_format
+            if self.mental_model_manager
+            else "compact"
         )
 
         # Track which mental models were activated for effectiveness logging (integration-contracts)
@@ -3063,7 +3078,7 @@ If you suggest an exercise, copy the description directly from the context above
                 except Exception as e:
                     logger.debug(f"Entity extraction failed (non-critical): {e}")
 
-            # Mental model effectiveness tracking
+            # Mental model effectiveness tracking + reference rate (Spec 07)
             if self.mental_model_manager and getattr(self, "_last_activated_mental_model_ids", None):
                 try:
                     self.mental_model_manager.record_activation(
@@ -3072,6 +3087,25 @@ If you suggest an exercise, copy the description directly from the context above
                     )
                 except Exception as e:
                     logger.debug(f"Mental model effectiveness recording failed: {e}")
+
+            # Compute mm_reference_rate (Spec 07)
+            self._last_mm_reference_rate = 0.0
+            if self.mental_model_manager and getattr(self, "_last_activated_mental_model_ids", None):
+                try:
+                    active_models = [
+                        self.mental_model_manager.get_model(mid)
+                        for mid in self._last_activated_mental_model_ids
+                    ]
+                    active_models = [m for m in active_models if m is not None]
+                    if active_models:
+                        self._last_mm_reference_rate = (
+                            self.mental_model_manager.compute_mm_reference_rate(
+                                full_response, active_models
+                            )
+                        )
+                        logger.debug(f"mm_reference_rate={self._last_mm_reference_rate:.3f} for {len(active_models)} models")
+                except Exception as e:
+                    logger.debug(f"mm_reference_rate computation failed: {e}")
 
             # Context metrics recording (Spec 06)
             # Note: decomposed/sub_query_count tracked via Wave 3 when enabled

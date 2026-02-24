@@ -1271,6 +1271,27 @@ def create_app(polly_instance=None) -> FastAPI:
         except Exception as e:
             logger.warning(f"Failed to get context turns: {e}")
             raise HTTPException(500, str(e))
+
+    @app.get("/api/metrics/mental-models/ab-results")
+    async def get_mm_ab_results(min_samples: int = 50):
+        """
+        Get A/B validation results for mental model compression format (Spec 07).
+
+        Compares compact-format vs full-text mm_reference_rate per model_used.
+        Returns a recommendation ("compact" | "full" | "inconclusive") for each
+        model once min_samples turns have been recorded for both format groups.
+        """
+        from core.context_metrics import get_context_metrics
+
+        metrics = get_context_metrics()
+        if not metrics:
+            raise HTTPException(503, "Context metrics not initialized")
+
+        try:
+            return metrics.get_mm_ab_results(min_samples=min_samples)
+        except Exception as e:
+            logger.warning(f"Failed to get MM A/B results: {e}")
+            raise HTTPException(500, str(e))
     
     @app.get("/polly/patterns")
     async def get_patterns():
