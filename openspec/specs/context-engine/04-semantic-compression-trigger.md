@@ -1,6 +1,6 @@
 # OpenSpec: Semantic Compression Trigger
 
-**Status:** 💭 Planned  
+**Status:** ✅ Implemented  
 **Priority:** P4 — Preserve valuable dense conversations  
 **Related:** `core/compression/manager.py:should_compress()`, `core/compression/compressor.py`, `core/polly.py:_try_compress_conversation()`, `config/config.yaml:compression`  
 **Motivation:** The current compression trigger fires on `message_threshold: 20` and `age_hours: 24` — purely structural signals. A 15-message deep technical conversation may be far more valuable than a 25-message stream of trivial one-liners. Compression should be driven by semantic redundancy, not message count.
@@ -273,6 +273,15 @@ Beyond compression triggering, the SRS is a useful signal on its own:
 - **Low SRS conversation:** The user and Polly are circling the same topic repeatedly. This may indicate a clarification failure or an incomplete answer. The SRS dip could be surfaced as a gentle signal ("It looks like we've covered this ground a few times — want me to summarise where we've landed?").
 
 This diagnostic use is out of scope for this spec but noted as a future enhancement.
+
+---
+
+## Implementation Notes
+
+### Completed
+- `core/compression/manager.py` — Added `compute_srs()` with numpy cosine-distance-from-centroid computation and `(message_count, srs)` cache. Refactored `should_compress()` to accept `embed_fn`, apply semantic trigger as primary path, structural count/age as fallback. Added `min_messages` hard minimum guard.
+- `core/polly.py` — `_manage_conversation_context()` now calls `should_compress()` with `embed_fn=self.rag.embed_text` (None-safe). Removed inline count/age logic in favour of the consolidated method.
+- `config/config.yaml` — Added `compression.semantic_trigger` section and `min_messages`, `age_count_threshold` keys.
 
 ---
 

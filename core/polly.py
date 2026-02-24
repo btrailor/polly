@@ -1642,22 +1642,22 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         # Skip if compression is disabled or not initialized
         if not self._compression_enabled or not self.compression_manager:
             return
-        
+
         # Only compress if we have enough messages
         if len(self.conversation_history) <= self._keep_recent_count:
             return
-        
-        # Check if we should compress based on message count
-        message_threshold_reached = len(self.conversation_history) > self._compression_threshold
-        
-        # Check if we should compress based on age
-        age_threshold_reached = False
-        if self.conversation_history:
+
+        # Use updated should_compress() with semantic trigger (Spec 04)
+        embed_fn = self.rag.embed_text if (self.rag and hasattr(self.rag, "embed_text")) else None
+        should_compress = self.compression_manager.should_compress(
+            self.conversation_history,
+            conversation_id=f"session_{self.session_start.isoformat()}",
+            created_at=self.session_start,
+            embed_fn=embed_fn,
+        )
+
+        if should_compress:
             elapsed_hours = (datetime.now() - self.session_start).total_seconds() / 3600
-            age_threshold_reached = elapsed_hours >= self._compression_age_hours
-        
-        # Compress if either threshold is reached
-        if message_threshold_reached or age_threshold_reached:
             logger.info(
                 f"Compression triggered: {len(self.conversation_history)} messages "
                 f"({elapsed_hours:.1f}h elapsed)"

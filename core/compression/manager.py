@@ -9,7 +9,7 @@ import json
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, List, Dict, Literal
+from typing import Optional, List, Dict, Literal, Callable, Tuple
 import logging
 
 from core.context.token_counter import TokenCounter
@@ -51,6 +51,8 @@ class CompressionManager:
         self.config = config or {}
         self.compressor = ConversationCompressor(config=self.config.get("compression", {}))
         self._current_conversation_id: Optional[str] = None
+        # SRS cache: (message_count_at_last_compute, srs_value)
+        self._srs_cache: Optional[Tuple[int, float]] = None
         self._init_database()
     
     def _init_database(self):
@@ -82,47 +84,139 @@ class CompressionManager:
             conn.commit()
             logger.info(f"Initialized compression database at {self.db_path}")
     
+    def compute_srs(
+        self,
+        conversation_history: List[Dict],
+        embed_fn: Callable[[str], List[float]],
+        window_size: int = 6,
+    ) -> float:
+        """
+        Compute Semantic Redundancy Score (SRS) for a conversation (Spec 04).
+
+        Returns a float 0.0–1.0:
+            0.0 = completely redundant (all messages cluster around centroid)
+            1.0 = completely novel (high variance from centroid)
+
+        Uses caching: recomputes only when message count changes.
+        """
+        message_count = len(conversation_history)
+
+        # Return cached value if message count unchanged
+        if self._srs_cache is not None and self._srs_cache[0] == message_count:
+            return self._srs_cache[1]
+
+        # Need at least 4 substantive messages
+        texts = [
+            msg["content"] for msg in conversation_history
+            if msg.get("content") and len(msg["content"]) > 20
+        ]
+        if len(texts) < 4:
+            srs = 1.0  # Too short — don't compress
+            self._srs_cache = (message_count, srs)
+            return srs
+
+        try:
+            import numpy as np
+
+            embeddings = np.array([embed_fn(text) for text in texts])
+            centroid = embeddings.mean(axis=0)
+            centroid_norm = centroid / (np.linalg.norm(centroid) + 1e-9)
+
+            distances = []
+            for emb in embeddings:
+                emb_norm = emb / (np.linalg.norm(emb) + 1e-9)
+                cosine_sim = float(np.dot(emb_norm, centroid_norm))
+                cosine_dist = 1.0 - cosine_sim
+                distances.append(cosine_dist)
+
+            recent_distances = distances[-window_size:]
+            srs = float(np.mean(recent_distances))
+            self._srs_cache = (message_count, srs)
+
+            compression_cfg = self.config.get("compression", {})
+            if compression_cfg.get("semantic_trigger", {}).get("log_srs", False):
+                logger.info(f"SRS={srs:.4f} ({len(texts)} messages, window={window_size})")
+            else:
+                logger.debug(f"SRS={srs:.4f} ({len(texts)} messages, window={window_size})")
+
+            return srs
+
+        except Exception as e:
+            logger.warning(f"SRS computation failed: {e}")
+            srs = 1.0  # Fail safe: don't compress
+            self._srs_cache = (message_count, srs)
+            return srs
+
     def should_compress(
-        self, 
+        self,
         conversation_history: List[Dict],
         conversation_id: Optional[str] = None,
-        created_at: Optional[datetime] = None
+        created_at: Optional[datetime] = None,
+        embed_fn: Optional[Callable] = None,
     ) -> bool:
         """
-        Check if conversation should be compressed
-        
-        Args:
-            conversation_history: Current conversation messages
-            conversation_id: Optional conversation ID
-            created_at: Optional conversation start time
-        
-        Returns:
-            True if conversation should be compressed
+        Determine whether conversation should be compressed (Spec 04).
+
+        Decision logic (in priority order):
+        1. HARD MINIMUM: Never compress below min_messages (default 10).
+        2. SEMANTIC TRIGGER (primary, if embed_fn provided):
+           Compress if SRS < redundancy_threshold AND count >= min_for_semantic.
+        3. STRUCTURAL FALLBACK (always active):
+           Compress if count > hard_count_threshold OR age threshold met.
         """
-        # Check message count
         message_count = len(conversation_history)
-        exchange_count = message_count // 2  # Two messages per exchange
-        
-        if exchange_count > self.COMPRESSION_THRESHOLD * 2:
+        exchange_count = message_count // 2
+
+        compression_cfg = self.config.get("compression", {})
+
+        # 1. Hard minimum — never compress very short conversations
+        min_messages = compression_cfg.get("min_messages", 10)
+        if message_count < min_messages:
+            return False
+
+        # 2. Semantic trigger (primary path when embed_fn available)
+        semantic_cfg = compression_cfg.get("semantic_trigger", {})
+        if embed_fn is not None and semantic_cfg.get("enabled", True):
+            min_for_semantic = semantic_cfg.get("min_messages", 12)
+            if message_count >= min_for_semantic:
+                try:
+                    window_size = semantic_cfg.get("window_size", 6)
+                    srs = self.compute_srs(conversation_history, embed_fn, window_size)
+                    threshold = semantic_cfg.get("redundancy_threshold", 0.15)
+                    if srs < threshold:
+                        logger.info(
+                            f"Semantic compression trigger: SRS={srs:.3f} "
+                            f"< threshold={threshold:.3f} ({message_count} messages)"
+                        )
+                        return True
+                    else:
+                        logger.debug(
+                            f"Semantic trigger not met: SRS={srs:.3f} "
+                            f">= threshold={threshold:.3f}"
+                        )
+                except Exception as e:
+                    logger.warning(f"Semantic trigger error: {e}. Falling back to structural.")
+
+        # 3. Structural fallback — always active
+        hard_threshold = compression_cfg.get("message_threshold", self.COMPRESSION_THRESHOLD)
+        if exchange_count > hard_threshold * 2:
             logger.debug(
-                f"Conversation has {exchange_count} exchanges "
-                f"(threshold: {self.COMPRESSION_THRESHOLD})"
+                f"Structural compression trigger: {exchange_count} exchanges "
+                f"> hard threshold {hard_threshold * 2}"
             )
             return True
-        
-        # Check age if created_at provided
+
         if created_at:
-            age = datetime.now() - created_at
-            age_hours = age.total_seconds() / 3600
-            
-            if (age_hours > self.COMPRESSION_AGE_HOURS and 
-                exchange_count > self.COMPRESSION_THRESHOLD):
+            age_hours = (datetime.now() - created_at).total_seconds() / 3600
+            age_threshold = compression_cfg.get("age_hours", self.COMPRESSION_AGE_HOURS)
+            age_count = compression_cfg.get("age_count_threshold", self.COMPRESSION_THRESHOLD)
+            if age_hours > age_threshold and exchange_count > age_count:
                 logger.debug(
-                    f"Conversation is {age_hours:.1f} hours old "
-                    f"(threshold: {self.COMPRESSION_AGE_HOURS})"
+                    f"Age compression trigger: {age_hours:.1f}h > {age_threshold}h "
+                    f"and {exchange_count} exchanges > {age_count}"
                 )
                 return True
-        
+
         return False
     
     def compress_conversation(
