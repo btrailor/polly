@@ -130,6 +130,9 @@ class Polly:
             'successful_files': set()  # Files that were retrieved
         }
 
+        # Per-turn RAG chunks for reinforcement learning (Spec 05)
+        self._current_turn_chunks: list = []
+
         _total_time = time.time() - _total_start
         print(f"[INIT {_total_time:.2f}s] ✅ POLLY INITIALIZATION COMPLETE (total: {_total_time:.2f}s)", flush=True)
         logger.info(f"=== POLLY INITIALIZED FOR {self.user_name} (took {_total_time:.2f}s) ===")
@@ -1045,6 +1048,61 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         except Exception as e:
             logger.debug(f"Could not load session saved_at: {e}")
             return None, None
+
+    def _reinforce_chunk_patterns(self, query: str, response: str) -> None:
+        """
+        Per-turn chunk reinforcement (Spec 05).
+
+        For each RAG chunk retrieved this turn, check if its content is referenced
+        in the response. Referenced → positive hit; unreferenced → negative miss.
+        """
+        if not self.pattern_engine:
+            return
+        chunks = getattr(self, "_current_turn_chunks", [])
+        if not chunks:
+            return
+
+        config_dict = getattr(self.config, "_config", {})
+        rag_cfg = config_dict.get("rag", {}).get("pattern_boost", {})
+        if not rag_cfg.get("enabled", True):
+            return
+        negative_enabled = rag_cfg.get("negative_patterns", True)
+
+        response_lower = response.lower()
+        try:
+            query_sig = self.pattern_engine._create_query_signature(query)
+            pattern_id = f"qcp_{query_sig}"
+        except Exception:
+            return
+
+        # Key term extraction — reuse rolling context helper
+        from core.context.rolling_context import _extract_key_terms
+
+        for result in chunks:
+            try:
+                chunk = result.chunk
+                chunk_terms = _extract_key_terms(chunk.content)
+                if not chunk_terms:
+                    continue
+                match_count = sum(1 for t in chunk_terms if t in response_lower)
+                threshold = 1 if len(chunk_terms) <= 3 else 2
+                referenced = match_count >= threshold
+
+                if referenced:
+                    self.pattern_engine.record_chunk_hit(
+                        pattern_id=pattern_id,
+                        chunk_id=chunk.id,
+                        collection=chunk.source_type,
+                        query=query,
+                    )
+                elif negative_enabled:
+                    self.pattern_engine.record_chunk_miss(
+                        pattern_id=pattern_id,
+                        chunk_id=chunk.id,
+                        collection=chunk.source_type,
+                    )
+            except Exception as e:
+                logger.debug(f"Chunk reinforcement failed for chunk: {e}")
 
     def _end_session(self):
         """Persist RollingContext on session end (Spec 03). Called on graceful shutdown."""
@@ -2167,6 +2225,9 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                 domains=domain_names if domain_names else None
             )
         
+        # Store retrieved chunks for per-turn reinforcement (Spec 05)
+        self._current_turn_chunks = rag_results[:20] if rag_results else []
+
         # Learn domain→collection priorities from search results
         if self.pattern_engine and rag_results and domain_names and not fetch_all_github_repos:
             try:
@@ -2973,6 +3034,12 @@ If you suggest an exercise, copy the description directly from the context above
         # the response delivery.
         def _post_response_background():
             """Run slow post-response tasks in a background thread."""
+            # Per-turn chunk reinforcement (Spec 05) — run before pattern save
+            try:
+                self._reinforce_chunk_patterns(query, full_response)
+            except Exception as e:
+                logger.debug(f"Chunk reinforcement failed (non-critical): {e}")
+
             # Pattern learning
             if self.pattern_engine:
                 try:

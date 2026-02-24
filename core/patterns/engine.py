@@ -536,6 +536,81 @@ class PatternEngine:
             return dict(dpp.collection_weights)
         return {}
 
+    # ========== Per-turn chunk reinforcement (Spec 05) ==========
+
+    def record_chunk_hit(
+        self,
+        pattern_id: str,
+        chunk_id: str,
+        collection: str,
+        query: str = "",
+    ) -> None:
+        """
+        Record positive evidence: chunk was retrieved and referenced in response.
+        Increments hit_count in QueryChunkPattern.successful_chunks.
+        Removes chunk from penalised_chunks if present.
+        """
+        from datetime import datetime
+        qcp = self.json_backend.query_chunk_patterns.get(pattern_id)
+        if qcp is None:
+            return
+        # Find or create chunk entry in successful_chunks
+        for sc in qcp.successful_chunks:
+            if sc.get("chunk_id") == chunk_id:
+                sc["hit_count"] = sc.get("hit_count", 0) + 1
+                sc["last_hit"] = datetime.now().isoformat()
+                break
+        else:
+            qcp.successful_chunks.append({
+                "chunk_id": chunk_id,
+                "collection": collection,
+                "hit_count": 1,
+                "avg_score": 0.0,
+                "last_hit": datetime.now().isoformat(),
+            })
+        # Remove from penalised_chunks — positive evidence overrides negative
+        qcp.penalised_chunks = [
+            pc for pc in qcp.penalised_chunks if pc.get("chunk_id") != chunk_id
+        ]
+        self.json_backend.save_query_chunk_pattern(qcp)
+
+    def record_chunk_miss(
+        self,
+        pattern_id: str,
+        chunk_id: str,
+        collection: str,
+    ) -> None:
+        """
+        Record negative evidence: chunk was retrieved but not referenced in response.
+        Increments miss_count in QueryChunkPattern.penalised_chunks.
+        Does NOT penalise if chunk has strong positive history (hit_count >= 5).
+        """
+        from datetime import datetime
+        qcp = self.json_backend.query_chunk_patterns.get(pattern_id)
+        if qcp is None:
+            return
+        # Check for strong positive override
+        POSITIVE_OVERRIDE_THRESHOLD = 5
+        for sc in qcp.successful_chunks:
+            if sc.get("chunk_id") == chunk_id and sc.get("hit_count", 0) >= POSITIVE_OVERRIDE_THRESHOLD:
+                return  # Strong positive history — don't penalise
+        # Find or create entry in penalised_chunks
+        for pc in qcp.penalised_chunks:
+            if pc.get("chunk_id") == chunk_id:
+                pc["miss_count"] = pc.get("miss_count", 0) + 1
+                pc["last_miss"] = datetime.now().isoformat()
+                pc["penalty"] = max(0.5, 1.0 - (pc["miss_count"] * 0.08))
+                break
+        else:
+            qcp.penalised_chunks.append({
+                "chunk_id": chunk_id,
+                "collection": collection,
+                "miss_count": 1,
+                "last_miss": datetime.now().isoformat(),
+                "penalty": 0.92,  # max(0.5, 1.0 - 1*0.08)
+            })
+        self.json_backend.save_query_chunk_pattern(qcp)
+
     # ========== ContextContributor (integration-contracts) ==========
 
     context_priority = 20

@@ -286,6 +286,19 @@ class CodeChunker:
         return chunks
 
 
+def _hit_count_to_tier_boost(hit_count: int) -> float:
+    """Calibrated tier-curve boost for query→chunk positive patterns (Spec 05)."""
+    if hit_count >= 15:
+        return 4.0
+    if hit_count >= 8:
+        return 3.0
+    if hit_count >= 4:
+        return 2.0
+    if hit_count >= 2:
+        return 1.5
+    return 1.2
+
+
 class UnifiedRAG:
     """
     Unified RAG system that indexes and searches across:
@@ -958,35 +971,60 @@ class UnifiedRAG:
             except Exception as e:
                 logger.error(f"Error searching {source_type}: {e}")
 
-        # Step 1.5: Apply query→chunk pattern boosting
+        # Step 1.5: Apply query→chunk pattern boosting (Spec 05: calibrated tier curve)
         if self.pattern_learner and all_results:
             try:
-                # Get query→chunk patterns from the unified engine's JSON backend
                 qcp_dict = self.pattern_learner.query_chunk_patterns
                 if qcp_dict:
-                    # Build boost lookup from matching patterns
                     query_sig = self.pattern_learner._create_query_signature(query)
                     matching_qcp = qcp_dict.get(f"qcp_{query_sig}")
-                    
-                    if matching_qcp and matching_qcp.successful_chunks:
+
+                    if matching_qcp:
+                        # Positive boost lookup
                         boost_lookup = {}
                         for sc in matching_qcp.successful_chunks:
-                            # Boost factor: 1.1 to 1.5 based on hit count
-                            boost = min(1.0 + (sc.get("hit_count", 1) * 0.05), 1.5)
-                            boost_lookup[sc["chunk_id"]] = boost
-                        
-                        if boost_lookup:
-                            logger.info(f"Applying learned query→chunk patterns: boosting {len(boost_lookup)} chunks")
-                            boosted_count = 0
+                            hit_count = sc.get("hit_count", 1)
+                            tier_boost = _hit_count_to_tier_boost(hit_count)
+                            confidence_scale = 0.5 + 0.5 * matching_qcp.confidence
+                            boost_lookup[sc["chunk_id"]] = tier_boost * confidence_scale
+
+                        # Negative penalty lookup (decay old misses by 30-day half-life)
+                        from datetime import datetime as _dt
+                        penalty_lookup = {}
+                        positive_override_threshold = 5  # hit_count above which positive overrides negative
+                        for pc in getattr(matching_qcp, "penalised_chunks", []):
+                            cid = pc["chunk_id"]
+                            # Skip if strong positive evidence exists
+                            if cid in boost_lookup and boost_lookup[cid] >= (
+                                _hit_count_to_tier_boost(positive_override_threshold) * (0.5 + 0.5 * matching_qcp.confidence)
+                            ):
+                                continue
+                            miss_count = pc.get("miss_count", 1)
+                            # Apply 30-day decay to miss_count
+                            try:
+                                last_miss = _dt.fromisoformat(pc.get("last_miss", ""))
+                                days_since = (_dt.now() - last_miss).days
+                                if days_since > 30:
+                                    miss_count *= (0.98 ** (days_since - 30))
+                            except Exception:
+                                pass
+                            penalty_lookup[cid] = max(0.5, 1.0 - (miss_count * 0.08))
+
+                        if boost_lookup or penalty_lookup:
+                            boosted_count = penalised_count = 0
                             for result in all_results:
-                                chunk_id = result.chunk.id
-                                if chunk_id in boost_lookup:
-                                    old_score = result.score
-                                    result.score *= boost_lookup[chunk_id]
+                                cid = result.chunk.id
+                                if cid in boost_lookup:
+                                    result.score *= boost_lookup[cid]
                                     boosted_count += 1
-                            
-                            if boosted_count > 0:
-                                logger.info(f"Boosted {boosted_count}/{len(all_results)} chunks based on query patterns")
+                                elif cid in penalty_lookup:
+                                    result.score *= penalty_lookup[cid]
+                                    penalised_count += 1
+                            if boosted_count or penalised_count:
+                                logger.info(
+                                    f"Pattern boost applied: +{boosted_count} boosted, "
+                                    f"-{penalised_count} penalised of {len(all_results)} chunks"
+                                )
                                 all_results.sort(key=lambda r: r.score, reverse=True)
             except Exception as e:
                 logger.debug(f"Query→chunk boosting failed (non-critical): {e}")

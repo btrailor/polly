@@ -14,7 +14,7 @@
 | 02 | [Per-Item Granularity Context Assembly](./02-per-item-context-assembly.md) | P2 — Budget precision | ✅ Implemented | Contributors return text blobs; bin-packing can't select individual items. |
 | 03 | [Persist RollingContext Across Sessions](./03-rolling-context-persistence.md) | P3 — Cross-session continuity | ✅ Implemented | RollingContext working set dies at session end; every session starts cold. |
 | 04 | [Semantic Compression Trigger](./04-semantic-compression-trigger.md) | P4 — Preserve valuable conversations | ✅ Implemented | Compression fires on message count/age, not semantic redundancy. |
-| 05 | [Pattern Boost Calibration & Negative Patterns](./05-pattern-boost-calibration.md) | P5 — Better retrieval learning | 💭 Planned | 1.1–1.5x boost too weak to influence ranking; no negative evidence mechanism. |
+| 05 | [Pattern Boost Calibration & Negative Patterns](./05-pattern-boost-calibration.md) | P5 — Better retrieval learning | ✅ Implemented | 1.1–1.5x boost too weak to influence ranking; no negative evidence mechanism. |
 | 06 | [Context Quality Observability](./06-context-quality-observability.md) | P6 — Enable iteration | ✅ Implemented | No persistent metrics on context system performance. Can't optimise blind. |
 | 07 | [Mental Model Compression Validation](./07-mental-model-compression-validation.md) | P7 — Validate Compact Format | 💭 Planned | Symbol substitution unvalidated for small local models (qwen2.5:7b). |
 | 08 | [BM25 Index Persistence](./08-bm25-index-persistence.md) | P8 — Cold-start latency | 💭 Planned | BM25 index rebuilds from scratch every session startup. |

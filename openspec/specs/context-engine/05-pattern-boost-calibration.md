@@ -1,6 +1,6 @@
 # OpenSpec: Pattern Boost Calibration & Negative Patterns
 
-**Status:** 💭 Planned  
+**Status:** ✅ Implemented  
 **Priority:** P5 — Better retrieval learning  
 **Related:** `core/rag.py:961–992` (chunk boosting), `core/patterns/engine.py`, `core/patterns/models.py:QueryChunkPattern`  
 **Motivation:** The `QueryChunkPattern` boost range of 1.1–1.5x is too conservative to meaningfully affect ranking against raw cosine similarity scores. A chunk confirmed useful 10+ times for a query type should be boosted far more aggressively. Additionally, there is no mechanism to penalise chunks that are consistently retrieved but never referenced in responses — these are false positives that waste context budget.
@@ -260,6 +260,17 @@ rag:
     min_penalty: 0.5                 # Floor on penalty multiplier
     positive_override_threshold: 5   # hit_count above which positive overrides negative
 ```
+
+---
+
+## Implementation Notes
+
+### Completed
+- `core/patterns/models.py` — Added `penalised_chunks` field to `QueryChunkPattern` with serialisation in `to_dict()` / `from_dict()`.
+- `core/rag.py` — Added `_hit_count_to_tier_boost()` module-level helper (tier curve: 1.2/1.5/2.0/3.0/4.0x). Replaced linear `hit_count * 0.05` boost with `tier_boost * confidence_scale`. Added penalty lookup from `penalised_chunks` with 30-day half-life decay on `miss_count`. Positive override threshold prevents penalising high-confidence chunks.
+- `core/patterns/engine.py` — Added `record_chunk_hit()` and `record_chunk_miss()`. Hit increments `successful_chunks` and clears the entry from `penalised_chunks`. Miss increments `penalised_chunks` unless chunk has `hit_count >= 5`.
+- `core/polly.py` — Added `_current_turn_chunks` (cleared each turn). `_reinforce_chunk_patterns()` runs in `_post_response_background()` after each response: key-term matching against response decides hit vs miss for each retrieved chunk.
+- `config/config.yaml` — Added `rag.pattern_boost` section.
 
 ---
 

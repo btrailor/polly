@@ -180,6 +180,9 @@ class QueryChunkPattern:
     first_seen: datetime
     last_seen: datetime
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # Negative evidence (Spec 05): chunks retrieved but not referenced in response
+    penalised_chunks: List[Dict[str, Any]] = field(default_factory=list)
+    # Format: [{chunk_id, collection, miss_count, last_miss (ISO str), penalty (float)}]
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -192,6 +195,7 @@ class QueryChunkPattern:
             "first_seen": self.first_seen.isoformat(),
             "last_seen": self.last_seen.isoformat(),
             "metadata": self.metadata,
+            "penalised_chunks": self.penalised_chunks,
         }
 
     @classmethod

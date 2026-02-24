@@ -23,6 +23,13 @@ rag:
   chunk_size: 800
   chunk_overlap: 100
   n_results: 5
+  pattern_boost:
+    enabled: true
+    per_turn_reinforcement: true   # Reinforce on every turn (not just at compression)
+    negative_patterns: true        # Track and apply miss penalties
+    max_boost: 4.0                 # Hard ceiling on positive boost multiplier
+    min_penalty: 0.5               # Floor on penalty multiplier
+    positive_override_threshold: 5 # hit_count above which positive overrides negative
   retrieval_classifier:
     # Score threshold for DIRECT tier (note is a direct answer).
     # Lowered from 0.8 → 0.72 so Polly-written notes surface as DIRECT
