@@ -100,7 +100,8 @@ class ConversationCompressor:
             Compressed representation as dict (or str for mental_model)
         """
         if type == "mental_model":
-            return self._compress_mental_model(data)
+            fmt = (metadata or {}).get("format", "compact")
+            return self._compress_mental_model(data, format=fmt)
         elif type == "conversation":
             return self._compress_conversation(data, metadata)
         else:
@@ -709,10 +710,32 @@ Artifacts Created:
     
     # ========== Mental Model Compact Format Compression (Phase 14) ==========
     
-    def _compress_mental_model(self, model: dict) -> str:
+    def _format_mental_model_full(self, model: dict) -> str:
         """
-        Compress mental model to Compact Format (formerly PIL).
-        
+        Full-text mental model format for models that may not parse Compact Format (Spec 07).
+        Roughly 40-50 tokens — more expensive than compact but reliably interpreted.
+        """
+        parts = []
+        name = model.get("name") or model.get("id", "Model")
+        parts.append(f"[Mental Model: {name}]")
+        desc = model.get("description") or ""
+        if desc:
+            parts.append(desc[:200])
+        prompt = model.get("prompt_injection") or ""
+        if prompt:
+            parts.append(prompt[:300])
+        principles = model.get("principles") or []
+        if principles:
+            top = principles[:3]
+            parts.append("Key principles: " + "; ".join(p[:80] for p in top))
+        return "\n".join(parts)
+
+    def _compress_mental_model(self, model: dict, format: str = "compact") -> str:
+        """
+        Compress mental model. Supports two formats (Spec 07):
+          - "compact": Compact Format with symbol substitution (2.5-3x compression)
+          - "full": Full prose text (reliable for all models, ~40-50 tokens)
+
         Compact Format:
         MM:id|m:mode|p:[principles]|pi:prompt|d:[domains]|pg:[pages]|ps:[personas]|pm:[modes]|k:[keywords]
         
@@ -729,10 +752,13 @@ Artifacts Created:
         
         Args:
             model: Mental model dict with standard fields
+            format: "compact" (default) or "full"
             
         Returns:
-            Compact-format string achieving 2.5-3x compression
+            Compressed or full-text representation string
         """
+        if format == "full":
+            return self._format_mental_model_full(model)
         parts = []
         
         # ID (required)
