@@ -619,7 +619,22 @@ def create_app(polly_instance=None) -> FastAPI:
         
         print("=== STARTUP EVENT COMPLETED (Polly initializing in background) ===", flush=True)
         logger.info("Startup event complete - Polly initializing in background thread")
-    
+
+    @app.on_event("shutdown")
+    def shutdown_event():
+        """Persist RollingContext on shutdown (Spec 03)."""
+        print("=== SHUTDOWN EVENT CALLED ===", flush=True)
+        logger.info("Shutdown event - persisting RollingContext")
+        polly = getattr(app.state, "polly", None)
+        if polly is not None and hasattr(polly, "_end_session"):
+            try:
+                polly._end_session()
+                logger.info("RollingContext persisted successfully on shutdown")
+            except Exception as e:
+                logger.error(f"Failed to persist RollingContext on shutdown: {e}")
+        else:
+            logger.debug("Polly instance not available for shutdown persistence")
+
     @app.get("/")
     async def root():
         """Root endpoint - redirect to settings."""
@@ -1657,6 +1672,15 @@ def create_app(polly_instance=None) -> FastAPI:
         polly = get_polly()
         polly.clear_conversation()
         return {"status": "cleared"}
+
+    @app.post("/api/session/end")
+    async def end_session():
+        """End current session and persist RollingContext (Spec 03)."""
+        polly = get_polly()
+        if hasattr(polly, "_end_session"):
+            polly._end_session()
+            return {"status": "ended", "message": "RollingContext persisted"}
+        return {"status": "skipped", "message": "No RollingContext to persist"}
     
     @app.post("/polly/patterns/learn-from-conversation")
     async def learn_from_conversation(request: LearnFromConversationRequest):

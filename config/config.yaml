@@ -78,6 +78,15 @@ semantic_cache:
   exclude_personas: []  # Personas that should never be cached (e.g., "scribe")
   exclude_domains: []  # Domains that should never be cached
   min_response_tokens: 50  # Don't cache very short responses
+context_budget:
+  rolling:
+    persist_across_sessions: true  # Persist RollingContext between sessions
+    session_gap_turn_duration_secs: 30  # Assumed seconds per turn for gap decay
+    max_persist_age_hours: 72  # Hard cutoff: entries older than this dropped
+    min_score_after_decay: 0.05  # Drop entries that decay below this
+    decay_per_turn: 0.85
+    eviction_turns: 5
+    amplification_reset: true
 routing_v2:
   enabled: true
   use_litellm: true

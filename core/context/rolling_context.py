@@ -298,6 +298,194 @@ class RollingContext:
         }
 
     # ------------------------------------------------------------------
+    # Persistence (Spec 03)
+    # ------------------------------------------------------------------
+
+    def save(self, db_path: str, session_id: str) -> int:
+        """
+        Persist current working set to SQLite (compression.db).
+
+        Called from Polly._end_session() on graceful shutdown.
+
+        Returns count of entries saved.
+        """
+        import sqlite3
+        import json
+        from datetime import datetime
+        from pathlib import Path
+
+        db_path = str(Path(db_path).expanduser())
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+
+        # Ensure table exists
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS rolling_context_state (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                saved_at TEXT NOT NULL,
+                entry_hash TEXT NOT NULL,
+                content TEXT NOT NULL,
+                source TEXT NOT NULL,
+                raw_score REAL NOT NULL,
+                composite_score REAL NOT NULL,
+                token_count INTEGER NOT NULL,
+                reference_count INTEGER NOT NULL DEFAULT 0,
+                last_referenced_turn INTEGER NOT NULL DEFAULT 0,
+                turns_since_reference INTEGER NOT NULL DEFAULT 0,
+                key_terms_json TEXT,
+                metadata_json TEXT,
+                turn_count INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(session_id, entry_hash)
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_rc_state_session
+            ON rolling_context_state(session_id, saved_at DESC)
+        """)
+
+        # Delete existing entries for this session (replace on save)
+        cur.execute("DELETE FROM rolling_context_state WHERE session_id = ?", (session_id,))
+
+        saved_at = datetime.now().isoformat()
+        count = 0
+        for entry in self.entries:
+            try:
+                cur.execute("""
+                    INSERT INTO rolling_context_state (
+                        session_id, saved_at, entry_hash, content, source,
+                        raw_score, composite_score, token_count,
+                        reference_count, last_referenced_turn, turns_since_reference,
+                        key_terms_json, metadata_json, turn_count
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    session_id,
+                    saved_at,
+                    entry.content_hash,
+                    entry.content,
+                    entry.source,
+                    entry.raw_score,
+                    entry.composite_score,
+                    entry.token_count,
+                    entry.reference_count,
+                    entry.last_referenced_turn,
+                    entry.turns_since_reference,
+                    json.dumps(entry.key_terms or []),
+                    json.dumps(entry.metadata or {}),
+                    self.turn_count,
+                ))
+                count += 1
+            except Exception as e:
+                logger.warning(f"Failed to save rolling context entry: {e}")
+
+        conn.commit()
+        conn.close()
+        logger.debug(f"Saved {count} RollingContext entries for session {session_id}")
+        return count
+
+    @classmethod
+    def load(
+        cls,
+        db_path: str,
+        session_id: str,
+        config: dict,
+        scorer: Optional[RelevanceScorer] = None,
+        max_age_hours: float = 72.0,
+        session_gap_seconds: float = 0.0,
+    ) -> "RollingContext":
+        """
+        Reload working set from SQLite and apply session-gap decay.
+
+        session_gap_seconds: elapsed time since the saved session ended.
+        Entries are decayed proportionally: composite_score *= decay_rate^(gap_turns)
+        where gap_turns = session_gap_seconds / avg_turn_duration_seconds.
+
+        Entries with composite_score below MIN_SCORE_THRESHOLD after decay are dropped.
+        """
+        import sqlite3
+        import json
+        from datetime import datetime
+        from pathlib import Path
+
+        db_path = str(Path(db_path).expanduser())
+        if not Path(db_path).exists():
+            logger.debug(f"No RollingContext DB at {db_path}, starting fresh")
+            return cls(config, scorer=scorer)
+
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+
+        # Load entries for this session
+        cur.execute("""
+            SELECT entry_hash, content, source, raw_score, composite_score,
+                   token_count, reference_count, last_referenced_turn,
+                   turns_since_reference, key_terms_json, metadata_json, saved_at
+            FROM rolling_context_state
+            WHERE session_id = ?
+            ORDER BY saved_at DESC
+        """, (session_id,))
+
+        rows = cur.fetchall()
+        conn.close()
+
+        if not rows:
+            logger.debug(f"No RollingContext entries for session {session_id}")
+            return cls(config, scorer=scorer)
+
+        # Calculate gap decay
+        ASSUMED_TURN_DURATION_SECONDS = 30.0
+        MIN_SCORE_THRESHOLD = 0.05
+
+        gap_turns = session_gap_seconds / ASSUMED_TURN_DURATION_SECONDS
+        decay_rate = config.get("decay_per_turn", 0.85)
+        gap_decay = decay_rate ** gap_turns
+
+        # Create new instance
+        ctx = cls(config, scorer=scorer)
+
+        for row in rows:
+            (entry_hash, content, source, raw_score, composite_score,
+             token_count, reference_count, last_ref_turn, turns_since_ref,
+             key_terms_json, metadata_json, saved_at_str) = row
+
+            # Check max_age_hours
+            try:
+                saved_at = datetime.fromisoformat(saved_at_str)
+                age_hours = (datetime.now() - saved_at).total_seconds() / 3600
+                if age_hours > max_age_hours:
+                    logger.debug(f"Dropping entry {entry_hash[:8]}... (age {age_hours:.1f}h > {max_age_hours}h)")
+                    continue
+            except Exception:
+                pass
+
+            # Apply gap decay
+            decayed_score = composite_score * gap_decay
+            if decayed_score < MIN_SCORE_THRESHOLD:
+                logger.debug(f"Dropping entry {entry_hash[:8]}... (decayed to {decayed_score:.3f} < {MIN_SCORE_THRESHOLD})")
+                continue
+
+            # Reconstruct ScoredEntry
+            entry = ScoredEntry(
+                content=content,
+                source=source,
+                raw_score=raw_score,
+                composite_score=decayed_score,
+                token_count=token_count,
+                key_terms=json.loads(key_terms_json) if key_terms_json else [],
+                metadata=json.loads(metadata_json) if metadata_json else {},
+                reference_count=reference_count,
+                last_referenced_turn=0,  # Reset to avoid stale turn numbers
+                turns_since_reference=turns_since_ref,
+            )
+            ctx.entries.append(entry)
+            ctx._hash_index[entry.content_hash] = len(ctx.entries) - 1
+
+        logger.info(f"Loaded {len(ctx.entries)} RollingContext entries (gap_decay={gap_decay:.3f})")
+        return ctx
+
+    # ------------------------------------------------------------------
     # Introspection
     # ------------------------------------------------------------------
 

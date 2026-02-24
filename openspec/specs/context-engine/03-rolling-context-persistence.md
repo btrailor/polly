@@ -1,6 +1,6 @@
 # OpenSpec: Persist RollingContext Across Sessions
 
-**Status:** 💭 Planned  
+**Status:** ✅ Implemented  
 **Priority:** P3 — Cross-session continuity  
 **Related:** `core/context/rolling_context.py`, `core/context/relevance_scorer.py`, `core/polly.py:_init_memory_context()`, `core/memory/tiers.py`  
 **Motivation:** The `RollingContext` working set — with its carefully-built decay state, reference counts, and amplification history — is session-only and lives in memory. When a session ends, that context evaporates. Each new session starts cold despite Polly having persistent tiered memory. The working memory tier in `TieredMemoryStore` persists to Mem0 but the *RollingContext's structural state* (which items are hot, how much they've decayed, how many times each was referenced) does not survive the session boundary.
@@ -237,6 +237,19 @@ DELETE FROM rolling_context_state
 WHERE saved_at < datetime('now', '-72 hours')
   AND session_id != :current_session_id;
 ```
+
+---
+
+## Implementation Notes
+
+### Completed
+- `core/context/rolling_context.py` — Added `save()` method to persist entries to SQLite (compression.db), and `load()` classmethod to restore with session-gap decay. Gap decay proportional to elapsed time; entries below threshold dropped; max_age_hours hard cutoff.
+- `config/config.yaml` — Added `context_budget.rolling.persist_across_sessions`, `session_gap_turn_duration_secs`, `max_persist_age_hours`, `min_score_after_decay` keys.
+- `core/polly.py` — Updated `_init_memory_context()` to attempt restoration on startup via `RollingContext.load()`. Added `_end_session()` to save on shutdown. Added helper methods `_load_last_session_id()` and `_load_session_saved_at()`.
+- `interfaces/server.py` — Added shutdown event handler to call `_end_session()`. Added `POST /api/session/end` endpoint for Electron app to call before quit.
+
+### Not Yet Done
+- Cleanup of old sessions older than max_persist_age_hours (runs on each load but could be more aggressive)
 
 ---
 

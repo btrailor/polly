@@ -704,10 +704,39 @@ class Polly:
             logger.info("RelevanceScorer initialized")
 
             from core.context.rolling_context import RollingContext
-            self.rolling_context = RollingContext(
-                budget_cfg.get("rolling", {}),
-                scorer=self.relevance_scorer,
-            )
+            rolling_config = budget_cfg.get("rolling", {})
+
+            # Attempt to restore RollingContext from previous session (Spec 03)
+            db_path = Path(self.config.get("knowledge_base.path", "~/.polly")).expanduser() / "compression.db"
+            if rolling_config.get("persist_across_sessions", True):
+                last_session_id = self._load_last_session_id(db_path)
+                if last_session_id:
+                    try:
+                        from datetime import datetime
+                        saved_at, gap_seconds = self._load_session_saved_at(db_path, last_session_id)
+                        if saved_at and gap_seconds is not None:
+                            self.rolling_context = RollingContext.load(
+                                db_path=str(db_path),
+                                session_id=last_session_id,
+                                config=rolling_config,
+                                scorer=self.relevance_scorer,
+                                max_age_hours=rolling_config.get("max_persist_age_hours", 72.0),
+                                session_gap_seconds=gap_seconds,
+                            )
+                            loaded_count = len(self.rolling_context.entries)
+                            logger.info(
+                                f"Restored RollingContext: {loaded_count} entries from "
+                                f"session {last_session_id} ({gap_seconds/3600:.1f}h gap)"
+                            )
+                        else:
+                            self.rolling_context = RollingContext(rolling_config, scorer=self.relevance_scorer)
+                    except Exception as e:
+                        logger.warning(f"Could not restore RollingContext: {e}. Starting fresh.")
+                        self.rolling_context = RollingContext(rolling_config, scorer=self.relevance_scorer)
+                else:
+                    self.rolling_context = RollingContext(rolling_config, scorer=self.relevance_scorer)
+            else:
+                self.rolling_context = RollingContext(rolling_config, scorer=self.relevance_scorer)
             logger.info("RollingContext initialized")
         except Exception as e:
             logger.warning(f"Context budget init failed (graceful degradation): {e}")
@@ -964,6 +993,76 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                     system.set_active_persona(persona_name, mode)
                 except Exception as e:
                     logger.debug(f"set_active_persona failed for {type(system).__name__}: {e}")
+
+    # ------------------------------------------------------------------
+    # RollingContext persistence helpers (Spec 03)
+    # ------------------------------------------------------------------
+
+    def _load_last_session_id(self, db_path) -> Optional[str]:
+        """Load the most recent session ID from rolling_context_state."""
+        import sqlite3
+        from pathlib import Path
+        db_path = str(Path(db_path).expanduser())
+        if not Path(db_path).exists():
+            return None
+        try:
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT DISTINCT session_id FROM rolling_context_state
+                ORDER BY saved_at DESC LIMIT 1
+            """)
+            row = cur.fetchone()
+            conn.close()
+            return row[0] if row else None
+        except Exception as e:
+            logger.debug(f"Could not load last session ID: {e}")
+            return None
+
+    def _load_session_saved_at(self, db_path, session_id) -> tuple:
+        """Load saved_at timestamp and gap seconds for a session."""
+        import sqlite3
+        from pathlib import Path
+        from datetime import datetime
+        db_path = str(Path(db_path).expanduser())
+        if not Path(db_path).exists():
+            return None, None
+        try:
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT saved_at FROM rolling_context_state
+                WHERE session_id = ?
+                ORDER BY saved_at DESC LIMIT 1
+            """, (session_id,))
+            row = cur.fetchone()
+            conn.close()
+            if row:
+                saved_at = datetime.fromisoformat(row[0])
+                gap_seconds = (datetime.now() - saved_at).total_seconds()
+                return saved_at, gap_seconds
+            return None, None
+        except Exception as e:
+            logger.debug(f"Could not load session saved_at: {e}")
+            return None, None
+
+    def _end_session(self):
+        """Persist RollingContext on session end (Spec 03). Called on graceful shutdown."""
+        config_dict = getattr(self.config, "_config", {})
+        rolling_cfg = config_dict.get("context_budget", {}).get("rolling", {})
+
+        if not rolling_cfg.get("persist_across_sessions", True):
+            return
+        if not self.rolling_context:
+            return
+
+        try:
+            db_path = Path(self.config.get("knowledge_base.path", "~/.polly")).expanduser() / "compression.db"
+            session_id = f"session_{self.session_start.isoformat()}" if self.session_start else "session_unknown"
+            count = self.rolling_context.save(str(db_path), session_id)
+            logger.info(f"Persisted RollingContext: {count} entries for session {session_id}")
+        except Exception as e:
+            logger.warning(f"Failed to persist RollingContext on session end: {e}")
 
     def _gather_context(
         self,
