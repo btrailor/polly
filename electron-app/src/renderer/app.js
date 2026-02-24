@@ -3307,6 +3307,29 @@ function setupEventListeners() {
     }
   }
 
+  // Spec 03: context persistence toggle + decay slider (restore from localStorage)
+  const contextPersistToggle = document.getElementById("ai-feat-context-persist-enabled");
+  if (contextPersistToggle) {
+    const saved = localStorage.getItem("polly-context-persist-enabled");
+    if (saved !== null) contextPersistToggle.checked = saved === "true";
+  }
+  const contextPersistDecay = document.getElementById("ai-feat-context-persist-decay");
+  if (contextPersistDecay) {
+    const saved = localStorage.getItem("polly-context-persist-decay");
+    if (saved !== null) {
+      contextPersistDecay.value = saved;
+      const display = document.getElementById("ai-feat-context-persist-decay-value");
+      if (display) display.textContent = saved + "h";
+    }
+  }
+
+  // Spec 07: MM format radio (restore from localStorage)
+  const savedMmFormat = localStorage.getItem("polly-mm-format");
+  if (savedMmFormat) {
+    const radio = document.querySelector(`input[name="ai-feat-mm-format"][value="${savedMmFormat}"]`);
+    if (radio) radio.checked = true;
+  }
+
   // AI Features → Save button
   const saveAiFeaturesBtn = document.getElementById("btn-save-ai-features");
   if (saveAiFeaturesBtn) {
@@ -11437,6 +11460,11 @@ async function saveAIFeaturesSettings() {
   const semanticCacheThreshold = document.getElementById("ai-feat-semantic-cache-threshold");
   const semanticCacheTtl = document.getElementById("ai-feat-semantic-cache-ttl");
   const semanticCacheMax = document.getElementById("ai-feat-semantic-cache-max");
+  // Spec 03: context persistence
+  const contextPersistEnabled = document.getElementById("ai-feat-context-persist-enabled");
+  const contextPersistDecay = document.getElementById("ai-feat-context-persist-decay");
+  // Spec 07: MM format
+  const mmFormatSelected = document.querySelector('input[name="ai-feat-mm-format"]:checked');
 
   if (kbSuggestions) {
     localStorage.setItem("polly-kb-suggestions", kbSuggestions.checked ? "true" : "false");
@@ -11462,6 +11490,17 @@ async function saveAIFeaturesSettings() {
   if (semanticCacheMax) {
     localStorage.setItem("polly-semantic-cache-max", semanticCacheMax.value);
   }
+  // Spec 03
+  if (contextPersistEnabled) {
+    localStorage.setItem("polly-context-persist-enabled", contextPersistEnabled.checked ? "true" : "false");
+  }
+  if (contextPersistDecay) {
+    localStorage.setItem("polly-context-persist-decay", contextPersistDecay.value);
+  }
+  // Spec 07
+  if (mmFormatSelected) {
+    localStorage.setItem("polly-mm-format", mmFormatSelected.value);
+  }
 
   // Also push to backend if server is available
   const payload = {
@@ -11475,6 +11514,13 @@ async function saveAIFeaturesSettings() {
       ttl_hours: semanticCacheTtl ? parseInt(semanticCacheTtl.value) : 24,
       max_entries: semanticCacheMax ? parseInt(semanticCacheMax.value) : 500,
     },
+    // Spec 03
+    context_persistence: {
+      enabled: contextPersistEnabled ? contextPersistEnabled.checked : true,
+      decay_on_gap_hours: contextPersistDecay ? parseInt(contextPersistDecay.value) : 12,
+    },
+    // Spec 07
+    mm_format: mmFormatSelected ? mmFormatSelected.value : "ab_test",
   };
 
   const result = await safeFetch(
@@ -16732,6 +16778,15 @@ async function saveCompressionSettings() {
     const ragContextRatio = parseFloat(
       document.getElementById("compression-rag-context-ratio")?.value || "0.5",
     );
+    // Spec 04: Semantic compression trigger
+    const semanticTriggerEnabled =
+      document.getElementById("compression-semantic-trigger-enabled")?.checked || false;
+    const srsThreshold = parseFloat(
+      document.getElementById("compression-srs-threshold")?.value || "0.75",
+    );
+    const srsFallbackCount = parseInt(
+      document.getElementById("compression-srs-fallback-count")?.value || "30",
+    );
 
     // Validate inputs
     if (threshold < 10 || threshold > 100) {
@@ -16767,6 +16822,9 @@ async function saveCompressionSettings() {
         strategy,
         rag_context_enabled: ragContextEnabled,
         rag_context_ratio: ragContextRatio,
+        semantic_trigger_enabled: semanticTriggerEnabled,
+        srs_threshold: srsThreshold,
+        srs_fallback_count: srsFallbackCount,
       }),
     });
 
@@ -17364,6 +17422,9 @@ async function loadRAGSettings() {
       setSlider("rag-complexity-score",     "rag-complexity-score-value",     s.min_complexity_score ?? 0.60, 2);
       const decomp = document.getElementById("rag-decomposition-enabled");
       if (decomp) decomp.checked = s.decomposition_enabled !== false;
+      // Spec 08
+      const bm25Persist = document.getElementById("rag-bm25-persist-enabled");
+      if (bm25Persist) bm25Persist.checked = s.bm25_persist !== false;
     }
   } catch (error) {
     console.error("Error loading RAG settings:", error);
@@ -17383,6 +17444,8 @@ async function saveRAGSettings() {
       cross_domain_penalty: parseFloat(getVal("rag-cross-domain-penalty")),
       min_complexity_score: parseFloat(getVal("rag-complexity-score")),
       decomposition_enabled: document.getElementById("rag-decomposition-enabled")?.checked !== false,
+      // Spec 08
+      bm25_persist: document.getElementById("rag-bm25-persist-enabled")?.checked !== false,
     };
     const response = await fetch(`${API_URL}/api/settings/rag`, {
       method: "POST",

@@ -859,6 +859,73 @@
                   </div>
                 </div>
 
+                <!-- Spec 03: Rolling Context Persistence -->
+                <div class="settings-section">
+                  <h3>Context Persistence</h3>
+                  <p class="section-description">
+                    Polly's rolling context window tracks which topics and memories are active in the current session.
+                    When enabled, this context is saved to disk at session end and restored on the next startup —
+                    so Polly remembers what you were working on without you having to repeat yourself.
+                  </p>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Persist context across sessions</label>
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="ai-feat-context-persist-enabled" checked>
+                        <label for="ai-feat-context-persist-enabled" class="toggle-label"></label>
+                      </label>
+                    </div>
+                    <p class="settings-description">Save and restore the active context window between sessions. Requires restart to take effect.</p>
+                  </div>
+
+                  <div id="context-persist-options">
+                    <div class="settings-item">
+                      <div class="settings-item-header">
+                        <label class="settings-label">Gap decay (hours)</label>
+                        <span id="ai-feat-context-persist-decay-value" style="font-family: monospace; font-size: 14px;">12h</span>
+                      </div>
+                      <input type="range" id="ai-feat-context-persist-decay" min="1" max="72" step="1" value="12"
+                        style="width: 100%; margin-top: 4px;"
+                        oninput="document.getElementById('ai-feat-context-persist-decay-value').textContent = this.value + 'h'">
+                      <p class="settings-description">Context entries decay when the gap between sessions exceeds this threshold (1–72 hours). Shorter = faster forgetting on long breaks.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Spec 07: Mental Model Compression Format -->
+                <div class="settings-section">
+                  <h3>Mental Model Format</h3>
+                  <p class="section-description">
+                    Mental models are injected into each query as compressed context.
+                    <strong>Compact</strong> uses symbol substitution (~8 tokens per model) but may not be parsed
+                    correctly by small local models. <strong>Full text</strong> uses ~50 tokens but is reliably
+                    interpreted by all models. <strong>Auto (A/B)</strong> tests both formats and automatically
+                    switches to the better-performing one per model after 50 turns.
+                  </p>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Compression format</label>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="ai-feat-mm-format" value="compact">
+                        <span><strong>Compact</strong> — symbol notation, ~8 tokens/model (best for Claude, GPT-4)</span>
+                      </label>
+                      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="ai-feat-mm-format" value="full">
+                        <span><strong>Full text</strong> — prose format, ~50 tokens/model (best for small local models)</span>
+                      </label>
+                      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="ai-feat-mm-format" value="ab_test" checked>
+                        <span><strong>Auto (A/B)</strong> — test both and switch automatically based on reference rate</span>
+                      </label>
+                    </div>
+                    <p class="settings-description" style="margin-top: 8px;">Static per-model profiles (qwen → full text, claude/gpt → compact) apply when Auto is off and A/B data is insufficient.</p>
+                  </div>
+                </div>
+
                 <div style="margin-top: 16px; display: flex; justify-content: flex-end;">
                   <button class="btn btn-primary" id="btn-save-ai-features" 
                     style="background: #2d5a27; color: #c8e6c9; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 13px;">
@@ -964,6 +1031,28 @@
                       class="settings-slider"
                       oninput="document.getElementById('rag-complexity-score-value').textContent = parseFloat(this.value).toFixed(2)">
                     <p class="settings-description">Score above which a query is considered complex enough for decomposition (0–1). Lower = more queries decomposed.</p>
+                  </div>
+                </div>
+
+                <!-- Spec 08: BM25 Index Persistence -->
+                <div class="settings-section">
+                  <h3>BM25 Index Persistence</h3>
+                  <p class="section-description">
+                    Hybrid search uses a BM25 keyword index alongside semantic search.
+                    Without persistence, this index is rebuilt from scratch on every session start
+                    (2–10 seconds for large knowledge bases). When enabled, the index is saved to disk
+                    and loaded instantly on subsequent sessions.
+                  </p>
+
+                  <div class="settings-item">
+                    <div class="settings-item-header">
+                      <label class="settings-label">Persist BM25 index to disk</label>
+                      <label class="toggle-switch">
+                        <input type="checkbox" id="rag-bm25-persist-enabled" checked>
+                        <label for="rag-bm25-persist-enabled" class="toggle-label"></label>
+                      </label>
+                    </div>
+                    <p class="settings-description">Save the keyword search index to <code>~/.polly/bm25_index.pkl</code> after each build. Automatically invalidated when your knowledge base changes. Requires restart to take effect.</p>
                   </div>
                 </div>
 
@@ -1937,6 +2026,39 @@
                       <span>Show Compression Statistics</span>
                     </label>
                     <p class="form-hint">Display compression stats in the UI</p>
+                  </div>
+                </div>
+
+                <h4 style="margin-top: 20px; margin-bottom: 12px;">Semantic Compression Trigger</h4>
+                <p class="form-hint" style="margin-bottom: 12px;">
+                  Instead of compressing only when a message count or age threshold is reached,
+                  semantic compression measures how redundant the current context has become.
+                  When enabled, compression fires when the conversation becomes semantically repetitive —
+                  preserving useful context longer and compressing noise sooner.
+                </p>
+                <div class="form-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="compression-semantic-trigger-enabled">
+                    <span>Enable semantic compression trigger</span>
+                  </label>
+                  <p class="form-hint">Trigger compression based on semantic redundancy (SRS score) instead of message count alone. Falls back to message count if embedding is unavailable.</p>
+                </div>
+                <div id="compression-semantic-trigger-options">
+                  <div class="form-group">
+                    <label for="compression-srs-threshold">
+                      SRS threshold
+                      <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">(0.0–1.0, lower = compress sooner)</span>
+                    </label>
+                    <input type="number" id="compression-srs-threshold" min="0.1" max="1.0" step="0.05" value="0.75" placeholder="0.75">
+                    <p class="form-hint">Semantic Redundancy Score above which compression is triggered. Default: 0.75</p>
+                  </div>
+                  <div class="form-group">
+                    <label>
+                      Fallback message count
+                      <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">(if embedding unavailable)</span>
+                    </label>
+                    <input type="number" id="compression-srs-fallback-count" min="10" max="100" step="5" value="30" placeholder="30">
+                    <p class="form-hint">If SRS can't be computed, fall back to compressing after this many messages. Default: 30</p>
                   </div>
                 </div>
 

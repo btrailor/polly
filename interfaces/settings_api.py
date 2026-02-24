@@ -49,6 +49,10 @@ class UpdateCompressionRequest(BaseModel):
     strategy: Optional[str] = None  # "auto" | "llmlingua" | "llm_summary"
     rag_context_enabled: Optional[bool] = None
     rag_context_ratio: Optional[float] = None  # 0.1-1.0 (e.g. 0.5 = 2x compression)
+    # Spec 04: semantic compression trigger
+    semantic_trigger_enabled: Optional[bool] = None
+    srs_threshold: Optional[float] = None   # 0.0–1.0
+    srs_fallback_count: Optional[int] = None  # message count fallback
 
 
 class UpdateMemoryRequest(BaseModel):
@@ -66,6 +70,10 @@ class UpdateAIFeaturesRequest(BaseModel):
     autonomy_dashboard_show_in_status_bar: Optional[bool] = None
     # Semantic cache (Spec 01) — sent as nested dict from frontend
     semantic_cache: Optional[Dict[str, Any]] = None
+    # Spec 03: context persistence
+    context_persistence: Optional[Dict[str, Any]] = None
+    # Spec 07: mental model compression format
+    mm_format: Optional[str] = None  # "compact" | "full" | "ab_test"
     # Accept flat legacy fields from old frontend versions
     kb_suggestions: Optional[bool] = None
     context_enrichment: Optional[bool] = None
@@ -85,6 +93,8 @@ class UpdateRAGRequest(BaseModel):
     # Wave-3 decomposition
     decomposition_enabled: Optional[bool] = None
     min_complexity_score: Optional[float] = None  # 0.0–1.0
+    # Spec 08: BM25 index persistence
+    bm25_persist: Optional[bool] = None
 
 
 class ToggleProviderRequest(BaseModel):
@@ -581,11 +591,12 @@ def create_settings_router() -> APIRouter:
     
     @router.get("/compression")
     async def get_compression_settings():
-        """Get current compression settings (conversation + RAG/context strategy)."""
+        """Get current compression settings (conversation + RAG/context strategy + semantic trigger)."""
         try:
             config = get_config()
             compression = config._config.get("compression", {})
             rag_context = compression.get("rag_context", {})
+            sem_trigger = compression.get("semantic_trigger", {})
             return {
                 "success": True,
                 "settings": {
@@ -597,6 +608,10 @@ def create_settings_router() -> APIRouter:
                     "strategy": compression.get("strategy", "auto"),
                     "rag_context_enabled": rag_context.get("enabled", True),
                     "rag_context_ratio": rag_context.get("ratio", 0.5),
+                    # Spec 04
+                    "semantic_trigger_enabled": sem_trigger.get("enabled", False),
+                    "srs_threshold": sem_trigger.get("srs_threshold", 0.75),
+                    "srs_fallback_count": sem_trigger.get("fallback_message_count", 30),
                 }
             }
         except Exception as e:
@@ -631,7 +646,17 @@ def create_settings_router() -> APIRouter:
                 config._config.setdefault('compression', {}).setdefault('rag_context', {})['enabled'] = request.rag_context_enabled
             if request.rag_context_ratio is not None:
                 config._config.setdefault('compression', {}).setdefault('rag_context', {})['ratio'] = max(0.1, min(1.0, request.rag_context_ratio))
-            
+            # Spec 04: semantic compression trigger
+            if request.semantic_trigger_enabled is not None:
+                st = config._config.setdefault('compression', {}).setdefault('semantic_trigger', {})
+                st['enabled'] = bool(request.semantic_trigger_enabled)
+            if request.srs_threshold is not None:
+                st = config._config.setdefault('compression', {}).setdefault('semantic_trigger', {})
+                st['srs_threshold'] = round(max(0.0, min(1.0, request.srs_threshold)), 3)
+            if request.srs_fallback_count is not None:
+                st = config._config.setdefault('compression', {}).setdefault('semantic_trigger', {})
+                st['fallback_message_count'] = max(10, min(100, int(request.srs_fallback_count)))
+
             # Save config to file
             config.save()
             
@@ -874,12 +899,17 @@ def create_settings_router() -> APIRouter:
 
     @router.get("/ai-features")
     async def get_ai_features():
-        """Get AI features configuration (knowledge suggestions, autonomy dashboard)."""
+        """Get AI features configuration (knowledge suggestions, autonomy dashboard, context persistence, MM format)."""
         try:
             config = get_config()
             ai_features = config.get('ai_features', {}) or {}
             ks = ai_features.get('knowledge_suggestions', {}) or {}
             ad = ai_features.get('autonomy_dashboard', {}) or {}
+            # Spec 03
+            cb_rolling = (config._config.get('context_budget', {}) or {}).get('rolling', {}) or {}
+            # Spec 07
+            mm_compression = (config._config.get('mental_models', {}) or {}).get('compression', {}) or {}
+            mm_ab = mm_compression.get('ab_test', {}) or {}
 
             return {
                 "success": True,
@@ -892,7 +922,14 @@ def create_settings_router() -> APIRouter:
                     "autonomy_dashboard": {
                         "enabled": ad.get('enabled', True),
                         "show_in_status_bar": ad.get('show_in_status_bar', True),
-                    }
+                    },
+                    # Spec 03
+                    "context_persistence": {
+                        "enabled": cb_rolling.get('persist_across_sessions', True),
+                        "decay_on_gap_hours": cb_rolling.get('decay_on_gap_hours', 12),
+                    },
+                    # Spec 07
+                    "mm_format": "ab_test" if mm_ab.get('enabled', True) else mm_compression.get('format', 'compact'),
                 }
             }
         except Exception as e:
@@ -962,6 +999,39 @@ def create_settings_router() -> APIRouter:
                     cache_cfg['ttl_hours'] = int(sc['ttl_hours'])
                 if 'max_entries' in sc:
                     cache_cfg['max_entries'] = int(sc['max_entries'])
+
+            # Spec 03: context persistence settings
+            if request.context_persistence is not None:
+                cp = request.context_persistence
+                if 'context_budget' not in config._config:
+                    config._config['context_budget'] = {}
+                if 'rolling' not in config._config['context_budget']:
+                    config._config['context_budget']['rolling'] = {}
+                rolling = config._config['context_budget']['rolling']
+                if 'enabled' in cp:
+                    rolling['persist_across_sessions'] = bool(cp['enabled'])
+                if 'decay_on_gap_hours' in cp:
+                    rolling['decay_on_gap_hours'] = max(1, min(72, int(cp['decay_on_gap_hours'])))
+
+            # Spec 07: mental model compression format
+            if request.mm_format is not None:
+                valid_formats = ['compact', 'full', 'ab_test']
+                if request.mm_format in valid_formats:
+                    if 'mental_models' not in config._config:
+                        config._config['mental_models'] = {}
+                    if 'compression' not in config._config['mental_models']:
+                        config._config['mental_models']['compression'] = {}
+                    mm_comp = config._config['mental_models']['compression']
+                    if request.mm_format == 'ab_test':
+                        mm_comp['format'] = 'compact'
+                        if 'ab_test' not in mm_comp:
+                            mm_comp['ab_test'] = {}
+                        mm_comp['ab_test']['enabled'] = True
+                    else:
+                        mm_comp['format'] = request.mm_format
+                        if 'ab_test' not in mm_comp:
+                            mm_comp['ab_test'] = {}
+                        mm_comp['ab_test']['enabled'] = False
 
             # Save config to file
             config.save()
@@ -1136,6 +1206,7 @@ def create_settings_router() -> APIRouter:
             rag = config._config.get("rag", {})
             clf = rag.get("retrieval_classifier", {})
             decomp = config._config.get("routing", {}).get("decomposition", {})
+            bm25_cfg = rag.get("bm25", {})
             return {
                 "success": True,
                 "settings": {
@@ -1146,6 +1217,8 @@ def create_settings_router() -> APIRouter:
                     "cross_domain_penalty": clf.get("cross_domain_penalty", 0.15),
                     "decomposition_enabled": decomp.get("enabled", True),
                     "min_complexity_score": decomp.get("min_complexity_score", 0.6),
+                    # Spec 08
+                    "bm25_persist": bm25_cfg.get("persist", True),
                 }
             }
         except Exception as e:
@@ -1177,6 +1250,10 @@ def create_settings_router() -> APIRouter:
                 decomp["enabled"] = request.decomposition_enabled
             if request.min_complexity_score is not None:
                 decomp["min_complexity_score"] = round(max(0.0, min(1.0, request.min_complexity_score)), 3)
+            # Spec 08: BM25 persistence
+            if request.bm25_persist is not None:
+                bm25_cfg = rag.setdefault("bm25", {})
+                bm25_cfg["persist"] = bool(request.bm25_persist)
 
             config.save()
 
@@ -1190,8 +1267,9 @@ def create_settings_router() -> APIRouter:
                     "cross_domain_penalty": clf.get("cross_domain_penalty", 0.15),
                     "decomposition_enabled": decomp.get("enabled", True),
                     "min_complexity_score": decomp.get("min_complexity_score", 0.6),
+                    "bm25_persist": rag.get("bm25", {}).get("persist", True),
                 },
-                "message": "RAG settings updated. Classifier changes take effect immediately; n_results requires restart."
+                "message": "RAG settings updated. Classifier changes take effect immediately; n_results and BM25 require restart."
             }
         except Exception as e:
             logger.error(f"Failed to update RAG settings: {e}")
