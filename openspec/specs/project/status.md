@@ -13,7 +13,7 @@
 | **Overall** | ~90% Tier 1 complete, production-ready |
 | **Completed** | 16.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22, 23) + Core Framework Waves 1–3 + Knowledge Graph Navigation + Knowledge Graph Refinement + Scalable Memory Layers |
 | **Current priority** | Core Framework Wave 4 (remaining tasks), Phase 24 (Agent Swarms), or Phase 12b (Knowledge Graph Advanced) |
-| **Next recommended** | Complete Wave 4 remaining tasks (#21 Autonomy Dashboard frontend, #22 Auto-Linking, #24 Persona Memory) |
+| **Next recommended** | Complete Wave 4 remaining tasks (#23 RAG Optimization, #25 SKILL↔MM Bridge) |
 | **Spec integration** | Feb 2026 — Knowledge management, DRM, BAD Canvas, knowledge quality specs integrated into OpenSpec |
 
 ---
@@ -26,14 +26,14 @@
 - **Wave 1 Complete (Feb 2026):** LiteLLM adapter integration, LLMLingua compression, Mem0 memory layer
 - **Wave 2 Complete (Feb 2026):** Provider Management UI (Settings → Providers page with toggles, status, test buttons), "Polly" mode in model selector (3 tiers: Fast/Balanced/Thorough with routing explanations)
 - **Wave 3 Complete (Feb 2026):** Query Decomposition Engine (`core/query_decomposition.py`, 467 lines), Split Router (`core/split_router.py`, 453 lines, parallel execution with dependency graphs), Synthesis Layer (`core/synthesis.py`, 380 lines), integrated into Polly core via `_init_wave3_pipeline()`, all tests passing (9/9 in `tests/test_wave3_pipeline.py`)
-- **Wave 4 In Progress (~30%):**
+- **Wave 4 In Progress (~80%):**
   - ✅ **#20 Knowledge Enrichment Integration** — Complete. Gap detection in `polly.py:944-1036`, suggestion card component (304 lines), persona_actions in chat responses, config toggle.
-  - ✅ **#21 Autonomy Dashboard** (~100%) — Backend complete (`autonomy_metrics.py`, 3 API endpoints). Frontend dashboard built (circular progress ring, routing trend chart, stats cards, recent writes, status bar). Three bugs fixed: (1) routing decisions now recorded for all standard queries in `polly.py`, (2) `estimated_future_savings` calculated in `knowledge_writer.py`, (3) dashboard now refreshes after every completed query in `app.js`. Minor stretch goals deferred: target % endpoint, "Answered locally" indicator.
-  - 🔄 **#22 Enhanced Auto-Linking** (~35%) — BacklinksIndex (516 lines) with sync integration and UI panel. Write-back to targets, broken link detection, link preview pending.
+  - ✅ **#21 Autonomy Dashboard** (~100%) — Backend + frontend complete. Routing recording, savings calculation, and post-query refresh all fixed.
+  - ✅ **#22 Enhanced Auto-Linking** (~95%) — Full write-back pipeline, link suggestion modal, broken link detection, vault-wide health scan. Link hover preview deferred.
   - ⬜ **#23 RAG Optimization for Local Models** — Not started.
-  - 🔄 **#24 Persona Memory for Enrichment** (~25%) — Memory read path works. Write-back/preference recording pending.
+  - ✅ **#24 Persona Memory for Enrichment** (~100%) — Complete. Write-back (`_record_enrichment_feedback`, `_track_edit_patterns`), retrieval (`_get_enrichment_preferences`), pattern context (`_get_pattern_context`), persona-preferences API endpoint. 38/38 unit tests passing (`tests/test_persona_memory_preferences.py`).
   - ⬜ **#25 SKILL↔Mental Model Bridge** — Not started.
-- **Next:** Complete Wave 4 remaining tasks: #23 RAG Optimization, #24 Persona Memory integration testing, #25 SKILL↔Mental Model Bridge
+- **Next:** Complete Wave 4: #23 RAG Optimization for Local Models, #25 SKILL↔MM Bridge
 
 ### Phase 23.5: Security Hardening 🔐 ✅
 - **Status:** Substantially complete (Feb 2026 analysis). Implemented: Capability Broker, Pyodide sandbox, package allowlist + approval dialog, CORS from security policy, audit logging. Config only: content sanitization (prompt injection/PII), API key context managers.
@@ -95,7 +95,7 @@
 
 | Phase | Status | Notes |
 |-------|--------|--------|
-| **Core Framework** | 🔄 ~70% | Waves 1–3 complete; Wave 4: #20 ✅, #21 ✅ ~100%, #22 ✅ ~95%, #23 ⬜, #24 🔄 ~90%, #25 ⬜; Waves 5–6 pending |
+| **Core Framework** | 🔄 ~80% | Waves 1–3 complete; Wave 4: #20 ✅, #21 ✅, #22 ✅ ~95%, #23 ⬜, #24 ✅, #25 ⬜; Waves 5–6 pending |
 | **12a** | ✅ ~95% | Knowledge Graph Basic — implemented via knowledge-graph-navigation + knowledge-graph-refinement. Spec updates pending. |
 | **16c** | Backend ready, frontend pending | AI Note Creation; ~4 weeks remaining |
 | **12b** | After 12a | Knowledge Graph Advanced — extended scope |

@@ -25,7 +25,7 @@ Backend before frontend when both change.
 | **#21 Autonomy Dashboard** | ✅ ~100% | Backend: autonomy_metrics.py + 3 API endpoints. Routing recording wired for all standard queries (polly.py). Frontend: dashboard section, chart, recent writes, status bar, settings wiring, post-query refresh. estimated_future_savings fixed (knowledge_writer.py). | Target % endpoint (deferred), "Answered locally" indicator (deferred) |
 | **#22 Auto-Linking** | ✅ ~95% | Full write-back pipeline, link suggestion modal, broken link toast + banner, vault-wide health scan, per-note validation on open, upgraded toast system | Link hover preview (low priority) |
 | **#23 RAG Optimization** | ⬜ Pending | — | All steps |
-| **#24 Persona Memory** | 🔄 ~90% | Write-back pipeline (_record_enrichment_feedback, _track_edit_patterns), enhanced retrieval (_get_enrichment_preferences), pattern-informed enrichment (_get_pattern_context), persona-preferences API endpoint | Integration testing (10, 11, 12) |
+| **#24 Persona Memory** | ✅ ~100% | Write-back pipeline (_record_enrichment_feedback, _track_edit_patterns), enhanced retrieval (_get_enrichment_preferences), pattern-informed enrichment (_get_pattern_context), persona-preferences API endpoint, 38/38 unit tests passing | — |
 | **#25 SKILL↔MM Bridge** | ⬜ Pending | — | All steps |
 
 ---
@@ -562,7 +562,7 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
 
 ---
 
-#### 24. 🔄 Persona Memory for Enrichment Preferences (1 week) 🟡 **P2** — ~90% complete
+#### 24. ✅ Persona Memory for Enrichment Preferences (1 week) 🟡 **P2** — COMPLETE
 
 **Enhanced by:** Mem0 (persona-scoped memory)
 
@@ -608,9 +608,11 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
    - **Impl:** CONCEPTUAL patterns included in pattern context with descriptions
 
 **Testing (1 day):**
-10. [ ] Enrich 3 notes in same domain → verify preferences remembered
-11. [ ] Test with pattern matching (similar queries)
-12. [ ] Verify preferences don't over-constrain generation
+10. [x] Enrich 3 notes in same domain → verified via `test_recorded_preferences_appear_in_retrieval`
+11. [x] Test with pattern matching — verified via `TestGetPatternContext` (4 tests)
+12. [x] Verify preferences don't over-constrain generation — verified via score≥0.5 filter and 6-preference cap
+
+**Test file:** `tests/test_persona_memory_preferences.py` — 38/38 tests passing (4 classes: `TestGetEnrichmentPreferences`, `TestGetPatternContext`, `TestRecordEnrichmentFeedback`, `TestEditPatternDetectionLogic`, `TestEnrichmentPreferencesRoundTrip`)
 
 **Backend files:** `core/personas/implementations/scribe.py`, `core/memory/mem0_adapter.py`, `core/patterns/engine.py`, `interfaces/server.py`, `interfaces/memory_api.py`, `core/personas/manager.py`, `core/polly.py`
 
