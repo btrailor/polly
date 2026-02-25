@@ -7588,6 +7588,11 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
             polly = get_polly()
             if not polly or not polly.llm:
                 return _generate_hub_fallback(domain_name, domain_id, notes, entities, cross_domain_links)
+
+            # Check cloud is available — refuse to load a local 7B model just for hub generation
+            if not polly.llm.router._cloud_available:
+                logger.info("Hub generation: cloud not available, using fallback template")
+                return _generate_hub_fallback(domain_name, domain_id, notes, entities, cross_domain_links)
             
             # Build prompt
             notes_list = "\n".join([f"- [[{n['name']}]] - {n.get('title', n['name'])}" + (f": {n['preview']}" if n.get('preview') else "") for n in notes[:15]])
@@ -7613,15 +7618,22 @@ Key entities in this domain:
 Write this as an elegant, scannable wiki-style note. Use headers, bullet points, and wiki-links [[like this]] to link to other notes. Include an "Overview" section at the start that summarizes the domain in 2-3 sentences for someone who wants a quick summary.
 """
             
+            # Force fast cloud model — never load a local LLM for this background task
+            from core.router import RoutingMode, ModelTier
             messages = [{"role": "user", "content": prompt}]
             content = ""
-            async for chunk in polly.llm.chat(
-                messages=messages,
-                temperature=0.7,
-                max_tokens=2000,
-                stream=True
-            ):
-                content += chunk
+            async def _collect_chunks():
+                nonlocal content
+                async for chunk in polly.llm.chat(
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=2000,
+                    stream=True,
+                    model=polly.llm.router._select_cloud(ModelTier.FAST, len(prompt)).model
+                ):
+                    content += chunk
+            import asyncio
+            await asyncio.wait_for(_collect_chunks(), timeout=30.0)
             content = content.strip()
             
             # Add frontmatter
@@ -7639,7 +7651,7 @@ created: {datetime.now().isoformat()}
             return hub_content
             
         except Exception as e:
-            logger.warning(f"LLM hub generation failed, using fallback: {e}")
+            logger.warning(f"LLM hub generation failed, using fallback: {e}", exc_info=True)
             return _generate_hub_fallback(domain_name, domain_id, notes, entities, cross_domain_links)
     
     def _generate_hub_fallback(
@@ -7773,9 +7785,9 @@ This domain has **{cross_domain_links}** connections to other domains.
                 cross_domain_links=cross_domain_links
             )
             
-            # Write hub note file
-            config_obj = get_config()
-            notes_path = Path(config_obj.get('notes', {}).get('path', '~/.polly/notes')).expanduser()
+            # Write hub note file to the actual vault path
+            from core.notes_source_manager import NotesSourceManager
+            notes_path = NotesSourceManager().get_notes_path()
             hub_filename = f"Hub - {domain.name}.md"
             hub_path = notes_path / domain.folder_path / hub_filename if domain.folder_path else notes_path / hub_filename
             
@@ -7784,6 +7796,23 @@ This domain has **{cross_domain_links}** connections to other domains.
                 f.write(hub_content)
             
             logger.info(f"Domain hub generated: {hub_path}")
+            
+            # Rebuild notes index as a fire-and-forget background task
+            import asyncio
+            async def _rebuild_index_bg():
+                try:
+                    from core.notes_index import get_notes_index
+                    notes_idx_obj = get_notes_index()
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(
+                        None,
+                        lambda: notes_idx_obj.build_index(notes_path, recursive=True)
+                    )
+                    logger.info("Notes index rebuilt after hub generation")
+                except Exception as idx_err:
+                    logger.warning(f"Failed to rebuild index after hub generation: {idx_err}")
+            task = asyncio.create_task(_rebuild_index_bg())
+            task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
             
             return {
                 "success": True,
@@ -7822,8 +7851,8 @@ This domain has **{cross_domain_links}** connections to other domains.
             if not domain:
                 raise HTTPException(404, f"Domain not found: {domain_id}")
             
-            config_obj = get_config()
-            notes_path = Path(config_obj.get('notes', {}).get('path', '~/.polly/notes')).expanduser()
+            from core.notes_source_manager import NotesSourceManager
+            notes_path = NotesSourceManager().get_notes_path()
             hub_filename = f"Hub - {domain.name}.md"
             hub_path = notes_path / domain.folder_path / hub_filename if domain.folder_path else notes_path / hub_filename
             

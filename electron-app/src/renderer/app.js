@@ -21839,62 +21839,98 @@ async function renderGraphFiltersPanel() {
     return checked ? checked.dataset.domain : null;
   };
 
+  const generateHub = async (domain, openAfter = false) => {
+    const btn = document.getElementById('graph-refresh-hub-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.querySelector('span').textContent = 'Generating...';
+    }
+    try {
+      const resp = await fetch(`http://127.0.0.1:11436/polly/domains/${domain}/hub/refresh`, { method: 'POST' });
+      const result = await resp.json();
+      if (!result.success) {
+        console.error('[Graph] Hub generation failed:', result.error);
+        return false;
+      }
+      if (openAfter) {
+        const hubPath = result.hub_path;
+        const noteName = hubPath.split('/').pop().replace('.md', '');
+        graphState.sourceNode = null;
+        saveGraphState();
+        // Navigate to notes view first (triggers notesManager.init)
+        showView('notes');
+        showBackToGraphButton();
+        // Wait up to 8s for notesManager to load the hub note into its index
+        const waitForNote = async () => {
+          for (let i = 0; i < 80; i++) {
+            const nm = window.notesManager;
+            if (nm && nm.notes) {
+              const noteByPath = nm.notes.find(n => n.path === hubPath);
+              if (noteByPath) {
+                await nm.openNote(noteByPath.name);
+                return;
+              }
+              // Notes loaded but hub not in list yet — trigger a reload and keep waiting
+              if (nm.notes.length > 0 && i % 10 === 5) {
+                nm.loadNotesIndex?.();
+              }
+            }
+            await new Promise(r => setTimeout(r, 100));
+          }
+          // Final fallback: open by filename-derived name
+          console.warn('[Graph] Hub not found by path, falling back to name:', noteName);
+          await window.notesManager?.openNote(noteName);
+        };
+        waitForNote();
+      }
+      return true;
+    } catch (err) {
+      console.error('[Graph] Hub generation error:', err);
+      return false;
+    } finally {
+      const currentBtn = document.getElementById('graph-refresh-hub-btn');
+      if (currentBtn) {
+        currentBtn.disabled = false;
+        const d = getSelectedDomain();
+        currentBtn.querySelector('span').textContent = d ? `Refresh ${d} Hub` : 'Refresh Hub Note';
+      }
+    }
+  };
+
   if (viewHubBtn) {
     viewHubBtn.addEventListener('click', async () => {
       const domain = getSelectedDomain();
       if (!domain) return;
-      
       try {
-        // Check if hub exists
         const resp = await fetch(`http://127.0.0.1:11436/polly/domains/${domain}/hub/status`);
         const status = await resp.json();
-        
         if (status.exists) {
-          // Extract note name from path (e.g., "Hub - sigils.md" -> "Hub - sigils")
-          const noteName = status.path.split('/').pop().replace('.md', '');
           if (window.notesManager) {
+            const hubPath = status.path;
+            const noteName = hubPath.split('/').pop().replace('.md', '');
+            const noteByPath = window.notesManager.notes?.find(n => n.path === hubPath);
+            const openName = noteByPath ? noteByPath.name : noteName;
             graphState.sourceNode = null;
             saveGraphState();
-            window.notesManager.openNote(noteName);
+            await window.notesManager.openNote(openName);
             showView('notes');
             showBackToGraphButton();
           }
         } else {
-          // Generate hub first
-          alert(`No hub note exists for "${domain}". Generating one now...`);
-          refreshHubBtn?.click();
+          // No hub yet — generate and open
+          await generateHub(domain, true);
         }
       } catch (err) {
         console.error('[Graph] Failed to open hub:', err);
       }
     });
   }
-  
+
   if (refreshHubBtn) {
     refreshHubBtn.addEventListener('click', async () => {
       const domain = getSelectedDomain();
       if (!domain) return;
-      
-      refreshHubBtn.disabled = true;
-      refreshHubBtn.querySelector('span').textContent = 'Generating...';
-      
-      try {
-        const resp = await fetch(`http://127.0.0.1:11436/polly/domains/${domain}/hub/refresh`, { method: 'POST' });
-        const result = await resp.json();
-        
-        if (result.success) {
-          alert(`Hub regenerated! Contains ${result.note_count} notes and ${result.entity_count} entities.`);
-        } else {
-          alert('Failed to generate hub: ' + (result.error || 'Unknown error'));
-        }
-      } catch (err) {
-        console.error('[Graph] Failed to refresh hub:', err);
-        alert('Failed to generate hub: ' + err.message);
-      } finally {
-        refreshHubBtn.disabled = false;
-        const refreshDomain = getSelectedDomain();
-        refreshHubBtn.querySelector('span').textContent = refreshDomain ? `Refresh ${refreshDomain} Hub` : 'Refresh Hub Note';
-      }
+      await generateHub(domain, false);
     });
   }
   
