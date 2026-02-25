@@ -1,0 +1,308 @@
+/* Patterns View - extracted from main.css */
+/* Patterns View */
+.patterns-container {
+  max-width: 100%;
+  width: 100%;
+  margin: 0 auto;
+  color: #e0e0e0;
+}
+
+.patterns-container h2 {
+  color: #e0e0e0;
+  margin-bottom: 16px;
+  font-size: var(--font-2xl);
+}
+
+.patterns-intro {
+  color: #808080;
+  margin-bottom: 24px;
+  font-size: var(--font-md);
+}
+
+.patterns-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+  padding: 16px;
+  background: #252525;
+  border: 1px solid #3a3a3a;
+  border-radius: var(--radius-lg);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.patterns-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-label {
+  font-size: var(--font-sm);
+  color: #808080;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pattern-filter-select {
+  background: #1e1e1e;
+  color: #e0e0e0;
+  border: 1px solid #3a3a3a;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: var(--font-body);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pattern-filter-select:hover {
+  border-color: #f0903b;
+}
+
+.pattern-filter-select:focus {
+  border-color: #f0903b;
+  background: #252525;
+}
+
+.patterns-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-danger {
+  background: transparent;
+  color: #ef4444;
+  border: 1px solid #ef4444;
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+}
+
+.patterns-list {
+  display: grid;
+  gap: var(--spacing-xl);
+}
+
+.pattern-section {
+  display: grid;
+  gap: var(--spacing-md);
+}
+
+.pattern-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-xl);
+  font-weight: 600;
+  margin-bottom: var(--spacing-xs);
+}
+
+.pattern-section-icon {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+}
+
+.pattern-section-desc {
+  color: var(--text-secondary);
+  font-size: var(--font-body);
+  margin-bottom: var(--spacing-md);
+}
+
+.pattern-card {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  border: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.pattern-card:hover {
+  border-color: var(--text-primary);
+  transform: translateY(-2px);
+}
+
+.pattern-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: var(--spacing-md);
+  gap: var(--spacing-md);
+}
+
+.pattern-name {
+  font-weight: 600;
+  font-size: var(--font-lg);
+  flex: 1;
+}
+
+.pattern-confidence {
+  padding: 4px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pattern-confidence.high {
+  background: rgba(34, 197, 94, 0.2);
+  color: rgb(34, 197, 94);
+}
+
+.pattern-confidence.medium {
+  background: rgba(234, 179, 8, 0.2);
+  color: rgb(234, 179, 8);
+}
+
+.pattern-confidence.low {
+  background: rgba(156, 163, 175, 0.2);
+  color: rgb(156, 163, 175);
+}
+
+.pattern-frequency {
+  padding: 4px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+}
+
+.pattern-description {
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-md);
+  font-size: var(--font-md);
+}
+
+.pattern-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-md);
+  font-size: var(--font-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.pattern-occurrences {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--text-muted);
+}
+
+.pattern-meta-icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+}
+
+.pattern-domains {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.pattern-domain {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  text-transform: lowercase;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.pattern-domain.sigils {
+  background: rgba(239, 68, 68, 0.2);
+  color: rgb(239, 68, 68);
+}
+
+.pattern-domain.signals {
+  background: rgba(168, 85, 247, 0.2);
+  color: rgb(168, 85, 247);
+}
+
+.pattern-domain.scrolls {
+  background: rgba(59, 130, 246, 0.2);
+  color: rgb(59, 130, 246);
+}
+
+.pattern-domain.grids {
+  background: rgba(34, 197, 94, 0.2);
+  color: rgb(34, 197, 94);
+}
+
+.pattern-domain.glyphs {
+  background: rgba(234, 179, 8, 0.2);
+  color: rgb(234, 179, 8);
+}
+
+.pattern-domain.unknown {
+  background: rgba(156, 163, 175, 0.2);
+  color: rgb(156, 163, 175);
+}
+
+.pattern-fills {
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-sm);
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  font-size: var(--font-body);
+}
+
+.pattern-fill {
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.pattern-fill:last-child {
+  margin-bottom: 0;
+}
+
+.pattern-fill strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.pattern-card-query {
+  border-left: 3px solid var(--text-primary);
+}
+
+.pattern-domain-tag {
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+}
+
+.pattern-stats {
+  display: flex;
+  gap: var(--spacing-lg);
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}
+
+.pattern-empty {
+  text-align: center;
+  padding: var(--spacing-xl);
+  color: var(--text-muted);
+}
+
+.pattern-empty-icon {
+  width: 48px;
+  height: 48px;
+  display: block;
+  margin: 0 auto var(--spacing-md);
+  stroke-width: 1.5;
+}
+
+.pattern-empty-hint {
+  font-size: var(--font-body);
+  margin-top: var(--spacing-sm);
+}
+

@@ -26,9 +26,9 @@
   padding: 8px 12px;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--font-body);
 }
 
 .notes-search input:focus {
@@ -94,7 +94,7 @@
   display: flex;
   gap: 12px;
   margin-left: auto;
-  font-size: 12px;
+  font-size: var(--font-sm);
   color: var(--text-secondary);
 }
 
@@ -139,7 +139,7 @@
   color: var(--text-primary);
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background 0.15s;
 }
 
@@ -154,7 +154,7 @@
   color: var(--text-primary);
   background: var(--bg-primary);
   border: 2px solid var(--accent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 4px 8px;
 }
 
@@ -163,7 +163,7 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -179,7 +179,7 @@
 .note-meta {
   display: flex;
   gap: 12px;
-  font-size: 12px;
+  font-size: var(--font-sm);
   color: var(--text-secondary);
 }
 
@@ -205,7 +205,7 @@
   border: none;
   color: var(--text-primary);
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
-  font-size: 14px;
+  font-size: var(--font-md);
   line-height: 1.6;
   resize: none;
 }
@@ -229,7 +229,7 @@
 
 /* Markdown rendered styles */
 .notes-editor-view h1 {
-  font-size: 28px;
+  font-size: var(--font-3xl);
   font-weight: 700;
   margin: 24px 0 16px 0;
   color: var(--text-primary);
@@ -238,7 +238,7 @@
 }
 
 .notes-editor-view h2 {
-  font-size: 24px;
+  font-size: var(--font-2xl);
   font-weight: 600;
   margin: 20px 0 12px 0;
   color: var(--text-primary);
@@ -273,7 +273,7 @@
   border: 1px solid var(--border-color);
   border-radius: 3px;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-  font-size: 13px;
+  font-size: var(--font-body);
   color: var(--accent);
 }
 
@@ -281,7 +281,7 @@
   padding: 16px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow-x: auto;
   margin: 16px 0;
 }
@@ -371,7 +371,7 @@
   justify-content: center;
   cursor: pointer;
   background: var(--bg-secondary);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin: 0 auto 8px auto;
   transition: background 0.15s;
   z-index: 10;
@@ -399,7 +399,7 @@
 
 .notes-panel-header {
   padding: 8px 16px;
-  font-size: 11px;
+  font-size: var(--font-xs);
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-secondary);
@@ -413,7 +413,7 @@
   cursor: pointer;
   user-select: none;
   transition: background 0.15s;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin: 0 8px;
   padding: 6px 8px;
 }
@@ -450,7 +450,7 @@
 
 .backlink-item {
   padding: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -473,13 +473,13 @@
 }
 
 .backlink-name {
-  font-size: 13px;
+  font-size: var(--font-body);
   font-weight: 500;
   color: var(--text-primary);
 }
 
 .backlink-context {
-  font-size: 11px;
+  font-size: var(--font-xs);
   color: var(--text-secondary);
   line-height: 1.4;
   padding-left: 18px;
@@ -502,7 +502,7 @@
   gap: 4px;
   padding: 4px 8px;
   background: var(--accent-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -518,7 +518,7 @@
 }
 
 .tag-name {
-  font-size: 11px;
+  font-size: var(--font-xs);
   font-weight: 500;
 }
 
@@ -566,9 +566,9 @@
   padding-left: calc(8px + var(--toc-indent, 0px));
   color: var(--text-normal);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background 0.15s ease;
-  font-size: 13px;
+  font-size: var(--font-body);
   line-height: 1.4;
 }
 
@@ -601,17 +601,17 @@
 
 .toc-item.level-4 { 
   --toc-indent: 48px; 
-  font-size: 12px;
+  font-size: var(--font-sm);
 }
 
 .toc-item.level-5 { 
   --toc-indent: 64px; 
-  font-size: 12px;
+  font-size: var(--font-sm);
 }
 
 .toc-item.level-6 { 
   --toc-indent: 80px; 
-  font-size: 11px;
+  font-size: var(--font-xs);
 }
 
 /* TOC Empty State */
@@ -633,7 +633,7 @@
 }
 
 .toc-empty div {
-  font-size: 13px;
+  font-size: var(--font-body);
 }
 
 /* ======================================== */
@@ -648,7 +648,7 @@
   max-height: 400px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   overflow-y: auto;
   z-index: var(--z-dropdown);  display: none;
@@ -660,7 +660,7 @@
 
 .search-result-item {
   padding: 8px 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -670,14 +670,14 @@
 }
 
 .result-title {
-  font-size: 13px;
+  font-size: var(--font-body);
   font-weight: 500;
   color: var(--text-primary);
   margin-bottom: 2px;
 }
 
 .result-meta {
-  font-size: 11px;
+  font-size: var(--font-xs);
   color: var(--text-secondary);
   display: flex;
   gap: 8px;
@@ -697,7 +697,7 @@
 }
 
 .empty-state-small p {
-  font-size: 12px;
+  font-size: var(--font-sm);
   color: var(--text-secondary);
   margin: 0;
 }
@@ -709,8 +709,8 @@
   gap: 8px;
   padding: 6px 12px;
   background: var(--accent-subtle);
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
   color: var(--accent);
 }
 
@@ -718,7 +718,7 @@
   background: none;
   border: none;
   color: var(--accent);
-  font-size: 16px;
+  font-size: var(--font-lg);
   cursor: pointer;
   padding: 0;
   margin-left: 4px;
@@ -757,19 +757,19 @@
   padding: 12px;
   margin: 16px 0;
   background: var(--bg-secondary);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .note-embed-title {
   font-weight: 600;
   margin-bottom: 8px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-body);
 }
 
 .note-embed-content {
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--font-md);
 }
 
 .note-embed-content h1,
@@ -783,10 +783,10 @@
   padding: 8px 12px;
   background: rgba(255, 100, 100, 0.1);
   border-left: 3px solid #ff6464;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: #ff6464;
   margin: 8px 0;
-  font-size: 13px;
+  font-size: var(--font-body);
 }
 
 /* Heading Highlight for Scroll-to-Section */
@@ -794,7 +794,7 @@
   background: rgba(255, 165, 0, 0.2);
   padding: 4px 8px;
   margin: -4px -8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background 0.3s ease;
 }
 
@@ -802,14 +802,14 @@
 .callout {
   padding: 12px 16px;
   margin: 16px 0;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border-left: 4px solid;
   background: var(--bg-secondary);
 }
 
 .callout-title {
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--font-md);
   margin-bottom: 8px;
   display: flex;
   align-items: center;
@@ -817,7 +817,7 @@
 }
 
 .callout-content {
-  font-size: 14px;
+  font-size: var(--font-md);
   line-height: 1.6;
 }
 
@@ -919,7 +919,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--font-sm);
   font-weight: 500;
   padding: 2px 8px;
   border-radius: var(--radius-sm, 4px);
@@ -961,7 +961,7 @@
   background: rgba(245, 166, 35, 0.1);
   border-bottom: 1px solid rgba(245, 166, 35, 0.3);
   color: var(--accent-yellow, #f5a623);
-  font-size: 13px;
+  font-size: var(--font-body);
 }
 
 .notes-conflict-banner i {
@@ -982,7 +982,7 @@
   border: 1px solid rgba(245, 166, 35, 0.5);
   background: transparent;
   color: var(--accent-yellow, #f5a623);
-  font-size: 12px;
+  font-size: var(--font-sm);
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -1010,10 +1010,10 @@
 .notes-browse-search {
   flex: 1;
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: var(--font-sm);
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   outline: none;
 }
@@ -1035,7 +1035,7 @@
   height: 28px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s;
@@ -1065,7 +1065,7 @@
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  font-size: 10px;
+  font-size: var(--font-xs);
   background: var(--accent-primary);
   color: #fff;
   border-radius: 10px;
@@ -1077,7 +1077,7 @@
   border: none;
   color: #fff;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-sm);
   line-height: 1;
   padding: 0;
   opacity: 0.8;
@@ -1104,9 +1104,9 @@
   gap: 6px;
   padding: 6px 8px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background 0.15s;
-  font-size: 11px;
+  font-size: var(--font-xs);
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -1124,10 +1124,10 @@
 }
 
 .notes-domain-count {
-  font-size: 10px;
+  font-size: var(--font-xs);
   background: var(--bg-secondary);
   padding: 1px 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   color: var(--text-secondary);
 }
 
@@ -1148,7 +1148,7 @@
   padding: 8px 10px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -1166,7 +1166,7 @@
 }
 
 .notes-card-title {
-  font-size: 12px;
+  font-size: var(--font-sm);
   font-weight: 500;
   color: var(--text-primary);
   flex: 1;
@@ -1177,12 +1177,12 @@
 }
 
 .notes-card-maturity {
-  font-size: 11px;
+  font-size: var(--font-xs);
   flex-shrink: 0;
 }
 
 .notes-card-snippet {
-  font-size: 11px;
+  font-size: var(--font-xs);
   color: var(--text-secondary);
   opacity: 0.8;
   margin-bottom: 4px;
@@ -1194,7 +1194,7 @@
 .notes-card-meta {
   display: flex;
   gap: 6px;
-  font-size: 10px;
+  font-size: var(--font-xs);
   color: var(--text-secondary);
   align-items: center;
 }
@@ -1231,7 +1231,7 @@
 }
 
 .notes-filter-label {
-  font-size: 11px;
+  font-size: var(--font-xs);
   color: var(--text-secondary);
   font-weight: 500;
   width: 60px;
@@ -1241,10 +1241,10 @@
 .notes-filter-select {
   flex: 1;
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: var(--font-xs);
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   outline: none;
 }
@@ -1256,10 +1256,10 @@
 .notes-filter-reset-btn {
   margin-top: 4px;
   padding: 6px;
-  font-size: 11px;
+  font-size: var(--font-xs);
   background: none;
   border: 1px solid var(--border-primary);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s;

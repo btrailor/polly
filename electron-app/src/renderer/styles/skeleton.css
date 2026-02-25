@@ -5,7 +5,7 @@
 /* Base skeleton element */
 .skeleton {
   background: var(--bg-tertiary, #2a2a2a);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   position: relative;
   overflow: hidden;
 }
@@ -68,13 +68,13 @@
 
 .skeleton-card {
   height: 100px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   margin-bottom: 12px;
 }
 
 .skeleton-stat {
   height: 80px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   flex: 1;
 }
 
