@@ -108,41 +108,53 @@
       
       <div class="ribbon-divider"></div>
       
-      <button class="ribbon-item active glitch" data-view="dashboard" title="Dashboard (⌘1)" aria-label="Dashboard" aria-current="page">
+      <button class="ribbon-item active glitch" data-view="dashboard" title="Dashboard (⌘1)" aria-label="Dashboard">
         <i data-lucide="layout-dashboard" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">dash</span>
       </button>
       <button class="ribbon-item" data-view="code" title="Code (⌘2)" aria-label="Code">
         <i data-lucide="code-2" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">code</span>
       </button>
       <button class="ribbon-item" data-view="knowledge" title="Knowledge Graph (⌘4)" aria-label="Knowledge Graph">
         <i data-lucide="network" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">know</span>
       </button>
       <button class="ribbon-item" data-view="notes" title="Notes (⌘3)" aria-label="Notes">
         <i data-lucide="book-open" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">notes</span>
       </button>
       <button class="ribbon-item" data-view="graph" title="Graph" aria-label="Graph">
         <i data-lucide="git-graph" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">graph</span>
       </button>
       <button class="ribbon-item" data-view="learning" title="Learning" aria-label="Learning">
         <i data-lucide="graduation-cap" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">learn</span>
       </button>
       <button class="ribbon-item" data-view="search" title="Search" aria-label="Search">
         <i data-lucide="search" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">search</span>
       </button>
       <button class="ribbon-item" data-view="patterns" title="Patterns (⌘5)" aria-label="Patterns">
         <i data-lucide="sparkles" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">patt</span>
       </button>
       <button class="ribbon-item" data-view="domains" title="Domains" aria-label="Domains">
         <i data-lucide="folder-tree" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">doms</span>
       </button>
       <button class="ribbon-item" data-view="calendar" title="Calendar" aria-label="Calendar">
         <i data-lucide="calendar" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">cal</span>
       </button>
       <button class="ribbon-item" data-view="mail" title="Mail" aria-label="Mail">
         <i data-lucide="mail" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">mail</span>
       </button>
       <button class="ribbon-item" data-view="projects" title="Projects" aria-label="Projects">
         <i data-lucide="kanban" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">proj</span>
       </button>
       
       <div class="ribbon-spacer"></div>
@@ -154,6 +166,7 @@
       
       <button class="ribbon-item" data-view="settings" title="Settings (⌘6)" aria-label="Settings">
         <i data-lucide="settings" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">sett</span>
       </button>
       </nav>
 
@@ -165,33 +178,8 @@
           <div class="sidebar-header">
             <span class="sidebar-title">Navigation</span>
           </div>
-          <div class="sidebar-content" id="left-sidebar-content">
-            <!-- Content will be dynamically populated by updateLeftSidebar() -->
-            <div class="nav-section">
-              <button class="nav-item active" data-view="dashboard">
-                <i data-lucide="layout-dashboard" class="nav-icon"></i>
-                <span class="nav-label">dashboard</span>
-              </button>
-              <button class="nav-item" data-view="knowledge">
-                <i data-lucide="brain" class="nav-icon"></i>
-                <span class="nav-label">knowledge</span>
-              </button>
-              <button class="nav-item" data-view="patterns">
-                <i data-lucide="sparkles" class="nav-icon"></i>
-                <span class="nav-label">patterns</span>
-              </button>
-              <button class="nav-item" data-view="curricula">
-                <i data-lucide="graduation-cap" class="nav-icon"></i>
-                <span class="nav-label">curricula</span>
-              </button>
-            </div>
-
-            <div class="nav-section nav-bottom">
-              <button class="nav-item" data-view="settings">
-                <i data-lucide="settings" class="nav-icon"></i>
-                <span class="nav-label">settings</span>
-              </button>
-            </div>
+          <div class="sidebar-content" id="left-sidebar-content" aria-live="polite">
+            <!-- Populated by updateLeftSidebar() on every view change -->
           </div>
         </aside>
 
@@ -206,7 +194,7 @@
               <h1>welcome to polly</h1>
               <p>your edge-native personal AI assistant</p>
               <div class="ascii-art" style="margin-top: 1rem;">
-:>  polly  -&
+:>  polly  -&amp;
     setup wizard
               </div>
             </div>
@@ -319,27 +307,27 @@
         <!-- Dashboard View -->
         <div class="view" id="view-dashboard">
           <div class="dashboard-container">
-            <h2>> dashboard</h2>
+            <h2><span aria-hidden="true">&gt; </span>dashboard</h2>
 
             <div class="stats-grid">
               <div class="stat-card">
                 <i data-lucide="book-open" class="stat-icon"></i>
-                <div class="stat-value" id="stat-obsidian">-</div>
+                <div class="stat-value" id="stat-obsidian" data-loading aria-busy="true">-</div>
                 <div class="stat-label">Obsidian Chunks</div>
               </div>
               <div class="stat-card">
                 <i data-lucide="code-2" class="stat-icon"></i>
-                <div class="stat-value" id="stat-codebase">-</div>
+                <div class="stat-value" id="stat-codebase" data-loading aria-busy="true">-</div>
                 <div class="stat-label">Code Chunks</div>
               </div>
               <div class="stat-card">
                 <i data-lucide="sparkles" class="stat-icon"></i>
-                <div class="stat-value" id="stat-patterns">-</div>
+                <div class="stat-value" id="stat-patterns" data-loading aria-busy="true">-</div>
                 <div class="stat-label">Patterns</div>
               </div>
               <div class="stat-card">
                 <i data-lucide="network" class="stat-icon"></i>
-                <div class="stat-value" id="stat-entities">-</div>
+                <div class="stat-value" id="stat-entities" data-loading aria-busy="true">-</div>
                 <div class="stat-label">Graph Entities</div>
               </div>
             </div>
@@ -927,8 +915,7 @@
                 </div>
 
                 <div style="margin-top: 16px; display: flex; justify-content: flex-end;">
-                  <button class="btn btn-primary" id="btn-save-ai-features" 
-                    style="background: #2d5a27; color: #c8e6c9; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                  <button class="btn btn-primary" id="btn-save-ai-features">
                     Save AI Features
                   </button>
                 </div>
@@ -1058,8 +1045,7 @@
 
                 <div class="settings-actions">
                   <div id="rag-settings-status" class="settings-status" style="display:none;"></div>
-                  <button class="btn btn-primary" id="btn-save-rag-settings"
-                    style="background: #2d5a27; color: #c8e6c9; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 13px;">
+                  <button class="btn btn-primary" id="btn-save-rag-settings">
                     Save RAG Settings
                   </button>
                 </div>
@@ -1072,8 +1058,8 @@
 
                 <div class="form-group">
                   <label>Code Directories</label>
-                  <div class="path-list" id="settings-code-paths"></div>
-                  <button class="btn btn-secondary" id="btn-settings-add-code">+ Add</button>
+                  <div class="path-list" id="legacy-settings-code-paths"></div>
+                  <button class="btn btn-secondary" id="legacy-btn-settings-add-code">+ Add</button>
                 </div>
                 
                 <p class="form-hint">
@@ -1087,7 +1073,7 @@
 
                 <div class="form-group">
                   <label>Default Mode</label>
-                  <select id="settings-routing-mode">
+                  <select id="legacy-settings-routing-mode">
                     <option value="auto">Auto (Recommended)</option>
                     <option value="local">Always Local</option>
                     <option value="cloud">Always Cloud</option>
@@ -3568,7 +3554,6 @@
   <!-- Toast notification container (Task #22) -->
   <div id="toast-container" role="status" aria-live="polite" aria-atomic="false" style="position: fixed; bottom: 60px; right: 16px; z-index: 10001; display: flex; flex-direction: column-reverse; gap: 8px; pointer-events: none;"></div>
 
-  <script src="marked.js"></script>
   <script src="markdown-editor-cm6.bundle.js"></script>
   <script src="notes-manager.js"></script>
   <script src="app.js"></script>

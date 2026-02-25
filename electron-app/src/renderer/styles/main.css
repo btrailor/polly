@@ -13,7 +13,7 @@
   /* Text colors */
   --text-primary: #e0e0e0;
   --text-secondary: #999999;
-  --text-muted: #8a8a8a;
+  --text-muted: #9a9a9a; /* was #8a8a8a (4.44:1 on bg-secondary — WCAG AA fail); #9a9a9a = 5.44:1 ✓ */
   
   /* Border color */
   --border-color: #2a2a2a;
@@ -62,6 +62,23 @@
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;
 
+  /* Typography */
+  --font-mono: 'Courier New', Courier, monospace;
+  --font-ui:   system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* ── Variable aliases ───────────────────────────────────────────────────
+   * Keep these in sync with the canonical tokens above.
+   * They exist so that persona-ui.css and notes.css (which use different
+   * naming conventions) resolve correctly without silent fallbacks.
+   * ─────────────────────────────────────────────────────────────────────── */
+  --accent-color: var(--accent-primary);   /* persona-ui.css uses --accent-color  */
+  --accent: var(--accent-primary);          /* notes.css uses --accent              */
+  --hover-bg: var(--bg-hover);              /* notes.css uses --hover-bg            */
+  --border-primary: var(--border-color);    /* notes.css uses --border-primary      */
+  --text-normal: var(--text-primary);       /* notes.css uses --text-normal         */
+  --text-tertiary: var(--text-muted);       /* notes.css uses --text-tertiary       */
+  --accent-subtle: rgba(240, 144, 59, 0.1); /* notes.css uses --accent-subtle       */
+
   /* Shadows - brutalist style */
   --shadow-sm: 2px 2px 0 rgba(10, 10, 10, 0.1);
   --shadow-md: 4px 4px 0 rgba(10, 10, 10, 0.15);
@@ -75,8 +92,8 @@
   --z-dropdown: 100;    /* autocomplete, context menus, select dropdowns */
   --z-sticky:   200;    /* sticky headers, pinned elements */
   --z-overlay:  300;    /* modal backdrops, drawer overlays */
-  --z-modal:    400;    /* modal dialogs, confirm dialogs */
-  --z-toast:    500;    /* toast notifications (above modals) */
+  --z-modal:    400;    /* dialogs, pickers that must sit above overlays */
+  --z-toast:    500;    /* toast notifications — always on top */
   --z-tooltip:  600;    /* tooltips (above everything) */
   --z-titlebar: 700;    /* Electron titlebar (always on top) */
 }
@@ -387,11 +404,13 @@ body {
 
 .ribbon-item {
   width: 48px !important; /* Full width of ribbon */
-  height: 48px !important; /* Square button */
-  min-height: 48px !important;
+  height: 56px !important; /* Taller to hold icon + label */
+  min-height: 56px !important;
   display: flex !important;
+  flex-direction: column !important;
   align-items: center !important;
   justify-content: center !important;
+  gap: 3px !important;
   background: transparent !important;
   border: none !important;
   color: var(--text-secondary) !important;
@@ -400,13 +419,30 @@ body {
   transition: background-color 0.15s ease !important;
   position: relative !important;
   margin: 0 !important;
-  padding: 0 !important;
+  padding: 4px 0 !important;
 }
 
 .ribbon-item i,
 .ribbon-item svg {
-  width: 20px !important;
-  height: 20px !important;
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.ribbon-label {
+  font-family: var(--font-mono) !important;
+  font-size: 8px !important;
+  letter-spacing: 0.03em !important;
+  color: inherit !important;
+  opacity: 0.7 !important;
+  line-height: 1 !important;
+  text-transform: lowercase !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+.ribbon-item.active .ribbon-label,
+.ribbon-item:hover .ribbon-label {
+  opacity: 1 !important;
 }
 
 .ribbon-item:hover {
@@ -473,6 +509,38 @@ body {
   padding: 0;
   min-width: 0;
   height: 100%;
+}
+
+/* ── Responsive breakpoints ───────────────────────────────────
+ * Electron windows can be resized. These breakpoints ensure the
+ * three-column layout degrades gracefully at smaller sizes.
+ * ─────────────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  /* Hide left sidebar at medium widths — ribbon is sufficient for navigation */
+  .left-sidebar {
+    display: none !important;
+  }
+
+  .main-content-area {
+    min-width: 160px;
+  }
+}
+
+@media (max-width: 800px) {
+  /* Collapse chat panel at small widths */
+  .agents-sidebar,
+  .chat-panel,
+  .center-resize-handle {
+    display: none !important;
+  }
+
+  .view {
+    padding: var(--spacing-md);
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
 }
 
 /* Three Column Layout */
@@ -588,7 +656,7 @@ body {
 /* Main Content Area - now a direct child of three-column-layout */
 .main-content-area {
   flex: 1 1 auto; /* Can grow and shrink - NO !important so resize handle can override */
-  min-width: 400px;
+  min-width: 200px;
   height: 100%;
   overflow-y: auto;
   display: flex;
@@ -933,7 +1001,7 @@ body {
   border: 1px solid var(--border-color);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 400;
+  z-index: var(--z-modal);
   min-width: 200px;
   max-width: 280px;
 }
@@ -1722,13 +1790,73 @@ body {
   display: none;
 }
 
+/* Fade-in when a view becomes visible */
+@keyframes viewFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+.view:not(.hidden) {
+  animation: viewFadeIn var(--transition-fast) ease both;
+}
+
+/* ── Stat card skeleton shimmer ───────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.stat-value[data-loading] {
+  color: transparent;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 25%,
+    var(--bg-hover)    50%,
+    var(--bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: var(--radius-sm);
+  min-width: 48px;
+  display: inline-block;
+}
+
+/* ── Prose/UI font for non-terminal contexts ──────────────── */
+.settings-description,
+.settings-section > p,
+.form-hint,
+.stat-label,
+.section-description,
+.settings-item-header label,
+.settings-label,
+.settings-tab-label,
+.nav-label,
+.empty-state-description,
+.modal-body p,
+.settings-actions,
+.btn {
+  font-family: var(--font-ui);
+}
+
+/* ── CSS containment for heavy scroll panels ──────────────── */
+.left-sidebar {
+  contain: layout style;
+}
+
+.chat-messages-panel {
+  contain: layout style;
+}
+
+.agents-list {
+  contain: layout style;
+}
+
 .view-placeholder-container {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
   min-height: 400px;
-}
 }
 
 /* Buttons */
@@ -3816,7 +3944,7 @@ body {
   cursor: not-allowed;
 }
 
-.toggle-switch input[type="checkbox"]:focus + .toggle-label {
+.toggle-switch input[type="checkbox"]:focus-visible + .toggle-label {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
@@ -4866,6 +4994,20 @@ body {
   color: var(--text-muted);
   font-size: 18px;
   user-select: none;
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+  line-height: 1;
+  background: none;
+  border: none;
+}
+
+.domain-drag-handle:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.domain-drag-handle:active {
+  cursor: grabbing;
 }
 
 .domain-icon {
@@ -6833,7 +6975,6 @@ body {
 }
 
 .welcome-banner p {
-  margin: 0;
   font-size: 14px;
   color: #a0a0a0;
   max-width: 600px;
@@ -8229,9 +8370,6 @@ body {
 
 #graph-domain-select-all:hover {
   text-decoration: underline;
-}
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* Garden Stats Grid */
