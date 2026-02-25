@@ -314,11 +314,15 @@ class KnowledgeWriter:
 
         # 8. Record metric
         if result.success and self.metrics_tracker:
+            # Rough token estimate: each saved note represents future local retrievals
+            # that don't need cloud LLM calls (content tokens ÷ 4 as word-to-token proxy)
+            estimated_savings = len(content) // 4
             await self._record_write_metric(
                 title=title,
                 domain=domain,
                 source_type=source_type,
                 cloud_provider=None,
+                estimated_future_savings=estimated_savings,
             )
 
         return result
@@ -893,6 +897,7 @@ class KnowledgeWriter:
         domain: str,
         source_type: str,
         cloud_provider: Optional[str] = None,
+        estimated_future_savings: int = 0,
     ):
         """Record a knowledge write event for autonomy tracking."""
         if not self.metrics_tracker:
@@ -905,6 +910,7 @@ class KnowledgeWriter:
                 source_type=source_type,
                 cloud_provider=cloud_provider,
                 timestamp=datetime.now(),
+                estimated_future_savings=estimated_future_savings,
             )
         except Exception as e:
             logger.warning(f"Failed to record write metric: {e}")

@@ -3012,6 +3012,22 @@ If you suggest an exercise, copy the description directly from the context above
             }
             self._last_response_metadata = response_metadata
 
+        # Record routing decision for autonomy metrics (standard, non-Wave3 path).
+        # Wave 3 path records per-sub-query in split_router.py; this covers all other queries.
+        if self.autonomy_metrics and response_metadata:
+            try:
+                provider = response_metadata.get('provider', 'unknown')
+                is_local = provider == 'ollama' or response_metadata.get('cost', 1.0) == 0.0
+                self.autonomy_metrics.record_routing_decision(
+                    route_type="local" if is_local else "cloud",
+                    provider=provider,
+                    tokens_used=response_metadata.get('tokens_in', 0) + response_metadata.get('tokens_out', 0),
+                    cost=response_metadata.get('cost', 0.0),
+                    local_pct=1.0 if is_local else 0.0,
+                )
+            except Exception as e:
+                logger.debug(f"Failed to record autonomy routing decision: {e}")
+
         # 9. Update conversation history (must be inline — fast, needed for next query)
         self.conversation_history.append({'role': 'user', 'content': query})
         self.conversation_history.append({'role': 'assistant', 'content': full_response})

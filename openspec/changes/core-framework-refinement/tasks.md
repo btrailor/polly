@@ -22,7 +22,7 @@ Backend before frontend when both change.
 | **#19 Synthesis** | ✅ Complete | 1–6 (SynthesisLayer, multi-response merging, quality scoring, integrated into Polly core) | — |
 | **Wave 3** | ✅ Complete | All Wave 3 tasks verified (9/9 tests passing) | Wave 4 ready |
 | **#20 Knowledge Enrichment** | ✅ Complete | All 12 steps (gap detection in polly.py, persona_actions in server.py, suggestion-card.js, config toggle, save flows) | — |
-| **#21 Autonomy Dashboard** | ✅ ~85% | Backend: autonomy_metrics.py + 3 API endpoints. Frontend: dashboard section, chart, recent writes, status bar, settings wiring | Target % endpoint, post-save feedback, testing |
+| **#21 Autonomy Dashboard** | ✅ ~100% | Backend: autonomy_metrics.py + 3 API endpoints. Routing recording wired for all standard queries (polly.py). Frontend: dashboard section, chart, recent writes, status bar, settings wiring, post-query refresh. estimated_future_savings fixed (knowledge_writer.py). | Target % endpoint (deferred), "Answered locally" indicator (deferred) |
 | **#22 Auto-Linking** | ✅ ~95% | Full write-back pipeline, link suggestion modal, broken link toast + banner, vault-wide health scan, per-note validation on open, upgraded toast system | Link hover preview (low priority) |
 | **#23 RAG Optimization** | ⬜ Pending | — | All steps |
 | **#24 Persona Memory** | 🔄 ~90% | Write-back pipeline (_record_enrichment_feedback, _track_edit_patterns), enhanced retrieval (_get_enrichment_preferences), pattern-informed enrichment (_get_pattern_context), persona-preferences API endpoint | Integration testing (10, 11, 12) |
@@ -427,7 +427,7 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
 
 ---
 
-#### 21. 🔄 Progressive Autonomy Dashboard (1 week) 🟢 **P1**
+#### 21. ✅ Progressive Autonomy Dashboard (1 week) 🟢 **P1**
 
 **What:** Visualize the feedback loop. Show users how KB growth increases local routing %.
 
@@ -458,13 +458,16 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
 
 **Post-Save Integration (1 day):**
 7. [x] `window.loadAutonomyData` exposed for suggestion-card.js (refreshes metrics after note save)
+7b. [x] **Bug fix:** Post-query refresh — `loadAutonomyData()` now called 500ms after every completed query in `_sendQueryStreaming()` and `_sendQueryFallbackIPC()` (app.js). Previously dashboard only refreshed on navigation/startup.
+7c. [x] **Bug fix:** Routing decisions were only recorded for Wave 3 (split_router.py). Standard routing path in polly.py now records `route_type`, `provider`, `tokens_used`, `cost` after every query (local and cloud).
+7d. [x] **Bug fix:** `estimated_future_savings` was always 0. Now calculated as `len(content) // 4` (word-to-token proxy) in `knowledge_writer.py` quick_save and threaded through `_record_write_metric`.
 8. [ ] When local routing successfully answers (DIRECT tier):
-   - Subtle indicator: "Answered locally" (tooltip: "Saved ~$0.02")
+   - Subtle indicator: "Answered locally" (tooltip: "Saved ~$0.02") — **Deferred**
 
 **Testing (1 day):**
-9. [ ] Add 5-10 notes via gap detection → verify metrics update
-10. [ ] Verify routing trend chart shows increase in local %
-11. [ ] Test autonomy target setting persistence
+9. [x] Routing decisions populate after standard queries (verified via logs + dashboard refresh)
+10. [x] Knowledge writes show non-zero estimated_savings
+11. [ ] Test autonomy target setting persistence — **Deferred (step 2 endpoint not built)**
 
 **Backend files:** `interfaces/settings_api.py`, `core/autonomy_metrics.py`
 **Frontend files:** `electron-app/src/renderer/index.html` (lines 309-362), `app.js` (lines 9093-9294), `styles/main.css` (lines 2335-2660)

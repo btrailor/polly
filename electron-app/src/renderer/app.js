@@ -9744,6 +9744,11 @@ async function _sendQueryStreaming(apiQuery, queryOptions, loadingId) {
 
   // Auto-categorize (non-blocking) — run when browser is idle, within 1s
   requestIdleCallback(() => autoCategorizeConversation(currentConversationId), { timeout: 1000 });
+
+  // Refresh autonomy metrics after each completed query (routing decision just recorded)
+  if (window.loadAutonomyData) {
+    setTimeout(() => window.loadAutonomyData(), 500);
+  }
 }
 
 /**
@@ -9797,6 +9802,7 @@ async function _sendQueryFallbackIPC(apiQuery, queryOptions, loadingId) {
       }
 
       requestIdleCallback(() => autoCategorizeConversation(currentConversationId), { timeout: 1000 });
+      if (window.loadAutonomyData) setTimeout(() => window.loadAutonomyData(), 500);
     } else {
       _showStreamError(`Error: ${result.error}`);
     }

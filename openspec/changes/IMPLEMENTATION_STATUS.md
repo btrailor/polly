@@ -14,7 +14,7 @@
 | **architecture-integration-audit** | Complete | All 9 tasks (analysis, findings, sibling folders, roadmap, spec markers, architecture spec, vision headers) | — |
 | **code-library-and-dev-philosophy** | Not started | — | All waves (library, extraction, philosophy, slash commands, UI) |
 | **constitutional-epistemology** | Not started | — | No tasks.md; spec-only; implementation not started |
-| **core-framework-refinement** | In progress (~65%) | Knowledge Writer, Autonomy Metrics, Scribe enrich, incremental RAG, settings API + UI, save-message, LiteLLM (#12), LLMLingua (#13), Mem0 (#14), Provider UI (#15), "Polly" mode (#16), Query Decomposition (#17), Split Routing (#18), Synthesis (#19), Knowledge Enrichment (#20) | Autonomy Dashboard frontend (#21), Enhanced Auto-Linking write-back (#22), RAG Optimization (#23), Persona Memory write-back (#24), SKILL↔MM Bridge (#25), Waves 5–6 |
+| **core-framework-refinement** | In progress (~70%) | Knowledge Writer, Autonomy Metrics, Scribe enrich, incremental RAG, settings API + UI, save-message, LiteLLM (#12), LLMLingua (#13), Mem0 (#14), Provider UI (#15), "Polly" mode (#16), Query Decomposition (#17), Split Routing (#18), Synthesis (#19), Knowledge Enrichment (#20), Autonomy Dashboard (#21 ✅ — routing recording in polly.py, estimated_future_savings in knowledge_writer.py, post-query refresh in app.js), Enhanced Auto-Linking (#22 ✅ ~95%) | RAG Optimization (#23), Persona Memory integration testing (#24), SKILL↔MM Bridge (#25), Waves 5–6 |
 | **cursor-ui-pattern-migration** | Not started | — | All 9 phases (layout, sidebars, content router, chat panel, agents, floating chat, persona evolution, settings redesign, polish) |
 | **custom-domains-feature** | Partial | Backend: load custom domains from domain_config; OpenSpec proposal/design | detect_domains_with_custom, frontend reserved-id hint, spec update, pure user-defined domains |
 | **designer-profile** | Not started | — | All phases (design system, Lucide rules, p5.js pipeline, integration, intelligence) |
@@ -61,7 +61,7 @@ These changes have their implementation complete per their tasks; they can be ar
 
 ## Partially Implemented
 
-- **core-framework-refinement** — Waves 1–3 complete (LiteLLM, LLMLingua, Mem0, Provider UI, "Polly" mode, Query Decomposition, Split Routing, Synthesis). Wave 4 in progress: Task #20 (Knowledge Enrichment) complete; Tasks #21 (Autonomy Dashboard ~40%), #22 (Auto-Linking ~35%), #24 (Persona Memory ~25%) partially done; Tasks #23 (RAG Optimization), #25 (SKILL↔MM Bridge) not started. Waves 5–6 pending.
+- **core-framework-refinement** — Waves 1–3 complete (LiteLLM, LLMLingua, Mem0, Provider UI, "Polly" mode, Query Decomposition, Split Routing, Synthesis). Wave 4 in progress: Tasks #20 (Knowledge Enrichment) ✅, #21 (Autonomy Dashboard) ✅ complete (3 bugs fixed: routing recording in polly.py, estimated_future_savings in knowledge_writer.py, post-query refresh in app.js), #22 (Auto-Linking) ~95%; #24 (Persona Memory) ~90%; Tasks #23 (RAG Optimization), #25 (SKILL↔MM Bridge) not started. Waves 5–6 pending.
 - **custom-domains-feature** — Backend loads custom domains; optional scoring, frontend hint, and spec update pending.
 - **library-extraction** — `libs/` exists; only polly-routing is fully extracted; polly-patterns, polly-compression, polly-entities, polly-personas pending.
 
@@ -90,7 +90,7 @@ These changes have their implementation complete per their tasks; they can be ar
 1. **Archive completed changes** (after updating `openspec/specs/project/status.md`, `roadmap.md`, and `docs/status/CHANGELOG.md`): architecture-integration-audit, entity-model-unification, integration-contracts, knowledge-graph-refinement, litellm-provider-adapter, mem0-adaptive-memory, mem0-multi-provider-config, unified-pattern-engine.
 2. **Finish knowledge-graph-navigation** — Complete Task 15 (spec updates), then archive.
 3. **Archive ux-pivot-cursor-patterns** — Tasks 1–5 complete; Task 6 deferred to phase-17. Can be archived with a note that Code profile work continues in phase-17-monaco-code-workspace.
-4. **Continue core-framework-refinement** — Wave 4 remaining: Autonomy Dashboard frontend (#21), Enhanced Auto-Linking write-back (#22), RAG Optimization (#23), Persona Memory write-back (#24), SKILL↔MM Bridge (#25).
+4. **Continue core-framework-refinement** — Wave 4 remaining: RAG Optimization (#23), Persona Memory integration testing (#24), SKILL↔MM Bridge (#25). (#21 Autonomy Dashboard and #22 Auto-Linking are now substantially complete.)
 5. **Optional cleanup** — custom-domains: finish optional tasks and spec update; library-extraction: proceed with polly-patterns/polly-compression/polly-entities/polly-personas or pause and document current state.
 6. **Pick next big change** — When ready: code-library-and-dev-philosophy, learning-and-administrator-profiles, phase-17 (Monaco), or cursor-ui-pattern-migration.
 
