@@ -1121,6 +1121,31 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         except Exception as e:
             logger.warning(f"Failed to persist RollingContext on session end: {e}")
 
+    def _estimate_model_tier(self, confidence: Optional[str] = None) -> str:
+        """
+        Estimate the likely model tier from routing confidence BEFORE the actual
+        routing decision is made.
+
+        Used for pre-routing RAG optimisations: n_results, max_context_tokens,
+        and compression ratio.  Returns one of 'local_fast', 'local_balanced',
+        or 'cloud'.
+
+        Mapping:
+          fast / FAST        → local_fast  (small context window)
+          balanced / None    → local_balanced (standard)
+          thorough / THOROUGH → cloud      (large context window)
+        """
+        if confidence is None:
+            conf_str = self.default_confidence.value if self.default_confidence else "balanced"
+        else:
+            conf_str = confidence.lower() if isinstance(confidence, str) else str(confidence)
+
+        if conf_str in ("fast",):
+            return "local_fast"
+        if conf_str in ("thorough",):
+            return "cloud"
+        return "local_balanced"
+
     def _gather_context(
         self,
         query: str,
@@ -2143,9 +2168,23 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                 for keyword in integration_keywords
             )
         
+        # Always determine model_tier for downstream use (max_context_tokens, compression)
+        model_tier = self._estimate_model_tier(confidence)
+
         if is_integration_query:
             n_results = 30  # Get more results per collection for integration queries
-        
+        else:
+            # Tier-aware n_results: fewer chunks for small local context windows,
+            # more for cloud models with large context.  Uses routing confidence as
+            # a pre-routing tier estimate (FAST→local_fast, BALANCED→local_balanced,
+            # THOROUGH→cloud).
+            tier_n = {
+                "local_fast":     self.config.get("rag.tier_n_results.local_fast", 3),
+                "local_balanced": self.config.get("rag.tier_n_results.local_balanced", 5),
+                "cloud":          self.config.get("rag.tier_n_results.cloud", 10),
+            }
+            n_results = tier_n.get(model_tier, n_results)
+
         # For ambiguous follow-up queries, use previous user query for RAG search
         search_query = query
         if query_lower in ['what about now?', 'and now?', 'how about now?', 'now?', 'still?']:
@@ -2398,8 +2437,17 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                 if any(r.chunk.filepath == s['filepath'] for s in rag_results)
             ]
         
-        # Increase max_tokens for integration queries to fit more repos
-        max_context_tokens = 8000 if is_integration_query else 3000
+        # Tier-aware max context tokens: integration queries need full budget;
+        # otherwise scale to the model's likely context window.
+        if is_integration_query:
+            max_context_tokens = 8000
+        else:
+            tier_ctx = {
+                "local_fast":     self.config.get("rag.tier_max_context_tokens.local_fast", 2000),
+                "local_balanced": self.config.get("rag.tier_max_context_tokens.local_balanced", 3000),
+                "cloud":          self.config.get("rag.tier_max_context_tokens.cloud", 6000),
+            }
+            max_context_tokens = tier_ctx.get(model_tier, 3000)
         
         # Use compact format ONLY if explicitly listing repos (not for analysis queries)
         use_compact_format = (
@@ -2419,7 +2467,36 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             max_tokens=max_context_tokens,
             compact_github=use_compact_format
         )
-        
+
+        # RAG context compression for local models (#23 RAG Optimization).
+        # Only compresses when context is large and model tier is local.
+        # Skipped for integration queries (GitHub/repo content degrades badly with LLMLingua).
+        if (
+            not is_integration_query
+            and self.compression_manager
+            and self.config.get("rag.rag_compression.enabled", True)
+            and model_tier != "cloud"
+        ):
+            min_chars = self.config.get("rag.rag_compression.min_chars", 1500)
+            if len(rag_context) > min_chars:
+                ratio_key = f"rag.rag_compression.{model_tier}_ratio"
+                target_ratio = self.config.get(ratio_key, 0.5)
+                try:
+                    compressed = self.compression_manager.compress_text(
+                        rag_context,
+                        target_ratio=target_ratio,
+                        context_type="rag_context",
+                    )
+                    if compressed and compressed.get("compressed_text"):
+                        orig_len = len(rag_context)
+                        rag_context = compressed["compressed_text"]
+                        logger.info(
+                            f"RAG context compressed {orig_len}→{len(rag_context)} chars "
+                            f"(tier={model_tier}, ratio={target_ratio})"
+                        )
+                except Exception as _e:
+                    logger.debug(f"RAG context compression skipped: {_e}")
+
         # Debug: Log for Practices queries
         if 'practices' in query_lower and 'exercises' in query_lower:
             practices_count = sum(1 for r in filtered_search_results if 'Practices' in r.chunk.filepath and 'Exercises' in r.chunk.filepath)

@@ -11,6 +11,10 @@ models:
       balanced: qwen2.5:7b
       quality: qwen2.5:7b
     default: balanced
+    context_windows:       # Approximate context window in tokens for each local tier
+      fast: 32768          # qwen2.5:7b = 32K
+      balanced: 32768
+      quality: 32768
   cloud:
     provider: anthropic
     api_key_env: ANTHROPIC_API_KEY
@@ -23,6 +27,23 @@ rag:
   chunk_size: 800
   chunk_overlap: 100
   n_results: 5
+  # Tier-aware retrieval limits — overrides n_results per routing tier
+  tier_n_results:
+    local_fast: 3        # Small context window: fewer chunks
+    local_balanced: 5    # Standard
+    cloud: 10            # Large context window: more chunks for better coverage
+  # Tier-aware max context tokens passed to format_context()
+  tier_max_context_tokens:
+    local_fast: 2000
+    local_balanced: 3000
+    cloud: 6000
+  # LLMLingua compression of RAG context before sending to local models
+  rag_compression:
+    enabled: true
+    local_fast_ratio: 0.3     # 3x compression — tight 8K context
+    local_balanced_ratio: 0.5 # 2x compression — 32K context
+    cloud_ratio: 0.7          # Minimal — cloud has large context; keep quality
+    min_chars: 1500           # Only compress contexts larger than this
   pattern_boost:
     enabled: true
     per_turn_reinforcement: true   # Reinforce on every turn (not just at compression)

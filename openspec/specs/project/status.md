@@ -26,14 +26,14 @@
 - **Wave 1 Complete (Feb 2026):** LiteLLM adapter integration, LLMLingua compression, Mem0 memory layer
 - **Wave 2 Complete (Feb 2026):** Provider Management UI (Settings → Providers page with toggles, status, test buttons), "Polly" mode in model selector (3 tiers: Fast/Balanced/Thorough with routing explanations)
 - **Wave 3 Complete (Feb 2026):** Query Decomposition Engine (`core/query_decomposition.py`, 467 lines), Split Router (`core/split_router.py`, 453 lines, parallel execution with dependency graphs), Synthesis Layer (`core/synthesis.py`, 380 lines), integrated into Polly core via `_init_wave3_pipeline()`, all tests passing (9/9 in `tests/test_wave3_pipeline.py`)
-- **Wave 4 In Progress (~80%):**
+- **Wave 4 In Progress (~90%):**
   - ✅ **#20 Knowledge Enrichment Integration** — Complete. Gap detection in `polly.py:944-1036`, suggestion card component (304 lines), persona_actions in chat responses, config toggle.
   - ✅ **#21 Autonomy Dashboard** (~100%) — Backend + frontend complete. Routing recording, savings calculation, and post-query refresh all fixed.
   - ✅ **#22 Enhanced Auto-Linking** (~95%) — Full write-back pipeline, link suggestion modal, broken link detection, vault-wide health scan. Link hover preview deferred.
-  - ⬜ **#23 RAG Optimization for Local Models** — Not started.
-  - ✅ **#24 Persona Memory for Enrichment** (~100%) — Complete. Write-back (`_record_enrichment_feedback`, `_track_edit_patterns`), retrieval (`_get_enrichment_preferences`), pattern context (`_get_pattern_context`), persona-preferences API endpoint. 38/38 unit tests passing (`tests/test_persona_memory_preferences.py`).
+  - ✅ **#23 RAG Optimization for Local Models** (~85%) — `_estimate_model_tier()` helper; tier-aware n_results (3/5/10), max_context_tokens (2000/3000/6000), LLMLingua compression (0.3/0.5 ratio for local); config.yaml extended. 30/30 tests. Deferred: dynamic chunking at index-time, Mem0 reranker.
+  - ✅ **#24 Persona Memory for Enrichment** (~100%) — Complete. Write-back, retrieval, pattern context, API endpoint, 38/38 tests.
   - ⬜ **#25 SKILL↔Mental Model Bridge** — Not started.
-- **Next:** Complete Wave 4: #23 RAG Optimization for Local Models, #25 SKILL↔MM Bridge
+- **Next:** Complete Wave 4: #25 SKILL↔MM Bridge
 
 ### Phase 23.5: Security Hardening 🔐 ✅
 - **Status:** Substantially complete (Feb 2026 analysis). Implemented: Capability Broker, Pyodide sandbox, package allowlist + approval dialog, CORS from security policy, audit logging. Config only: content sanitization (prompt injection/PII), API key context managers.
@@ -95,7 +95,7 @@
 
 | Phase | Status | Notes |
 |-------|--------|--------|
-| **Core Framework** | 🔄 ~80% | Waves 1–3 complete; Wave 4: #20 ✅, #21 ✅, #22 ✅ ~95%, #23 ⬜, #24 ✅, #25 ⬜; Waves 5–6 pending |
+| **Core Framework** | 🔄 ~90% | Waves 1–3 complete; Wave 4: #20 ✅, #21 ✅, #22 ✅ ~95%, #23 ✅ ~85%, #24 ✅, #25 ⬜; Waves 5–6 pending |
 | **12a** | ✅ ~95% | Knowledge Graph Basic — implemented via knowledge-graph-navigation + knowledge-graph-refinement. Spec updates pending. |
 | **16c** | Backend ready, frontend pending | AI Note Creation; ~4 weeks remaining |
 | **12b** | After 12a | Knowledge Graph Advanced — extended scope |

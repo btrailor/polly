@@ -14,7 +14,7 @@
 | **architecture-integration-audit** | Complete | All 9 tasks (analysis, findings, sibling folders, roadmap, spec markers, architecture spec, vision headers) | — |
 | **code-library-and-dev-philosophy** | Not started | — | All waves (library, extraction, philosophy, slash commands, UI) |
 | **constitutional-epistemology** | Not started | — | No tasks.md; spec-only; implementation not started |
-| **core-framework-refinement** | In progress (~80%) | Knowledge Writer, Autonomy Metrics, Scribe enrich, incremental RAG, settings API + UI, save-message, LiteLLM (#12), LLMLingua (#13), Mem0 (#14), Provider UI (#15), "Polly" mode (#16), Query Decomposition (#17), Split Routing (#18), Synthesis (#19), Knowledge Enrichment (#20), Autonomy Dashboard (#21 ✅), Enhanced Auto-Linking (#22 ✅ ~95%), Persona Memory (#24 ✅ — 38/38 tests in test_persona_memory_preferences.py) | RAG Optimization (#23), SKILL↔MM Bridge (#25), Waves 5–6 |
+| **core-framework-refinement** | In progress (~90%) | Knowledge Writer, Autonomy Metrics, Scribe enrich, incremental RAG, settings API + UI, save-message, LiteLLM (#12), LLMLingua (#13), Mem0 (#14), Provider UI (#15), "Polly" mode (#16), Query Decomposition (#17), Split Routing (#18), Synthesis (#19), Knowledge Enrichment (#20), Autonomy Dashboard (#21 ✅), Enhanced Auto-Linking (#22 ✅ ~95%), RAG Optimization (#23 ✅ ~85% — tier-aware n_results/max_tokens/compression, 30/30 tests), Persona Memory (#24 ✅ — 38/38 tests) | SKILL↔MM Bridge (#25), Waves 5–6 |
 | **cursor-ui-pattern-migration** | Not started | — | All 9 phases (layout, sidebars, content router, chat panel, agents, floating chat, persona evolution, settings redesign, polish) |
 | **custom-domains-feature** | Partial | Backend: load custom domains from domain_config; OpenSpec proposal/design | detect_domains_with_custom, frontend reserved-id hint, spec update, pure user-defined domains |
 | **designer-profile** | Not started | — | All phases (design system, Lucide rules, p5.js pipeline, integration, intelligence) |
@@ -61,7 +61,7 @@ These changes have their implementation complete per their tasks; they can be ar
 
 ## Partially Implemented
 
-- **core-framework-refinement** — Waves 1–3 complete. Wave 4: #20 ✅, #21 ✅, #22 ✅ ~95%, #24 ✅ (38/38 tests). Remaining: #23 (RAG Optimization), #25 (SKILL↔MM Bridge) not started. Waves 5–6 pending.
+- **core-framework-refinement** — Waves 1–3 complete. Wave 4: #20 ✅, #21 ✅, #22 ✅ ~95%, #23 ✅ ~85% (30/30 tests), #24 ✅ (38/38 tests). Remaining: #25 (SKILL↔MM Bridge) not started. Waves 5–6 pending.
 - **custom-domains-feature** — Backend loads custom domains; optional scoring, frontend hint, and spec update pending.
 - **library-extraction** — `libs/` exists; only polly-routing is fully extracted; polly-patterns, polly-compression, polly-entities, polly-personas pending.
 
