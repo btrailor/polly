@@ -208,6 +208,18 @@ const AGENTS_STORAGE_KEY = "polly-agents";
 let agents = []; // { id, persona_name, display_name, icon, created_at }
 let currentAgentId = "default"; // Currently active agent
 
+// Notes Browse State
+let notesViewMode = localStorage.getItem('notes-view-mode') || 'list'; // 'list' | 'grouped' | 'card'
+let notesBrowseFilters = {
+  domain: null,
+  type: null,
+  maturity: null,
+  connectionStatus: null,
+  sort: 'recent',
+  tag: null,
+  q: null,
+};
+
 // UI State Management (for smooth reloads)
 let preservedUIState = {
   conversationId: null,
@@ -3917,6 +3929,17 @@ function updateLeftSidebar(view) {
     notes: {
       title: "Notes",
       content: `
+        <div class="notes-browse-toolbar">
+          <div class="notes-browse-search-row">
+            <input type="text" id="notes-browse-search" class="notes-browse-search" placeholder="Search notes..." />
+            <div class="notes-view-toggle">
+              <button class="notes-view-btn active" data-view="list" title="List view"><i data-lucide="list" style="width: 14px; height: 14px;"></i></button>
+              <button class="notes-view-btn" data-view="grouped" title="Group by domain"><i data-lucide="layers" style="width: 14px; height: 14px;"></i></button>
+              <button class="notes-view-btn" data-view="card" title="Card view"><i data-lucide="grid" style="width: 14px; height: 14px;"></i></button>
+            </div>
+          </div>
+          <div class="notes-active-filters" id="notes-active-filters"></div>
+        </div>
         <div id="notes-browse-list" style="flex: 1; overflow-y: auto; padding: 0 12px;">
           ${SkeletonLoader.forView('notes')}
         </div>
@@ -4054,17 +4077,7 @@ function updateLeftSidebar(view) {
             window.notesManager.updateTOCPanel();
             break;
           case 'filters':
-            // TODO: Implement filters panel in future task
-            const content = document.querySelector('.lower-panel[data-view="notes"] .lower-panel-content');
-            if (content) {
-              content.innerHTML = `
-                <div class="lower-panel-empty">
-                  <i data-lucide="filter" style="width: 24px; height: 24px;"></i>
-                  <p>Filters coming soon</p>
-                </div>
-              `;
-              if (typeof lucide !== 'undefined') lucide.createIcons();
-            }
+            renderNotesFiltersPanel();
             break;
         }
       }
@@ -4074,6 +4087,9 @@ function updateLeftSidebar(view) {
     if (typeof lucide !== "undefined") {
       refreshIcons();
     }
+    
+    // Setup notes browse toolbar (search + view toggle + active filters)
+    setupNotesBrowseToolbar();
   }
 
   // Attach event handlers based on view.
@@ -12077,8 +12093,13 @@ async function restoreIntegrationStatus() {
     console.warn("Server not ready, skipping integration restore");
     return;
   }
-  // Brief delay so Polly has a chance to finish init (reduces 503s)
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+  // Wait for Polly core to finish initializing before calling integration
+  // endpoints — they require polly.config and will 500 if called too early.
+  const pollyReady = await waitForPollyReady({ timeoutMs: 60000, intervalMs: 500 });
+  if (!pollyReady) {
+    console.warn("Polly core not ready in time, skipping integration restore");
+    return;
+  }
 
   // Check GitHub connection
   const githubToken = await window.polly.getCredential("github_token");
@@ -19857,6 +19878,374 @@ function setupLowerPanel(view) {
   console.log(`[LowerPanel] Setup complete for view: ${view}`);
 }
 
+// ==================== Notes Browse Filters & Views ====================
+
+/**
+ * Setup the notes browse toolbar: search input, view toggle, and active filter chips.
+ * Called each time the notes sidebar is rendered.
+ */
+function setupNotesBrowseToolbar() {
+  const searchInput = document.getElementById('notes-browse-search');
+  const viewBtns = document.querySelectorAll('.notes-view-btn');
+  
+  if (searchInput) {
+    // Restore previous query
+    if (notesBrowseFilters.q) searchInput.value = notesBrowseFilters.q;
+    
+    let searchDebounce;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        notesBrowseFilters.q = searchInput.value.trim() || null;
+        applyNotesBrowseFilters();
+      }, 300);
+    });
+  }
+  
+  viewBtns.forEach(btn => {
+    // Restore active state
+    btn.classList.toggle('active', btn.dataset.view === notesViewMode);
+    
+    btn.addEventListener('click', () => {
+      viewBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      notesViewMode = btn.dataset.view;
+      localStorage.setItem('notes-view-mode', notesViewMode);
+      applyNotesBrowseFilters();
+    });
+  });
+  
+  // Render active filter chips
+  renderNotesActiveFilters();
+}
+
+/**
+ * Render active filter chips above the browse list
+ */
+function renderNotesActiveFilters() {
+  const container = document.getElementById('notes-active-filters');
+  if (!container) return;
+  
+  const chips = [];
+  if (notesBrowseFilters.domain) chips.push({ key: 'domain', label: `Domain: ${notesBrowseFilters.domain}` });
+  if (notesBrowseFilters.type) chips.push({ key: 'type', label: `Type: ${notesBrowseFilters.type}` });
+  if (notesBrowseFilters.maturity) {
+    const matLabels = { 10: 'Seedling', 20: 'Growing', 30: 'Evergreen' };
+    chips.push({ key: 'maturity', label: matLabels[notesBrowseFilters.maturity] || `Maturity: ${notesBrowseFilters.maturity}` });
+  }
+  if (notesBrowseFilters.connectionStatus) chips.push({ key: 'connectionStatus', label: `Status: ${notesBrowseFilters.connectionStatus}` });
+  if (notesBrowseFilters.tag) chips.push({ key: 'tag', label: `#${notesBrowseFilters.tag}` });
+  if (notesBrowseFilters.sort && notesBrowseFilters.sort !== 'recent') chips.push({ key: 'sort', label: `Sort: ${notesBrowseFilters.sort}`, noClear: true });
+  
+  if (chips.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+  
+  container.innerHTML = chips.map(chip => `
+    <span class="notes-filter-chip" data-filter-key="${chip.key}">
+      ${escapeHtml(chip.label)}
+      ${!chip.noClear ? `<button class="notes-filter-chip-remove" data-filter-key="${chip.key}" aria-label="Remove filter">×</button>` : ''}
+    </span>
+  `).join('');
+  
+  container.querySelectorAll('.notes-filter-chip-remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.filterKey;
+      notesBrowseFilters[key] = null;
+      applyNotesBrowseFilters();
+      // Sync lower panel filter controls
+      renderNotesFiltersPanel();
+    });
+  });
+}
+
+/**
+ * Apply current notes browse filters and re-render the browse list.
+ * Respects the current view mode (list / grouped / card).
+ */
+async function applyNotesBrowseFilters() {
+  const container = document.querySelector('#notes-browse-list');
+  if (!container || !window.notesManager) return;
+  
+  renderNotesActiveFilters();
+  
+  if (notesViewMode === 'grouped') {
+    await renderNotesDomainGrouped(container);
+  } else if (notesViewMode === 'card') {
+    await renderNotesCardView(container);
+  } else {
+    await window.notesManager.updateBrowseList(container, {
+      ...notesBrowseFilters,
+      onItemClick: (itemEl, item) => window.notesManager.openNote(item.id)
+    });
+  }
+}
+
+/**
+ * Render notes grouped by domain in collapsible sections
+ */
+async function renderNotesDomainGrouped(container) {
+  container.innerHTML = '<div style="padding: 16px; text-align: center; color: #808080; font-size: 11px;">Loading...</div>';
+  
+  try {
+    const params = new URLSearchParams({ limit: '500', sort: notesBrowseFilters.sort || 'recent' });
+    if (notesBrowseFilters.q) params.append('q', notesBrowseFilters.q);
+    if (notesBrowseFilters.type) params.append('type', notesBrowseFilters.type);
+    if (notesBrowseFilters.maturity) params.append('maturity', notesBrowseFilters.maturity);
+    if (notesBrowseFilters.connectionStatus) params.append('connection_status', notesBrowseFilters.connectionStatus);
+    if (notesBrowseFilters.tag) params.append('tag', notesBrowseFilters.tag);
+    // If domain filter active in grouped mode, still show only that domain
+    if (notesBrowseFilters.domain) params.append('domain', notesBrowseFilters.domain);
+    
+    const response = await fetch(`http://127.0.0.1:11436/polly/graph/list?${params.toString()}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    const items = data.items || [];
+    
+    if (items.length === 0) {
+      container.innerHTML = '<div style="padding: 24px; text-align: center; color: #808080; font-size: 13px;">No notes found</div>';
+      return;
+    }
+    
+    // Group by primary_domain
+    const groups = {};
+    items.forEach(item => {
+      const domain = item.primary_domain || 'Uncategorized';
+      if (!groups[domain]) groups[domain] = [];
+      groups[domain].push(item);
+    });
+    
+    const domainOrder = Object.keys(groups).sort((a, b) => {
+      if (a === 'Uncategorized') return 1;
+      if (b === 'Uncategorized') return -1;
+      return groups[b].length - groups[a].length;
+    });
+    
+    let html = '';
+    domainOrder.forEach(domain => {
+      const domainItems = groups[domain];
+      const isOpen = !localStorage.getItem(`notes-domain-collapsed-${domain}`);
+      html += `
+        <div class="notes-domain-group" data-domain="${escapeHtml(domain)}">
+          <div class="notes-domain-header">
+            <i data-lucide="${isOpen ? 'chevron-down' : 'chevron-right'}" class="notes-domain-chevron" style="width: 12px; height: 12px;"></i>
+            <span class="notes-domain-name">${escapeHtml(domain)}</span>
+            <span class="notes-domain-count">${domainItems.length}</span>
+          </div>
+          <div class="notes-domain-items" style="${isOpen ? '' : 'display:none;'}">
+            ${domainItems.map(item => {
+              const date = item.updated_at ? new Date(item.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+              return `
+                <div class="browse-list-item" data-note-name="${escapeHtml(item.id)}" data-type="${escapeHtml(item.type)}">
+                  <div class="browse-item-main">
+                    <span class="browse-item-title">${escapeHtml(item.name)}</span>
+                    <span class="browse-item-date">${date}</span>
+                  </div>
+                  ${item.connection_count > 0 ? `<div class="browse-item-meta"><span class="browse-item-connections">${item.connection_count}⇄</span></div>` : ''}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    });
+    
+    container.innerHTML = `<div class="notes-grouped-list">${html}</div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    
+    // Domain header collapse toggle
+    container.querySelectorAll('.notes-domain-header').forEach(header => {
+      header.addEventListener('click', () => {
+        const group = header.closest('.notes-domain-group');
+        const domain = group.dataset.domain;
+        const items = group.querySelector('.notes-domain-items');
+        const chevron = header.querySelector('.notes-domain-chevron');
+        const isVisible = items.style.display !== 'none';
+        items.style.display = isVisible ? 'none' : '';
+        if (chevron) chevron.setAttribute('data-lucide', isVisible ? 'chevron-right' : 'chevron-down');
+        if (isVisible) {
+          localStorage.setItem(`notes-domain-collapsed-${domain}`, '1');
+        } else {
+          localStorage.removeItem(`notes-domain-collapsed-${domain}`);
+        }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      });
+    });
+    
+    // Item click handlers
+    container.querySelectorAll('.browse-list-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const noteName = item.dataset.noteName;
+        if (noteName && window.notesManager) window.notesManager.openNote(noteName);
+      });
+    });
+    
+  } catch (error) {
+    console.error('[Notes] Domain grouped view failed:', error);
+    container.innerHTML = `<div style="padding: 16px; text-align: center; color: var(--text-error); font-size: 11px;">Failed to load notes</div>`;
+  }
+}
+
+/**
+ * Render notes as cards (compact visual grid)
+ */
+async function renderNotesCardView(container) {
+  container.innerHTML = '<div style="padding: 16px; text-align: center; color: #808080; font-size: 11px;">Loading...</div>';
+  
+  try {
+    const params = new URLSearchParams({ limit: '200', sort: notesBrowseFilters.sort || 'recent' });
+    if (notesBrowseFilters.q) params.append('q', notesBrowseFilters.q);
+    if (notesBrowseFilters.domain) params.append('domain', notesBrowseFilters.domain);
+    if (notesBrowseFilters.type) params.append('type', notesBrowseFilters.type);
+    if (notesBrowseFilters.maturity) params.append('maturity', notesBrowseFilters.maturity);
+    if (notesBrowseFilters.connectionStatus) params.append('connection_status', notesBrowseFilters.connectionStatus);
+    if (notesBrowseFilters.tag) params.append('tag', notesBrowseFilters.tag);
+    
+    const response = await fetch(`http://127.0.0.1:11436/polly/graph/list?${params.toString()}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    const items = data.items || [];
+    
+    if (items.length === 0) {
+      container.innerHTML = '<div style="padding: 24px; text-align: center; color: #808080; font-size: 13px;">No notes found</div>';
+      return;
+    }
+    
+    const cardsHtml = items.map(item => {
+      const date = item.updated_at ? new Date(item.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+      const authorityPct = Math.round((item.authority_score || 0) * 100);
+      const snippet = item.preview_snippet ? item.preview_snippet.slice(0, 80) : '';
+      const maturityIcons = { 10: '🌱', 20: '🌿', 30: '🌳' };
+      const matIcon = maturityIcons[item.maturity] || '';
+      return `
+        <div class="notes-card-item" data-note-name="${escapeHtml(item.id)}" title="${escapeHtml(item.name)}">
+          <div class="notes-card-header">
+            <span class="notes-card-title">${escapeHtml(item.name)}</span>
+            ${matIcon ? `<span class="notes-card-maturity" title="Maturity">${matIcon}</span>` : ''}
+          </div>
+          ${snippet ? `<div class="notes-card-snippet">${escapeHtml(snippet)}</div>` : ''}
+          <div class="notes-card-meta">
+            ${item.primary_domain ? `<span class="notes-card-domain">${escapeHtml(item.primary_domain)}</span>` : ''}
+            ${item.connection_count > 0 ? `<span class="notes-card-conns">${item.connection_count}⇄</span>` : ''}
+            <span class="notes-card-date">${date}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+    
+    container.innerHTML = `<div class="notes-card-grid">${cardsHtml}</div>`;
+    
+    container.querySelectorAll('.notes-card-item').forEach(card => {
+      card.addEventListener('click', () => {
+        const noteName = card.dataset.noteName;
+        if (noteName && window.notesManager) window.notesManager.openNote(noteName);
+      });
+    });
+    
+  } catch (error) {
+    console.error('[Notes] Card view failed:', error);
+    container.innerHTML = `<div style="padding: 16px; text-align: center; color: var(--text-error); font-size: 11px;">Failed to load notes</div>`;
+  }
+}
+
+/**
+ * Render the notes lower panel Filters tab
+ */
+async function renderNotesFiltersPanel() {
+  const content = document.querySelector('.lower-panel[data-view="notes"] .lower-panel-content');
+  if (!content) return;
+  
+  // Fetch domain list for the domain filter
+  let domains = [];
+  try {
+    const r = await fetch('http://127.0.0.1:11436/polly/graph/list?limit=1');
+    if (r.ok) {
+      const d = await r.json();
+      // domain_counts is a map of domain -> count returned by the API
+      domains = Object.keys(d.domain_counts || {}).sort();
+    }
+  } catch (e) { /* ignore */ }
+  
+  const f = notesBrowseFilters;
+  
+  content.innerHTML = `
+    <div class="notes-filters-panel">
+      <div class="notes-filters-row">
+        <label class="notes-filter-label">Sort</label>
+        <select id="nf-sort" class="notes-filter-select">
+          <option value="recent" ${f.sort === 'recent' ? 'selected' : ''}>Recent</option>
+          <option value="authority" ${f.sort === 'authority' ? 'selected' : ''}>Authority</option>
+          <option value="alpha" ${f.sort === 'alpha' ? 'selected' : ''}>A → Z</option>
+          <option value="created" ${f.sort === 'created' ? 'selected' : ''}>Created</option>
+        </select>
+      </div>
+      <div class="notes-filters-row">
+        <label class="notes-filter-label">Domain</label>
+        <select id="nf-domain" class="notes-filter-select">
+          <option value="">All</option>
+          ${domains.map(d => `<option value="${escapeHtml(d)}" ${f.domain === d ? 'selected' : ''}>${escapeHtml(d)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="notes-filters-row">
+        <label class="notes-filter-label">Type</label>
+        <select id="nf-type" class="notes-filter-select">
+          <option value="">All</option>
+          <option value="note" ${f.type === 'note' ? 'selected' : ''}>Note</option>
+          <option value="conversation" ${f.type === 'conversation' ? 'selected' : ''}>Conversation</option>
+          <option value="book" ${f.type === 'book' ? 'selected' : ''}>Book</option>
+          <option value="capture" ${f.type === 'capture' ? 'selected' : ''}>Capture</option>
+        </select>
+      </div>
+      <div class="notes-filters-row">
+        <label class="notes-filter-label">Maturity</label>
+        <select id="nf-maturity" class="notes-filter-select">
+          <option value="">All</option>
+          <option value="10" ${f.maturity == 10 ? 'selected' : ''}>🌱 Seedling</option>
+          <option value="20" ${f.maturity == 20 ? 'selected' : ''}>🌿 Growing</option>
+          <option value="30" ${f.maturity == 30 ? 'selected' : ''}>🌳 Evergreen</option>
+        </select>
+      </div>
+      <div class="notes-filters-row">
+        <label class="notes-filter-label">Status</label>
+        <select id="nf-status" class="notes-filter-select">
+          <option value="">All</option>
+          <option value="hub" ${f.connectionStatus === 'hub' ? 'selected' : ''}>Hub (highly connected)</option>
+          <option value="bridge" ${f.connectionStatus === 'bridge' ? 'selected' : ''}>Bridge (cross-domain)</option>
+          <option value="isolated" ${f.connectionStatus === 'isolated' ? 'selected' : ''}>Isolated (no connections)</option>
+        </select>
+      </div>
+      <button id="nf-reset" class="notes-filter-reset-btn">Reset All Filters</button>
+    </div>
+  `;
+  
+  // Wire up change handlers
+  const wire = (id, key, transform) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => {
+      notesBrowseFilters[key] = transform ? transform(el.value) : (el.value || null);
+      applyNotesBrowseFilters();
+    });
+  };
+  
+  wire('nf-sort', 'sort');
+  wire('nf-domain', 'domain');
+  wire('nf-type', 'type');
+  wire('nf-maturity', 'maturity', v => v ? parseInt(v) : null);
+  wire('nf-status', 'connectionStatus');
+  
+  document.getElementById('nf-reset')?.addEventListener('click', () => {
+    notesBrowseFilters = { domain: null, type: null, maturity: null, connectionStatus: null, sort: 'recent', tag: null, q: null };
+    const searchInput = document.getElementById('notes-browse-search');
+    if (searchInput) searchInput.value = '';
+    renderNotesFiltersPanel();
+    applyNotesBrowseFilters();
+  });
+}
+
+// ==================== End Notes Browse Filters & Views ====================
+
 /**
  * Initialize the Graph page
  */
@@ -19885,6 +20274,9 @@ function initGraphPage() {
   
   // Setup lower panel for graph view
   setupLowerPanel("graph");
+  
+  // Eagerly render filters panel (default tab) so it's ready on first open
+  renderGraphFiltersPanel();
   
   // Setup lower panel tab change event listener (remove previous to avoid leaks)
   if (graphTabChangeHandler) {
@@ -20012,7 +20404,12 @@ async function initGraphCanvas(skipFilterRestore = false) {
       else if (graphState.filters.types && graphState.filters.types.length === 0) {
         params.append('type', '__none__');
       }
-      if (graphState.filters.domain) params.append('domain', graphState.filters.domain);
+      // Handle multi-select domain filter (domains array) or single domain
+      if (graphState.filters.domains && graphState.filters.domains.length > 0) {
+        params.append('domain', graphState.filters.domains.join(','));
+      } else if (graphState.filters.domain) {
+        params.append('domain', graphState.filters.domain);
+      }
       if (graphState.filters.authority_min) params.append('authority_min', graphState.filters.authority_min);
     }
     
@@ -20045,9 +20442,18 @@ async function initGraphCanvas(skipFilterRestore = false) {
     return;
   }
   
-  // Build domain color palette
+  // Build domain color palette from node data, then override with configured domain colors
   const domains = [...new Set(graphData.nodes.map(n => n.domain).filter(Boolean))];
   graphDomainColors = buildDomainPalette(domains);
+  // Async override with configured colors (best-effort; graph renders immediately with auto palette)
+  fetch('http://127.0.0.1:11436/polly/domains/config')
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (data && data.domains) {
+        data.domains.forEach(d => { if (d.color) graphDomainColors[d.id] = d.color; });
+      }
+    })
+    .catch(() => {});
   
   // Clear container before initializing (in case it has "No data" message)
   container.innerHTML = '';
@@ -20168,7 +20574,11 @@ async function initGraphCanvas(skipFilterRestore = false) {
         }
         if (graphState.filters) {
           if (graphState.filters.type) retryParams.append('type', graphState.filters.type);
-          if (graphState.filters.domain) retryParams.append('domain', graphState.filters.domain);
+          if (graphState.filters.domains && graphState.filters.domains.length > 0) {
+            retryParams.append('domain', graphState.filters.domains.join(','));
+          } else if (graphState.filters.domain) {
+            retryParams.append('domain', graphState.filters.domain);
+          }
           if (graphState.filters.authority_min) retryParams.append('authority_min', graphState.filters.authority_min);
         }
         const retryResp = await fetch(`http://127.0.0.1:11436/polly/graph/nodes?${retryParams.toString()}`);
@@ -20246,6 +20656,61 @@ function getLayoutConfig(layoutName) {
         maximal: false,
         grid: false
       };
+      
+    case 'cose-clustered':
+      // Domain-clustered layout: force-directed with stronger pull for same-domain edges
+      const useCoseClustered = typeof cytoscapeCoseBilkent !== 'undefined';
+      console.log('[Graph] Using domain-clustered layout');
+      
+      // Add stronger edge weights for same-domain connections
+      if (cytoscapeInstance) {
+        cytoscapeInstance.edges().forEach(edge => {
+          const sourceDomain = edge.source().data('domain');
+          const targetDomain = edge.target().data('domain');
+          const isSameDomain = sourceDomain && targetDomain && sourceDomain === targetDomain;
+          edge.data('clusterWeight', isSameDomain ? 3 : 1); // Higher weight = closer together
+        });
+      }
+      
+      if (useCoseClustered) {
+        return {
+          name: 'cose-bilkent',
+          animate: 'end',
+          animationDuration: 600,
+          fit: true,
+          padding: 100,
+          nodeRepulsion: 8000,      // Stronger repulsion for clearer clusters
+          idealEdgeLength: 180,      // Moderate edge length
+          edgeElasticity: 0.3,       // Less flexible to maintain cluster structure
+          nestingFactor: 0.05,        // Very flat
+          gravity: 0.15,             // Weak gravity to allow cluster spread
+          gravityRange: 4.0,         // Wide gravity falloff
+          numIter: 3000,             // More iterations for stable clusters
+          tile: true,
+          tilingPaddingVertical: 50,
+          tilingPaddingHorizontal: 50,
+          nodeDimensionsIncludeLabels: true,
+          // Custom edge weight function for domain clustering
+          edgeWeight: (edge) => edge.data('clusterWeight') || 1,
+          edgeWeightRange: 5.0      // Allow wider range of edge lengths
+        };
+      } else {
+        return {
+          name: 'cose',
+          animate: true,
+          animationDuration: 600,
+          fit: true,
+          padding: 100,
+          nodeRepulsion: 800000,
+          idealEdgeLength: 180,
+          edgeElasticity: 30,
+          nestingFactor: 2,
+          gravity: 0.1,
+          numIter: 3000,
+          edgeWeight: (edge) => edge.data('clusterWeight') || 1,
+          edgeWeightRange: 5.0
+        };
+      }
       
     case 'cose':
     default:
@@ -21086,10 +21551,44 @@ function showBackToGraphButton() {
 /**
  * Render graph filters panel
  */
-function renderGraphFiltersPanel() {
+async function renderGraphFiltersPanel() {
   const content = document.querySelector('.lower-panel[data-view="graph"] .lower-panel-content');
   if (!content) return;
-  
+
+  // Fetch configured domains for the checkboxes
+  let configuredDomains = [];
+  try {
+    const domResp = await fetch('http://127.0.0.1:11436/polly/domains/config');
+    if (domResp.ok) {
+      const domData = await domResp.json();
+      configuredDomains = domData.domains || [];
+    }
+  } catch (e) {
+    console.warn('[Graph] Could not fetch domain config, falling back to graphDomainColors:', e);
+  }
+
+  // Fall back to raw node domain names if config unavailable
+  if (configuredDomains.length === 0 && graphDomainColors) {
+    configuredDomains = Object.entries(graphDomainColors).map(([id, color]) => ({ id, name: id, color }));
+  }
+
+  // Merge configured domain colors into graphDomainColors so node rendering stays consistent
+  configuredDomains.forEach(d => {
+    if (d.color) graphDomainColors[d.id] = d.color;
+  });
+
+  const domainCheckboxesHtml = configuredDomains.map(domain => {
+    const isSelected = !graphState.filters?.domains || graphState.filters.domains.length === 0 || graphState.filters.domains.includes(domain.id);
+    const color = graphDomainColors[domain.id] || '#888888';
+    return `
+      <label class="graph-domain-checkbox" style="display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 11px; transition: background 0.15s;" data-domain="${domain.id}">
+        <input type="checkbox" data-domain="${domain.id}" ${isSelected ? 'checked' : ''}>
+        <span class="domain-color-dot" style="width: 8px; height: 8px; border-radius: 50%; background: ${color}; flex-shrink: 0;"></span>
+        <span style="color: var(--text-primary);">${domain.name || domain.id}</span>
+      </label>
+    `;
+  }).join('');
+
   content.innerHTML = `
     <div style="padding: 16px;">
       <!-- Layout Options -->
@@ -21100,9 +21599,13 @@ function renderGraphFiltersPanel() {
         </label>
         <select id="graph-layout-select" style="width: 100%; padding: 6px 8px; font-size: 12px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary);">
           <option value="cose">Force-Directed (Default)</option>
+          <option value="cose-clustered">Force + Domain Clusters</option>
           <option value="concentric">Concentric (By Authority)</option>
           <option value="breadthfirst">Hierarchical (By Domain)</option>
         </select>
+        <p style="font-size: 10px; color: var(--text-secondary); margin: 6px 0 0;">
+          "Force + Domain Clusters" groups same-domain nodes together
+        </p>
       </div>
       
       <!-- Edge Type Legend & Toggles -->
@@ -21149,18 +21652,27 @@ function renderGraphFiltersPanel() {
         </p>
       </div>
       
-      <!-- Domain Filter -->
+      <!-- Domain Filter (Multi-select) -->
       <div class="filter-section" style="margin-bottom: 12px;">
-        <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
-          <i data-lucide="folder" style="width: 12px; height: 12px; margin-right: 4px;"></i>
-          Domain Filter
+        <label style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+          <span><i data-lucide="folder" style="width: 12px; height: 12px; margin-right: 4px;"></i>Domains</span>
+          <button id="graph-domain-select-all" style="background:none;border:none;color:var(--accent-primary);font-size:10px;cursor:pointer;">Select All</button>
         </label>
-        <select id="graph-domain-filter" style="width: 100%; padding: 6px 8px; font-size: 12px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary);">
-          <option value="">All Domains</option>
-          ${Object.keys(graphDomainColors || {}).map(d => 
-            `<option value="${d}" ${graphState.filters?.domain === d ? 'selected' : ''}>${d}</option>`
-          ).join('')}
-        </select>
+        <div id="graph-domain-checkboxes" class="graph-domain-checkboxes">
+          ${domainCheckboxesHtml}
+        </div>
+      </div>
+      
+      <!-- Domain Hub Button -->
+      <div id="graph-domain-hub-section" class="filter-section" style="margin-bottom: 12px; display: none;">
+        <button id="graph-view-hub-btn" class="graph-filter-action-btn" style="width: 100%;">
+          <i data-lucide="book-open" style="width: 12px; height: 12px;"></i>
+          <span>View Domain Hub</span>
+        </button>
+        <button id="graph-refresh-hub-btn" class="graph-filter-action-btn" style="width: 100%; margin-top: 6px;">
+          <i data-lucide="refresh-cw" style="width: 12px; height: 12px;"></i>
+          <span>Refresh Hub Note</span>
+        </button>
       </div>
       
       <!-- Content Type Filter -->
@@ -21260,15 +21772,129 @@ function renderGraphFiltersPanel() {
     });
   });
   
-  // Setup domain filter handler
-  const domainFilter = document.getElementById('graph-domain-filter');
-  if (domainFilter) {
-    domainFilter.addEventListener('change', (e) => {
-      const domain = e.target.value;
-      console.log('[Graph] Domain filter changed to:', domain || 'All');
-      if (!graphState.filters) graphState.filters = {};
-      graphState.filters.domain = domain || null;
-      applyGraphFilters();
+  // Setup multi-select domain filter handler
+  const domainCheckboxes = document.querySelectorAll('#graph-domain-checkboxes input[type="checkbox"]');
+  const selectAllBtn = document.getElementById('graph-domain-select-all');
+  const hubSection = document.getElementById('graph-domain-hub-section');
+  
+  const syncDomainFilterState = (applyFilter = true) => {
+    const selectedDomains = Array.from(domainCheckboxes)
+      .filter(cb => cb.checked)
+      .map(cb => cb.dataset.domain);
+    
+    console.log('[Graph] Domain filter changed to:', selectedDomains.length > 0 ? selectedDomains : 'All');
+    if (!graphState.filters) graphState.filters = {};
+    graphState.filters.domains = selectedDomains.length > 0 ? selectedDomains : null;
+    
+    // Also keep single domain for hub button backwards compatibility
+    graphState.filters.domain = selectedDomains.length === 1 ? selectedDomains[0] : null;
+    
+    if (applyFilter) applyGraphFilters();
+    
+    // Show/hide hub buttons based on single domain selection
+    if (hubSection) {
+      if (selectedDomains.length === 1) {
+        hubSection.style.display = 'flex';
+        const domain = selectedDomains[0];
+        const viewBtn = document.getElementById('graph-view-hub-btn');
+        const refreshBtn = document.getElementById('graph-refresh-hub-btn');
+        if (viewBtn) viewBtn.querySelector('span').textContent = `View ${domain} Hub`;
+        if (refreshBtn) refreshBtn.querySelector('span').textContent = `Refresh ${domain} Hub`;
+      } else {
+        hubSection.style.display = 'none';
+      }
+    }
+  };
+  
+  domainCheckboxes.forEach(cb => {
+    // Add hover effect to label
+    const label = cb.closest('label');
+    if (label) {
+      label.addEventListener('mouseenter', () => label.style.background = 'var(--bg-hover)');
+      label.addEventListener('mouseleave', () => label.style.background = 'transparent');
+    }
+    
+    cb.addEventListener('change', () => syncDomainFilterState(true));
+  });
+  
+  // Select All button
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const allChecked = Array.from(domainCheckboxes).every(cb => cb.checked);
+      domainCheckboxes.forEach(cb => cb.checked = !allChecked);
+      syncDomainFilterState(true);
+    });
+  }
+  
+  // Initial state: sync UI state only, don't re-fetch (graph already loaded)
+  syncDomainFilterState(false);
+  
+  // Setup domain hub button handlers
+  const viewHubBtn = document.getElementById('graph-view-hub-btn');
+  const refreshHubBtn = document.getElementById('graph-refresh-hub-btn');
+  
+  const getSelectedDomain = () => {
+    const checked = document.querySelector('#graph-domain-checkboxes input[type="checkbox"]:checked');
+    return checked ? checked.dataset.domain : null;
+  };
+
+  if (viewHubBtn) {
+    viewHubBtn.addEventListener('click', async () => {
+      const domain = getSelectedDomain();
+      if (!domain) return;
+      
+      try {
+        // Check if hub exists
+        const resp = await fetch(`http://127.0.0.1:11436/polly/domains/${domain}/hub/status`);
+        const status = await resp.json();
+        
+        if (status.exists) {
+          // Extract note name from path (e.g., "Hub - sigils.md" -> "Hub - sigils")
+          const noteName = status.path.split('/').pop().replace('.md', '');
+          if (window.notesManager) {
+            graphState.sourceNode = null;
+            saveGraphState();
+            window.notesManager.openNote(noteName);
+            showView('notes');
+            showBackToGraphButton();
+          }
+        } else {
+          // Generate hub first
+          alert(`No hub note exists for "${domain}". Generating one now...`);
+          refreshHubBtn?.click();
+        }
+      } catch (err) {
+        console.error('[Graph] Failed to open hub:', err);
+      }
+    });
+  }
+  
+  if (refreshHubBtn) {
+    refreshHubBtn.addEventListener('click', async () => {
+      const domain = getSelectedDomain();
+      if (!domain) return;
+      
+      refreshHubBtn.disabled = true;
+      refreshHubBtn.querySelector('span').textContent = 'Generating...';
+      
+      try {
+        const resp = await fetch(`http://127.0.0.1:11436/polly/domains/${domain}/hub/refresh`, { method: 'POST' });
+        const result = await resp.json();
+        
+        if (result.success) {
+          alert(`Hub regenerated! Contains ${result.note_count} notes and ${result.entity_count} entities.`);
+        } else {
+          alert('Failed to generate hub: ' + (result.error || 'Unknown error'));
+        }
+      } catch (err) {
+        console.error('[Graph] Failed to refresh hub:', err);
+        alert('Failed to generate hub: ' + err.message);
+      } finally {
+        refreshHubBtn.disabled = false;
+        const refreshDomain = getSelectedDomain();
+        refreshHubBtn.querySelector('span').textContent = refreshDomain ? `Refresh ${refreshDomain} Hub` : 'Refresh Hub Note';
+      }
     });
   }
   

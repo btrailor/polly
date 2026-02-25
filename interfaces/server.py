@@ -454,8 +454,21 @@ def create_app(polly_instance=None) -> FastAPI:
         return app.state.polly
     
     def get_integration_manager():
-        """Get integration manager, initializing if needed."""
+        """Get integration manager, initializing if needed.
+        
+        Raises HTTPException(503) if Polly is still initializing, so the
+        frontend's waitForPollyReady() will retry rather than getting a 500.
+        """
         if app.state.integration_manager is None:
+            # Don't attempt to initialize if Polly isn't ready yet — the
+            # ObsidianIntegration constructor needs polly.config.
+            polly = get_polly()
+            if polly is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Polly is still initializing, please retry shortly"
+                )
+            
             try:
                 from integrations import (
                     IntegrationManager, 
@@ -482,7 +495,6 @@ def create_app(polly_instance=None) -> FastAPI:
             manager.register_integration(Context7Integration())
             
             # Obsidian integration (read/write)
-            polly = get_polly()
             vault_path = polly.config.get("obsidian.vault_path")
             if vault_path:
                 logger.info(f"Registering Obsidian integration with vault: {vault_path}")
@@ -3119,6 +3131,21 @@ def create_app(polly_instance=None) -> FastAPI:
             }
         )
     
+    @app.post("/polly/notes/index/rebuild")
+    async def rebuild_notes_index():
+        """Force a full rebuild of the in-memory notes index."""
+        try:
+            from core.notes_index import get_notes_index
+            from core.notes_source_manager import NotesSourceManager
+            notes_idx = get_notes_index()
+            manager = NotesSourceManager()
+            notes_path = Path(manager.get_notes_path()).expanduser()
+            stats = notes_idx.build_index(notes_path, recursive=True)
+            return {"success": True, "stats": stats}
+        except Exception as e:
+            logger.error(f"Failed to rebuild notes index: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+
     @app.get("/polly/notes/index")
     async def get_notes_index(domain: Optional[str] = None, limit: int = 1000):
         """
@@ -7542,6 +7569,279 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
         except Exception as e:
             logger.error(f"Error creating from template: {e}")
             raise HTTPException(500, f"Failed to create from template: {str(e)}")
+    
+    # ============================================
+    # Domain Hub Note Generation
+    # ============================================
+    
+    async def _generate_hub_content(
+        domain_name: str,
+        domain_id: str,
+        notes: list,
+        entities: list,
+        cross_domain_links: int
+    ) -> str:
+        """
+        Generate AI-powered hub note content using the LLM.
+        """
+        try:
+            from core.llm import get_llm
+            
+            llm = get_llm()
+            if not llm:
+                # Fallback to basic template if no LLM available
+                return _generate_hub_fallback(domain_name, domain_id, notes, entities, cross_domain_links)
+            
+            # Build prompt
+            notes_list = "\n".join([f"- [[{n['name']}]] - {n.get('title', n['name'])}" + (f": {n['preview']}" if n.get('preview') else "") for n in notes[:15]])
+            entities_list = "\n".join([f"- **{e['name']}** ({e['type']}) - Authority: {e['authority']}, {e['connections']} connections" for e in entities[:20]])
+            
+            prompt = f"""Generate a domain hub note for "{domain_name}" (id: {domain_id}).
+
+This note should serve as an overview of all knowledge in this domain. Include:
+1. A brief introduction describing what this domain covers
+2. Key concepts and entities (what makes this domain unique)
+3. How this domain connects to other domains (if cross_domain_links > 0)
+4. List of all notes in this domain with brief descriptions
+5. List of key entities with their roles
+
+Current domain has {len(notes)} notes, {len(entities)} entities, and {cross_domain_links} cross-domain connections.
+
+Notes in this domain:
+{notes_list}
+
+Key entities in this domain:
+{entities_list}
+
+Write this as an elegant, scannable wiki-style note. Use headers, bullet points, and wiki-links [[like this]] to link to other notes. Include an "Overview" section at the start that summarizes the domain in 2-3 sentences for someone who wants a quick summary.
+"""
+            
+            response = await llm.agenerate(prompt=prompt)
+            content = response.generations[0][0].text.strip()
+            
+            # Add frontmatter
+            hub_content = f"""---
+domain: {domain_id}
+type: hub
+created: {datetime.now().isoformat()}
+---
+
+{content}
+
+---
+*This hub note was automatically generated. To update it, click "Refresh Hub" in the domain filter panel.*
+"""
+            return hub_content
+            
+        except Exception as e:
+            logger.warning(f"LLM hub generation failed, using fallback: {e}")
+            return _generate_hub_fallback(domain_name, domain_id, notes, entities, cross_domain_links)
+    
+    def _generate_hub_fallback(
+        domain_name: str,
+        domain_id: str,
+        notes: list,
+        entities: list,
+        cross_domain_links: int
+    ) -> str:
+        """Generate a basic hub note without LLM."""
+        from datetime import datetime
+        
+        notes_list = "\n".join([f"- [[{n['name']}]]" for n in notes])
+        entities_list = "\n".join([f"- **{e['name']}** ({e['type']}) - {e['connections']} connections" for e in entities])
+        
+        return f"""---
+domain: {domain_id}
+type: hub
+created: {datetime.now().isoformat()}
+---
+
+# Hub: {domain_name}
+
+> Auto-generated overview of all knowledge in the {domain_name} domain.
+
+## Overview
+
+This domain contains **{len(notes)} notes** and **{len(entities)} entities** with **{cross_domain_links}** connections to other domains.
+
+## Notes in {domain_name}
+
+{notes_list if notes_list else "*No notes in this domain yet.*"}
+
+## Key Entities
+
+{entities_list if entities_list else "*No entities extracted yet.*"}
+
+## Cross-Domain Connections
+
+This domain has **{cross_domain_links}** connections to other domains.
+
+---
+*This hub note was automatically generated. To update it, click "Refresh Hub" in the domain filter panel.*
+"""
+    
+    @app.post("/polly/domains/{domain_id}/hub")
+    @app.post("/polly/domains/{domain_id}/hub/refresh")
+    async def generate_domain_hub(domain_id: str, refresh: bool = False):
+        """
+        Generate or refresh a domain hub note - an AI-generated overview of all 
+        knowledge in a domain with links to all related notes and entities.
+        
+        The hub note is written as a .md file in the domain folder.
+        
+        Response: {
+            "success": true,
+            "hub_path": "/path/to/Hub - sigils.md",
+            "note_count": 15,
+            "entity_count": 42,
+            "cross_domain_links": 5
+        }
+        """
+        try:
+            from core.domain_config import load_domains
+            from core.notes_index import get_notes_index
+            from core.entities.store import EntityStore
+            from core.config import get_config
+            from pathlib import Path
+            
+            # Load domain config
+            config = load_domains()
+            domain = next((d for d in config.domains if d.id == domain_id), None)
+            if not domain:
+                raise HTTPException(404, f"Domain not found: {domain_id}")
+            
+            # Get notes index
+            notes_idx = get_notes_index()
+            all_notes = notes_idx.get_all_notes()
+            
+            # Filter to notes in this domain
+            domain_notes = [n for n in all_notes if (getattr(n, 'domain', None) == domain_id) or 
+                           (getattr(n, 'primary_domain', None) == domain_id)]
+            
+            # Get entities in this domain
+            entity_store = None
+            try:
+                polly = get_polly()
+                entity_store = polly.entity_store
+            except:
+                pass
+            
+            domain_entities = []
+            cross_domain_links = 0
+            if entity_store:
+                try:
+                    from core.entities.models import EntityQuery
+                    all_entities = entity_store.search(EntityQuery(domains=[domain_id], limit=500))
+                    domain_entities = all_entities
+                    
+                    # Count cross-domain relationships
+                    for entity in all_entities:
+                        if entity.domains and len(entity.domains) > 1:
+                            cross_domain_links += 1
+                except Exception as e:
+                    logger.warning(f"Failed to get entities for domain hub: {e}")
+            
+            # Build context for LLM
+            notes_summary = []
+            for note in domain_notes[:20]:  # Limit to 20 most recent
+                notes_summary.append({
+                    "name": note.name,
+                    "title": getattr(note, 'title', note.name),
+                    "preview": (getattr(note, 'preview', '') or '')[:150]
+                })
+            
+            entities_summary = []
+            for entity in domain_entities[:30]:  # Limit to 30
+                entities_summary.append({
+                    "name": entity.name,
+                    "type": entity.entity_type.value if entity.entity_type else "unknown",
+                    "authority": round(entity.authority_score, 2) if entity.authority_score else 0,
+                    "connections": entity.mention_count
+                })
+            
+            # Generate hub content with LLM
+            hub_content = await _generate_hub_content(
+                domain_name=domain.name,
+                domain_id=domain_id,
+                notes=notes_summary,
+                entities=entities_summary,
+                cross_domain_links=cross_domain_links
+            )
+            
+            # Write hub note file
+            config_obj = get_config()
+            notes_path = Path(config_obj.get('notes', {}).get('path', '~/.polly/notes')).expanduser()
+            hub_filename = f"Hub - {domain.name}.md"
+            hub_path = notes_path / domain.folder_path / hub_filename if domain.folder_path else notes_path / hub_filename
+            
+            hub_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(hub_path, 'w', encoding='utf-8') as f:
+                f.write(hub_content)
+            
+            logger.info(f"Domain hub generated: {hub_path}")
+            
+            return {
+                "success": True,
+                "hub_path": str(hub_path),
+                "note_count": len(domain_notes),
+                "entity_count": len(domain_entities),
+                "cross_domain_links": cross_domain_links
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to generate domain hub: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to generate domain hub: {str(e)}")
+    
+    @app.get("/polly/domains/{domain_id}/hub/status")
+    async def get_domain_hub_status(domain_id: str):
+        """
+        Check if a domain hub note exists and get its metadata.
+        
+        Response: {
+            "exists": true,
+            "path": "/path/to/Hub - sigils.md",
+            "modified": "2026-02-15T10:30:00",
+            "note_count": 15,
+            "entity_count": 42
+        }
+        """
+        try:
+            from core.domain_config import load_domains
+            from core.config import get_config
+            from pathlib import Path
+            
+            config = load_domains()
+            domain = next((d for d in config.domains if d.id == domain_id), None)
+            if not domain:
+                raise HTTPException(404, f"Domain not found: {domain_id}")
+            
+            config_obj = get_config()
+            notes_path = Path(config_obj.get('notes', {}).get('path', '~/.polly/notes')).expanduser()
+            hub_filename = f"Hub - {domain.name}.md"
+            hub_path = notes_path / domain.folder_path / hub_filename if domain.folder_path else notes_path / hub_filename
+            
+            if hub_path.exists():
+                stat = hub_path.stat()
+                from datetime import datetime
+                return {
+                    "exists": True,
+                    "path": str(hub_path),
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    "size_bytes": stat.st_size
+                }
+            else:
+                return {
+                    "exists": False,
+                    "path": str(hub_path)
+                }
+                
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get hub status: {e}")
+            raise HTTPException(500, f"Failed to get hub status: {str(e)}")
     
     # ============================================
     # Knowledge Base Configuration Endpoints

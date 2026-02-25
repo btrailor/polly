@@ -86,6 +86,22 @@ class NotesIndex:
             stats["errors"].append(error_msg)
             return stats
         
+        # Build folder_name -> domain_id mapping from user-configured domains.
+        # e.g. {"01-Sigils": "sigils", "02-Signals": "signals"}
+        # Falls back to raw folder name if no match found.
+        self._folder_to_domain_id: Dict[str, str] = {}
+        try:
+            from core.domain_config import load_domains
+            domain_cfg = load_domains()
+            for d in domain_cfg.domains:
+                if d.folder_path:
+                    # folder_path may be "01-Sigils" or "sigils" -- normalize both
+                    self._folder_to_domain_id[d.folder_path] = d.id
+                    # Also map the lowercase id itself in case folders are named by id
+                    self._folder_to_domain_id[d.id] = d.id
+        except Exception as e:
+            logger.warning(f"Notes index: could not load domain config for folder mapping: {e}")
+        
         # Clear existing index
         self.clear()
         
@@ -256,23 +272,28 @@ class NotesIndex:
     
     def _infer_domain_from_path(self, md_file: Path, root_path: Path) -> Optional[str]:
         """
-        Infer domain from folder structure.
+        Infer domain from folder structure, mapped to configured domain IDs.
+        
+        Looks up the top-level folder name in the folder→domain_id mapping built
+        from the user's domain config (loaded during build_index). Falls back to the
+        raw folder name if no configured domain matches.
         
         Args:
             md_file: Path to markdown file
             root_path: Root notes directory
             
         Returns:
-            Inferred domain name, or None if at root level
+            Domain ID string, or None if at root level
         """
         try:
             relative = md_file.relative_to(root_path)
             parts = relative.parts
             
-            # If file is in a subdirectory, use that as domain
             if len(parts) > 1:
-                # Return first directory name
-                return parts[0]
+                folder = parts[0]
+                # Resolve to configured domain ID if available
+                mapping = getattr(self, '_folder_to_domain_id', {})
+                return mapping.get(folder, folder)
         except ValueError:
             pass
         
