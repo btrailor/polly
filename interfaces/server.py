@@ -7585,11 +7585,8 @@ Return ONLY a JSON object in this exact format (no markdown, no code blocks):
         Generate AI-powered hub note content using the LLM.
         """
         try:
-            from core.llm import get_llm
-            
-            llm = get_llm()
-            if not llm:
-                # Fallback to basic template if no LLM available
+            polly = get_polly()
+            if not polly or not polly.llm:
                 return _generate_hub_fallback(domain_name, domain_id, notes, entities, cross_domain_links)
             
             # Build prompt
@@ -7616,8 +7613,16 @@ Key entities in this domain:
 Write this as an elegant, scannable wiki-style note. Use headers, bullet points, and wiki-links [[like this]] to link to other notes. Include an "Overview" section at the start that summarizes the domain in 2-3 sentences for someone who wants a quick summary.
 """
             
-            response = await llm.agenerate(prompt=prompt)
-            content = response.generations[0][0].text.strip()
+            messages = [{"role": "user", "content": prompt}]
+            content = ""
+            async for chunk in polly.llm.chat(
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2000,
+                stream=True
+            ):
+                content += chunk
+            content = content.strip()
             
             # Add frontmatter
             hub_content = f"""---
