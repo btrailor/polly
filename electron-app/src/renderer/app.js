@@ -10211,10 +10211,10 @@ const loadDashboardData = withErrorBoundary(async function () {
     const statPatterns = document.getElementById("stat-patterns");
     const statEntities = document.getElementById("stat-entities");
 
-    if (statObsidian) statObsidian.textContent = notesStats.count || 0;
-    if (statCodebase) statCodebase.textContent = data.rag?.codebase?.count || 0;
-    if (statPatterns) statPatterns.textContent = data.patterns || 0;
-    if (statEntities) statEntities.textContent = data.graph?.entities || 0;
+    if (statObsidian) { statObsidian.textContent = notesStats.count || 0; statObsidian.removeAttribute("data-loading"); statObsidian.removeAttribute("aria-busy"); }
+    if (statCodebase) { statCodebase.textContent = data.rag?.codebase?.count || 0; statCodebase.removeAttribute("data-loading"); statCodebase.removeAttribute("aria-busy"); }
+    if (statPatterns) { statPatterns.textContent = data.patterns || 0; statPatterns.removeAttribute("data-loading"); statPatterns.removeAttribute("aria-busy"); }
+    if (statEntities) { statEntities.textContent = data.graph?.entities || 0; statEntities.removeAttribute("data-loading"); statEntities.removeAttribute("aria-busy"); }
 
     // Show dashboard empty state when nothing is indexed
     const dashboardEmptyEl = document.getElementById("dashboard-empty-state");
@@ -10898,10 +10898,10 @@ const loadKnowledgeData = withErrorBoundary(async function () {
     const statPatterns = document.getElementById("stat-patterns");
     const statEntities = document.getElementById("stat-entities");
 
-    if (statObsidian) statObsidian.textContent = notesCount;
-    if (statCodebase) statCodebase.textContent = codebaseCount;
-    if (statPatterns) statPatterns.textContent = data.rag?.patterns?.count || 0;
-    if (statEntities) statEntities.textContent = data.graph?.entities || 0;
+    if (statObsidian) { statObsidian.textContent = notesCount; statObsidian.removeAttribute("data-loading"); statObsidian.removeAttribute("aria-busy"); }
+    if (statCodebase) { statCodebase.textContent = codebaseCount; statCodebase.removeAttribute("data-loading"); statCodebase.removeAttribute("aria-busy"); }
+    if (statPatterns) { statPatterns.textContent = data.rag?.patterns?.count || 0; statPatterns.removeAttribute("data-loading"); statPatterns.removeAttribute("aria-busy"); }
+    if (statEntities) { statEntities.textContent = data.graph?.entities || 0; statEntities.removeAttribute("data-loading"); statEntities.removeAttribute("aria-busy"); }
 
     // Update right sidebar if on knowledge view (NOT on chat view to avoid re-renders)
     if (currentView === "knowledge") {
@@ -14931,10 +14931,10 @@ function renderDomainsList() {
   listContainer.innerHTML = sortedDomains
     .map(
       (domain) => `
-    <div class="domain-card-item" data-domain-id="${domain.id}" draggable="true">
+    <div class="domain-card-item" role="listitem" data-domain-id="${domain.id}" draggable="true">
       <div class="domain-card-header">
         <div class="domain-card-title">
-          <span class="domain-drag-handle">⋮⋮</span>
+          <span class="domain-drag-handle" role="button" tabindex="0" aria-label="Drag to reorder ${domain.name}">⋮⋮</span>
           <span class="domain-icon"><i data-lucide="${domain.icon}" style="width: 20px; height: 20px;"></i></span>
           <span class="domain-name">${domain.name}</span>
         </div>
