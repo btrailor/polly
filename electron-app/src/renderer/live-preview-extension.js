@@ -162,15 +162,17 @@ export const livePreviewExtension = (options = {}) => {
       this.decorations = this.buildDecorations(view)
       this.view = view
       
-      // Add click handler for wiki links
+      // Store bound handler so the same reference is used for add/remove
       if (onWikiLinkClick) {
-        view.dom.addEventListener('click', this.handleClick.bind(this))
+        this._clickHandler = this.handleClick.bind(this)
+        view.dom.addEventListener('click', this._clickHandler)
       }
     }
     
     destroy() {
-      if (onWikiLinkClick) {
-        this.view.dom.removeEventListener('click', this.handleClick.bind(this))
+      if (this._clickHandler) {
+        this.view.dom.removeEventListener('click', this._clickHandler)
+        this._clickHandler = null
       }
     }
     
@@ -317,28 +319,6 @@ export const livePreviewExtension = (options = {}) => {
                 }
               }
               
-              // Handle wiki links [[Note Name]]
-              else if (node.name === "Link") {
-                console.log('[LivePreview] Found Link:', text, 'on line', nodeLine)
-                const wikiLinkMatch = text.match(/\[\[([^\]]+)\]\]/)
-                if (wikiLinkMatch) {
-                  const noteName = wikiLinkMatch[1]
-                  // Hide the opening [[
-                  decorations.push({ from: nodeFrom, to: nodeFrom + 2, decoration: Decoration.replace({ widget: new HiddenWidget() }) })
-                  // Style the note name as a link
-                  decorations.push({ from: nodeFrom + 2, to: nodeTo - 2, decoration: Decoration.mark({
-                    attributes: {
-                      style: "color: #8ab4f8; cursor: pointer; text-decoration: underline;",
-                      'data-note-name': noteName,
-                      class: 'wiki-link'
-                    }
-                  })})
-                  // Hide the closing ]]
-                  decorations.push({ from: nodeTo - 2, to: nodeTo, decoration: Decoration.replace({ widget: new HiddenWidget() }) })
-                  decorationCount++
-                  console.log('[LivePreview] Added wiki link decoration (hide markers with widgets):', noteName)
-                }
-              }
               
               // Handle headings # Heading
               else if (node.name === "ATXHeading1" || node.name === "ATXHeading2" || 
@@ -415,6 +395,52 @@ export const livePreviewExtension = (options = {}) => {
         })
       }
       
+      // Handle wiki links [[Note Name]] — scan raw text per visible line
+      // (lezer-markdown does not parse [[...]] as Link nodes)
+      const wikiLinkRe = /\[\[([^\]\n]+)\]\]/g
+      for (const { from, to } of view.visibleRanges) {
+        const rangeText = view.state.doc.sliceString(from, to)
+        let m
+        wikiLinkRe.lastIndex = 0
+        while ((m = wikiLinkRe.exec(rangeText)) !== null) {
+          const matchFrom = from + m.index
+          const matchTo   = matchFrom + m[0].length
+          const noteName  = m[1]
+          const matchLine = view.state.doc.lineAt(matchFrom).number
+          const isCursorOnLine = (matchLine === cursorLine)
+          if (isCursorOnLine) {
+            // Cursor on this line — show raw [[...]] in muted style so user can edit
+            decorations.push({ from: matchFrom, to: matchFrom + 2, decoration: Decoration.mark({
+              attributes: { style: 'color: var(--text-secondary, #808080); opacity: 0.6;' }
+            })})
+            decorations.push({ from: matchFrom + 2, to: matchTo - 2, decoration: Decoration.mark({
+              attributes: {
+                style: 'color: #8ab4f8; cursor: pointer; text-decoration: underline;',
+                'data-note-name': noteName,
+                class: 'wiki-link'
+              }
+            })})
+            decorations.push({ from: matchTo - 2, to: matchTo, decoration: Decoration.mark({
+              attributes: { style: 'color: var(--text-secondary, #808080); opacity: 0.6;' }
+            })})
+          } else {
+            // Cursor elsewhere — hide [[ ]] markers, show only the link text
+            decorations.push({ from: matchFrom, to: matchFrom + 2,
+              decoration: Decoration.replace({ widget: new HiddenWidget() }) })
+            decorations.push({ from: matchFrom + 2, to: matchTo - 2, decoration: Decoration.mark({
+              attributes: {
+                style: 'color: #8ab4f8; cursor: pointer; text-decoration: underline;',
+                'data-note-name': noteName,
+                class: 'wiki-link'
+              }
+            })})
+            decorations.push({ from: matchTo - 2, to: matchTo,
+              decoration: Decoration.replace({ widget: new HiddenWidget() }) })
+          }
+          decorationCount++
+        }
+      }
+
       // Sort decorations by start position, then by end position
       decorations.sort((a, b) => {
         if (a.from !== b.from) return a.from - b.from

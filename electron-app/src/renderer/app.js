@@ -19816,43 +19816,41 @@ function setupLowerPanel(view) {
     }
   });
   
-  // Drag to resize panel height
-  let isResizing = false;
-  let startY = 0;
-  let startHeight = 0;
-  
-  resizeHandle.addEventListener('mousedown', (e) => {
-    if (panel.dataset.collapsed === 'true') return;
+  // Drag to resize panel height — guard against stacking listeners on re-entry
+  if (!panel._resizeListenersAttached) {
+    panel._resizeListenersAttached = true;
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
     
-    isResizing = true;
-    startY = e.clientY;
-    startHeight = panel.offsetHeight;
+    resizeHandle.addEventListener('mousedown', (e) => {
+      if (panel.dataset.collapsed === 'true') return;
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = panel.offsetHeight;
+      document.body.style.cursor = 'ns-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
     
-    document.body.style.cursor = 'ns-resize';
-    document.body.style.userSelect = 'none';
+    const onMouseMove = (e) => {
+      if (!isResizing) return;
+      const deltaY = startY - e.clientY; // Inverted because panel grows upward
+      const newHeight = Math.max(100, Math.min(600, startHeight + deltaY));
+      panel.style.height = `${newHeight}px`;
+    };
     
-    e.preventDefault();
-  });
-  
-  document.addEventListener('mousemove', (e) => {
-    if (!isResizing) return;
-    
-    const deltaY = startY - e.clientY; // Inverted because panel grows upward
-    const newHeight = Math.max(100, Math.min(600, startHeight + deltaY));
-    
-    panel.style.height = `${newHeight}px`;
-  });
-  
-  document.addEventListener('mouseup', () => {
-    if (isResizing) {
+    const onMouseUp = () => {
+      if (!isResizing) return;
       isResizing = false;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      
-      // Save height to localStorage
       localStorage.setItem(`lowerPanel_${view}_height`, panel.offsetHeight);
-    }
-  });
+    };
+    
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }
   
   // Tab switching
   tabs.forEach(tab => {
@@ -20322,6 +20320,9 @@ let graphState = {
   position: null,
   zoom: null
 };
+
+// Generation counter to detect stale async fetches in loadGraphBrowseList
+let _graphBrowseGeneration = 0;
 
 async function initGraphCanvas(skipFilterRestore = false) {
   const container = document.getElementById('graph-canvas');
@@ -21144,6 +21145,7 @@ function saveGraphState() {
  * Load graph browse list (reuses browse list component from Task 8)
  */
 async function loadGraphBrowseList() {
+  const gen = ++_graphBrowseGeneration;
   const container = document.getElementById('graph-browse-list');
   if (!container) {
     console.error("[Graph] Browse list container not found");
@@ -21154,6 +21156,9 @@ async function loadGraphBrowseList() {
     const response = await fetch('http://127.0.0.1:11436/polly/graph/list');
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
+
+    // Bail out if a newer call has started or the container was removed from DOM
+    if (gen !== _graphBrowseGeneration || !container.isConnected) return;
     
     if (!data.items || data.items.length === 0) {
       container.innerHTML = `
@@ -21236,11 +21241,13 @@ async function loadGraphBrowseList() {
     
   } catch (error) {
     console.error("[Graph] Failed to load browse list:", error);
-    container.innerHTML = `
-      <div style="text-align: center; padding: 20px; color: var(--text-error); font-size: 13px;">
-        Failed to load items
-      </div>
-    `;
+    if (gen === _graphBrowseGeneration && container.isConnected) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 20px; color: var(--text-error); font-size: 13px;">
+          Failed to load items
+        </div>
+      `;
+    }
   }
 }
 
@@ -21839,6 +21846,37 @@ async function renderGraphFiltersPanel() {
     return checked ? checked.dataset.domain : null;
   };
 
+  // Navigate to notes view and open a note by its vault path.
+  // Handles the case where notesManager hasn't initialised yet by
+  // switching to the notes view (which triggers init) and then polling
+  // until the specific file appears in the loaded index.
+  const openHubNote = async (hubPath) => {
+    const noteName = hubPath.split('/').pop().replace('.md', '');
+    graphState.sourceNode = null;
+    saveGraphState();
+    showView('notes');
+    showBackToGraphButton();
+    // Poll up to 10 s for notesManager to finish init AND have the hub in its index
+    for (let i = 0; i < 100; i++) {
+      const nm = window.notesManager;
+      if (nm && Array.isArray(nm.notes)) {
+        const noteByPath = nm.notes.find(n => n.path === hubPath);
+        if (noteByPath) {
+          await nm.openNote(noteByPath.name);
+          return;
+        }
+        // Notes loaded but hub not there yet — trigger a reload every second
+        if (nm.notes.length > 0 && i % 10 === 9) {
+          nm.loadNotesIndex?.();
+        }
+      }
+      await new Promise(r => setTimeout(r, 100));
+    }
+    // Final fallback: open by derived name (may still fail if not indexed)
+    console.warn('[Graph] Hub not found by path after 10s, trying by name:', noteName);
+    await window.notesManager?.openNote(noteName);
+  };
+
   const generateHub = async (domain, openAfter = false) => {
     const btn = document.getElementById('graph-refresh-hub-btn');
     if (btn) {
@@ -21853,35 +21891,7 @@ async function renderGraphFiltersPanel() {
         return false;
       }
       if (openAfter) {
-        const hubPath = result.hub_path;
-        const noteName = hubPath.split('/').pop().replace('.md', '');
-        graphState.sourceNode = null;
-        saveGraphState();
-        // Navigate to notes view first (triggers notesManager.init)
-        showView('notes');
-        showBackToGraphButton();
-        // Wait up to 8s for notesManager to load the hub note into its index
-        const waitForNote = async () => {
-          for (let i = 0; i < 80; i++) {
-            const nm = window.notesManager;
-            if (nm && nm.notes) {
-              const noteByPath = nm.notes.find(n => n.path === hubPath);
-              if (noteByPath) {
-                await nm.openNote(noteByPath.name);
-                return;
-              }
-              // Notes loaded but hub not in list yet — trigger a reload and keep waiting
-              if (nm.notes.length > 0 && i % 10 === 5) {
-                nm.loadNotesIndex?.();
-              }
-            }
-            await new Promise(r => setTimeout(r, 100));
-          }
-          // Final fallback: open by filename-derived name
-          console.warn('[Graph] Hub not found by path, falling back to name:', noteName);
-          await window.notesManager?.openNote(noteName);
-        };
-        waitForNote();
+        await openHubNote(result.hub_path);
       }
       return true;
     } catch (err) {
@@ -21905,19 +21915,8 @@ async function renderGraphFiltersPanel() {
         const resp = await fetch(`http://127.0.0.1:11436/polly/domains/${domain}/hub/status`);
         const status = await resp.json();
         if (status.exists) {
-          if (window.notesManager) {
-            const hubPath = status.path;
-            const noteName = hubPath.split('/').pop().replace('.md', '');
-            const noteByPath = window.notesManager.notes?.find(n => n.path === hubPath);
-            const openName = noteByPath ? noteByPath.name : noteName;
-            graphState.sourceNode = null;
-            saveGraphState();
-            await window.notesManager.openNote(openName);
-            showView('notes');
-            showBackToGraphButton();
-          }
+          await openHubNote(status.path);
         } else {
-          // No hub yet — generate and open
           await generateHub(domain, true);
         }
       } catch (err) {
