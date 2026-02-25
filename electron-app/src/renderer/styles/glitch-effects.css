@@ -319,6 +319,34 @@
    USAGE GUIDELINES
    ======================================== */
 
+/* ========================================
+   REDUCED MOTION — disable all continuous animations
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .glitch-hover:hover,
+  .glitch-active,
+  .glitch-box-hover:hover,
+  .glitch-glow,
+  .ribbon-logo.glitch:hover,
+  .btn-primary.glitch:hover,
+  .btn-primary.glitch::before,
+  .page-tab.active.glitch::after,
+  .ribbon-item.active.glitch::before,
+  #btn-send.glitch:hover,
+  .section-header.glitch::before {
+    animation: none !important;
+  }
+
+  .ribbon-logo.glitch:hover svg {
+    filter: none !important;
+  }
+
+  .btn-primary.glitch:hover {
+    box-shadow: none !important;
+  }
+}
+
 /*
   APPLY GLITCH EFFECTS TO (5-10% of UI):
   ✓ Logo (.ribbon-logo.glitch)
