@@ -61,7 +61,7 @@ These changes have their implementation complete per their tasks; they can be ar
 
 ## Partially Implemented
 
-- **core-framework-refinement** — Waves 1–3 complete. Wave 4: #20 ✅, #21 ✅, #22 ✅ ~95%, #23 ✅ ~85% (30/30 tests), #24 ✅ (38/38 tests). Remaining: #25 (SKILL↔MM Bridge) not started. Waves 5–6 pending.
+- **core-framework-refinement** — Waves 1–3 complete. Wave 4 complete (~95%): #20 ✅, #21 ✅, #22 ✅ ~95%, #23 ✅ ~85% (30/30 tests), #24 ✅ (38/38 tests), #25 ✅ (16/16 tests — SkillMetadata.mental_models, MentalModel.related_skills, skill_hints scoring boost, _gather_context() bridge). Waves 5–6 pending.
 - **custom-domains-feature** — Backend loads custom domains; optional scoring, frontend hint, and spec update pending.
 - **library-extraction** — `libs/` exists; only polly-routing is fully extracted; polly-patterns, polly-compression, polly-entities, polly-personas pending.
 
@@ -90,7 +90,7 @@ These changes have their implementation complete per their tasks; they can be ar
 1. **Archive completed changes** (after updating `openspec/specs/project/status.md`, `roadmap.md`, and `docs/status/CHANGELOG.md`): architecture-integration-audit, entity-model-unification, integration-contracts, knowledge-graph-refinement, litellm-provider-adapter, mem0-adaptive-memory, mem0-multi-provider-config, unified-pattern-engine.
 2. **Finish knowledge-graph-navigation** — Complete Task 15 (spec updates), then archive.
 3. **Archive ux-pivot-cursor-patterns** — Tasks 1–5 complete; Task 6 deferred to phase-17. Can be archived with a note that Code profile work continues in phase-17-monaco-code-workspace.
-4. **Continue core-framework-refinement** — Wave 4 remaining: RAG Optimization (#23), Persona Memory integration testing (#24), SKILL↔MM Bridge (#25). (#21 Autonomy Dashboard and #22 Auto-Linking are now substantially complete.)
+4. **Wave 4 complete** — core-framework-refinement Wave 4 is done (~95%). Next: Wave 5 (LlamaIndex KG #24, CrewAI Orchestrator #25) or Phase 24 (Agent Swarms).
 5. **Optional cleanup** — custom-domains: finish optional tasks and spec update; library-extraction: proceed with polly-patterns/polly-compression/polly-entities/polly-personas or pause and document current state.
 6. **Pick next big change** — When ready: code-library-and-dev-philosophy, learning-and-administrator-profiles, phase-17 (Monaco), or cursor-ui-pattern-migration.
 

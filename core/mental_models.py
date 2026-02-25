@@ -49,6 +49,9 @@ class MentalModel:
     keywords: List[str] = field(default_factory=list)
     category_triggers: List[str] = field(default_factory=list)
     enabled: bool = True
+
+    # SKILL↔MM Bridge (#25): skills whose activation should boost this model
+    related_skills: List[str] = field(default_factory=list)
     
     # System fields
     created: datetime = field(default_factory=datetime.now)
@@ -270,6 +273,7 @@ class MentalModelManager:
                 persona_mode=mode,
                 keywords=keywords,
                 enabled_only=True,
+                skill_hints=kwargs.get("skill_hints"),  # SKILL↔MM Bridge (#25)
             )
 
         if not models_with_scores:
@@ -393,7 +397,8 @@ class MentalModelManager:
         persona_mode: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         category: Optional[str] = None,
-        enabled_only: bool = True
+        enabled_only: bool = True,
+        skill_hints: Optional[List[str]] = None,
     ) -> List[MentalModel]:
         """
         Get relevant mental models using three-tier scoring.
@@ -467,7 +472,13 @@ class MentalModelManager:
                     keyword_score = min(keyword_matches * 2, self.MAX_KEYWORD_SCORE)
                     score += keyword_score
                     logger.debug(f"Model '{model.name}' +{keyword_score} ({keyword_matches} keyword matches, capped at {self.MAX_KEYWORD_SCORE})")
-            
+
+            # Skill hint: +6 if model was referenced by one of the persona's active skills
+            # (#25 SKILL↔MM Bridge — skills can declare mental_models in frontmatter)
+            if skill_hints and model.id in skill_hints:
+                score += 6
+                logger.debug(f"Model '{model.name}' +6 (skill hint: skill declared '{model.id}')")
+
             if score >= self.MIN_SCORE_THRESHOLD:
                 scored_models.append((score, model))
                 logger.debug(f"Model '{model.name}' total score: {score} (meets threshold {self.MIN_SCORE_THRESHOLD})")
@@ -496,12 +507,15 @@ class MentalModelManager:
         keywords: Optional[List[str]] = None,
         category: Optional[str] = None,
         enabled_only: bool = True,
+        skill_hints: Optional[List[str]] = None,
     ) -> List[tuple]:
         """
         Like get_models_for_context() but returns (model, score) tuples (Spec 02).
 
         Used by build_context_items() so each model's activation score can be
         carried into the ScoredEntry for per-item budget allocation.
+
+        skill_hints: model IDs declared by active persona's skills (#25 SKILL↔MM Bridge)
         """
         persona = persona or self._active_persona
         persona_mode = persona_mode or self._active_mode
@@ -527,6 +541,8 @@ class MentalModelManager:
                 keyword_matches = len(kw_lower & model_kw_lower)
                 if keyword_matches > 0:
                     score += min(keyword_matches * 2, self.MAX_KEYWORD_SCORE)
+            if skill_hints and model.id in skill_hints:
+                score += 6  # Skill hint boost (#25 SKILL↔MM Bridge)
             if score >= self.MIN_SCORE_THRESHOLD:
                 scored_models.append((model, score))
 

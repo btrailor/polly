@@ -1225,6 +1225,15 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
                     if "keywords" not in call_kw:
                         call_kw["keywords"] = self._extract_keywords(query)
                     call_kw["domain"] = kwargs.get("domain") or (domains[0] if domains else None)
+                    # SKILL↔MM Bridge (#25): collect mental model IDs declared by
+                    # the active persona's skills and pass as activation hints.
+                    if self.skill_manager and persona and "skill_hints" not in call_kw:
+                        skill_hints_mm: List[str] = []
+                        for skill_meta in self.skill_manager.get_skills_for_persona(persona):
+                            skill_hints_mm.extend(getattr(skill_meta, "mental_models", []))
+                        if skill_hints_mm:
+                            call_kw["skill_hints"] = list(dict.fromkeys(skill_hints_mm))
+                            logger.debug(f"SKILL↔MM bridge: hints from '{persona}' skills → {call_kw['skill_hints']}")
 
                 if section == "memory" and retrieval_tier is not None:
                     call_kw["retrieval_tier"] = retrieval_tier

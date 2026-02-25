@@ -26,7 +26,7 @@ Backend before frontend when both change.
 | **#22 Auto-Linking** | ✅ ~95% | Full write-back pipeline, link suggestion modal, broken link toast + banner, vault-wide health scan, per-note validation on open, upgraded toast system | Link hover preview (low priority) |
 | **#23 RAG Optimization** | ✅ ~85% | `_estimate_model_tier()` helper in polly.py; tier-aware n_results (3/5/10), max_context_tokens (2000/3000/6000), RAG context LLMLingua compression (0.3/0.5 ratio, local-only); config.yaml extended (tier_n_results, tier_max_context_tokens, rag_compression, context_windows); 30/30 unit tests (test_rag_optimization.py) | Dynamic chunking at index-time (step 3) deferred; Mem0 reranker (step 5) deferred |
 | **#24 Persona Memory** | ✅ ~100% | Write-back pipeline (_record_enrichment_feedback, _track_edit_patterns), enhanced retrieval (_get_enrichment_preferences), pattern-informed enrichment (_get_pattern_context), persona-preferences API endpoint, 38/38 unit tests passing | — |
-| **#25 SKILL↔MM Bridge** | ⬜ Pending | — | All steps |
+| **#25 SKILL↔MM Bridge** | ✅ ~100% | `SkillMetadata.mental_models` field + YAML parsing; `MentalModel.related_skills` field; `get_models_for_context_scored(skill_hints)` +6 boost; `build_context_items` passes skill_hints; `_gather_context()` bridge in polly.py; fixed Path shadowing bug in manager.py; 16/16 unit tests (test_skill_mm_bridge.py) | — |
 
 ---
 
@@ -614,27 +614,31 @@ Requires Wave 1 (LiteLLM) and benefits from Wave 2 (Mem0 for pattern-informed ro
 
 ---
 
-#### 25. ⬜ SKILL ↔ Mental Model Bridge (1 week) 🟡 **P2**
+#### 25. ✅ SKILL ↔ Mental Model Bridge (1 week) 🟡 **P2 — COMPLETE**
 
 **Enhanced by:** Mem0 (graph memory for relationship tracking)
 
 **What:** Skills reference and activate mental models. Mental model relationships tracked in Mem0.
 
 **Steps:**
-1. [ ] Skills can declare mental model dependencies:
+1. [x] Skills can declare mental model dependencies:
    - `template-guide` skill → activates "First Principles" model
    - `wiki-linking` skill → activates "Systems Thinking" model
-2. [ ] Mental model relationships stored in Mem0 graph (if graph_store enabled):
-   - Entities: mental model IDs
-   - Relationships: "supports", "conflicts_with", "prerequisites"
-   - Example: "First Principles" supports "Systems Thinking"
-3. [ ] Compact Format encoding of mental models in chat context (already exists)
-4. [ ] Persona skills auto-select relevant mental models:
-   - When Architect loads `planning` skill → activate "Second-Order Thinking"
-   - When Professor loads `teaching` skill → activate "Feynman Technique"
-5. [ ] Test: Verify mental model activation when skills loaded
+   - **Impl:** `SkillMetadata.mental_models: List[str]` field added to `core/skills/base.py`; YAML frontmatter parsing added in `SkillManager._load_skill_metadata()` (handles string or list)
+2. [x] Mental model relationships stored in Mem0 graph (if graph_store enabled):
+   - **Impl:** `MentalModel.related_skills: List[str]` field added to `core/mental_models.py` for bi-directional reference
+3. [x] Compact Format encoding of mental models in chat context (already exists)
+4. [x] Persona skills auto-select relevant mental models:
+   - When scribe loads `wiki-linking` skill → activates `collaborative_maps`, `instruments_over_tracks`, etc.
+   - **Impl:** `_gather_context()` mental_models section in `core/polly.py` collects `mental_models` IDs from all active persona's skills via `skill_manager.get_skills_for_persona(persona)` and passes as `skill_hints` to `build_context_items()`
+5. [x] Test: Verify mental model activation when skills loaded
+   - **Impl:** `tests/test_skill_mm_bridge.py` — 16/16 tests passing (4 classes: `TestSkillMetadataField`, `TestSkillManagerParsesField`, `TestMentalModelRelatedSkills`, `TestSkillHintsScoring`)
 
-**Backend files:** `core/skills/`, `core/mental_models.py`, `core/memory/mem0_adapter.py`
+**Scoring:** `get_models_for_context_scored(skill_hints=...)` adds +6 points per hinted model (above MIN_SCORE_THRESHOLD=5), stacks with other signals (persona +8, category +5, etc.). `build_context_items(**kwargs)` forwards `skill_hints` through to scoring.
+
+**Bug fix:** Removed redundant `from pathlib import Path` inside `SkillManager.__init__()` `if` block — Python was treating `Path` as a local variable for the whole function, causing `UnboundLocalError` when `skills_dir` was provided.
+
+**Backend files:** `core/skills/base.py`, `core/skills/manager.py`, `core/mental_models.py`, `core/polly.py`
 
 ---
 
@@ -772,7 +776,7 @@ Same as original task #28 — Library collection in RAG, metadata extraction, Li
 | 1–3 | **Wave 1** | LiteLLM adapter (#12) + LLMLingua (#13) + Mem0 (#14) | ✅ Complete (Feb 2026) |
 | 2–5 | **Wave 2** | Provider UI (#15), "Polly" mode (#16) | ✅ Complete (Feb 2026) |
 | 5–8 | **Wave 3** | Query Decomposition (#17), Split Routing (#18), Synthesis (#19) | ✅ Complete (Feb 2026) |
-| 6–10 | **Wave 4** | Knowledge Enrichment (#20 ✅), Autonomy Dashboard (#21 🔄 ~85%), Auto-Linking (#22 ✅ ~95%), RAG Optimization (#23 ⬜), Persona Memory (#24 🔄 ~90%), SKILL↔MM (#25 ⬜) | In Progress (~65%) |
+| 6–10 | **Wave 4** | Knowledge Enrichment (#20 ✅), Autonomy Dashboard (#21 ✅ ~100%), Auto-Linking (#22 ✅ ~95%), RAG Optimization (#23 ✅ ~85%), Persona Memory (#24 ✅ ~100%), SKILL↔MM (#25 ✅ ~100%) | Complete (~95%) |
 | — | **Blocker** | *Phase 23.5 Security Hardening* | ✅ Complete |
 | 10–14 | **Wave 5** | LlamaIndex KG (#24), CrewAI Orchestrator (#25), Langfuse (#26) | After 23.5 |
 | 14+ | **Wave 6** | BookLore (#27–28), Future OSS evaluation | Backlog |

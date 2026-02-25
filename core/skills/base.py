@@ -17,20 +17,23 @@ import re
 class SkillMetadata:
     """
     Metadata for a skill (from YAML frontmatter).
-    
+
     Attributes:
         name: Skill identifier (e.g., "wiki-linking")
         category: Skill category (e.g., "note-taking", "coding")
         personas: List of persona slugs that use this skill
         version: Skill version
         path: Full path to skill file
+        mental_models: Mental model IDs this skill should activate (#25 SKILL↔MM Bridge).
+            Example: ["instruments_over_tracks", "collaborative_maps"]
     """
     name: str
     category: str
     personas: List[str]
     version: str
     path: Path
-    
+    mental_models: List[str] = field(default_factory=list)
+
     def to_dict(self):
         """Convert to dictionary"""
         return {
@@ -38,7 +41,8 @@ class SkillMetadata:
             "category": self.category,
             "personas": self.personas,
             "version": self.version,
-            "path": str(self.path)
+            "path": str(self.path),
+            "mental_models": self.mental_models,
         }
 
 

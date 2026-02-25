@@ -12,8 +12,8 @@
 |---|---|
 | **Overall** | ~90% Tier 1 complete, production-ready |
 | **Completed** | 16.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22, 23) + Core Framework Waves 1–3 + Knowledge Graph Navigation + Knowledge Graph Refinement + Scalable Memory Layers |
-| **Current priority** | Core Framework Wave 4 (remaining tasks), Phase 24 (Agent Swarms), or Phase 12b (Knowledge Graph Advanced) |
-| **Next recommended** | Complete Wave 4 remaining tasks (#23 RAG Optimization, #25 SKILL↔MM Bridge) |
+| **Current priority** | Phase 24 (Agent Swarms) or Phase 12b (Knowledge Graph Advanced) |
+| **Next recommended** | Wave 5: LlamaIndex Knowledge Graph (#24) or Phase 24 Agent Swarms |
 | **Spec integration** | Feb 2026 — Knowledge management, DRM, BAD Canvas, knowledge quality specs integrated into OpenSpec |
 
 ---
@@ -26,14 +26,14 @@
 - **Wave 1 Complete (Feb 2026):** LiteLLM adapter integration, LLMLingua compression, Mem0 memory layer
 - **Wave 2 Complete (Feb 2026):** Provider Management UI (Settings → Providers page with toggles, status, test buttons), "Polly" mode in model selector (3 tiers: Fast/Balanced/Thorough with routing explanations)
 - **Wave 3 Complete (Feb 2026):** Query Decomposition Engine (`core/query_decomposition.py`, 467 lines), Split Router (`core/split_router.py`, 453 lines, parallel execution with dependency graphs), Synthesis Layer (`core/synthesis.py`, 380 lines), integrated into Polly core via `_init_wave3_pipeline()`, all tests passing (9/9 in `tests/test_wave3_pipeline.py`)
-- **Wave 4 In Progress (~90%):**
+- **Wave 4 Complete (~95%):**
   - ✅ **#20 Knowledge Enrichment Integration** — Complete. Gap detection in `polly.py:944-1036`, suggestion card component (304 lines), persona_actions in chat responses, config toggle.
   - ✅ **#21 Autonomy Dashboard** (~100%) — Backend + frontend complete. Routing recording, savings calculation, and post-query refresh all fixed.
   - ✅ **#22 Enhanced Auto-Linking** (~95%) — Full write-back pipeline, link suggestion modal, broken link detection, vault-wide health scan. Link hover preview deferred.
   - ✅ **#23 RAG Optimization for Local Models** (~85%) — `_estimate_model_tier()` helper; tier-aware n_results (3/5/10), max_context_tokens (2000/3000/6000), LLMLingua compression (0.3/0.5 ratio for local); config.yaml extended. 30/30 tests. Deferred: dynamic chunking at index-time, Mem0 reranker.
   - ✅ **#24 Persona Memory for Enrichment** (~100%) — Complete. Write-back, retrieval, pattern context, API endpoint, 38/38 tests.
-  - ⬜ **#25 SKILL↔Mental Model Bridge** — Not started.
-- **Next:** Complete Wave 4: #25 SKILL↔MM Bridge
+  - ✅ **#25 SKILL↔Mental Model Bridge** — Complete. `SkillMetadata.mental_models` field + YAML parsing; `MentalModel.related_skills`; `skill_hints` +6 scoring boost in `get_models_for_context_scored()`; `_gather_context()` bridge in polly.py; 16/16 unit tests.
+- **Wave 4 complete.** Next: Wave 5 (LlamaIndex KG, CrewAI Orchestrator) or Phase 24 (Agent Swarms).
 
 ### Phase 23.5: Security Hardening 🔐 ✅
 - **Status:** Substantially complete (Feb 2026 analysis). Implemented: Capability Broker, Pyodide sandbox, package allowlist + approval dialog, CORS from security policy, audit logging. Config only: content sanitization (prompt injection/PII), API key context managers.

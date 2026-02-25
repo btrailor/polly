@@ -41,7 +41,6 @@ class SkillManager:
         if skills_dir is None:
             # Default to vault/.polly/skills/
             # Adjust path to find vault from core/skills/
-            from pathlib import Path
             project_root = Path(__file__).parent.parent.parent
             skills_dir = project_root / "vault" / ".polly" / "skills"
         
@@ -125,15 +124,21 @@ class SkillManager:
         except Exception as e:
             raise ValueError(f"Invalid YAML in {skill_file}: {e}")
         
+        # Parse mental_models field — may be a string or list (#25 SKILL↔MM Bridge)
+        raw_mm = frontmatter.get('mental_models', [])
+        if isinstance(raw_mm, str):
+            raw_mm = [raw_mm]
+
         # Create metadata
         metadata = SkillMetadata(
             name=frontmatter.get('name', skill_file.parent.name),
             category=frontmatter.get('category', 'general'),
             personas=frontmatter.get('personas', []),
             version=frontmatter.get('version', '1.0'),
-            path=skill_file
+            path=skill_file,
+            mental_models=raw_mm,
         )
-        
+
         return metadata
     
     def load_skill(self, name: str) -> Optional[Skill]:
