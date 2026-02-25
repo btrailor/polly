@@ -183,9 +183,10 @@ class SplitRouter:
                 tokens=response.route_info.get('tokens_used', 0),
                 cost=response.route_info.get('cost', 0.0),
                 local_pct=1.0 if route_decision['type'] == 'local' else 0.0,
-                query=decomposition.original_query
+                query=decomposition.original_query,
+                rag_coverage=route_decision.get('rag_coverage', 0.0),
             )
-        
+
         return SplitRoutingResult(
             sub_responses=[response],
             original_query=decomposition.original_query,
@@ -241,13 +242,18 @@ class SplitRouter:
         # Track metrics
         if self.autonomy_metrics:
             local_pct = local_count / len(responses) if responses else 0.0
+            avg_rag_coverage = (
+                sum(r.route_info.get('rag_coverage', 0.0) for r in responses) / len(responses)
+                if responses else 0.0
+            )
             self._record_routing_metrics(
                 route_type='split',
                 provider='mixed',
                 tokens=total_tokens,
                 cost=total_cost,
                 local_pct=local_pct,
-                query=decomposition.original_query
+                query=decomposition.original_query,
+                rag_coverage=avg_rag_coverage,
             )
         
         return SplitRoutingResult(
@@ -270,25 +276,27 @@ class SplitRouter:
         context: Dict[str, Any],
         previous_responses: List[SubQueryResponse]
     ) -> List[SubQueryResponse]:
-        """Execute a batch of sub-queries in parallel."""
+        """Execute a batch of sub-queries in parallel.
+
+        Route decisions (which include RAG searches) are resolved concurrently
+        first, then execution tasks are gathered in parallel as well.
+        """
+        # Step 1: Resolve all routing decisions concurrently (RAG searches run in parallel)
+        route_decisions = await asyncio.gather(
+            *[self._decide_route(sq, context) for sq in sub_queries]
+        )
+
+        # Step 2: Build and gather execution tasks in parallel
         tasks = []
-        for sub_query in sub_queries:
-            # Decide route
-            route_decision = await self._decide_route(sub_query, context)
-            
-            # Add previous responses to context if sub-query has dependencies
+        for sub_query, route_decision in zip(sub_queries, route_decisions):
             sub_context = context.copy()
             if sub_query.dependencies:
                 sub_context['previous_responses'] = [
                     previous_responses[dep] for dep in sub_query.dependencies
                     if dep < len(previous_responses)
                 ]
-            
-            # Create task
-            task = self._execute_sub_query(sub_query, route_decision, sub_context)
-            tasks.append(task)
-        
-        # Execute in parallel
+            tasks.append(self._execute_sub_query(sub_query, route_decision, sub_context))
+
         return await asyncio.gather(*tasks)
     
     async def _decide_route(
@@ -298,28 +306,33 @@ class SplitRouter:
     ) -> Dict[str, Any]:
         """
         Decide how to route a sub-query.
-        
+
         Returns:
             Dict with 'type' (local/cloud), 'provider', 'model', 'rag_context'
         """
-        # Check RAG coverage for RAG_ANSWERABLE queries
+        # Only search RAG for types that can be answered locally.
+        # CODE_GEN, CREATIVE, REASONING, ANALYSIS always go to cloud regardless
+        # of RAG coverage, so avoid the embedding+vector search cost for them.
+        LOCAL_CANDIDATE_TYPES = {SubQueryType.RAG_ANSWERABLE, SubQueryType.FACTUAL}
+        should_search_rag = sub_query.type in LOCAL_CANDIDATE_TYPES
+
         rag_coverage = 0.0
         rag_context = None
-        
-        if sub_query.type == SubQueryType.RAG_ANSWERABLE or self.prefer_local:
-            # Search RAG
+
+        if should_search_rag:
+            # Search RAG for types that can genuinely be answered locally
             try:
                 rag_results = await asyncio.to_thread(
                     self.rag.search,
                     sub_query.query,
                     n_results=5
                 )
-                
+
                 if rag_results:
                     # Calculate coverage heuristic (simplified)
                     rag_coverage = min(len(rag_results) / 5.0, 1.0)
                     rag_context = self._format_rag_context(rag_results)
-                    
+
             except Exception as e:
                 logger.warning(f"RAG search failed: {e}")
         
@@ -529,16 +542,17 @@ Based on the above context, answer this question:
         tokens: int,
         cost: float,
         local_pct: float,
-        query: str
+        query: str,
+        rag_coverage: float = 0.0,
     ):
         """Record routing metrics to AutonomyMetrics."""
         try:
             query_hash = hashlib.md5(query.encode()).hexdigest()[:16]
-            
+
             self.autonomy_metrics.record_routing_decision(
                 route_type=route_type,
                 provider=provider,
-                rag_coverage=0.0,  # TODO: Calculate actual RAG coverage
+                rag_coverage=rag_coverage,
                 tokens_used=tokens,
                 cost=cost,
                 local_pct=local_pct,

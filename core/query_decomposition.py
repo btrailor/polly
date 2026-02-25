@@ -199,15 +199,10 @@ Respond with ONLY a JSON object (no markdown code blocks):
             # Decomposition disabled - return original query as single sub-query
             return self._simple_query_result(query)
         
-        # Check for known patterns first (if pattern learner available)
-        if self.pattern_learner:
-            pattern_result = await self._check_patterns(query, context)
-            if pattern_result:
-                return pattern_result
-        
-        # Quick complexity check
-        if not self._is_complex_query(query):
-            return self._simple_query_result(query)
+        # Quick complexity check (compute semantic score once; reuse in classification)
+        semantic_score = self._semantic_complexity_score(query.lower())
+        if not self._is_complex_query(query, _cached_semantic_score=semantic_score):
+            return self._simple_query_result(query, _cached_semantic_score=semantic_score)
         
         # Use LLM to decompose
         try:
@@ -216,7 +211,7 @@ Respond with ONLY a JSON object (no markdown code blocks):
             logger.warning(f"Decomposition failed, falling back to simple query: {e}")
             return self._simple_query_result(query)
     
-    def _is_complex_query(self, query: str) -> bool:
+    def _is_complex_query(self, query: str, _cached_semantic_score: Optional[float] = None) -> bool:
         """
         Quick heuristic check if query is complex enough to warrant decomposition.
         
@@ -273,9 +268,8 @@ Respond with ONLY a JSON object (no markdown code blocks):
         )
         
         # Semantic complexity: topics that require structural/historical analysis
-        # regardless of syntactic simplicity. A simple declarative sentence about
-        # a complex topic still needs analytical depth.
-        semantic_score = self._semantic_complexity_score(query_lower)
+        # regardless of syntactic simplicity. Use cached value when provided by caller.
+        semantic_score = _cached_semantic_score if _cached_semantic_score is not None else self._semantic_complexity_score(query_lower)
         
         # When an analytical verb AND a multi-concept conjunction both appear,
         # the query is definitionally complex (e.g. "Explain X and Y") — add a
@@ -294,14 +288,6 @@ Respond with ONLY a JSON object (no markdown code blocks):
         )
         
         is_complex = complexity_score >= self.min_complexity_score
-        print(
-            f"[Complexity] Query: '{query[:60]}...' score={complexity_score:.2f} "
-            f"(semantic={semantic_score:.2f}), threshold={self.min_complexity_score}, "
-            f"complex={is_complex}, qcount={question_count}, multi_q={has_multiple_questions}, "
-            f"analytical={has_analytical_verb}, multi_concept={has_multi_concept_and}, "
-            f"analytical_and_multi={analytical_and_multi}, long={is_long_query}",
-            flush=True,
-        )
         logger.debug(
             f"Complexity check: score={complexity_score:.2f}, semantic={semantic_score:.2f}, "
             f"threshold={self.min_complexity_score}, complex={is_complex}, "
@@ -309,7 +295,7 @@ Respond with ONLY a JSON object (no markdown code blocks):
             f"has_analytical_verb={has_analytical_verb}, has_multi_concept_and={has_multi_concept_and}, "
             f"is_long_query={is_long_query}"
         )
-        
+
         return is_complex
     
     def _semantic_complexity_score(self, query_lower: str) -> float:
@@ -414,10 +400,10 @@ Respond with ONLY a JSON object (no markdown code blocks):
         # but shouldn't dominate when combined with syntactic complexity
         return min(score, 0.65)
     
-    def _simple_query_result(self, query: str) -> DecompositionResult:
+    def _simple_query_result(self, query: str, _cached_semantic_score: Optional[float] = None) -> DecompositionResult:
         """Create a DecompositionResult for a simple (non-decomposed) query."""
-        # Classify the single query
-        query_type = self._classify_simple_query(query)
+        # Classify the single query (pass cached score to avoid recomputing)
+        query_type = self._classify_simple_query(query, _cached_semantic_score=_cached_semantic_score)
         
         sub_query = SubQuery(
             query=query,
@@ -434,7 +420,7 @@ Respond with ONLY a JSON object (no markdown code blocks):
             reasoning="Query is simple and doesn't require decomposition"
         )
     
-    def _classify_simple_query(self, query: str) -> SubQueryType:
+    def _classify_simple_query(self, query: str, _cached_semantic_score: Optional[float] = None) -> SubQueryType:
         """Classify a simple query using heuristics."""
         query_lower = query.lower()
         
@@ -456,9 +442,9 @@ Respond with ONLY a JSON object (no markdown code blocks):
         
         # Semantic complexity check: topics requiring analytical depth should
         # be classified as ANALYSIS, not FACTUAL, even when stated simply.
-        # "I want to talk about the Somali problem in Minneapolis" needs
-        # analysis, not a factual lookup.
-        if self._semantic_complexity_score(query_lower) > 0.0:
+        # Use cached score when provided by caller to avoid recomputing.
+        _sem_score = _cached_semantic_score if _cached_semantic_score is not None else self._semantic_complexity_score(query_lower)
+        if _sem_score > 0.0:
             return SubQueryType.ANALYSIS
         
         # Reasoning indicators
@@ -542,12 +528,14 @@ Respond with ONLY a JSON object (no markdown code blocks):
             # Format prompt as messages (OpenAI format)
             messages = [{"role": "user", "content": prompt}]
             
-            # Use complete_with_fallback for automatic fallback chain
+            # Use complete_with_fallback for automatic fallback chain.
+            # Decomposition only needs a small JSON object (~100-400 tokens).
+            # Low temperature ensures deterministic routing decisions.
             response = await self.router.complete_with_fallback(
                 messages=messages,
                 confidence=confidence,
-                max_tokens=2000,
-                temperature=0.7
+                max_tokens=500,
+                temperature=0.1
             )
             
             # Parse response

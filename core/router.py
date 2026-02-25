@@ -68,23 +68,23 @@ class IntelligentRouter:
     - Domain requirements
     """
 
-    # Default model configurations
+    # Default model configurations (overridden by config local_models)
     DEFAULT_MODELS = {
         'ollama': {
             'fast': ModelConfig(
-                name='llama3.2:latest',
+                name='llama3.2:3b',
                 provider='ollama',
                 tier=ModelTier.FAST,
                 context_window=8192
             ),
             'balanced': ModelConfig(
-                name='llama3.2:latest',
+                name='llama3.1:7b',
                 provider='ollama',
                 tier=ModelTier.BALANCED,
                 context_window=8192
             ),
             'quality': ModelConfig(
-                name='llama3.2:latest',
+                name='llama3.1:70b',
                 provider='ollama',
                 tier=ModelTier.QUALITY,
                 context_window=8192
@@ -92,7 +92,7 @@ class IntelligentRouter:
         },
         'anthropic': {
             'fast': ModelConfig(
-                name='claude-haiku',
+                name='claude-haiku-4-5-20251001',
                 provider='anthropic',
                 tier=ModelTier.FAST,
                 context_window=200000,
@@ -115,8 +115,8 @@ class IntelligentRouter:
         }
     }
 
-    # Patterns that suggest cloud might be better
-    CLOUD_INDICATORS = [
+    # Pre-compiled patterns for cloud/local scoring (avoids per-call regex compilation)
+    _CLOUD_PATTERNS = [re.compile(p) for p in [
         r'complex|complicated|multi-step',
         r'review|analyze|critique',
         r'synthesize|combine|integrate',
@@ -124,17 +124,16 @@ class IntelligentRouter:
         r'explain in depth|thoroughly',
         r'all files|entire codebase|whole project',
         r'creative|innovative|novel',
-    ]
+    ]]
 
-    # Patterns that suggest local is sufficient
-    LOCAL_INDICATORS = [
+    _LOCAL_PATTERNS = [re.compile(p) for p in [
         r'simple|quick|basic',
         r'what is|define|explain',
         r'list|enumerate|show',
         r'complete this|finish|autocomplete',
         r'fix this|correct|typo',
         r'format|prettify|clean up',
-    ]
+    ]]
 
     def __init__(
         self,
@@ -162,25 +161,26 @@ class IntelligentRouter:
                         tier=self.models['ollama'][tier_key].tier,
                         context_window=self.models['ollama'][tier_key].context_window,
                     )
-            # Expose the configured local model name for metadata
+            # Expose the configured local model name for metadata (prefer balanced tier)
             self.local_model = local_models.get(
-                local_models.get('default', 'balanced'),
-                local_models.get('balanced', self.DEFAULT_MODELS['ollama']['balanced'].name)
+                'balanced',
+                local_models.get('fast', self.DEFAULT_MODELS['ollama']['balanced'].name)
             )
         else:
             self.local_model = self.DEFAULT_MODELS['ollama']['balanced'].name
         
         self._ollama_available: Optional[bool] = None
         self._cloud_available: Optional[bool] = None
+        # Persistent client for lightweight availability checks (reuses connection)
+        self._availability_client = httpx.AsyncClient(timeout=5.0)
 
     async def check_availability(self):
         """Check which providers are available."""
-        # Check Ollama
+        # Check Ollama using persistent client
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{self.ollama_host}/api/tags")
-                self._ollama_available = response.status_code == 200
-        except:
+            response = await self._availability_client.get(f"{self.ollama_host}/api/tags")
+            self._ollama_available = response.status_code == 200
+        except Exception:
             self._ollama_available = False
 
         # Check cloud (just verify API key exists for now)
@@ -219,34 +219,6 @@ class IntelligentRouter:
         # Auto mode: intelligent routing
         cloud_score = self._score_cloud_need(query, context_length)
 
-        # Entity/topic coverage check: escalate to cloud if entity/topic not found in knowledge base
-        # (Assume self.knowledge_base is a dict or set of known entities/topics)
-        entity_topic = self._extract_entity_topic(query)
-        kb_has_entity = False
-        if hasattr(self, 'knowledge_base') and entity_topic:
-            kb_has_entity = entity_topic in self.knowledge_base
-
-        # If entity/topic not found, escalate to cloud
-        if entity_topic and not kb_has_entity and self._cloud_available:
-            decision = self._select_cloud(tier, context_length)
-            decision.reason = f"Cloud selected (entity/topic '{entity_topic}' not found in KB): {decision.reason}"
-            decision.fallback = self._select_local(tier, context_length).model
-            return decision
-
-        # If RAG returns only adjacent/related results, escalate to cloud
-        # (Assume self.rag_results is available and has 'rag_coverage' attribute)
-        only_adjacent = False
-        if hasattr(self, 'rag_results'):
-            only_adjacent = all(
-                hasattr(r, 'route_info') and r.route_info.get('rag_coverage', 0.0) < 0.3
-                for r in self.rag_results
-            )
-        if only_adjacent and self._cloud_available:
-            decision = self._select_cloud(tier, context_length)
-            decision.reason = f"Cloud selected (only adjacent RAG results): {decision.reason}"
-            decision.fallback = self._select_local(tier, context_length).model
-            return decision
-
         if cloud_score > 0.7 and self._cloud_available:
             decision = self._select_cloud(tier, context_length)
             decision.reason = f"Cloud selected (score: {cloud_score:.2f}): {decision.reason}"
@@ -260,18 +232,6 @@ class IntelligentRouter:
             if self._cloud_available:
                 decision.fallback = self._select_cloud(tier, context_length).model
             return decision
-
-    def _extract_entity_topic(self, query: str) -> Optional[str]:
-        """Extract entity/topic from query (simple heuristic, can be improved)."""
-        # Example: look for capitalized words or phrases, or use regex for music/artist queries
-        match = re.search(r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)', query)
-        if match:
-            return match.group(1)
-        # For music queries, look for 'music by X' or 'about X'
-        match = re.search(r'music by ([\w\s]+)', query.lower())
-        if match:
-            return match.group(1).strip().title()
-        return None
 
     def _estimate_tier(self, query: str) -> ModelTier:
         """Estimate the appropriate model tier for a query."""
@@ -295,14 +255,14 @@ class IntelligentRouter:
         score = 0.0
         query_lower = query.lower()
 
-        # Check cloud indicators
-        for pattern in self.CLOUD_INDICATORS:
-            if re.search(pattern, query_lower):
+        # Check cloud indicators (pre-compiled at class level)
+        for pattern in self._CLOUD_PATTERNS:
+            if pattern.search(query_lower):
                 score += 0.15
 
         # Check local indicators (reduce score)
-        for pattern in self.LOCAL_INDICATORS:
-            if re.search(pattern, query_lower):
+        for pattern in self._LOCAL_PATTERNS:
+            if pattern.search(query_lower):
                 score -= 0.15
 
         # Context length factor
@@ -389,6 +349,9 @@ class UnifiedLLM:
     ):
         self.router = router
         self.default_system_prompt = default_system_prompt
+        # Single persistent client reused across all provider calls.
+        # Avoids TCP connection pool setup/teardown on every LLM request.
+        self._client = httpx.AsyncClient(timeout=120.0)
 
     async def chat(
         self,
@@ -449,33 +412,32 @@ class UnifiedLLM:
         stream: bool
     ) -> AsyncIterator[str]:
         """Call Ollama API."""
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{self.router.ollama_host}/api/chat",
-                json={
-                    'model': model.name,
-                    'messages': messages,
-                    'stream': stream,
-                    'options': {
-                        'temperature': temperature,
-                        'num_predict': max_tokens
-                    }
+        response = await self._client.post(
+            f"{self.router.ollama_host}/api/chat",
+            json={
+                'model': model.name,
+                'messages': messages,
+                'stream': stream,
+                'options': {
+                    'temperature': temperature,
+                    'num_predict': max_tokens
                 }
-            )
+            }
+        )
 
-            if stream:
-                async for line in response.aiter_lines():
-                    if line:
-                        data = json.loads(line)
-                        if 'error' in data:
-                            raise RuntimeError(f"Ollama error: {data['error']}")
-                        if 'message' in data and 'content' in data['message']:
-                            yield data['message']['content']
-            else:
-                data = response.json()
-                if 'error' in data:
-                    raise RuntimeError(f"Ollama error: {data['error']}")
-                yield data['message']['content']
+        if stream:
+            async for line in response.aiter_lines():
+                if line:
+                    data = json.loads(line)
+                    if 'error' in data:
+                        raise RuntimeError(f"Ollama error: {data['error']}")
+                    if 'message' in data and 'content' in data['message']:
+                        yield data['message']['content']
+        else:
+            data = response.json()
+            if 'error' in data:
+                raise RuntimeError(f"Ollama error: {data['error']}")
+            yield data['message']['content']
 
     async def _call_anthropic(
         self,
@@ -495,33 +457,32 @@ class UnifiedLLM:
             else:
                 chat_messages.append(msg)
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    'x-api-key': self.router.anthropic_api_key,
-                    'anthropic-version': '2023-06-01',
-                    'content-type': 'application/json'
-                },
-                json={
-                    'model': model.name,
-                    'max_tokens': max_tokens,
-                    'system': system,
-                    'messages': chat_messages,
-                    'temperature': temperature,
-                    'stream': stream
-                }
-            )
+        response = await self._client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                'x-api-key': self.router.anthropic_api_key,
+                'anthropic-version': '2023-06-01',
+                'content-type': 'application/json'
+            },
+            json={
+                'model': model.name,
+                'max_tokens': max_tokens,
+                'system': system,
+                'messages': chat_messages,
+                'temperature': temperature,
+                'stream': stream
+            }
+        )
 
-            if stream:
-                async for line in response.aiter_lines():
-                    if line.startswith('data: '):
-                        data = json.loads(line[6:])
-                        if data['type'] == 'content_block_delta':
-                            yield data['delta'].get('text', '')
-            else:
-                data = response.json()
-                yield data['content'][0]['text']
+        if stream:
+            async for line in response.aiter_lines():
+                if line.startswith('data: '):
+                    data = json.loads(line[6:])
+                    if data['type'] == 'content_block_delta':
+                        yield data['delta'].get('text', '')
+        else:
+            data = response.json()
+            yield data['content'][0]['text']
 
     async def _call_openai(
         self,
@@ -532,28 +493,27 @@ class UnifiedLLM:
         stream: bool
     ) -> AsyncIterator[str]:
         """Call OpenAI API."""
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    'Authorization': f'Bearer {self.router.openai_api_key}',
-                    'Content-Type': 'application/json'
-                },
-                json={
-                    'model': model.name,
-                    'messages': messages,
-                    'max_tokens': max_tokens,
-                    'temperature': temperature,
-                    'stream': stream
-                }
-            )
+        response = await self._client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                'Authorization': f'Bearer {self.router.openai_api_key}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': model.name,
+                'messages': messages,
+                'max_tokens': max_tokens,
+                'temperature': temperature,
+                'stream': stream
+            }
+        )
 
-            if stream:
-                async for line in response.aiter_lines():
-                    if line.startswith('data: ') and line != 'data: [DONE]':
-                        data = json.loads(line[6:])
-                        if data['choices'][0]['delta'].get('content'):
-                            yield data['choices'][0]['delta']['content']
-            else:
-                data = response.json()
-                yield data['choices'][0]['message']['content']
+        if stream:
+            async for line in response.aiter_lines():
+                if line.startswith('data: ') and line != 'data: [DONE]':
+                    data = json.loads(line[6:])
+                    if data['choices'][0]['delta'].get('content'):
+                        yield data['choices'][0]['delta']['content']
+        else:
+            data = response.json()
+            yield data['choices'][0]['message']['content']
