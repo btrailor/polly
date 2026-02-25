@@ -1620,16 +1620,21 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         
         # Rule 1.5: Retrieval tier informs routing but is not a hard override.
         # ABSENT: no relevant content found — still try local (model's parametric knowledge).
-        # ADJACENT: tangential content — local can handle this with its own knowledge.
-        # Only force cloud when ADJACENT AND query is analytically complex (needs depth
-        # that a small local model genuinely can't provide).
+        # ADJACENT: tangential content — escalate to cloud unless query is trivially simple.
         # DIRECT: trust RAG context, local is ideal.
-        if retrieval_tier is not None and retrieval_tier == RetrievalTier.ABSENT:
-            # No relevant notes found — local can still answer from parametric knowledge.
-            # Continue to RAG quality checks below (will likely route local for simple queries).
-            logger.info("Retrieval tier ABSENT: will rely on local parametric knowledge")
-            print("[Model Routing] Retrieval tier ABSENT: checking local capability", flush=True)
-        
+        if retrieval_tier is not None:
+            if retrieval_tier == RetrievalTier.ABSENT:
+                logger.info("Retrieval tier ABSENT: will rely on local parametric knowledge")
+                print("[Model Routing] Retrieval tier ABSENT: checking local capability", flush=True)
+            elif retrieval_tier == RetrievalTier.ADJACENT:
+                # Escalate to cloud unless query is trivially simple
+                simple_keywords = ['what is', 'define', 'list', 'show me', 'explain']
+                query_lower = query.lower()
+                is_trivial = any(kw in query_lower for kw in simple_keywords) and len(query_lower) < 40
+                if not is_trivial:
+                    logger.info("Escalating to cloud: ADJACENT RAG and query not trivially simple")
+                    print("[Model Routing] Using CLOUD: ADJACENT RAG, non-trivial query", flush=True)
+                    return False
         # Rule 2: Check RAG context quality
         if not rag_results or len(rag_results) == 0:
             logger.info("Using local: No RAG results (parametric knowledge mode)")

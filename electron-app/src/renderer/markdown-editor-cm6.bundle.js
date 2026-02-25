@@ -27998,12 +27998,14 @@ var MarkdownEditorCM6 = (() => {
         this.decorations = this.buildDecorations(view);
         this.view = view;
         if (onWikiLinkClick) {
-          view.dom.addEventListener("click", this.handleClick.bind(this));
+          this._clickHandler = this.handleClick.bind(this);
+          view.dom.addEventListener("click", this._clickHandler);
         }
       }
       destroy() {
-        if (onWikiLinkClick) {
-          this.view.dom.removeEventListener("click", this.handleClick.bind(this));
+        if (this._clickHandler) {
+          this.view.dom.removeEventListener("click", this._clickHandler);
+          this._clickHandler = null;
         }
       }
       handleClick(event) {
@@ -28111,23 +28113,6 @@ var MarkdownEditorCM6 = (() => {
                     }
                     decorationCount++;
                   }
-                } else if (node.name === "Link") {
-                  console.log("[LivePreview] Found Link:", text, "on line", nodeLine);
-                  const wikiLinkMatch = text.match(/\[\[([^\]]+)\]\]/);
-                  if (wikiLinkMatch) {
-                    const noteName = wikiLinkMatch[1];
-                    decorations2.push({ from: nodeFrom, to: nodeFrom + 2, decoration: Decoration.replace({ widget: new HiddenWidget() }) });
-                    decorations2.push({ from: nodeFrom + 2, to: nodeTo - 2, decoration: Decoration.mark({
-                      attributes: {
-                        style: "color: #8ab4f8; cursor: pointer; text-decoration: underline;",
-                        "data-note-name": noteName,
-                        class: "wiki-link"
-                      }
-                    }) });
-                    decorations2.push({ from: nodeTo - 2, to: nodeTo, decoration: Decoration.replace({ widget: new HiddenWidget() }) });
-                    decorationCount++;
-                    console.log("[LivePreview] Added wiki link decoration (hide markers with widgets):", noteName);
-                  }
                 } else if (node.name === "ATXHeading1" || node.name === "ATXHeading2" || node.name === "ATXHeading3" || node.name === "ATXHeading4" || node.name === "ATXHeading5" || node.name === "ATXHeading6") {
                   console.log("[LivePreview] Found Heading:", text, "on line", nodeLine);
                   const hashMatch = text.match(/^(#{1,6})\s/);
@@ -28180,6 +28165,53 @@ var MarkdownEditorCM6 = (() => {
               }
             }
           });
+        }
+        const wikiLinkRe = /\[\[([^\]\n]+)\]\]/g;
+        for (const { from, to } of view.visibleRanges) {
+          const rangeText = view.state.doc.sliceString(from, to);
+          let m;
+          wikiLinkRe.lastIndex = 0;
+          while ((m = wikiLinkRe.exec(rangeText)) !== null) {
+            const matchFrom = from + m.index;
+            const matchTo = matchFrom + m[0].length;
+            const noteName = m[1];
+            const matchLine = view.state.doc.lineAt(matchFrom).number;
+            const isCursorOnLine = matchLine === cursorLine;
+            if (isCursorOnLine) {
+              decorations2.push({ from: matchFrom, to: matchFrom + 2, decoration: Decoration.mark({
+                attributes: { style: "color: var(--text-secondary, #808080); opacity: 0.6;" }
+              }) });
+              decorations2.push({ from: matchFrom + 2, to: matchTo - 2, decoration: Decoration.mark({
+                attributes: {
+                  style: "color: #8ab4f8; cursor: pointer; text-decoration: underline;",
+                  "data-note-name": noteName,
+                  class: "wiki-link"
+                }
+              }) });
+              decorations2.push({ from: matchTo - 2, to: matchTo, decoration: Decoration.mark({
+                attributes: { style: "color: var(--text-secondary, #808080); opacity: 0.6;" }
+              }) });
+            } else {
+              decorations2.push({
+                from: matchFrom,
+                to: matchFrom + 2,
+                decoration: Decoration.replace({ widget: new HiddenWidget() })
+              });
+              decorations2.push({ from: matchFrom + 2, to: matchTo - 2, decoration: Decoration.mark({
+                attributes: {
+                  style: "color: #8ab4f8; cursor: pointer; text-decoration: underline;",
+                  "data-note-name": noteName,
+                  class: "wiki-link"
+                }
+              }) });
+              decorations2.push({
+                from: matchTo - 2,
+                to: matchTo,
+                decoration: Decoration.replace({ widget: new HiddenWidget() })
+              });
+            }
+            decorationCount++;
+          }
         }
         decorations2.sort((a, b) => {
           if (a.from !== b.from) return a.from - b.from;

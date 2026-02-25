@@ -55,20 +55,32 @@ class SynthesisResult:
 
 
 class Synthesizer:
-    """
-    Synthesizes multiple sub-query responses into a coherent whole.
-    
-    Strategy:
-    1. If single response, return as-is (no synthesis needed)
-    2. If multiple responses without conflicts, concatenate with attribution
-    3. If conflicts or complex, use LLM to synthesize
-    4. Apply compression if combined context is large
-    
-    Example:
-        >>> routing_result = await split_router.route(decomposition, context)
-        >>> synthesis = await synthesizer.synthesize(routing_result)
-        >>> # Returns unified response with source attribution
-    """
+    @staticmethod
+    def _is_vague_query(query: str) -> bool:
+        """Detect if a query is vague/ambiguous."""
+        # Heuristics: short, generic, or unclear queries
+        vague_patterns = [
+            r"\b(thing|stuff|it|this|that|something|anything|everything)\b",
+            r"\b(help|assist|support|info|information|details|explain|clarify)\b",
+            r"\b(what|how|why|when|where)\b[\s\?]*$",
+        ]
+        if len(query.strip()) < 12:
+            return True
+        for pat in vague_patterns:
+            if re.search(pat, query, re.IGNORECASE):
+                return True
+        return False
+
+    # Synthesizes multiple sub-query responses into a coherent whole.
+    # Strategy:
+    # 1. If single response, return as-is (no synthesis needed)
+    # 2. If multiple responses without conflicts, concatenate with attribution
+    # 3. If conflicts or complex, use LLM to synthesize
+    # 4. Apply compression if combined context is large
+    # Example:
+    #   routing_result = await split_router.route(decomposition, context)
+    #   synthesis = await synthesizer.synthesize(routing_result)
+    #   # Returns unified response with source attribution
     
     SYNTHESIS_PROMPT = """You are synthesizing multiple responses into a single coherent answer.
 
@@ -131,12 +143,55 @@ Provide the synthesized response:"""
         if not self.enabled:
             # Synthesis disabled - just concatenate
             return self._simple_concatenate(routing_result)
-        
+
         # Handle single response (no synthesis needed)
         if len(routing_result.sub_responses) == 1:
             return self._single_response(routing_result)
-        
-        # Handle multiple responses
+
+        # Check for vague/ambiguous query and only adjacent/related answers
+        original_query = getattr(routing_result, 'original_query', '')
+        is_vague = self._is_vague_query(original_query)
+        only_adjacent = all(
+            hasattr(r, 'route_info') and r.route_info.get('rag_coverage', 0.0) < 0.3
+            for r in routing_result.sub_responses
+        )
+
+        # If vague and only adjacent/related info, escalate to cloud if not already done
+        if is_vague and only_adjacent and self.router:
+            # Try cloud escalation if not already tried
+            # (Assume cloud_count==0 means no cloud tried)
+            if getattr(routing_result, 'cloud_count', 0) == 0:
+                # Re-route to cloud with higher confidence
+                from core.router_v2 import ConfidenceLevel
+                messages = [{"role": "user", "content": original_query}]
+                response = await self.router.complete_with_fallback(
+                    messages=messages,
+                    confidence=ConfidenceLevel.BALANCED,
+                    max_tokens=2000,
+                    temperature=0.7
+                )
+                # Return as a synthetic SynthesisResult
+                return SynthesisResult(
+                    synthesized_response=response.content,
+                    original_query=original_query,
+                    source_attribution=[{"type": "cloud-escalation", "provider": response.provider}],
+                    compression_applied=False,
+                    tokens_saved=0,
+                    success=True
+                )
+            # If cloud already tried and still only adjacent, clarify with user
+            else:
+                clarification = f"I couldn't find a direct answer to your question. Could you clarify what you mean by: '{original_query}'? Or specify what you're looking for?"
+                return SynthesisResult(
+                    synthesized_response=clarification,
+                    original_query=original_query,
+                    source_attribution=[{"type": "clarification"}],
+                    compression_applied=False,
+                    tokens_saved=0,
+                    success=False
+                )
+
+        # Handle multiple responses as usual
         if self.use_llm and self.router:
             return await self._llm_synthesize(routing_result, context or {})
         else:

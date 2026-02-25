@@ -219,6 +219,34 @@ class IntelligentRouter:
         # Auto mode: intelligent routing
         cloud_score = self._score_cloud_need(query, context_length)
 
+        # Entity/topic coverage check: escalate to cloud if entity/topic not found in knowledge base
+        # (Assume self.knowledge_base is a dict or set of known entities/topics)
+        entity_topic = self._extract_entity_topic(query)
+        kb_has_entity = False
+        if hasattr(self, 'knowledge_base') and entity_topic:
+            kb_has_entity = entity_topic in self.knowledge_base
+
+        # If entity/topic not found, escalate to cloud
+        if entity_topic and not kb_has_entity and self._cloud_available:
+            decision = self._select_cloud(tier, context_length)
+            decision.reason = f"Cloud selected (entity/topic '{entity_topic}' not found in KB): {decision.reason}"
+            decision.fallback = self._select_local(tier, context_length).model
+            return decision
+
+        # If RAG returns only adjacent/related results, escalate to cloud
+        # (Assume self.rag_results is available and has 'rag_coverage' attribute)
+        only_adjacent = False
+        if hasattr(self, 'rag_results'):
+            only_adjacent = all(
+                hasattr(r, 'route_info') and r.route_info.get('rag_coverage', 0.0) < 0.3
+                for r in self.rag_results
+            )
+        if only_adjacent and self._cloud_available:
+            decision = self._select_cloud(tier, context_length)
+            decision.reason = f"Cloud selected (only adjacent RAG results): {decision.reason}"
+            decision.fallback = self._select_local(tier, context_length).model
+            return decision
+
         if cloud_score > 0.7 and self._cloud_available:
             decision = self._select_cloud(tier, context_length)
             decision.reason = f"Cloud selected (score: {cloud_score:.2f}): {decision.reason}"
@@ -232,6 +260,18 @@ class IntelligentRouter:
             if self._cloud_available:
                 decision.fallback = self._select_cloud(tier, context_length).model
             return decision
+
+    def _extract_entity_topic(self, query: str) -> Optional[str]:
+        """Extract entity/topic from query (simple heuristic, can be improved)."""
+        # Example: look for capitalized words or phrases, or use regex for music/artist queries
+        match = re.search(r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)', query)
+        if match:
+            return match.group(1)
+        # For music queries, look for 'music by X' or 'about X'
+        match = re.search(r'music by ([\w\s]+)', query.lower())
+        if match:
+            return match.group(1).strip().title()
+        return None
 
     def _estimate_tier(self, query: str) -> ModelTier:
         """Estimate the appropriate model tier for a query."""

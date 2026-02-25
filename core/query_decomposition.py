@@ -175,7 +175,8 @@ Respond with ONLY a JSON object (no markdown code blocks):
         decomp_config = config.get('routing', {}).get('decomposition', {})
         self.enabled = decomp_config.get('enabled', True)
         self.model = decomp_config.get('model', 'fast')  # fast/balanced/thorough
-        self.min_complexity_score = decomp_config.get('min_complexity_score', 0.6)
+        # Lowered threshold for more aggressive decomposition
+        self.min_complexity_score = decomp_config.get('min_complexity_score', 0.35)
         
         logger.info(f"QueryDecomposer initialized (enabled={self.enabled}, model={self.model})")
     
