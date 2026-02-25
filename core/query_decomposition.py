@@ -454,41 +454,6 @@ Respond with ONLY a JSON object (no markdown code blocks):
         # Default to factual lookup
         return SubQueryType.FACTUAL
     
-    async def _check_patterns(
-        self,
-        query: str,
-        context: Optional[Dict[str, Any]]
-    ) -> Optional[DecompositionResult]:
-        """
-        Check if query matches known patterns for decomposition.
-        
-        Returns:
-            DecompositionResult if pattern found, None otherwise
-        """
-        try:
-            # Search for routing patterns
-            patterns = self.pattern_learner.search_patterns(
-                query=query,
-                pattern_type="routing",
-                limit=3
-            )
-            
-            if patterns:
-                # Use highest confidence pattern
-                best_pattern = max(patterns, key=lambda p: p.confidence)
-                
-                if best_pattern.confidence > 0.7:
-                    logger.debug(f"Using known pattern: {best_pattern.description}")
-                    # Pattern found but we still decompose normally
-                    # This is just for logging/metrics
-                    # Actual pattern-informed routing happens in split_router
-                    return None
-            
-        except Exception as e:
-            logger.debug(f"Pattern check failed: {e}")
-        
-        return None
-    
     async def _llm_decompose(
         self,
         query: str,

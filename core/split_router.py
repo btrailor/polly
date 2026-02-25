@@ -134,7 +134,13 @@ class SplitRouter:
         self.prefer_local = routing_config.get('prefer_local', True)
         self.local_threshold = routing_config.get('local_rag_threshold', 0.7)
         self.max_parallel = routing_config.get('max_parallel_queries', 5)
-        
+
+        # Session-scoped RAG result cache: avoids re-running the same embedding+vector
+        # search for identical sub-queries within a session (common in multi-turn).
+        # Keyed by query string; evicts oldest when full (insertion-order dict).
+        self._rag_cache: dict = {}
+        self._rag_cache_max: int = routing_config.get('rag_cache_size', 128)
+
         logger.info(f"SplitRouter initialized (prefer_local={self.prefer_local})")
     
     async def route(
@@ -320,21 +326,29 @@ class SplitRouter:
         rag_context = None
 
         if should_search_rag:
-            # Search RAG for types that can genuinely be answered locally
-            try:
-                rag_results = await asyncio.to_thread(
-                    self.rag.search,
-                    sub_query.query,
-                    n_results=5
-                )
+            # Search RAG, using session cache to avoid redundant embedding+vector queries
+            cache_key = sub_query.query
+            if cache_key in self._rag_cache:
+                rag_results = self._rag_cache[cache_key]
+                logger.debug(f"RAG cache hit: '{cache_key[:50]}'")
+            else:
+                try:
+                    rag_results = await asyncio.to_thread(
+                        self.rag.search,
+                        sub_query.query,
+                        n_results=5
+                    )
+                    # Evict oldest entry when at capacity (insertion-order dict)
+                    if len(self._rag_cache) >= self._rag_cache_max:
+                        self._rag_cache.pop(next(iter(self._rag_cache)))
+                    self._rag_cache[cache_key] = rag_results
+                except Exception as e:
+                    logger.warning(f"RAG search failed: {e}")
+                    rag_results = []
 
-                if rag_results:
-                    # Calculate coverage heuristic (simplified)
-                    rag_coverage = min(len(rag_results) / 5.0, 1.0)
-                    rag_context = self._format_rag_context(rag_results)
-
-            except Exception as e:
-                logger.warning(f"RAG search failed: {e}")
+            if rag_results:
+                rag_coverage = min(len(rag_results) / 5.0, 1.0)
+                rag_context = self._format_rag_context(rag_results)
         
         # Routing decision logic
         if sub_query.type == SubQueryType.RAG_ANSWERABLE and rag_coverage >= self.local_threshold:

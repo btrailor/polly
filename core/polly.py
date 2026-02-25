@@ -46,78 +46,63 @@ class Polly:
         _total_start = time.time()
         
         logger.info("=== POLLY INITIALIZATION STARTING ===")
-        print(f"\n[INIT {time.time() - _total_start:.2f}s] Starting Polly initialization", flush=True)
-        
+
         self.config = config or get_config()
         self.user_name = self.config.user_name
         logger.info(f"Config loaded for user: {self.user_name}")
-        print(f"[INIT {time.time() - _total_start:.2f}s] Config loaded", flush=True)
 
         # Initialize components (learners first so RAG can use pattern learner)
-        logger.info("Initializing domains...")
         _step_start = time.time()
         self._init_domains()
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_domains took {time.time() - _step_start:.2f}s", flush=True)
-        
-        logger.info("Initializing learners...")
+        logger.debug(f"[INIT] _init_domains: {time.time() - _step_start:.2f}s")
+
         _step_start = time.time()
         self._init_learners()  # Initialize learners before RAG
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_learners took {time.time() - _step_start:.2f}s", flush=True)
-        
-        logger.info("Initializing RAG...")
+        logger.debug(f"[INIT] _init_learners: {time.time() - _step_start:.2f}s")
+
         _step_start = time.time()
         self._init_rag()       # RAG can now use pattern_learner
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_rag took {time.time() - _step_start:.2f}s", flush=True)
-        
-        logger.info("Initializing router...")
+        logger.debug(f"[INIT] _init_rag: {time.time() - _step_start:.2f}s")
+
         _step_start = time.time()
         self._init_router()
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_router took {time.time() - _step_start:.2f}s", flush=True)
-        
-        logger.info("Initializing notes sync...")
+        logger.debug(f"[INIT] _init_router: {time.time() - _step_start:.2f}s")
+
         _step_start = time.time()
         self._init_notes_sync()  # Initialize notes sync manager
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_notes_sync took {time.time() - _step_start:.2f}s", flush=True)
-        
-        logger.info("Initializing dedup...")
+        logger.debug(f"[INIT] _init_notes_sync: {time.time() - _step_start:.2f}s")
+
         _step_start = time.time()
         self._init_dedup()       # Initialize deduplication engine (Phase 21)
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_dedup took {time.time() - _step_start:.2f}s", flush=True)
-        
-        logger.info("Initializing compression...")
+        logger.debug(f"[INIT] _init_dedup: {time.time() - _step_start:.2f}s")
+
         _step_start = time.time()
         self._init_compression()  # Initialize compression manager (Phase 11c)
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_compression took {time.time() - _step_start:.2f}s", flush=True)
-        
-        logger.info("Initializing mental models...")
+        logger.debug(f"[INIT] _init_compression: {time.time() - _step_start:.2f}s")
+
         _step_start = time.time()
         self._init_mental_models()  # Initialize mental models system (Phase 14)
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_mental_models took {time.time() - _step_start:.2f}s", flush=True)
-        
-        logger.info("Initializing skills...")
+        logger.debug(f"[INIT] _init_mental_models: {time.time() - _step_start:.2f}s")
+
         _step_start = time.time()
         self._init_skills()  # Initialize skill system (Phase 16c)
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_skills took {time.time() - _step_start:.2f}s", flush=True)
-        
-        logger.info("Initializing personas...")
+        logger.debug(f"[INIT] _init_skills: {time.time() - _step_start:.2f}s")
+
         _step_start = time.time()
         self._init_personas()  # Initialize persona system (Phase 11c)
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_personas took {time.time() - _step_start:.2f}s", flush=True)
+        logger.debug(f"[INIT] _init_personas: {time.time() - _step_start:.2f}s")
 
-        logger.info("Initializing knowledge writer...")
         _step_start = time.time()
         self._init_knowledge_writer()  # Initialize knowledge writing system
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_knowledge_writer took {time.time() - _step_start:.2f}s", flush=True)
+        logger.debug(f"[INIT] _init_knowledge_writer: {time.time() - _step_start:.2f}s")
 
-        logger.info("Initializing Wave 3 routing pipeline...")
         _step_start = time.time()
         self._init_wave3_pipeline()  # Initialize Wave 3 (decomposition, split routing, synthesis)
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_wave3_pipeline took {time.time() - _step_start:.2f}s", flush=True)
+        logger.debug(f"[INIT] _init_wave3_pipeline: {time.time() - _step_start:.2f}s")
 
-        logger.info("Initializing memory & context budget system...")
         _step_start = time.time()
         self._init_memory_context()  # Initialize tiered memory, budget allocator, rolling context
-        print(f"[INIT {time.time() - _total_start:.2f}s] _init_memory_context took {time.time() - _step_start:.2f}s", flush=True)
+        logger.debug(f"[INIT] _init_memory_context: {time.time() - _step_start:.2f}s")
 
         # Conversation state
         self.conversation_history: List[Dict] = []
@@ -134,7 +119,6 @@ class Polly:
         self._current_turn_chunks: list = []
 
         _total_time = time.time() - _total_start
-        print(f"[INIT {_total_time:.2f}s] ✅ POLLY INITIALIZATION COMPLETE (total: {_total_time:.2f}s)", flush=True)
         logger.info(f"=== POLLY INITIALIZED FOR {self.user_name} (took {_total_time:.2f}s) ===")
 
     def _init_domains(self):
