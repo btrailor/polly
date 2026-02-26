@@ -1,7 +1,7 @@
 # Polly Project Status (OpenSpec)
 
 **Authority:** This file is the single source of truth for "where we are now."  
-**Last Updated:** February 18, 2026  
+**Last Updated:** February 25, 2026  
 **Full history:** [docs/status/CHANGELOG.md](../../../docs/status/CHANGELOG.md)
 
 ---
@@ -33,7 +33,9 @@
   - ✅ **#23 RAG Optimization for Local Models** (~85%) — `_estimate_model_tier()` helper; tier-aware n_results (3/5/10), max_context_tokens (2000/3000/6000), LLMLingua compression (0.3/0.5 ratio for local); config.yaml extended. 30/30 tests. Deferred: dynamic chunking at index-time, Mem0 reranker.
   - ✅ **#24 Persona Memory for Enrichment** (~100%) — Complete. Write-back, retrieval, pattern context, API endpoint, 38/38 tests.
   - ✅ **#25 SKILL↔Mental Model Bridge** — Complete. `SkillMetadata.mental_models` field + YAML parsing; `MentalModel.related_skills`; `skill_hints` +6 scoring boost in `get_models_for_context_scored()`; `_gather_context()` bridge in polly.py; 16/16 unit tests.
-- **Wave 4 complete.** Next: Wave 5 (LlamaIndex KG, CrewAI Orchestrator) or Phase 24 (Agent Swarms).
+- **Wave 4 complete.** Wave 5 and Phase 24a now complete (Feb 25, 2026).
+- **Wave 5 Complete (Feb 25, 2026):** LlamaIndex Knowledge Graph integration. `core/knowledge_graph/` (PollyEntityGraphStore, PollyIndexBuilder, QueryDecomposerV2, IncrementalKGIndexer). Bridges existing EntityStore (SQLite) to LlamaIndex PropertyGraphStore; wraps ChromaDB collections as SubQuestionQueryEngine tools. Drop-in V2 decomposer with full V1 fallback. Guarded by `routing.wave5.enabled=false`. 123/123 tests passing.
+- **Phase 24a Complete (Feb 25, 2026):** Nexus agent foundation. `core/nexus/` (interface, persona_adapter, registry, storage, coordinator). Pure Python dataclasses + Protocol — no CrewAI dependency. PersonaAgent wraps existing personas; AgentRegistry + SwarmStorage (SQLite-backed); NexusCoordinator with single-agent routing heuristics. 5 new server endpoints (`/swarms/execute`, `/swarms/{id}`, `/swarms/history`, `/agents`, `/agents/{id}/schema`). Guarded by `nexus.enabled=false`. 137/137 tests passing.
 
 ### Phase 23.5: Security Hardening 🔐 ✅
 - **Status:** Substantially complete (Feb 2026 analysis). Implemented: Capability Broker, Pyodide sandbox, package allowlist + approval dialog, CORS from security policy, audit logging. Config only: content sanitization (prompt injection/PII), API key context managers.
@@ -95,7 +97,7 @@
 
 | Phase | Status | Notes |
 |-------|--------|--------|
-| **Core Framework** | 🔄 ~90% | Waves 1–3 complete; Wave 4: #20 ✅, #21 ✅, #22 ✅ ~95%, #23 ✅ ~85%, #24 ✅, #25 ⬜; Waves 5–6 pending |
+| **Core Framework** | 🔄 ~95% | Waves 1–5 complete; Wave 4: #20 ✅, #21 ✅, #22 ✅ ~95%, #23 ✅ ~85%, #24 ✅, #25 ✅; Wave 5 ✅ (LlamaIndex KG); Phase 24a ✅ (Nexus Foundation); Wave 6 pending |
 | **12a** | ✅ ~95% | Knowledge Graph Basic — implemented via knowledge-graph-navigation + knowledge-graph-refinement. Spec updates pending. |
 | **16c** | Backend ready, frontend pending | AI Note Creation; ~4 weeks remaining |
 | **12b** | After 12a | Knowledge Graph Advanced — extended scope |

@@ -432,6 +432,29 @@ class SplitRouter:
             SubQueryResponse with result
         """
         try:
+            # Wave 5 short-circuit: if LlamaIndex has pre-answered this sub-query,
+            # skip the LLM call and return the cached answer directly.
+            llamaindex_answer = (sub_query.metadata or {}).get("llamaindex_answer")
+            if llamaindex_answer and str(
+                (sub_query.metadata or {}).get("source", "")
+            ).startswith("llamaindex"):
+                logger.debug(
+                    f"SplitRouter: using LlamaIndex pre-answered response for "
+                    f"'{sub_query.query[:60]}'"
+                )
+                return SubQueryResponse(
+                    sub_query=sub_query,
+                    response=str(llamaindex_answer),
+                    route_info={
+                        "type": "llamaindex",
+                        "provider": "llamaindex_sub_question_engine",
+                        "model": (sub_query.metadata or {}).get("tool_name", "unknown"),
+                        "tokens_used": 0,
+                        "cost": 0.0,
+                    },
+                    success=True,
+                )
+
             # Build prompt with RAG context if available
             prompt = sub_query.query
             if route_decision.get('rag_context'):

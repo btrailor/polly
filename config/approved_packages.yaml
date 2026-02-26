@@ -52,6 +52,10 @@ approved_packages:
   - litellm
   - llmlingua  # Fast algorithmic prompt compression (2x-10x token reduction)
   - mem0ai  # Adaptive memory layer with graph storage
+  - llama-index-core  # Wave 5: VectorStoreIndex, SubQuestionQueryEngine, PropertyGraphIndex
+  - llama-index-vector-stores-chroma  # Wave 5: ChromaVectorStore wrapping existing collections
+  - llama-index-embeddings-ollama  # Wave 5: Ollama embedding adapter
+  - llama-index-llms-litellm  # Wave 5: LiteLLM adapter for LlamaIndex
   
   # Testing
   - pytest

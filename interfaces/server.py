@@ -9451,6 +9451,89 @@ HINT: [A helpful hint]
             logger.error(f"Error customizing template {template_id}: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to customize template: {str(e)}")
 
+    # =====================================================================
+    # Nexus Agent Endpoints (Phase 24a)
+    # =====================================================================
+
+    @app.post("/swarms/execute")
+    async def swarms_execute(request: Request):
+        """
+        Route a query through the Nexus coordinator to the best available agent.
+
+        Body:
+            query (str): The user query to route
+            context (dict, optional): Additional context (conversation_history, etc.)
+            required_capability (str, optional): Require a specific capability
+
+        Returns:
+            AgentResult as dict, or 503 if no agent available.
+        """
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            raise HTTPException(503, "Nexus coordinator is not enabled (nexus.enabled=false)")
+
+        try:
+            body = await request.json()
+            query = body.get("query", "")
+            if not query:
+                raise HTTPException(400, "query is required")
+            context = body.get("context", {})
+            required_capability = body.get("required_capability")
+
+            result = await polly.nexus.route(query, context, required_capability)
+            if result is None:
+                raise HTTPException(503, "No suitable agent found for this query")
+
+            return result.to_dict()
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error in /swarms/execute: {e}", exc_info=True)
+            raise HTTPException(500, f"Execution failed: {str(e)}")
+
+    @app.get("/swarms/{exec_id}")
+    async def swarms_get_execution(exec_id: str):
+        """Return a specific swarm execution record by ID."""
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            raise HTTPException(503, "Nexus is not enabled")
+
+        record = polly.nexus.storage.get_execution(exec_id)
+        if record is None:
+            raise HTTPException(404, f"Execution '{exec_id}' not found")
+        return record
+
+    @app.get("/swarms/history")
+    async def swarms_history(limit: int = 50):
+        """Return recent swarm execution history."""
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            raise HTTPException(503, "Nexus is not enabled")
+
+        return {
+            "executions": polly.nexus.storage.get_history(limit=max(1, min(limit, 200)))
+        }
+
+    @app.get("/agents")
+    async def agents_list():
+        """List all active registered agents and their contracts."""
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            return {"agents": [], "nexus_enabled": False}
+
+        contracts = polly.nexus.list_executables()
+        return {
+            "agents": [c.to_dict() for c in contracts],
+            "nexus_enabled": True,
+        }
+
+    @app.get("/agents/{agent_id}/schema")
+    async def agents_get_schema(agent_id: str):
+        """Return the AgentContract (including I/O schemas) for a specific agent."""
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            raise HTTPException(503, "Nexus is not enabled")
+
+        contract = polly.nexus.registry.get(agent_id)
+        if contract is None:
+            raise HTTPException(404, f"Agent '{agent_id}' not found")
+        return contract.to_dict()
+
     return app
 
 

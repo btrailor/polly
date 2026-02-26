@@ -42,6 +42,12 @@ mem0ai>=1.0.0  # Graph-based memory with entity relationships and multi-level co
 # Token Counting (Scalable Memory Layers)
 tiktoken>=0.5.0  # Accurate token counting for budget allocation
 
+# LlamaIndex Knowledge Graph (Wave 5, Task 24)
+llama-index-core>=0.11.0,<0.12.0        # VectorStoreIndex, SubQuestionQueryEngine, PropertyGraphIndex
+llama-index-vector-stores-chroma>=0.2.0  # ChromaVectorStore wrapping existing collections
+llama-index-embeddings-ollama>=0.3.0     # Ollama embedding adapter (must match RAG embedding model)
+llama-index-llms-litellm>=0.2.0          # LiteLLM adapter for LlamaIndex LLM calls
+
 # Optional: For enhanced code parsing
 # tree-sitter>=0.20.0
 # tree-sitter-python

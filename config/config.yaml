@@ -83,6 +83,13 @@ routing:
     use_llm: true  # Use LLM for synthesis vs simple concatenation
     prefer_local: true  # Use local model for synthesis when possible
     compression_threshold: 2000  # Apply LLMLingua compression above this char count
+  wave5:
+    enabled: false  # Wave 5: LlamaIndex KG + SubQuestionQueryEngine. Set true to activate.
+    llamaindex:
+      embedding_model: "nomic-embed-text"  # MUST match rag.embedding_model
+      llm_tier: "fast"                     # fast/balanced/thorough for SubQuestionQueryEngine
+      collections: ["notes", "codebase", "documents", "patterns"]
+      kg_enabled: true                     # Include EntityStore-backed KG tool
 compression:
   enabled: true
   message_threshold: 20
@@ -174,3 +181,7 @@ deduplication:
   enabled: true
   similarity_threshold: 0.7
   max_results: 5
+nexus:
+  enabled: false   # Phase 24a: Polly-native agent interface. Set true to activate.
+  db_path: "~/.polly/swarms.db"
+  single_agent_only: true  # Phase 24a only; multi-agent DAGs deferred to Phase 24b

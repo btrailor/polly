@@ -101,6 +101,14 @@ class Polly:
         logger.debug(f"[INIT] _init_wave3_pipeline: {time.time() - _step_start:.2f}s")
 
         _step_start = time.time()
+        self._init_wave5_pipeline()  # Initialize Wave 5 (LlamaIndex KG, QueryDecomposerV2)
+        logger.debug(f"[INIT] _init_wave5_pipeline: {time.time() - _step_start:.2f}s")
+
+        _step_start = time.time()
+        self._init_nexus()  # Initialize Nexus agent coordinator (Phase 24a)
+        logger.debug(f"[INIT] _init_nexus: {time.time() - _step_start:.2f}s")
+
+        _step_start = time.time()
         self._init_memory_context()  # Initialize tiered memory, budget allocator, rolling context
         logger.debug(f"[INIT] _init_memory_context: {time.time() - _step_start:.2f}s")
 
@@ -625,6 +633,95 @@ class Polly:
             self.query_decomposer = None
             self.split_router = None
             self.synthesizer = None
+
+    def _init_wave5_pipeline(self):
+        """Initialize Wave 5: LlamaIndex KG + upgraded query decomposition (Task 24)."""
+        wave5_cfg = self.config.get('routing', {}).get('wave5', {})
+        if not wave5_cfg.get('enabled', False):
+            logger.info("Wave 5 pipeline disabled in config (routing.wave5.enabled=false)")
+            self.kg_index_builder = None
+            return
+
+        try:
+            from core.knowledge_graph import PollyIndexBuilder, QueryDecomposerV2
+
+            # Need both entity_store and rag.client
+            if not (self.entity_store and self.rag and hasattr(self.rag, 'client')):
+                logger.warning(
+                    "Wave 5: entity_store or RAG client unavailable — "
+                    "KG index builder disabled"
+                )
+                self.kg_index_builder = None
+                return
+
+            self.kg_index_builder = PollyIndexBuilder(
+                config=self.config._config if hasattr(self.config, '_config') else dict(self.config),
+                entity_store=self.entity_store,
+                chroma_client=self.rag.client,
+            )
+            logger.info("Wave 5: PollyIndexBuilder created")
+
+            # Upgrade query_decomposer to V2 if Wave 3 decomposition is active
+            if self.query_decomposer is not None:
+                self.query_decomposer = QueryDecomposerV2(
+                    config=self.config._config if hasattr(self.config, '_config') else dict(self.config),
+                    router=self.router_v2,
+                    pattern_learner=self.pattern_engine,
+                    index_builder=self.kg_index_builder,
+                )
+                logger.info(
+                    "Wave 5: QueryDecomposer upgraded to V2 "
+                    "(LlamaIndex SubQuestionQueryEngine)"
+                )
+            else:
+                logger.info(
+                    "Wave 5: Wave 3 decomposition not active — "
+                    "KG index builder ready but V2 decomposer not installed"
+                )
+
+        except Exception as e:
+            logger.error(f"Could not initialize Wave 5 pipeline: {e}", exc_info=True)
+            self.kg_index_builder = None
+
+    def _init_nexus(self):
+        """Initialize Nexus agent coordinator (Phase 24a)."""
+        nexus_cfg = self.config.get('nexus', {})
+        if not nexus_cfg.get('enabled', False):
+            logger.info("Nexus disabled in config (nexus.enabled=false)")
+            self.nexus = None
+            return
+
+        try:
+            from pathlib import Path
+            from core.nexus import AgentRegistry, SwarmStorage, NexusCoordinator, PersonaAgent
+
+            db_path_str = nexus_cfg.get('db_path', '~/.polly/swarms.db')
+            db_path = Path(db_path_str).expanduser()
+
+            registry = AgentRegistry(db_path)
+            storage = SwarmStorage(db_path)
+            self.nexus = NexusCoordinator(registry, storage)
+
+            # Wrap registered personas as PersonaAgent executables
+            if self.persona_manager is not None:
+                for persona_name in ["scribe", "architect", "professor"]:
+                    try:
+                        persona_instance = self.persona_manager.get_persona(persona_name)
+                        if persona_instance is not None:
+                            agent = PersonaAgent(persona_instance, persona_name)
+                            self.nexus.register_executable(agent.contract.id, agent)
+                            logger.debug(f"Nexus: registered PersonaAgent '{persona_name}'")
+                    except Exception as pe:
+                        logger.debug(f"Nexus: could not wrap persona '{persona_name}': {pe}")
+
+            registered_count = len(self.nexus._executables)
+            logger.info(
+                f"Nexus coordinator initialized with {registered_count} persona agent(s)"
+            )
+
+        except Exception as e:
+            logger.warning(f"Could not initialize Nexus: {e}", exc_info=True)
+            self.nexus = None
 
     def _init_memory_context(self):
         """Initialize tiered memory, budget allocator, relevance scorer, and rolling context.
