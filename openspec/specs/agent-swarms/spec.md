@@ -2,9 +2,12 @@
 
 Source of truth for Polly's configurable multi-agent workflow architecture. Subsumes and expands the original Phase 24 Orchestrator Mode concept.
 
-> **Implementation Status:** 💭 Vision — no code exists for this system.
-> This spec describes the target design. Implementation is planned for Tier 2 / Phases 24a–24e.
-> Other specs should not design integration points against this system until implementation begins.
+> **Implementation Status:** 🔄 In Progress — Phases 24a and 24b complete (Feb 2026).
+> - **Phase 24a ✅** (Feb 25, 2026): Agent interface, PersonaAgent adapters, AgentRegistry, SwarmStorage, NexusCoordinator (single-agent routing).
+> - **Phase 24b ✅** (Feb 26, 2026): WorkflowTemplate DAG types, WorkflowPlanner (topological sort, parallel grouping), WorkflowExecutor (asyncio parallel/sequential, intervention points, FIRST/ENSEMBLE merge), TemplateRegistry with 5 built-in templates. 375 tests passing.
+> - **Phase 24c** (next): Execution contexts + Capability Broker integration.
+> - **Phase 24d**: Template UI + progressive disclosure.
+> - **Phase 24e**: DRM integration, pattern learning, custom agents.
 
 ## Overview
 

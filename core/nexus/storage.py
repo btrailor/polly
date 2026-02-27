@@ -60,9 +60,19 @@ CREATE TABLE IF NOT EXISTS swarm_templates (
     name        TEXT NOT NULL,
     definition  TEXT NOT NULL DEFAULT '{}',
     created_at  TEXT NOT NULL,
+    updated_at  TEXT,
+    usage_count INTEGER NOT NULL DEFAULT 0,
     is_active   INTEGER NOT NULL DEFAULT 1
 );
+CREATE INDEX IF NOT EXISTS idx_template_active ON swarm_templates(is_active);
 """
+
+# Columns added in Phase 24b; use ALTER TABLE with error handling for
+# upgrading DBs created under Phase 24a schema.
+_MIGRATIONS = [
+    "ALTER TABLE swarm_templates ADD COLUMN updated_at TEXT",
+    "ALTER TABLE swarm_templates ADD COLUMN usage_count INTEGER NOT NULL DEFAULT 0",
+]
 
 
 class SwarmStorage:
@@ -89,6 +99,16 @@ class SwarmStorage:
     def _init_db(self) -> None:
         with self._conn() as conn:
             conn.executescript(_SCHEMA)
+        self._run_migrations()
+
+    def _run_migrations(self) -> None:
+        """Apply Phase 24b schema additions to existing DBs (idempotent)."""
+        with self._conn() as conn:
+            for stmt in _MIGRATIONS:
+                try:
+                    conn.execute(stmt)
+                except Exception:
+                    pass  # Column already exists — safe to ignore
 
     # ---- Swarm execution CRUD ----
 
@@ -263,6 +283,123 @@ class SwarmStorage:
             }
             for r in rows
         ]
+
+    # ---- Template CRUD ----
+
+    def create_template(self, template_id: str, name: str, definition: Dict[str, Any]) -> str:
+        """
+        Upsert a workflow template.
+
+        Stores the full template as JSON in the `definition` column.
+        `name` is duplicated at the top level for fast listing queries.
+
+        Returns template_id.
+        """
+        now = datetime.now().isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO swarm_templates (id, name, definition, created_at, updated_at, usage_count, is_active)
+                VALUES (?, ?, ?, ?, ?, 0, 1)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    definition = excluded.definition,
+                    updated_at = excluded.updated_at
+                """,
+                (template_id, name, json.dumps(definition), now, now),
+            )
+        return template_id
+
+    def get_template(self, template_id: str) -> Optional[Dict[str, Any]]:
+        """Return template definition dict, or None if not found or inactive."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM swarm_templates WHERE id = ? AND is_active = 1",
+                (template_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        d = json.loads(row["definition"])
+        d["_usage_count"] = row["usage_count"]
+        return d
+
+    def list_templates(self, domain: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Return all active templates as definition dicts.
+
+        If `domain` is provided, filters by domain_affinity (JSON LIKE match).
+        """
+        with self._conn() as conn:
+            if domain:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM swarm_templates
+                    WHERE is_active = 1 AND definition LIKE ?
+                    ORDER BY usage_count DESC, name
+                    """,
+                    (f'%"{domain}"%',),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM swarm_templates WHERE is_active = 1 ORDER BY usage_count DESC, name"
+                ).fetchall()
+        result = []
+        for row in rows:
+            d = json.loads(row["definition"])
+            d["_usage_count"] = row["usage_count"]
+            result.append(d)
+        return result
+
+    def update_template(self, template_id: str, definition: Dict[str, Any]) -> None:
+        """Update the definition JSON of an existing template."""
+        now = datetime.now().isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                UPDATE swarm_templates
+                SET definition = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (json.dumps(definition), now, template_id),
+            )
+
+    def delete_template(self, template_id: str) -> bool:
+        """Soft-delete a template (sets is_active=0). Returns True if found."""
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "UPDATE swarm_templates SET is_active = 0 WHERE id = ? AND is_active = 1",
+                (template_id,),
+            )
+        return cursor.rowcount > 0
+
+    def increment_template_usage(self, template_id: str) -> None:
+        """Increment the usage_count for a template (called after each workflow execution)."""
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE swarm_templates SET usage_count = usage_count + 1 WHERE id = ?",
+                (template_id,),
+            )
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """Return aggregate execution metrics."""
+        with self._conn() as conn:
+            total = conn.execute(
+                "SELECT COUNT(*) as n FROM swarm_executions"
+            ).fetchone()["n"]
+            by_status = conn.execute(
+                "SELECT status, COUNT(*) as n FROM swarm_executions GROUP BY status"
+            ).fetchall()
+            agent_totals = conn.execute(
+                """SELECT SUM(tokens_used) as tokens, SUM(cost_usd) as cost,
+                   SUM(duration_ms) as duration FROM swarm_agent_runs"""
+            ).fetchone()
+        return {
+            "total_executions": total,
+            "by_status": {r["status"]: r["n"] for r in by_status},
+            "total_tokens": agent_totals["tokens"] or 0,
+            "total_cost_usd": agent_totals["cost"] or 0.0,
+            "total_duration_ms": agent_totals["duration"] or 0,
+        }
 
     def __repr__(self) -> str:
         return f"<SwarmStorage @ {self.db_path}>"

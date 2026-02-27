@@ -9534,6 +9534,167 @@ HINT: [A helpful hint]
             raise HTTPException(404, f"Agent '{agent_id}' not found")
         return contract.to_dict()
 
+    # =====================================================================
+    # Nexus Workflow Endpoints (Phase 24b)
+    # =====================================================================
+
+    @app.get("/swarms/templates")
+    async def swarms_templates_list(domain: str = None):
+        """List available workflow templates, optionally filtered by domain."""
+        polly = get_polly()
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            return {"templates": [], "nexus_enabled": False}
+        if polly.nexus.template_registry is None:
+            return {"templates": [], "nexus_enabled": True}
+        templates = polly.nexus.template_registry.list_all(domain=domain)
+        return {"templates": [t.to_dict() for t in templates]}
+
+    @app.get("/swarms/templates/{template_id}")
+    async def swarms_templates_get(template_id: str):
+        """Return a specific workflow template by ID."""
+        polly = get_polly()
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            raise HTTPException(503, "Nexus is not enabled")
+        if polly.nexus.template_registry is None:
+            raise HTTPException(503, "Template registry not configured")
+        template = polly.nexus.template_registry.get(template_id)
+        if template is None:
+            raise HTTPException(404, f"Template '{template_id}' not found")
+        return template.to_dict()
+
+    @app.post("/swarms/templates")
+    async def swarms_templates_create(request: Request):
+        """Create a custom workflow template."""
+        polly = get_polly()
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            raise HTTPException(503, "Nexus is not enabled")
+        if polly.nexus.template_registry is None:
+            raise HTTPException(503, "Template registry not configured")
+        try:
+            body = await request.json()
+            from core.nexus.workflow import WorkflowTemplate
+            template = WorkflowTemplate.from_dict(body)
+            template_id = polly.nexus.template_registry.create(template)
+            return {"template_id": template_id, "status": "created"}
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            logger.error(f"Error creating template: {e}", exc_info=True)
+            raise HTTPException(500, f"Template creation failed: {str(e)}")
+
+    @app.post("/swarms/workflow")
+    async def swarms_workflow_execute(request: Request):
+        """
+        Execute a multi-agent workflow by template ID.
+
+        Request body:
+            template_id: str  — ID of the WorkflowTemplate to run
+            query: str        — The user's input query
+            context: dict     — Optional context passed to all agents
+        """
+        polly = get_polly()
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            raise HTTPException(503, "Nexus is not enabled")
+        try:
+            body = await request.json()
+            template_id = body.get("template_id")
+            query = body.get("query", "")
+            context = body.get("context", {})
+            if not template_id:
+                raise HTTPException(400, "template_id is required")
+            result = await polly.nexus.execute_workflow(template_id, query, context)
+            if result is None:
+                raise HTTPException(
+                    404,
+                    f"Template '{template_id}' not found or template registry not configured"
+                )
+            return result.to_dict()
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error in /swarms/workflow: {e}", exc_info=True)
+            raise HTTPException(500, f"Workflow execution failed: {str(e)}")
+
+    @app.post("/swarms/{exec_id}/intervene")
+    async def swarms_intervene(exec_id: str, request: Request):
+        """
+        Resume a paused workflow execution.
+
+        Request body (optional):
+            resume: bool   — Set to true to continue (default true)
+        """
+        polly = get_polly()
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            raise HTTPException(503, "Nexus is not enabled")
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+
+        record = polly.nexus.storage.get_execution(exec_id)
+        if record is None:
+            raise HTTPException(404, f"Execution '{exec_id}' not found")
+        if record["status"] != "paused":
+            raise HTTPException(400, f"Execution '{exec_id}' is not paused (status: {record['status']})")
+
+        # Reconstruct partial state from stored output_data
+        output_data = record.get("output_data", {})
+        template_id = output_data.get("template_id") or record.get("template_id")
+        if not template_id or polly.nexus.template_registry is None:
+            raise HTTPException(400, "Cannot resume: template information missing")
+
+        template = polly.nexus.template_registry.get(template_id)
+        if template is None:
+            raise HTTPException(404, f"Template '{template_id}' not found")
+
+        stored_step_results = output_data.get("step_results", {})
+        paused_at = output_data.get("paused_at_step") or list(stored_step_results.keys())[-1] if stored_step_results else None
+
+        from core.nexus.workflow import StepResult
+        prior_results = {k: StepResult.from_dict(v) for k, v in stored_step_results.items()}
+
+        from core.nexus.executor import WorkflowExecutor
+        from core.nexus.planner import WorkflowPlanner
+
+        executor = WorkflowExecutor(polly.nexus, polly.nexus.storage, WorkflowPlanner())
+        input_data = record.get("input_data", {})
+        user_input = input_data.get("query", "")
+        context = input_data.get("context", {})
+
+        result = await executor.resume(
+            execution_id=exec_id,
+            template=template,
+            user_input=user_input,
+            context=context,
+            prior_step_results=prior_results,
+            resume_from_step=paused_at or "",
+        )
+        return result.to_dict()
+
+    @app.post("/swarms/{exec_id}/cancel")
+    async def swarms_cancel(exec_id: str):
+        """Cancel a pending or running workflow execution."""
+        polly = get_polly()
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            raise HTTPException(503, "Nexus is not enabled")
+        record = polly.nexus.storage.get_execution(exec_id)
+        if record is None:
+            raise HTTPException(404, f"Execution '{exec_id}' not found")
+        if record["status"] in ("completed", "failed", "cancelled"):
+            raise HTTPException(400, f"Execution '{exec_id}' already {record['status']}")
+        polly.nexus.storage.update_execution(exec_id, "failed", error="Cancelled by user")
+        return {"execution_id": exec_id, "status": "cancelled"}
+
+    @app.get("/swarms/metrics")
+    async def swarms_metrics():
+        """Return aggregate swarm execution metrics."""
+        polly = get_polly()
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            return {"nexus_enabled": False}
+        metrics = polly.nexus.storage.get_metrics()
+        metrics["nexus_enabled"] = True
+        return metrics
+
     return app
 
 

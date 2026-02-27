@@ -1,14 +1,17 @@
 """
-NexusCoordinator — single-agent routing (Phase 24a)
+NexusCoordinator — agent routing and workflow execution (Phase 24a/24b)
 
-Routes a query to the best registered Executable based on task complexity
-and required capability. Phase 24a scope: single-agent only.
-Multi-agent DAG orchestration is deferred to Phase 24b.
+Phase 24a: Single-agent routing via keyword heuristics.
+Phase 24b: Multi-agent DAG execution via WorkflowExecutor.
 
-Usage:
+Usage (single-agent, Phase 24a):
     coordinator = NexusCoordinator(registry, storage)
     coordinator.register_executable("persona_scribe", scribe_agent)
     result = await coordinator.route("Save this note", context={})
+
+Usage (workflow, Phase 24b):
+    coordinator = NexusCoordinator(registry, storage, template_registry=registry)
+    result = await coordinator.execute_workflow("research-to-write", "my query", {})
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from core.nexus.interface import (
     AgentStatus,
     Executable,
 )
+from core.nexus.workflow import WorkflowResult
 
 logger = logging.getLogger(__name__)
 
@@ -55,16 +59,23 @@ class NexusCoordinator:
     Routes queries to registered Executable agents.
 
     Phase 24a: single-agent routing via keyword heuristics.
-    Phase 24b: multi-agent DAG with dependency resolution.
+    Phase 24b: multi-agent DAG with dependency resolution via execute_workflow().
 
     Args:
-        registry: AgentRegistry for contract lookup/discovery
-        storage:  SwarmStorage for execution history persistence
+        registry:          AgentRegistry for contract lookup/discovery
+        storage:           SwarmStorage for execution history persistence
+        template_registry: Optional TemplateRegistry for workflow template lookup
     """
 
-    def __init__(self, registry: Any, storage: Any) -> None:
+    def __init__(
+        self,
+        registry: Any,
+        storage: Any,
+        template_registry: Optional[Any] = None,
+    ) -> None:
         self.registry = registry
         self.storage = storage
+        self.template_registry = template_registry
         # Maps agent_id → Executable instance
         self._executables: Dict[str, Any] = {}
 
@@ -224,6 +235,59 @@ class NexusCoordinator:
                 status=AgentStatus.FAILED,
                 error=str(e),
             )
+
+    # ---- Workflow execution (Phase 24b) ----
+
+    async def execute_workflow(
+        self,
+        template_id: str,
+        user_input: str,
+        context: Dict[str, Any],
+    ) -> Optional[WorkflowResult]:
+        """
+        Execute a named workflow template with multi-agent DAG orchestration.
+
+        Looks up the template from self.template_registry, validates it,
+        then delegates to WorkflowExecutor.
+
+        Args:
+            template_id: ID of a registered WorkflowTemplate.
+            user_input:  The user's original query.
+            context:     Arbitrary context passed to each agent.
+
+        Returns:
+            WorkflowResult, or None if template_registry is not configured
+            or the template is not found.
+        """
+        if self.template_registry is None:
+            logger.warning(
+                "NexusCoordinator.execute_workflow: no template_registry configured"
+            )
+            return None
+
+        template = self.template_registry.get(template_id)
+        if template is None:
+            logger.warning(
+                f"NexusCoordinator.execute_workflow: template '{template_id}' not found"
+            )
+            return None
+
+        # Import here to avoid circular imports at module load time
+        from core.nexus.executor import WorkflowExecutor
+        from core.nexus.planner import WorkflowPlanner
+
+        planner = WorkflowPlanner()
+        executor = WorkflowExecutor(
+            coordinator=self,
+            storage=self.storage,
+            planner=planner,
+        )
+
+        logger.info(
+            f"NexusCoordinator: executing workflow '{template_id}' "
+            f"({len(template.steps)} steps)"
+        )
+        return await executor.execute(template, user_input, context)
 
     # ---- Introspection ----
 

@@ -1,7 +1,7 @@
 # Polly Project Status (OpenSpec)
 
 **Authority:** This file is the single source of truth for "where we are now."  
-**Last Updated:** February 25, 2026  
+**Last Updated:** February 26, 2026  
 **Full history:** [docs/status/CHANGELOG.md](../../../docs/status/CHANGELOG.md)
 
 ---
@@ -36,6 +36,7 @@
 - **Wave 4 complete.** Wave 5 and Phase 24a now complete (Feb 25, 2026).
 - **Wave 5 Complete (Feb 25, 2026):** LlamaIndex Knowledge Graph integration. `core/knowledge_graph/` (PollyEntityGraphStore, PollyIndexBuilder, QueryDecomposerV2, IncrementalKGIndexer). Bridges existing EntityStore (SQLite) to LlamaIndex PropertyGraphStore; wraps ChromaDB collections as SubQuestionQueryEngine tools. Drop-in V2 decomposer with full V1 fallback. Guarded by `routing.wave5.enabled=false`. 123/123 tests passing.
 - **Phase 24a Complete (Feb 25, 2026):** Nexus agent foundation. `core/nexus/` (interface, persona_adapter, registry, storage, coordinator). Pure Python dataclasses + Protocol — no CrewAI dependency. PersonaAgent wraps existing personas; AgentRegistry + SwarmStorage (SQLite-backed); NexusCoordinator with single-agent routing heuristics. 5 new server endpoints (`/swarms/execute`, `/swarms/{id}`, `/swarms/history`, `/agents`, `/agents/{id}/schema`). Guarded by `nexus.enabled=false`. 137/137 tests passing.
+- **Phase 24b Complete (Feb 26, 2026):** Multi-agent workflow DAG execution. `core/nexus/workflow.py` (WorkflowStep, WorkflowTemplate, MergeStrategy, StepResult, WorkflowResult), `core/nexus/planner.py` (WorkflowPlanner — Kahn's topological sort, parallel grouping, $-var input resolution), `core/nexus/executor.py` (WorkflowExecutor — asyncio.gather parallel execution, intervention point pause/resume, FIRST/ENSEMBLE merge), `core/nexus/templates.py` (TemplateRegistry + 5 built-in templates: research-to-write, capture-and-summarize, teach-and-assess, plan-and-review, multi-domain-analysis). SwarmStorage extended with template CRUD; NexusCoordinator gains `execute_workflow()`; 7 new server endpoints (`/swarms/templates`, `/swarms/workflow`, `/swarms/{id}/intervene`, `/swarms/{id}/cancel`, `/swarms/metrics`). 115/115 new tests passing (375 total nexus tests).
 
 ### Phase 23.5: Security Hardening 🔐 ✅
 - **Status:** Substantially complete (Feb 2026 analysis). Implemented: Capability Broker, Pyodide sandbox, package allowlist + approval dialog, CORS from security policy, audit logging. Config only: content sanitization (prompt injection/PII), API key context managers.
@@ -97,7 +98,7 @@
 
 | Phase | Status | Notes |
 |-------|--------|--------|
-| **Core Framework** | 🔄 ~95% | Waves 1–5 complete; Wave 4: #20 ✅, #21 ✅, #22 ✅ ~95%, #23 ✅ ~85%, #24 ✅, #25 ✅; Wave 5 ✅ (LlamaIndex KG); Phase 24a ✅ (Nexus Foundation); Wave 6 pending |
+| **Core Framework** | 🔄 ~95% | Waves 1–5 complete; Wave 4: #20 ✅, #21 ✅, #22 ✅ ~95%, #23 ✅ ~85%, #24 ✅, #25 ✅; Wave 5 ✅ (LlamaIndex KG); Phase 24a ✅ (Nexus Foundation); Phase 24b ✅ (Multi-Agent Workflows); Phase 24c pending |
 | **12a** | ✅ ~95% | Knowledge Graph Basic — implemented via knowledge-graph-navigation + knowledge-graph-refinement. Spec updates pending. |
 | **16c** | Backend ready, frontend pending | AI Note Creation; ~4 weeks remaining |
 | **12b** | After 12a | Knowledge Graph Advanced — extended scope |
