@@ -291,16 +291,65 @@ class WorkflowExecutor:
         """
         Execute a single workflow step.
 
-        1. Resolve $-prefixed input variables
-        2. Select an agent with the required capability
-        3. Execute the agent
-        4. Store the agent run record
-        5. Return a StepResult
+        1. Request execution contexts (if broker configured and step declares contexts)
+        2. Fail fast if any required context is denied
+        3. Resolve $-prefixed input variables
+        4. Select an agent with the required capability
+        5. Execute the agent (with context_tokens injected into AgentInput.context)
+        6. Store the agent run record
+        7. Return a StepResult
 
         If no agent has the required capability, returns a FAILED StepResult.
         """
         started_at = datetime.now().isoformat()
         step_start = time.monotonic()
+
+        # ---- Context broker ----
+        agent_context = dict(context)
+        broker = getattr(self.coordinator, "context_broker", None)
+        all_declared = list(step.required_contexts) + list(step.optional_contexts)
+
+        if broker is not None and all_declared:
+            grants = broker.request_contexts(
+                agent_id="workflow_step",
+                context_types=all_declared,
+                workflow_exec_id=exec_id,
+                operations=["read", "write", "query"],
+            )
+
+            from core.nexus.contexts import ContextToken
+
+            # Check required contexts — any denial → FAILED step
+            for ctx_type in step.required_contexts:
+                grant = grants.get(ctx_type)
+                if not isinstance(grant, ContextToken):
+                    reason = getattr(grant, "reason", "not_granted")
+                    logger.warning(
+                        f"WorkflowExecutor: step '{step.id}' required context "
+                        f"'{ctx_type}' denied: {reason}"
+                    )
+                    agent_result = AgentResult(
+                        agent_id="none",
+                        execution_id=exec_id,
+                        status=AgentStatus.FAILED,
+                        error=f"Required context '{ctx_type}' denied: {reason}",
+                    )
+                    return StepResult(
+                        step_id=step.id,
+                        agent_id="none",
+                        result=agent_result,
+                        started_at=started_at,
+                        completed_at=datetime.now().isoformat(),
+                    )
+
+            # Collect granted tokens (required + optional that were granted)
+            context_tokens = {
+                ct: grant.to_dict()
+                for ct, grant in grants.items()
+                if isinstance(grant, ContextToken)
+            }
+            if context_tokens:
+                agent_context["context_tokens"] = context_tokens
 
         # Resolve inputs
         try:
@@ -351,7 +400,7 @@ class WorkflowExecutor:
         agent_input = AgentInput(
             query=resolved.get("query", user_input),
             data=resolved,
-            context=context,
+            context=agent_context,
             execution_id=exec_id,
         )
 

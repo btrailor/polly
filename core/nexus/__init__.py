@@ -1,5 +1,5 @@
 """
-Polly Nexus — Phase 24a + Phase 24b
+Polly Nexus — Phase 24a + Phase 24b + Phase 24c
 
 Provides:
   Phase 24a:
@@ -17,6 +17,14 @@ Provides:
   - WorkflowExecutor: parallel/sequential multi-agent execution
   - TemplateRegistry, BUILTIN_TEMPLATES: template management
   - NexusCoordinator.execute_workflow(): multi-agent entry point
+
+  Phase 24c:
+  - ExecutionContextType: enum of external systems agents can access
+  - ContextToken: scoped, time-limited access grant
+  - ContextDenial: rejected access request
+  - ContextRequest: access request record
+  - NexusContextBroker: config-driven context mediation
+  - WorkflowStep.required_contexts / optional_contexts: per-step declarations
 """
 
 from core.nexus.interface import (
@@ -43,6 +51,13 @@ from core.nexus.workflow import (
 from core.nexus.planner import ExecutionGroup, WorkflowPlanner
 from core.nexus.executor import WorkflowExecutor
 from core.nexus.templates import BUILTIN_TEMPLATES, TemplateRegistry
+from core.nexus.contexts import (
+    ContextDenial,
+    ContextRequest,
+    ContextToken,
+    ExecutionContextType,
+    NexusContextBroker,
+)
 
 __all__ = [
     # interface (Phase 24a)
@@ -77,4 +92,10 @@ __all__ = [
     # templates (Phase 24b)
     "BUILTIN_TEMPLATES",
     "TemplateRegistry",
+    # contexts (Phase 24c)
+    "ContextDenial",
+    "ContextRequest",
+    "ContextToken",
+    "ExecutionContextType",
+    "NexusContextBroker",
 ]

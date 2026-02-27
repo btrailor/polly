@@ -60,11 +60,13 @@ class NexusCoordinator:
 
     Phase 24a: single-agent routing via keyword heuristics.
     Phase 24b: multi-agent DAG with dependency resolution via execute_workflow().
+    Phase 24c: context mediation via optional NexusContextBroker.
 
     Args:
         registry:          AgentRegistry for contract lookup/discovery
         storage:           SwarmStorage for execution history persistence
         template_registry: Optional TemplateRegistry for workflow template lookup
+        context_broker:    Optional NexusContextBroker for execution context mediation
     """
 
     def __init__(
@@ -72,10 +74,12 @@ class NexusCoordinator:
         registry: Any,
         storage: Any,
         template_registry: Optional[Any] = None,
+        context_broker: Optional[Any] = None,
     ) -> None:
         self.registry = registry
         self.storage = storage
         self.template_registry = template_registry
+        self.context_broker = context_broker
         # Maps agent_id → Executable instance
         self._executables: Dict[str, Any] = {}
 

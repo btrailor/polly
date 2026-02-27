@@ -177,12 +177,14 @@ BUILTIN_TEMPLATES: Dict[str, WorkflowTemplate] = {
                 agent_capability="capture_note",
                 input_mapping={"query": "$user_input"},
                 depends_on=[],
+                optional_contexts=["rag", "knowledge_graph"],
             ),
             WorkflowStep(
                 id="explain",
                 agent_capability="explain_concept",
                 input_mapping={"query": "$user_input"},
                 depends_on=[],
+                optional_contexts=["rag", "knowledge_graph"],
             ),
             # Merge step: depends on both parallel branches
             WorkflowStep(

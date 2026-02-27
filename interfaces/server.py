@@ -9685,6 +9685,22 @@ HINT: [A helpful hint]
         polly.nexus.storage.update_execution(exec_id, "failed", error="Cancelled by user")
         return {"execution_id": exec_id, "status": "cancelled"}
 
+    @app.get("/swarms/contexts")
+    async def swarms_contexts():
+        """List all execution context types with enabled/disabled status."""
+        polly = get_polly()
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            return {"nexus_enabled": False, "contexts": []}
+        broker = getattr(polly.nexus, "context_broker", None)
+        if broker is None:
+            from core.nexus.contexts import ExecutionContextType
+            contexts = [
+                {"type": t.value, "enabled": False, "allowed_operations": []}
+                for t in ExecutionContextType
+            ]
+            return {"nexus_enabled": True, "contexts": contexts}
+        return {"nexus_enabled": True, "contexts": broker.list_available()}
+
     @app.get("/swarms/metrics")
     async def swarms_metrics():
         """Return aggregate swarm execution metrics."""

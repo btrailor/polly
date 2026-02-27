@@ -38,17 +38,22 @@ class WorkflowStep:
     A single node in the workflow DAG.
 
     Args:
-        id:               Unique step identifier within the template (e.g. "researcher").
-        agent_capability: The capability name to route this step to.
-        input_mapping:    Maps step input keys to resolved variable references.
-                          Use "$user_input" for the original query.
-                          Use "$<step_id>.output" for a prior step's content.
-        depends_on:       IDs of steps that must complete before this step runs.
+        id:                 Unique step identifier within the template (e.g. "researcher").
+        agent_capability:   The capability name to route this step to.
+        input_mapping:      Maps step input keys to resolved variable references.
+                            Use "$user_input" for the original query.
+                            Use "$<step_id>.output" for a prior step's content.
+        depends_on:         IDs of steps that must complete before this step runs.
+        required_contexts:  Context types that MUST be granted before this step runs.
+                            If any are denied, the step is marked FAILED without executing.
+        optional_contexts:  Context types used if available; denials are silently skipped.
     """
     id: str
     agent_capability: str
     input_mapping: Dict[str, str] = field(default_factory=dict)
     depends_on: List[str] = field(default_factory=list)
+    required_contexts: List[str] = field(default_factory=list)
+    optional_contexts: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -56,6 +61,8 @@ class WorkflowStep:
             "agent_capability": self.agent_capability,
             "input_mapping": self.input_mapping,
             "depends_on": list(self.depends_on),
+            "required_contexts": list(self.required_contexts),
+            "optional_contexts": list(self.optional_contexts),
         }
 
     @classmethod
@@ -65,6 +72,8 @@ class WorkflowStep:
             agent_capability=d["agent_capability"],
             input_mapping=d.get("input_mapping", {}),
             depends_on=d.get("depends_on", []),
+            required_contexts=d.get("required_contexts", []),
+            optional_contexts=d.get("optional_contexts", []),
         )
 
 

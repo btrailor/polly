@@ -185,3 +185,30 @@ nexus:
   enabled: false   # Phase 24a: Polly-native agent interface. Set true to activate.
   db_path: "~/.polly/swarms.db"
   single_agent_only: true  # Phase 24a only; multi-agent DAGs deferred to Phase 24b
+  # Phase 24c: execution context policies (per-type access control for agents)
+  contexts:
+    filesystem:
+      enabled: true
+      read_only: true
+      allowed_operations: ["read"]
+    github:
+      enabled: false
+      allowed_operations: []
+    obsidian:
+      enabled: true
+      allowed_operations: ["read", "write"]
+    ghost_cms:
+      enabled: false
+      allowed_operations: []
+    rag:
+      enabled: true
+      allowed_operations: ["query"]
+    knowledge_graph:
+      enabled: true
+      allowed_operations: ["query"]
+    email:
+      enabled: false
+      allowed_operations: []
+    calendar:
+      enabled: false
+      allowed_operations: []
