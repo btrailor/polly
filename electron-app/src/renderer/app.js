@@ -187,6 +187,13 @@ function setupSlashCommandAutocomplete() {
 // State
 let currentView = "setup";
 let currentPage = "dashboard"; // Track current page for conversation context
+
+// Swarms (Nexus Workflow) state (Phase 24d)
+let currentSwarmsTemplate = null;     // WorkflowTemplate object currently selected
+let currentSwarmsExecId = null;       // Active execution ID (for intervention/cancel)
+let swarmsCurrentDomain = "";         // Active domain filter in sidebar
+let swarmsAnimTimers = [];            // Cosmetic animation timer IDs (cleared on completion)
+let swarmsHistoryLoaded = false;      // Track if history tab has been loaded once
 let currentMode = "auto";
 let setupStep = 1;
 let codePaths = [];
@@ -3515,6 +3522,9 @@ function showView(view) {
     } else if (view === "learning") {
       // Initialize Learning page (Phase 22)
       initLearningPage();
+    } else if (view === "swarms") {
+      // Initialize Workflows (Nexus) view (Phase 24d)
+      loadSwarmsView();
     } else if (view === "graph") {
       // Initialize Graph page, or restore existing instance
       if (cytoscapeInstance) {
@@ -4030,6 +4040,20 @@ function updateLeftSidebar(view) {
       title: "Graph",
       content: renderGraphSidebar(),
     },
+    swarms: {
+      title: "Templates",
+      content: `
+        <div class="swarms-domain-filters" id="swarms-domain-filters">
+          <button class="swarms-filter-btn active" data-domain="">All</button>
+          <button class="swarms-filter-btn" data-domain="writing">Writing</button>
+          <button class="swarms-filter-btn" data-domain="knowledge">Knowledge</button>
+          <button class="swarms-filter-btn" data-domain="education">Education</button>
+          <button class="swarms-filter-btn" data-domain="code">Code</button>
+        </div>
+        <div class="swarms-template-list" id="swarms-template-list">
+          ${SkeletonLoader.forView ? SkeletonLoader.forView('swarms') : '<div class="skeleton-list"></div>'}
+        </div>`,
+    },
   };
 
   const config = sidebarConfigs[view] || { title: "Navigation", content: "" };
@@ -4259,10 +4283,656 @@ function updateLeftSidebar(view) {
     } else if (view === "graph") {
       // Graph page event handlers will be set up in initGraphPage()
       console.log("[Graph] Sidebar initialized, waiting for initGraphPage()");
+    } else if (view === "swarms") {
+      // Domain filter chips
+      document.querySelectorAll("#swarms-domain-filters .swarms-filter-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll("#swarms-domain-filters .swarms-filter-btn")
+            .forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          swarmsCurrentDomain = btn.dataset.domain;
+          loadSwarmsTemplates(swarmsCurrentDomain);
+        });
+      });
+      loadSwarmsTemplates(swarmsCurrentDomain);
     }
     });
   });
 }
+
+// =============================================================================
+// Swarms (Nexus Workflow) view functions (Phase 24d)
+// =============================================================================
+
+/**
+ * Initialize the Swarms view: load metrics, re-create icons, attach tab handlers.
+ */
+async function loadSwarmsView() {
+  // Bind header tab buttons
+  document.querySelectorAll(".swarms-tab").forEach((btn) => {
+    btn.addEventListener("click", () => _onSwarmsTabClick(btn.dataset.swarmTab));
+  });
+
+  // Bind execution buttons
+  const runBtn = document.getElementById("swarms-run-btn");
+  const cancelBtn = document.getElementById("swarms-cancel-btn");
+  const runAgainBtn = document.getElementById("swarms-run-again-btn");
+  const continueBtn = document.getElementById("swarms-continue-btn");
+  if (runBtn) runBtn.addEventListener("click", runSwarmsWorkflow);
+  if (cancelBtn) cancelBtn.addEventListener("click", cancelSwarmsWorkflow);
+  if (runAgainBtn) runAgainBtn.addEventListener("click", () => {
+    _showSwarmsPanel("detail");
+  });
+  if (continueBtn) continueBtn.addEventListener("click", continueSwarmsWorkflow);
+
+  // Fetch and render metrics
+  const r = await safeFetch(`${API_URL}/swarms/metrics`, {}, true);
+  if (r.ok && r.data) {
+    const m = r.data;
+    const row = document.getElementById("swarms-metrics-row");
+    if (row) {
+      const execCount = m.total_executions ?? 0;
+      const wfCount = m.workflow_executions ?? 0;
+      row.innerHTML = [
+        execCount ? `<span class="swarms-metric-chip">${execCount} runs</span>` : "",
+        wfCount ? `<span class="swarms-metric-chip">${wfCount} workflows</span>` : "",
+      ].filter(Boolean).join("");
+    }
+  }
+
+  if (typeof lucide !== "undefined") refreshIcons();
+}
+
+/**
+ * Handle swarms tab switching (Execute / History).
+ */
+function _onSwarmsTabClick(tab) {
+  document.querySelectorAll(".swarms-tab").forEach((btn) => {
+    const isActive = btn.dataset.swarmTab === tab;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  document.getElementById("swarms-tab-execute")?.classList.toggle("hidden", tab !== "execute");
+  document.getElementById("swarms-tab-history")?.classList.toggle("hidden", tab !== "history");
+
+  if (tab === "history" && !swarmsHistoryLoaded) {
+    swarmsHistoryLoaded = true;
+    loadSwarmsHistory();
+  }
+}
+
+/**
+ * Fetch workflow templates from /swarms/templates and render sidebar cards.
+ * @param {string} domain - Domain filter (empty = all)
+ */
+async function loadSwarmsTemplates(domain) {
+  const list = document.getElementById("swarms-template-list");
+  if (!list) return;
+  list.innerHTML = '<div class="skeleton-list" style="padding:8px;color:var(--text-muted);font-size:var(--font-xs);">Loading…</div>';
+
+  const url = domain
+    ? `${API_URL}/swarms/templates?domain=${encodeURIComponent(domain)}`
+    : `${API_URL}/swarms/templates`;
+  const r = await safeFetch(url, {}, true);
+  if (!r.ok) {
+    list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:var(--font-xs);">Could not load templates.</div>';
+    return;
+  }
+
+  const templates = r.data.templates || [];
+  if (!templates.length) {
+    list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:var(--font-xs);">No templates found.</div>';
+    return;
+  }
+
+  list.innerHTML = templates.map((t) => {
+    const tags = (t.domain_affinity || []).map((d) =>
+      `<span class="swarms-domain-tag">${d}</span>`
+    ).join("");
+    const desc = (t.description || "").length > 70
+      ? t.description.slice(0, 70) + "…"
+      : (t.description || "");
+    const isActive = currentSwarmsTemplate && currentSwarmsTemplate.id === t.id;
+    return `
+      <div class="swarms-template-card${isActive ? " active" : ""}" data-template-id="${t.id}" tabindex="0" role="button"
+           aria-label="${t.name}">
+        <div class="swarms-template-card-name">${t.name || t.id}</div>
+        <div class="swarms-template-card-desc">${desc}</div>
+        ${tags ? `<div class="swarms-template-card-tags">${tags}</div>` : ""}
+      </div>`;
+  }).join("");
+
+  // Attach click handlers
+  list.querySelectorAll(".swarms-template-card").forEach((card) => {
+    card.addEventListener("click", () => selectSwarmsTemplate(card.dataset.templateId));
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        selectSwarmsTemplate(card.dataset.templateId);
+      }
+    });
+  });
+}
+
+/**
+ * Fetch and display a template's full detail in the main panel.
+ * @param {string} templateId
+ */
+async function selectSwarmsTemplate(templateId) {
+  const r = await safeFetch(`${API_URL}/swarms/templates/${encodeURIComponent(templateId)}`, {}, false);
+  if (!r.ok) {
+    showToast("Could not load template details.", "error");
+    return;
+  }
+
+  currentSwarmsTemplate = r.data;
+
+  // Update active card in sidebar
+  document.querySelectorAll(".swarms-template-card").forEach((c) => {
+    c.classList.toggle("active", c.dataset.templateId === templateId);
+  });
+
+  // Populate detail panel
+  const nameEl = document.getElementById("swarms-detail-name");
+  const descEl = document.getElementById("swarms-detail-description");
+  const tagsEl = document.getElementById("swarms-detail-tags");
+  if (nameEl) nameEl.textContent = currentSwarmsTemplate.name || templateId;
+  if (descEl) descEl.textContent = currentSwarmsTemplate.description || "";
+  if (tagsEl) {
+    tagsEl.innerHTML = (currentSwarmsTemplate.domain_affinity || [])
+      .map((d) => `<span class="swarms-domain-tag">${d}</span>`)
+      .join("");
+  }
+
+  // Render step pipeline
+  _renderSwarmsPipeline(currentSwarmsTemplate.steps || []);
+
+  // Render context badges
+  _renderSwarmsContextBadges(currentSwarmsTemplate.steps || []);
+
+  _showSwarmsPanel("detail");
+
+  // Focus query input
+  setTimeout(() => {
+    const q = document.getElementById("swarms-query-input");
+    if (q) q.focus();
+  }, 50);
+
+  if (typeof lucide !== "undefined") refreshIcons();
+}
+
+/**
+ * Render the step pipeline visualization in the template detail panel.
+ * @param {Array} steps
+ */
+function _renderSwarmsPipeline(steps) {
+  const container = document.getElementById("swarms-step-pipeline");
+  if (!container) return;
+
+  // Group steps into execution waves using depends_on
+  const waves = _computeSwarmsWaves(steps);
+
+  const html = waves.map((wave, i) => {
+    const connectorHTML = i > 0
+      ? '<div class="swarms-pipeline-connector"></div>'
+      : "";
+    const nodesHTML = wave.length === 1
+      ? `<div class="swarms-pipeline-node">
+           <i data-lucide="circle-dot" aria-hidden="true"></i>
+           <span class="swarms-pipeline-node-label">${wave[0].id}</span>
+           <span class="swarms-pipeline-node-cap">${wave[0].agent_capability || ""}</span>
+         </div>`
+      : `<div class="swarms-pipeline-parallel">
+           ${wave.map((s) => `
+             <div class="swarms-pipeline-node" style="flex:1;">
+               <i data-lucide="circle-dot" aria-hidden="true"></i>
+               <span class="swarms-pipeline-node-label">${s.id}</span>
+               <span class="swarms-pipeline-node-cap">${s.agent_capability || ""}</span>
+             </div>`).join("")}
+         </div>`;
+    return connectorHTML + `<div class="swarms-pipeline-row">${nodesHTML}</div>`;
+  }).join("");
+
+  container.innerHTML = html || '<div style="color:var(--text-muted);font-size:var(--font-xs);padding:4px;">No steps defined.</div>';
+  if (typeof lucide !== "undefined") refreshIcons();
+}
+
+/**
+ * Render context requirement badges from all steps' required/optional_contexts.
+ * @param {Array} steps
+ */
+function _renderSwarmsContextBadges(steps) {
+  const row = document.getElementById("swarms-contexts-row");
+  if (!row) return;
+
+  const required = new Set();
+  const optional = new Set();
+  steps.forEach((s) => {
+    (s.required_contexts || []).forEach((c) => required.add(c));
+    (s.optional_contexts || []).forEach((c) => optional.add(c));
+  });
+
+  const badges = [
+    ...[...required].map((c) => `<span class="swarms-context-badge required" title="Required context"><i data-lucide="lock" aria-hidden="true" style="width:10px;height:10px;"></i> ${c}</span>`),
+    ...[...optional].map((c) => `<span class="swarms-context-badge optional" title="Optional context">${c}</span>`),
+  ];
+
+  row.innerHTML = badges.join("");
+  if (badges.length && typeof lucide !== "undefined") refreshIcons();
+}
+
+/**
+ * Compute topological execution waves for step animation.
+ * Each wave is an array of steps that can run in parallel.
+ * @param {Array} steps
+ * @returns {Array<Array>}
+ */
+function _computeSwarmsWaves(steps) {
+  const waves = [];
+  const placed = new Set();
+
+  while (placed.size < steps.length) {
+    const wave = steps.filter((s) => {
+      if (placed.has(s.id)) return false;
+      const deps = s.depends_on || [];
+      return deps.every((d) => placed.has(d));
+    });
+    if (!wave.length) break; // guard against cycles
+    wave.forEach((s) => placed.add(s.id));
+    waves.push(wave);
+  }
+  return waves;
+}
+
+/**
+ * Show one of the mutually exclusive main panels: "empty" | "detail" | "execution"
+ */
+function _showSwarmsPanel(panel) {
+  document.getElementById("swarms-empty-state")?.classList.toggle("hidden", panel !== "empty");
+  document.getElementById("swarms-template-detail")?.classList.toggle("hidden", panel !== "detail");
+  document.getElementById("swarms-execution")?.classList.toggle("hidden", panel !== "execution");
+}
+
+/**
+ * Run the selected workflow template.
+ */
+async function runSwarmsWorkflow() {
+  const query = (document.getElementById("swarms-query-input")?.value || "").trim();
+  if (!query || !currentSwarmsTemplate) return;
+
+  // Transition to execution panel
+  _showSwarmsPanel("execution");
+  const templateNameEl = document.getElementById("swarms-execution-template");
+  const statusEl = document.getElementById("swarms-execution-status");
+  const cancelBtn = document.getElementById("swarms-cancel-btn");
+  const runAgainBtn = document.getElementById("swarms-run-again-btn");
+  const interventionEl = document.getElementById("swarms-intervention");
+  const resultEl = document.getElementById("swarms-result");
+
+  if (templateNameEl) templateNameEl.textContent = currentSwarmsTemplate.name || currentSwarmsTemplate.id;
+  if (statusEl) { statusEl.textContent = "running"; statusEl.className = "badge swarms-status-running"; }
+  cancelBtn?.classList.remove("hidden");
+  runAgainBtn?.classList.add("hidden");
+  interventionEl?.classList.add("hidden");
+  resultEl?.classList.add("hidden");
+
+  // Build step cards from template definition
+  _buildSwarmsStepCards(currentSwarmsTemplate.steps || []);
+
+  // Start cosmetic animation
+  _startSwarmsStepAnimation(currentSwarmsTemplate);
+
+  // Execute (blocks until done or paused)
+  const r = await safeFetch(`${API_URL}/swarms/workflow`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      template_id: currentSwarmsTemplate.id,
+      query,
+    }),
+  });
+
+  // Stop animation timers
+  swarmsAnimTimers.forEach(clearTimeout);
+  swarmsAnimTimers = [];
+
+  cancelBtn?.classList.add("hidden");
+
+  if (!r.ok) {
+    _setSwarmsAllStepsStatus("failed");
+    if (statusEl) { statusEl.textContent = "failed"; statusEl.className = "badge swarms-status-failed"; }
+    showToast("Workflow failed: " + (r.error || "unknown error"), "error");
+    runAgainBtn?.classList.remove("hidden");
+    return;
+  }
+
+  currentSwarmsExecId = r.data.execution_id || null;
+  const status = r.data.status;
+
+  _applySwarmsStepResults(r.data.step_results || {});
+
+  if (status === "paused") {
+    if (statusEl) { statusEl.textContent = "paused"; statusEl.className = "badge swarms-status-paused"; }
+    _showSwarmsIntervention(r.data.paused_at_step || "");
+  } else if (status === "completed") {
+    if (statusEl) { statusEl.textContent = "completed"; statusEl.className = "badge swarms-status-completed"; }
+    runAgainBtn?.classList.remove("hidden");
+    _showSwarmsResult(r.data);
+  } else {
+    if (statusEl) { statusEl.textContent = status || "failed"; statusEl.className = "badge swarms-status-failed"; }
+    runAgainBtn?.classList.remove("hidden");
+    showToast("Workflow ended with status: " + (status || "unknown"), "warning");
+  }
+}
+
+/**
+ * Build step cards in the execution panel.
+ * @param {Array} steps
+ */
+function _buildSwarmsStepCards(steps) {
+  const list = document.getElementById("swarms-steps-list");
+  if (!list) return;
+
+  list.innerHTML = steps.map((s) => `
+    <div class="swarms-step-card" data-step-id="${s.id}" data-status="pending">
+      <div class="swarms-step-indicator">
+        <i data-lucide="circle" aria-hidden="true"></i>
+      </div>
+      <div class="swarms-step-body">
+        <span class="swarms-step-id">${s.id}</span>
+        <span class="swarms-step-capability">${s.agent_capability || ""}</span>
+        <div class="swarms-step-result-preview hidden"></div>
+      </div>
+      <div class="swarms-step-meta"></div>
+    </div>`).join("");
+
+  if (typeof lucide !== "undefined") refreshIcons();
+}
+
+/**
+ * Cosmetically animate steps through running states while the workflow POST is in-flight.
+ * @param {Object} template
+ */
+function _startSwarmsStepAnimation(template) {
+  const waves = _computeSwarmsWaves(template.steps || []);
+  let delay = 300;
+  waves.forEach((wave) => {
+    const t = setTimeout(() => {
+      wave.forEach((step) => _setSwarmsStepStatus(step.id, "running"));
+      if (typeof lucide !== "undefined") refreshIcons();
+    }, delay);
+    swarmsAnimTimers.push(t);
+    delay += 1400;
+  });
+}
+
+/**
+ * Set a single step card's visual status.
+ * @param {string} stepId
+ * @param {string} status - "pending" | "running" | "completed" | "failed" | "skipped"
+ */
+function _setSwarmsStepStatus(stepId, status) {
+  const card = document.querySelector(`.swarms-step-card[data-step-id="${stepId}"]`);
+  if (!card) return;
+  card.dataset.status = status;
+  const indicator = card.querySelector(".swarms-step-indicator");
+  if (!indicator) return;
+  const icons = { pending: "circle", running: "loader", completed: "check-circle", failed: "x-circle", skipped: "minus-circle" };
+  indicator.innerHTML = `<i data-lucide="${icons[status] || "circle"}" aria-hidden="true"></i>`;
+}
+
+/**
+ * Set all step cards to the same status.
+ * @param {string} status
+ */
+function _setSwarmsAllStepsStatus(status) {
+  document.querySelectorAll(".swarms-step-card").forEach((card) => {
+    _setSwarmsStepStatus(card.dataset.stepId, status);
+  });
+}
+
+/**
+ * Apply actual step results returned from the API to the step cards.
+ * @param {Object} stepResults - Dict keyed by step_id
+ */
+function _applySwarmsStepResults(stepResults) {
+  Object.entries(stepResults).forEach(([stepId, result]) => {
+    const status = result.status === "completed" ? "completed"
+      : result.status === "failed" ? "failed"
+      : result.status === "skipped" ? "skipped"
+      : "completed";
+    _setSwarmsStepStatus(stepId, status);
+
+    const card = document.querySelector(`.swarms-step-card[data-step-id="${stepId}"]`);
+    if (!card) return;
+
+    // Duration
+    const meta = card.querySelector(".swarms-step-meta");
+    if (meta && result.duration_ms != null) {
+      meta.textContent = result.duration_ms < 1000
+        ? `${result.duration_ms}ms`
+        : `${(result.duration_ms / 1000).toFixed(1)}s`;
+    }
+
+    // Content preview (first 140 chars)
+    const preview = card.querySelector(".swarms-step-result-preview");
+    if (preview && result.output && result.output.content) {
+      const text = result.output.content.slice(0, 140);
+      const truncated = result.output.content.length > 140;
+      preview.textContent = truncated ? text + "…" : text;
+      preview.classList.remove("hidden");
+      preview.title = "Click to expand";
+      preview.addEventListener("click", () => {
+        const expanded = preview.dataset.expanded === "true";
+        preview.dataset.expanded = expanded ? "" : "true";
+        preview.textContent = expanded
+          ? (truncated ? text + "…" : text)
+          : result.output.content;
+        preview.title = expanded ? "Click to expand" : "Click to collapse";
+      });
+    }
+  });
+
+  if (typeof lucide !== "undefined") refreshIcons();
+}
+
+/**
+ * Show the intervention panel (workflow paused at a step).
+ * @param {string} pausedAtStep
+ */
+function _showSwarmsIntervention(pausedAtStep) {
+  const el = document.getElementById("swarms-intervention");
+  const stepLabel = document.getElementById("swarms-paused-step");
+  if (stepLabel) stepLabel.textContent = pausedAtStep;
+  const inputEl = document.getElementById("swarms-intervention-input");
+  if (inputEl) inputEl.value = "";
+  el?.classList.remove("hidden");
+  if (typeof lucide !== "undefined") refreshIcons();
+}
+
+/**
+ * Continue a paused workflow (intervention POST).
+ */
+async function continueSwarmsWorkflow() {
+  if (!currentSwarmsExecId) return;
+  const userInput = (document.getElementById("swarms-intervention-input")?.value || "").trim();
+
+  document.getElementById("swarms-intervention")?.classList.add("hidden");
+  const statusEl = document.getElementById("swarms-execution-status");
+  if (statusEl) { statusEl.textContent = "running"; statusEl.className = "badge swarms-status-running"; }
+
+  // Re-animate remaining pending steps
+  if (currentSwarmsTemplate) {
+    const remaining = (currentSwarmsTemplate.steps || []).filter((s) => {
+      const card = document.querySelector(`.swarms-step-card[data-step-id="${s.id}"]`);
+      return card && card.dataset.status === "pending";
+    });
+    _startSwarmsStepAnimation({ steps: remaining });
+  }
+
+  const r = await safeFetch(`${API_URL}/swarms/${currentSwarmsExecId}/intervene`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_input: userInput, resume: true }),
+  });
+
+  swarmsAnimTimers.forEach(clearTimeout);
+  swarmsAnimTimers = [];
+
+  const runAgainBtn = document.getElementById("swarms-run-again-btn");
+
+  if (!r.ok) {
+    if (statusEl) { statusEl.textContent = "failed"; statusEl.className = "badge swarms-status-failed"; }
+    showToast("Intervention failed: " + (r.error || "unknown"), "error");
+    runAgainBtn?.classList.remove("hidden");
+    return;
+  }
+
+  _applySwarmsStepResults(r.data.step_results || {});
+
+  if (r.data.status === "paused") {
+    if (statusEl) { statusEl.textContent = "paused"; statusEl.className = "badge swarms-status-paused"; }
+    _showSwarmsIntervention(r.data.paused_at_step || "");
+  } else {
+    if (statusEl) { statusEl.textContent = "completed"; statusEl.className = "badge swarms-status-completed"; }
+    runAgainBtn?.classList.remove("hidden");
+    _showSwarmsResult(r.data);
+  }
+}
+
+/**
+ * Show the final result panel.
+ * @param {Object} result - WorkflowResult dict from API
+ */
+function _showSwarmsResult(result) {
+  const el = document.getElementById("swarms-result");
+  if (!el) return;
+
+  const content = result.final_content || result.output || "";
+  const contentEl = document.getElementById("swarms-result-content");
+  if (contentEl) {
+    contentEl.innerHTML = typeof marked !== "undefined"
+      ? marked.parse(content)
+      : content.replace(/\n/g, "<br>");
+  }
+
+  const metricsEl = document.getElementById("swarms-result-metrics");
+  if (metricsEl) {
+    const parts = [];
+    if (result.total_tokens) parts.push(`${result.total_tokens} tokens`);
+    if (result.total_cost_usd != null) parts.push(`$${result.total_cost_usd.toFixed(4)}`);
+    if (result.total_duration_ms != null) parts.push(`${result.total_duration_ms}ms`);
+    metricsEl.textContent = parts.join(" · ");
+  }
+
+  el.classList.remove("hidden");
+  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+/**
+ * Cancel a running workflow.
+ */
+async function cancelSwarmsWorkflow() {
+  if (!currentSwarmsExecId) {
+    // No active execution — go back to detail / empty state
+    _showSwarmsPanel(currentSwarmsTemplate ? "detail" : "empty");
+    return;
+  }
+  swarmsAnimTimers.forEach(clearTimeout);
+  swarmsAnimTimers = [];
+
+  await safeFetch(`${API_URL}/swarms/${currentSwarmsExecId}/cancel`, {
+    method: "POST",
+  }, true);
+
+  const statusEl = document.getElementById("swarms-execution-status");
+  if (statusEl) { statusEl.textContent = "cancelled"; statusEl.className = "badge swarms-status-cancelled"; }
+  document.getElementById("swarms-cancel-btn")?.classList.add("hidden");
+  document.getElementById("swarms-run-again-btn")?.classList.remove("hidden");
+  showToast("Workflow cancelled.", "info");
+}
+
+/**
+ * Load and render execution history in the History tab.
+ */
+async function loadSwarmsHistory() {
+  const list = document.getElementById("swarms-history-list");
+  if (!list) return;
+  list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:var(--font-xs);">Loading history…</div>';
+
+  const r = await safeFetch(`${API_URL}/swarms/history`, {}, true);
+  if (!r.ok) {
+    list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:var(--font-xs);">Could not load history.</div>';
+    return;
+  }
+
+  const executions = r.data.executions || r.data || [];
+  if (!executions.length) {
+    list.innerHTML = `
+      <div class="swarms-empty-state">
+        <i data-lucide="clock" aria-hidden="true"></i>
+        <p>No workflow executions yet.</p>
+      </div>`;
+    if (typeof lucide !== "undefined") refreshIcons();
+    return;
+  }
+
+  list.innerHTML = executions.map((exec) => {
+    const statusClass = `swarms-status-${exec.status || "unknown"}`;
+    const relTime = _swarmsRelativeTime(exec.created_at);
+    const costStr = exec.total_cost_usd != null ? `$${exec.total_cost_usd.toFixed(4)}` : "";
+    const tokStr = exec.total_tokens ? `${exec.total_tokens} tok` : "";
+    const meta = [relTime, tokStr, costStr].filter(Boolean).join(" · ");
+    return `
+      <div class="swarms-history-entry" data-exec-id="${exec.id}" tabindex="0" role="button">
+        <div class="swarms-history-entry-name">${exec.template_id || exec.id}</div>
+        <span class="badge ${statusClass}" style="font-size:10px;">${exec.status || "?"}</span>
+        <div class="swarms-history-entry-meta">${meta}</div>
+      </div>
+      <div class="swarms-history-steps" id="swarms-hist-steps-${exec.id}"></div>`;
+  }).join("");
+
+  // Attach click handlers to expand/collapse step summaries
+  list.querySelectorAll(".swarms-history-entry").forEach((entry) => {
+    entry.addEventListener("click", () => {
+      const execId = entry.dataset.execId;
+      const stepsEl = document.getElementById(`swarms-hist-steps-${execId}`);
+      if (!stepsEl) return;
+      const isOpen = stepsEl.classList.toggle("open");
+      if (isOpen && !stepsEl.dataset.loaded) {
+        stepsEl.dataset.loaded = "true";
+        const exec = executions.find((e) => e.id === execId);
+        const stepResults = exec?.step_results || {};
+        const rows = Object.entries(stepResults).map(([id, sr]) => {
+          const icon = sr.status === "completed" ? "✓" : sr.status === "failed" ? "✗" : "–";
+          return `<div class="swarms-history-step-row"><span>${icon}</span><span>${id}</span></div>`;
+        });
+        stepsEl.innerHTML = rows.length ? rows.join("") : '<div class="swarms-history-step-row"><span style="color:var(--text-muted)">No step data</span></div>';
+      }
+    });
+  });
+
+  if (typeof lucide !== "undefined") refreshIcons();
+}
+
+/**
+ * Return a human-readable relative time string.
+ * @param {string|number} ts - ISO timestamp or unix seconds
+ * @returns {string}
+ */
+function _swarmsRelativeTime(ts) {
+  if (!ts) return "";
+  const date = typeof ts === "number" ? new Date(ts * 1000) : new Date(ts);
+  if (isNaN(date)) return "";
+  const diff = Math.floor((Date.now() - date) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+// End of Swarms functions
+// =============================================================================
 
 function renderConversationsSidebar() {
   return `

@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="styles/persona-switch-dialog.css">
   <link rel="stylesheet" href="styles/template-gallery.css">
   <link rel="stylesheet" href="styles/curriculum.css">
+  <link rel="stylesheet" href="styles/swarms.css">
   <link rel="stylesheet" href="components/mental-models-editor.css">
   <link rel="stylesheet" href="components/confirm-dialog.css">
   <link rel="stylesheet" href="components/empty-state.css">
@@ -163,7 +164,11 @@
         <i data-lucide="kanban" aria-hidden="true"></i>
         <span class="ribbon-label" aria-hidden="true">proj</span>
       </button>
-      
+      <button class="ribbon-item" data-view="swarms" title="Workflows" aria-label="Workflows">
+        <i data-lucide="workflow" aria-hidden="true"></i>
+        <span class="ribbon-label" aria-hidden="true">flow</span>
+      </button>
+
       <div class="ribbon-spacer"></div>
       
       <!-- Status Indicator -->
@@ -2601,6 +2606,101 @@
         <div class="view hidden" id="view-projects">
           <div class="view-placeholder-container"></div>
         </div>
+
+        <!-- Workflows (Swarms) View (Phase 24d) -->
+        <div class="view hidden" id="view-swarms">
+          <div class="swarms-header">
+            <h2><span aria-hidden="true">&gt; </span>workflows</h2>
+            <div class="swarms-tabs" role="tablist">
+              <button class="swarms-tab active" data-swarm-tab="execute" role="tab" aria-selected="true">Execute</button>
+              <button class="swarms-tab" data-swarm-tab="history" role="tab" aria-selected="false">History</button>
+            </div>
+            <div class="swarms-metrics-row" id="swarms-metrics-row"></div>
+          </div>
+
+          <!-- Execute tab panel -->
+          <div class="swarms-tab-panel" id="swarms-tab-execute">
+
+            <!-- ① Empty state -->
+            <div class="swarms-empty-state" id="swarms-empty-state">
+              <i data-lucide="workflow" aria-hidden="true"></i>
+              <p>Select a workflow template from the sidebar</p>
+            </div>
+
+            <!-- ② Template detail -->
+            <div class="swarms-template-detail hidden" id="swarms-template-detail">
+              <div class="swarms-detail-header">
+                <h3 class="swarms-detail-name" id="swarms-detail-name"></h3>
+                <p class="swarms-detail-description" id="swarms-detail-description"></p>
+                <div class="swarms-detail-tags" id="swarms-detail-tags"></div>
+              </div>
+              <div class="swarms-step-pipeline" id="swarms-step-pipeline"></div>
+              <div class="swarms-contexts-row" id="swarms-contexts-row"></div>
+              <div class="swarms-run-form">
+                <textarea id="swarms-query-input" class="swarms-query-textarea"
+                  placeholder="Enter your query for this workflow…" rows="3"
+                  aria-label="Workflow query"></textarea>
+                <button class="btn btn-primary" id="swarms-run-btn">
+                  <i data-lucide="play" aria-hidden="true"></i> Run Workflow
+                </button>
+              </div>
+            </div>
+
+            <!-- ③④ Execution panel (running + result + intervention) -->
+            <div class="swarms-execution hidden" id="swarms-execution">
+              <div class="swarms-execution-header">
+                <span class="swarms-execution-template" id="swarms-execution-template"></span>
+                <span class="badge swarms-status-running" id="swarms-execution-status">running</span>
+                <div class="swarms-execution-actions">
+                  <button class="btn btn-ghost btn-sm" id="swarms-cancel-btn">Cancel</button>
+                  <button class="btn btn-ghost btn-sm hidden" id="swarms-run-again-btn">
+                    <i data-lucide="rotate-ccw" aria-hidden="true"></i> Run Again
+                  </button>
+                </div>
+              </div>
+
+              <!-- Step cards rendered here -->
+              <div class="swarms-steps-list" id="swarms-steps-list"></div>
+
+              <!-- ④ Intervention (shown when workflow pauses) -->
+              <div class="swarms-intervention hidden" id="swarms-intervention">
+                <div class="swarms-intervention-header">
+                  <i data-lucide="pause-circle" aria-hidden="true"></i>
+                  <strong>Paused at: <span id="swarms-paused-step"></span></strong>
+                </div>
+                <p>Review the output above, then provide any additional instructions and continue.</p>
+                <textarea id="swarms-intervention-input" class="swarms-query-textarea"
+                  placeholder="Optional: add instructions for the remaining steps…" rows="2"
+                  aria-label="Intervention instructions"></textarea>
+                <div class="swarms-intervention-actions">
+                  <button class="btn btn-primary" id="swarms-continue-btn">
+                    <i data-lucide="play" aria-hidden="true"></i> Continue
+                  </button>
+                </div>
+              </div>
+
+              <!-- Final output -->
+              <div class="swarms-result hidden" id="swarms-result">
+                <div class="swarms-result-header">
+                  <h4>Final Output</h4>
+                  <div class="swarms-result-metrics" id="swarms-result-metrics"></div>
+                </div>
+                <div class="swarms-result-content markdown-body" id="swarms-result-content"></div>
+              </div>
+            </div>
+
+          </div><!-- /swarms-tab-execute -->
+
+          <!-- History tab panel -->
+          <div class="swarms-tab-panel hidden" id="swarms-tab-history">
+            <div class="swarms-history-list" id="swarms-history-list">
+              <div class="swarms-empty-state">
+                <i data-lucide="clock" aria-hidden="true"></i>
+                <p>No workflow executions yet.</p>
+              </div>
+            </div>
+          </div>
+        </div><!-- /view-swarms -->
 
         <!-- Graph View -->
         <div class="view hidden" id="view-graph">
