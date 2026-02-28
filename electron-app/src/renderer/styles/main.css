@@ -2403,6 +2403,47 @@ body {
   margin: 0 auto;
 }
 
+/* Phase 16c: message footer (timestamp + save button) */
+.message-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  max-width: 85%;
+}
+
+.message.user .message-footer {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.message-timestamp {
+  font-size: 10px;
+  color: var(--text-muted, #666);
+  white-space: nowrap;
+}
+
+.msg-save-btn {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--text-muted, #666);
+  border-radius: 3px;
+  display: none;        /* hidden until message hover */
+  align-items: center;
+  line-height: 1;
+}
+
+.message.assistant:hover .msg-save-btn {
+  display: inline-flex;
+}
+
+.msg-save-btn:hover {
+  color: var(--accent, #4ade80);
+  background: var(--bg-tertiary, #1a1a1a);
+}
+
 .message-content pre {
   background: #1a1a1a;
   padding: var(--spacing-md);

@@ -3827,5 +3827,37 @@
     </div>
   </div>
   <!-- /Phase 24e modals -->
+
+  <!-- Phase 16c: AI Note creation modal -->
+  <div class="modal" id="ai-note-modal" style="display:none">
+    <div class="modal-content" style="max-width:520px">
+      <div class="modal-header">
+        <h3>Create AI Note</h3>
+        <button class="modal-close" id="ai-note-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="ai-note-prompt">What would you like to write a note about?</label>
+          <textarea id="ai-note-prompt" rows="4" placeholder="Describe the topic, paste text to process, or ask a question..." style="width:100%;resize:vertical"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="ai-note-domain">Domain</label>
+          <select id="ai-note-domain" style="width:100%">
+            <option value="sigils">Sigils</option>
+            <option value="signals">Signals</option>
+            <option value="scrolls" selected>Scrolls</option>
+            <option value="glyphs">Glyphs</option>
+            <option value="grids">Grids</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="ai-note-modal-cancel">Cancel</button>
+        <button class="btn btn-secondary" id="ai-note-quick-save">Quick Save</button>
+        <button class="btn btn-primary" id="ai-note-scribe-btn">Generate with Scribe</button>
+      </div>
+    </div>
+  </div>
+  <!-- /Phase 16c -->
 </body>
 </html>

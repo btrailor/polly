@@ -3730,6 +3730,7 @@ function createBrowserRibbon(view) {
   if (view === "notes") {
     buttons.push(
       { icon: "file-plus", title: "New Note", action: "new-note" },
+      { icon: "sparkles", title: "AI Note", action: "new-ai-note" },
       { icon: "folder-plus", title: "New Folder", action: "new-folder" },
       { icon: "arrow-up-down", title: "Sort", action: "sort" },
       { icon: "refresh-cw", title: "Refresh", action: "refresh" },
@@ -3864,6 +3865,9 @@ function setupBrowserRibbonHandlers(view) {
         switch (action) {
           case "new-note":
             if (window.notesManager) window.notesManager.showCreateNoteModal();
+            break;
+          case "new-ai-note":
+            openAiNoteModal();
             break;
           case "new-folder":
             if (window.notesManager)
@@ -4114,6 +4118,9 @@ function updateLeftSidebar(view) {
     
     // Setup notes browse toolbar (search + view toggle + active filters)
     setupNotesBrowseToolbar();
+
+    // Phase 16c: wire AI Note modal listeners (idempotent)
+    _initAiNoteListeners();
   }
 
   // Attach event handlers based on view.
@@ -5197,6 +5204,96 @@ async function saveNewAgent() {
   } catch (e) {
     alert(`Failed to create agent: ${e.message || e}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 16c — AI Note creation modal
+// ---------------------------------------------------------------------------
+
+let _aiNoteListenersInited = false;
+
+function openAiNoteModal() {
+  const modal = document.getElementById("ai-note-modal");
+  if (!modal) return;
+  document.getElementById("ai-note-prompt").value = "";
+  document.getElementById("ai-note-domain").value = "scrolls";
+  modal.style.display = "flex";
+  document.getElementById("ai-note-prompt").focus();
+  _initAiNoteListeners();
+}
+
+function _closeAiNoteModal() {
+  const modal = document.getElementById("ai-note-modal");
+  if (modal) modal.style.display = "none";
+}
+
+async function saveAiNoteQuick() {
+  const prompt = document.getElementById("ai-note-prompt").value.trim();
+  if (!prompt) { showToast("Please enter some text first", "warning"); return; }
+  const domain = document.getElementById("ai-note-domain").value;
+  const title = prompt.split(/\n/)[0].substring(0, 80) || "Quick Note";
+  try {
+    const res = await safeFetch(`${API_URL}/api/settings/knowledge/save-quick`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: prompt, title, domain }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    _closeAiNoteModal();
+    showToast("Note saved", "success");
+    if (window.notesManager) window.notesManager.loadNotesIndex();
+  } catch (e) {
+    showToast(`Save failed: ${e.message}`, "error");
+  }
+}
+
+async function saveAiNoteScribe() {
+  const prompt = document.getElementById("ai-note-prompt").value.trim();
+  if (!prompt) { showToast("Please enter some text first", "warning"); return; }
+  const domain = document.getElementById("ai-note-domain").value;
+  const btn = document.getElementById("ai-note-scribe-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "Generating…"; }
+  try {
+    const res = await safeFetch(`${API_URL}/api/settings/knowledge/save-message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message_content: prompt,
+        message_role: "user",
+        save_mode: "scribe",
+        domain,
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    _closeAiNoteModal();
+    if (window.PreviewModal) {
+      window.PreviewModal.show(data, saveNoteToKnowledgeBase);
+    } else {
+      showToast("Note generated", "success");
+      if (window.notesManager) window.notesManager.loadNotesIndex();
+    }
+  } catch (e) {
+    showToast(`Scribe failed: ${e.message}`, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Generate with Scribe"; }
+  }
+}
+
+function _initAiNoteListeners() {
+  if (_aiNoteListenersInited) return;
+  _aiNoteListenersInited = true;
+
+  const modal = document.getElementById("ai-note-modal");
+  if (!modal) return;
+
+  document.getElementById("ai-note-modal-close")?.addEventListener("click", _closeAiNoteModal);
+  document.getElementById("ai-note-modal-cancel")?.addEventListener("click", _closeAiNoteModal);
+  document.getElementById("ai-note-quick-save")?.addEventListener("click", saveAiNoteQuick);
+  document.getElementById("ai-note-scribe-btn")?.addEventListener("click", saveAiNoteScribe);
+
+  // Close on backdrop click
+  modal.addEventListener("click", (e) => { if (e.target === modal) _closeAiNoteModal(); });
 }
 
 // ---------------------------------------------------------------------------
@@ -10843,10 +10940,33 @@ function addMessageToUI(role, content) {
   div.id = id;
   div.dataset.timestamp = timestamp.toISOString();
 
+  const saveBtn = role === "assistant"
+    ? `<button class="msg-save-btn" title="Save as note" aria-label="Save as note">
+         <i data-lucide="bookmark-plus" style="width:13px;height:13px;"></i>
+       </button>`
+    : "";
+
   div.innerHTML = `
     <div class="message-content">${content}</div>
-    <div class="message-timestamp" title="${timestamp.toLocaleString()}">${getRelativeTime(timestamp)}</div>
+    <div class="message-footer">
+      <div class="message-timestamp" title="${timestamp.toLocaleString()}">${getRelativeTime(timestamp)}</div>
+      ${saveBtn}
+    </div>
   `;
+
+  // Phase 16c: wire save button to SaveMessageForm
+  if (role === "assistant") {
+    const btn = div.querySelector(".msg-save-btn");
+    if (btn) {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const rawContent = div.querySelector(".message-content")?.innerText || "";
+        if (typeof window.showSaveMessageForm === "function") {
+          window.showSaveMessageForm(div, rawContent);
+        }
+      });
+    }
+  }
 
   container.appendChild(div);
 
