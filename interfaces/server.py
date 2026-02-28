@@ -9547,7 +9547,21 @@ HINT: [A helpful hint]
         if polly.nexus.template_registry is None:
             return {"templates": [], "nexus_enabled": True}
         templates = polly.nexus.template_registry.list_all(domain=domain)
-        return {"templates": [t.to_dict() for t in templates]}
+        # Phase 24e: merge usage_count from storage (Option A — no model changes)
+        # storage.list_templates() rows embed usage_count as "_usage_count"
+        try:
+            storage_meta = {
+                r["id"]: r.get("_usage_count", 0)
+                for r in polly.nexus.storage.list_templates()
+            }
+        except Exception:
+            storage_meta = {}
+        return {
+            "templates": [
+                {**t.to_dict(), "usage_count": storage_meta.get(t.id, 0)}
+                for t in templates
+            ]
+        }
 
     @app.get("/swarms/templates/{template_id}")
     async def swarms_templates_get(template_id: str):
@@ -9710,6 +9724,115 @@ HINT: [A helpful hint]
         metrics = polly.nexus.storage.get_metrics()
         metrics["nexus_enabled"] = True
         return metrics
+
+    # Phase 24e: capabilities endpoint + prompt-agent creation
+
+    @app.get("/swarms/capabilities")
+    async def swarms_capabilities():
+        """
+        Return a flat list of all known agent capabilities.
+
+        Includes built-in persona capabilities plus any registered
+        PromptAgent capabilities.
+        """
+        polly = get_polly()
+        from core.nexus.persona_adapter import PERSONA_CAPABILITY_MAP
+
+        # Built-in persona capabilities
+        caps = []
+        persona_agent_ids = {
+            "scribe": "persona_scribe",
+            "architect": "persona_architect",
+            "professor": "persona_professor",
+        }
+        for persona_name, cap_list in PERSONA_CAPABILITY_MAP.items():
+            agent_id = persona_agent_ids.get(persona_name, f"persona_{persona_name}")
+            for cap in cap_list:
+                caps.append({
+                    "name": cap["name"],
+                    "description": cap.get("description", ""),
+                    "agent_id": agent_id,
+                    "agent_type": "persona",
+                })
+
+        # Prompt agent capabilities (registered at runtime + persisted)
+        if hasattr(polly, 'nexus') and polly.nexus is not None:
+            try:
+                for pa_dict in polly.nexus.storage.list_prompt_agents():
+                    caps.append({
+                        "name": pa_dict["capability_name"],
+                        "description": pa_dict.get("name", ""),
+                        "agent_id": pa_dict["id"],
+                        "agent_type": "prompt",
+                    })
+            except Exception as e:
+                logger.warning(f"Could not load prompt agent capabilities: {e}")
+
+        return {"capabilities": caps}
+
+    @app.post("/agents")
+    async def agents_create(request: Request):
+        """
+        Create a PromptAgent from a user-supplied system prompt.
+
+        Body:
+            name (str): Human-readable agent name.
+            capability (str): Single capability name this agent exposes.
+            system_prompt (str): System prompt injected before every user query.
+            domain_affinity (list[str], optional): Domain tags for routing.
+
+        Returns:
+            {"agent_id": str, "status": "created"}
+        """
+        polly = get_polly()
+        if not hasattr(polly, 'nexus') or polly.nexus is None:
+            raise HTTPException(503, "Nexus is not enabled")
+        try:
+            body = await request.json()
+            name = body.get("name", "").strip()
+            capability = body.get("capability", "").strip()
+            system_prompt = body.get("system_prompt", "").strip()
+            domain_affinity = body.get("domain_affinity", [])
+
+            if not name:
+                raise HTTPException(400, "Field 'name' is required")
+            if not capability:
+                raise HTTPException(400, "Field 'capability' is required")
+            if not system_prompt:
+                raise HTTPException(400, "Field 'system_prompt' is required")
+
+            import uuid
+            agent_id = "prompt_" + uuid.uuid4().hex[:8]
+
+            # Persist to prompt_agents table
+            polly.nexus.storage.create_prompt_agent(
+                id=agent_id,
+                name=name,
+                capability_name=capability,
+                system_prompt=system_prompt,
+                domain_affinity=domain_affinity,
+            )
+
+            # Register live Executable on the running coordinator
+            from core.nexus.prompt_agent import PromptAgent
+            pa = PromptAgent(
+                agent_id=agent_id,
+                name=name,
+                system_prompt=system_prompt,
+                capability_name=capability,
+                domain_affinity=domain_affinity,
+                llm=getattr(polly, 'llm', None),
+            )
+            polly.nexus.register_executable(agent_id, pa)
+
+            logger.info(f"Created PromptAgent '{agent_id}' with capability '{capability}'")
+            return {"agent_id": agent_id, "status": "created"}
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error creating prompt agent: {e}", exc_info=True)
+            raise HTTPException(500, f"Agent creation failed: {str(e)}")
 
     return app
 

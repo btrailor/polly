@@ -4340,6 +4340,9 @@ async function loadSwarmsView() {
     }
   }
 
+  // Phase 24e: wire builder modal listeners (idempotent — checks for elements)
+  _initSwarms24eListeners();
+
   if (typeof lucide !== "undefined") refreshIcons();
 }
 
@@ -4393,10 +4396,13 @@ async function loadSwarmsTemplates(domain) {
       ? t.description.slice(0, 70) + "…"
       : (t.description || "");
     const isActive = currentSwarmsTemplate && currentSwarmsTemplate.id === t.id;
+    const usageChip = t.usage_count > 0
+      ? `<span class="swarms-usage-chip">${t.usage_count} run${t.usage_count !== 1 ? "s" : ""}</span>`
+      : "";
     return `
       <div class="swarms-template-card${isActive ? " active" : ""}" data-template-id="${t.id}" tabindex="0" role="button"
            aria-label="${t.name}">
-        <div class="swarms-template-card-name">${t.name || t.id}</div>
+        <div class="swarms-template-card-name">${t.name || t.id}${usageChip}</div>
         <div class="swarms-template-card-desc">${desc}</div>
         ${tags ? `<div class="swarms-template-card-tags">${tags}</div>` : ""}
       </div>`;
@@ -4929,6 +4935,327 @@ function _swarmsRelativeTime(ts) {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
+}
+
+// =============================================================================
+// Phase 24e: Capabilities, Template Builder, Agent Builder
+// =============================================================================
+
+/** Cached capabilities list fetched from /swarms/capabilities */
+let swarmsCapabilities = [];
+/** Domain tags arrays for each builder form */
+let swarmsTmplDomains = [];
+let swarmsAgentDomains = [];
+
+/**
+ * Fetch capabilities from /swarms/capabilities and cache them.
+ * Populates the capability datalist used in the template builder step rows.
+ */
+async function loadSwarmsCapabilities() {
+  try {
+    const r = await safeFetch(`${API_URL}/swarms/capabilities`, {}, true);
+    swarmsCapabilities = (r.ok && r.data && r.data.capabilities) ? r.data.capabilities : [];
+  } catch (e) {
+    swarmsCapabilities = [];
+  }
+  // Refresh the datalist if it exists
+  const dl = document.getElementById("swarms-capability-datalist");
+  if (dl) {
+    dl.innerHTML = swarmsCapabilities
+      .map((c) => `<option value="${c.name}">${c.description || ""}</option>`)
+      .join("");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tag chip helpers
+// ---------------------------------------------------------------------------
+
+function _renderTagChips(chipsEl, domains, onUpdate) {
+  chipsEl.innerHTML = domains
+    .map(
+      (d, i) =>
+        `<span class="swarms-tag-chip">${d}
+          <button class="swarms-tag-chip-remove" data-idx="${i}" aria-label="Remove ${d}">×</button>
+        </span>`
+    )
+    .join("");
+  chipsEl.querySelectorAll(".swarms-tag-chip-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      domains.splice(parseInt(btn.dataset.idx, 10), 1);
+      _renderTagChips(chipsEl, domains, onUpdate);
+      if (onUpdate) onUpdate();
+    });
+  });
+}
+
+function _bindTagInput(inputId, chipsId, domainsArr, onUpdate) {
+  const input = document.getElementById(inputId);
+  const chipsEl = document.getElementById(chipsId);
+  if (!input || !chipsEl) return;
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const tag = input.value.trim().toLowerCase().replace(/\s+/g, "-");
+      if (tag && !domainsArr.includes(tag)) {
+        domainsArr.push(tag);
+        _renderTagChips(chipsEl, domainsArr, onUpdate);
+      }
+      input.value = "";
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Template builder
+// ---------------------------------------------------------------------------
+
+/** Open the "New Workflow Template" modal and reset all fields. */
+function openNewTemplateModal() {
+  swarmsTmplDomains = [];
+  _renderTagChips(document.getElementById("swarms-tmpl-domain-chips"), swarmsTmplDomains);
+  _bindTagInput("swarms-tmpl-domain-input", "swarms-tmpl-domain-chips", swarmsTmplDomains);
+
+  document.getElementById("swarms-tmpl-name").value = "";
+  document.getElementById("swarms-tmpl-id").value = "";
+  document.getElementById("swarms-tmpl-description").value = "";
+  document.getElementById("swarms-step-rows").innerHTML = "";
+  _updateOutputStepOptions();
+
+  // Auto-slug name → id
+  const nameInput = document.getElementById("swarms-tmpl-name");
+  const idInput = document.getElementById("swarms-tmpl-id");
+  nameInput.oninput = () => {
+    idInput.value = nameInput.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  };
+
+  loadSwarmsCapabilities();
+  document.getElementById("swarms-template-modal").classList.remove("hidden");
+}
+
+function _closeTemplateModal() {
+  document.getElementById("swarms-template-modal").classList.add("hidden");
+}
+
+/**
+ * Add a step row to the step builder inside the template modal.
+ * @param {HTMLElement} container - The #swarms-step-rows container
+ */
+function _addSwarmsStepRow(container) {
+  const idx = container.children.length + 1;
+  const row = document.createElement("div");
+  row.className = "swarms-step-row";
+  row.innerHTML = `
+    <span class="swarms-step-num">${idx}</span>
+    <input type="text" class="swarms-step-id" placeholder="Step ID (e.g. step_${idx})" autocomplete="off">
+    <input type="text" class="swarms-step-cap" placeholder="Capability" list="swarms-capability-datalist" autocomplete="off">
+    <label class="swarms-step-intervention">
+      <input type="checkbox" class="swarms-step-intervene"> Pause
+    </label>
+    <button class="swarms-step-remove" aria-label="Remove step">×</button>
+  `;
+  row.querySelector(".swarms-step-remove").addEventListener("click", () => {
+    _removeSwarmsStepRow(row);
+  });
+  container.appendChild(row);
+  _updateOutputStepOptions();
+}
+
+function _removeSwarmsStepRow(row) {
+  row.remove();
+  // Re-number remaining rows
+  const container = document.getElementById("swarms-step-rows");
+  container.querySelectorAll(".swarms-step-num").forEach((span, i) => {
+    span.textContent = i + 1;
+  });
+  _updateOutputStepOptions();
+}
+
+/** Rebuild the output-step <select> options from current step ID inputs. */
+function _updateOutputStepOptions() {
+  const sel = document.getElementById("swarms-tmpl-output-step");
+  if (!sel) return;
+  const rows = document.querySelectorAll("#swarms-step-rows .swarms-step-row");
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— select a step —</option>';
+  rows.forEach((row) => {
+    const id = row.querySelector(".swarms-step-id")?.value.trim();
+    if (id) {
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = id;
+      if (id === current) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  });
+}
+
+/** Collect template form data and validate. Returns a template dict or null. */
+function _collectTemplateForm() {
+  const name = document.getElementById("swarms-tmpl-name").value.trim();
+  const id = document.getElementById("swarms-tmpl-id").value.trim();
+  const description = document.getElementById("swarms-tmpl-description").value.trim();
+  const outputStep = document.getElementById("swarms-tmpl-output-step").value.trim();
+  const mergeStrategy = document.querySelector("input[name='swarms-merge-strategy']:checked")?.value || "first";
+
+  if (!name) { alert("Template name is required."); return null; }
+  if (!id) { alert("Template ID is required."); return null; }
+
+  const rows = document.querySelectorAll("#swarms-step-rows .swarms-step-row");
+  if (rows.length === 0) { alert("Add at least one step."); return null; }
+
+  const steps = [];
+  for (const row of rows) {
+    const stepId = row.querySelector(".swarms-step-id")?.value.trim();
+    const cap = row.querySelector(".swarms-step-cap")?.value.trim();
+    const intervene = row.querySelector(".swarms-step-intervene")?.checked || false;
+    if (!stepId) { alert("Every step needs a Step ID."); return null; }
+    if (!cap) { alert(`Step '${stepId}' needs a capability.`); return null; }
+    steps.push({ id: stepId, capability: cap, requires_intervention: intervene, depends_on: [] });
+  }
+
+  if (outputStep && !steps.find((s) => s.id === outputStep)) {
+    alert("Output step must be one of the defined step IDs."); return null;
+  }
+
+  return {
+    id,
+    name,
+    description,
+    steps,
+    output_step: outputStep || steps[steps.length - 1].id,
+    merge_strategy: mergeStrategy,
+    domain_affinity: [...swarmsTmplDomains],
+  };
+}
+
+/** POST the new template to /swarms/templates and reload the sidebar list. */
+async function saveNewTemplate() {
+  const tmpl = _collectTemplateForm();
+  if (!tmpl) return;
+  try {
+    const r = await safeFetch(`${API_URL}/swarms/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(tmpl),
+    });
+    if (!r.ok) throw new Error(r.data?.detail || "Server error");
+    _closeTemplateModal();
+    loadSwarmsTemplates(swarmsCurrentDomain);
+    showToast("Template saved", "success");
+  } catch (e) {
+    alert(`Failed to save template: ${e.message || e}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Prompt agent builder
+// ---------------------------------------------------------------------------
+
+/** Open the "New Prompt Agent" modal and reset all fields. */
+function openNewAgentModal() {
+  swarmsAgentDomains = [];
+  _renderTagChips(document.getElementById("swarms-agent-domain-chips"), swarmsAgentDomains);
+  _bindTagInput("swarms-agent-domain-input", "swarms-agent-domain-chips", swarmsAgentDomains);
+
+  document.getElementById("swarms-agent-name").value = "";
+  document.getElementById("swarms-agent-capability").value = "";
+  document.getElementById("swarms-agent-prompt").value = "";
+
+  document.getElementById("swarms-agent-modal").classList.remove("hidden");
+}
+
+function _closeAgentModal() {
+  document.getElementById("swarms-agent-modal").classList.add("hidden");
+}
+
+/** POST the new agent to /agents and refresh capabilities. */
+async function saveNewAgent() {
+  const name = document.getElementById("swarms-agent-name").value.trim();
+  const capability = document.getElementById("swarms-agent-capability").value.trim();
+  const system_prompt = document.getElementById("swarms-agent-prompt").value.trim();
+
+  if (!name) { alert("Agent name is required."); return; }
+  if (!capability) { alert("Capability name is required."); return; }
+  if (!system_prompt) { alert("System prompt is required."); return; }
+
+  try {
+    const r = await safeFetch(`${API_URL}/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        capability,
+        system_prompt,
+        domain_affinity: [...swarmsAgentDomains],
+      }),
+    });
+    if (!r.ok) throw new Error(r.data?.detail || "Server error");
+    _closeAgentModal();
+    await loadSwarmsCapabilities();
+    showToast("Agent created", "success");
+  } catch (e) {
+    alert(`Failed to create agent: ${e.message || e}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Wire up Phase 24e modal listeners (called once from loadSwarmsView)
+// ---------------------------------------------------------------------------
+
+function _initSwarms24eListeners() {
+  // New Template button
+  const newTmplBtn = document.getElementById("swarms-new-template-btn");
+  if (newTmplBtn) newTmplBtn.addEventListener("click", openNewTemplateModal);
+
+  // New Agent button
+  const newAgentBtn = document.getElementById("swarms-new-agent-btn");
+  if (newAgentBtn) newAgentBtn.addEventListener("click", openNewAgentModal);
+
+  // Template modal
+  const tmplClose = document.getElementById("swarms-template-modal-close");
+  const tmplCancel = document.getElementById("swarms-template-modal-cancel");
+  const tmplSave = document.getElementById("swarms-template-modal-save");
+  const tmplBackdrop = document.getElementById("swarms-template-modal-backdrop");
+  const addStepBtn = document.getElementById("swarms-add-step-btn");
+
+  if (tmplClose) tmplClose.addEventListener("click", _closeTemplateModal);
+  if (tmplCancel) tmplCancel.addEventListener("click", _closeTemplateModal);
+  if (tmplBackdrop) tmplBackdrop.addEventListener("click", _closeTemplateModal);
+  if (tmplSave) tmplSave.addEventListener("click", saveNewTemplate);
+  if (addStepBtn) {
+    addStepBtn.addEventListener("click", () => {
+      _addSwarmsStepRow(document.getElementById("swarms-step-rows"));
+    });
+  }
+
+  // Step ID inputs trigger output step refresh (live update via delegation)
+  const stepRows = document.getElementById("swarms-step-rows");
+  if (stepRows) {
+    stepRows.addEventListener("input", (e) => {
+      if (e.target.classList.contains("swarms-step-id")) {
+        _updateOutputStepOptions();
+      }
+    });
+  }
+
+  // Capability datalist (shared)
+  if (!document.getElementById("swarms-capability-datalist")) {
+    const dl = document.createElement("datalist");
+    dl.id = "swarms-capability-datalist";
+    document.body.appendChild(dl);
+  }
+
+  // Agent modal
+  const agentClose = document.getElementById("swarms-agent-modal-close");
+  const agentCancel = document.getElementById("swarms-agent-modal-cancel");
+  const agentSave = document.getElementById("swarms-agent-modal-save");
+  const agentBackdrop = document.getElementById("swarms-agent-modal-backdrop");
+
+  if (agentClose) agentClose.addEventListener("click", _closeAgentModal);
+  if (agentCancel) agentCancel.addEventListener("click", _closeAgentModal);
+  if (agentBackdrop) agentBackdrop.addEventListener("click", _closeAgentModal);
+  if (agentSave) agentSave.addEventListener("click", saveNewAgent);
 }
 
 // End of Swarms functions

@@ -1,8 +1,9 @@
 """
-NexusCoordinator — agent routing and workflow execution (Phase 24a/24b)
+NexusCoordinator — agent routing and workflow execution (Phase 24a/24b/24e)
 
 Phase 24a: Single-agent routing via keyword heuristics.
 Phase 24b: Multi-agent DAG execution via WorkflowExecutor.
+Phase 24e: Pattern learning wired via optional pattern_engine param.
 
 Usage (single-agent, Phase 24a):
     coordinator = NexusCoordinator(registry, storage)
@@ -61,12 +62,14 @@ class NexusCoordinator:
     Phase 24a: single-agent routing via keyword heuristics.
     Phase 24b: multi-agent DAG with dependency resolution via execute_workflow().
     Phase 24c: context mediation via optional NexusContextBroker.
+    Phase 24e: pattern learning via optional pattern_engine.
 
     Args:
         registry:          AgentRegistry for contract lookup/discovery
         storage:           SwarmStorage for execution history persistence
         template_registry: Optional TemplateRegistry for workflow template lookup
         context_broker:    Optional NexusContextBroker for execution context mediation
+        pattern_engine:    Optional PatternEngine for workflow pattern learning
     """
 
     def __init__(
@@ -75,11 +78,13 @@ class NexusCoordinator:
         storage: Any,
         template_registry: Optional[Any] = None,
         context_broker: Optional[Any] = None,
+        pattern_engine: Optional[Any] = None,
     ) -> None:
         self.registry = registry
         self.storage = storage
         self.template_registry = template_registry
         self.context_broker = context_broker
+        self.pattern_engine = pattern_engine
         # Maps agent_id → Executable instance
         self._executables: Dict[str, Any] = {}
 
@@ -291,7 +296,39 @@ class NexusCoordinator:
             f"NexusCoordinator: executing workflow '{template_id}' "
             f"({len(template.steps)} steps)"
         )
-        return await executor.execute(template, user_input, context)
+        result = await executor.execute(template, user_input, context)
+
+        # Phase 24e: feed successful completions to the pattern engine
+        if result is not None and result.status == "completed" and self.pattern_engine is not None:
+            try:
+                from datetime import datetime
+                from core.patterns.models import Pattern, PatternType
+                now = datetime.now()
+                self.pattern_engine.learn(Pattern(
+                    id=f"workflow_{template_id}",
+                    pattern_type=PatternType.WORKFLOW,
+                    name=f"Workflow: {template.name}",
+                    description=f"Successful execution of workflow '{template_id}'",
+                    confidence=0.8,
+                    occurrences=1,
+                    first_seen=now,
+                    last_seen=now,
+                    domains=list(template.domain_affinity),
+                    keywords=["workflow", "nexus", template_id],
+                    examples=[user_input[:120]],
+                    metadata={
+                        "template_id": template_id,
+                        "steps": len(template.steps),
+                        "total_tokens": result.total_tokens,
+                        "total_duration_ms": result.total_duration_ms,
+                    },
+                    source="observation",
+                ))
+                self.pattern_engine.save()
+            except Exception as e:
+                logger.warning(f"NexusCoordinator: pattern learning failed (non-critical): {e}")
+
+        return result
 
     # ---- Introspection ----
 

@@ -680,6 +680,163 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Builder Modals (Phase 24e)
+   --------------------------------------------------------------------------- */
+
+/* Header action buttons (New Template / New Agent) */
+.swarms-header-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  align-items: center;
+}
+
+.swarms-header-actions .btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.swarms-header-actions .btn i {
+  width: 13px;
+  height: 13px;
+}
+
+/* Builder modal container */
+.swarms-builder-modal .modal-content {
+  max-width: 600px;
+}
+
+/* Step builder rows */
+.swarms-step-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.swarms-step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-wrap: wrap;
+  background: var(--bg-secondary, #1a1a1a);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.swarms-step-row input,
+.swarms-step-row select {
+  flex: 1;
+  min-width: 90px;
+  font-size: 12px;
+  padding: 4px 8px;
+  background: var(--bg-primary, #111);
+  color: var(--text-primary, #e0e0e0);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 4px;
+}
+
+.swarms-step-row label {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+  align-self: center;
+}
+
+.swarms-step-remove {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 16px;
+  line-height: 1;
+  align-self: flex-start;
+}
+
+.swarms-step-remove:hover {
+  color: var(--danger, #ef4444);
+}
+
+/* Tag / domain chip input */
+.swarms-tag-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.swarms-tag-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.swarms-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--accent-muted, #1e3a2f);
+  color: var(--accent, #4ade80);
+  border-radius: 12px;
+}
+
+.swarms-tag-chip-remove {
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.swarms-tag-chip-remove:hover {
+  opacity: 1;
+}
+
+/* Usage count chip on template cards */
+.swarms-usage-chip {
+  font-size: 10px;
+  color: var(--text-muted, #888);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Step number badge */
+.swarms-step-num {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--border-color, #333);
+  color: var(--text-muted, #888);
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+}
+
+/* Intervention checkbox inside step row */
+.swarms-step-intervention {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
    Utility
    --------------------------------------------------------------------------- */
 

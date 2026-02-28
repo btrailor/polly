@@ -67,6 +67,19 @@ CREATE TABLE IF NOT EXISTS swarm_templates (
 CREATE INDEX IF NOT EXISTS idx_template_active ON swarm_templates(is_active);
 """
 
+# Phase 24e: prompt_agents table (created via migration for existing DBs)
+_PROMPT_AGENTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS prompt_agents (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    capability_name TEXT NOT NULL,
+    system_prompt   TEXT NOT NULL,
+    domain_affinity TEXT NOT NULL DEFAULT '[]',
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL
+);
+"""
+
 # Columns added in Phase 24b; use ALTER TABLE with error handling for
 # upgrading DBs created under Phase 24a schema.
 _MIGRATIONS = [
@@ -99,6 +112,7 @@ class SwarmStorage:
     def _init_db(self) -> None:
         with self._conn() as conn:
             conn.executescript(_SCHEMA)
+            conn.executescript(_PROMPT_AGENTS_SCHEMA)
         self._run_migrations()
 
     def _run_migrations(self) -> None:
@@ -379,6 +393,63 @@ class SwarmStorage:
                 "UPDATE swarm_templates SET usage_count = usage_count + 1 WHERE id = ?",
                 (template_id,),
             )
+
+    # ---- Prompt agent CRUD (Phase 24e) ----
+
+    def create_prompt_agent(
+        self,
+        agent_id: str,
+        name: str,
+        capability_name: str,
+        system_prompt: str,
+        domain_affinity: Optional[List[str]] = None,
+    ) -> str:
+        """Persist a user-defined PromptAgent. Returns agent_id."""
+        now = datetime.now().isoformat()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO prompt_agents
+                    (id, name, capability_name, system_prompt, domain_affinity, is_active, created_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    capability_name = excluded.capability_name,
+                    system_prompt = excluded.system_prompt,
+                    domain_affinity = excluded.domain_affinity
+                """,
+                (
+                    agent_id, name, capability_name, system_prompt,
+                    json.dumps(domain_affinity or []), now,
+                ),
+            )
+        return agent_id
+
+    def list_prompt_agents(self) -> List[Dict[str, Any]]:
+        """Return all active prompt agents as dicts."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM prompt_agents WHERE is_active = 1 ORDER BY created_at"
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "capability_name": row["capability_name"],
+                "system_prompt": row["system_prompt"],
+                "domain_affinity": json.loads(row["domain_affinity"] or "[]"),
+            }
+            for row in rows
+        ]
+
+    def delete_prompt_agent(self, agent_id: str) -> bool:
+        """Soft-delete a prompt agent. Returns True if found."""
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "UPDATE prompt_agents SET is_active = 0 WHERE id = ? AND is_active = 1",
+                (agent_id,),
+            )
+        return cursor.rowcount > 0
 
     def get_metrics(self) -> Dict[str, Any]:
         """Return aggregate execution metrics."""

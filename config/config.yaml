@@ -212,3 +212,6 @@ nexus:
     calendar:
       enabled: false
       allowed_operations: []
+  # Phase 24e: user-defined prompt agents
+  prompt_agents:
+    enabled: true

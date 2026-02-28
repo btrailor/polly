@@ -1,5 +1,5 @@
 """
-Polly Nexus — Phase 24a + Phase 24b + Phase 24c
+Polly Nexus — Phase 24a + Phase 24b + Phase 24c + Phase 24e
 
 Provides:
   Phase 24a:
@@ -25,6 +25,9 @@ Provides:
   - ContextRequest: access request record
   - NexusContextBroker: config-driven context mediation
   - WorkflowStep.required_contexts / optional_contexts: per-step declarations
+
+  Phase 24e:
+  - PromptAgent: user-defined LLM agent driven by a configurable system prompt
 """
 
 from core.nexus.interface import (
@@ -58,6 +61,7 @@ from core.nexus.contexts import (
     ExecutionContextType,
     NexusContextBroker,
 )
+from core.nexus.prompt_agent import PromptAgent
 
 __all__ = [
     # interface (Phase 24a)
@@ -98,4 +102,6 @@ __all__ = [
     "ContextToken",
     "ExecutionContextType",
     "NexusContextBroker",
+    # prompt agent (Phase 24e)
+    "PromptAgent",
 ]

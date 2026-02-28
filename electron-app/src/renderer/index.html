@@ -2615,6 +2615,14 @@
               <button class="swarms-tab active" data-swarm-tab="execute" role="tab" aria-selected="true">Execute</button>
               <button class="swarms-tab" data-swarm-tab="history" role="tab" aria-selected="false">History</button>
             </div>
+            <div class="swarms-header-actions">
+              <button class="btn btn-ghost btn-sm" id="swarms-new-template-btn" title="Create a new workflow template">
+                <i data-lucide="plus" aria-hidden="true"></i> Template
+              </button>
+              <button class="btn btn-ghost btn-sm" id="swarms-new-agent-btn" title="Create a new prompt agent">
+                <i data-lucide="bot" aria-hidden="true"></i> Agent
+              </button>
+            </div>
             <div class="swarms-metrics-row" id="swarms-metrics-row"></div>
           </div>
 
@@ -3710,5 +3718,114 @@
     });
   </script>
   <script src="api-keys-manager.js"></script>
+
+  <!-- Phase 24e: Template builder modal -->
+  <div id="swarms-template-modal" class="modal hidden swarms-builder-modal" role="dialog" aria-modal="true" aria-labelledby="swarms-template-modal-title">
+    <div class="modal-backdrop" id="swarms-template-modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="swarms-template-modal-title">New Workflow Template</h3>
+        <button class="modal-close" id="swarms-template-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Name -->
+        <div class="form-group">
+          <label for="swarms-tmpl-name">Template Name</label>
+          <input type="text" id="swarms-tmpl-name" placeholder="e.g. Research and Summarise" autocomplete="off">
+        </div>
+        <!-- ID -->
+        <div class="form-group">
+          <label for="swarms-tmpl-id">Template ID <span style="font-weight:normal;color:var(--text-muted)">(auto-generated)</span></label>
+          <input type="text" id="swarms-tmpl-id" placeholder="e.g. research-and-summarise" autocomplete="off">
+        </div>
+        <!-- Description -->
+        <div class="form-group">
+          <label for="swarms-tmpl-description">Description</label>
+          <input type="text" id="swarms-tmpl-description" placeholder="What does this workflow do?" autocomplete="off">
+        </div>
+        <!-- Domain tags -->
+        <div class="form-group">
+          <label>Domain Tags</label>
+          <div class="swarms-tag-input-row">
+            <input type="text" id="swarms-tmpl-domain-input" placeholder="Add tag and press Enter" style="flex:1">
+          </div>
+          <div class="swarms-tag-chips" id="swarms-tmpl-domain-chips" style="margin-top:6px"></div>
+        </div>
+        <!-- Steps -->
+        <div class="form-group">
+          <label>Steps</label>
+          <div class="swarms-step-rows" id="swarms-step-rows"></div>
+          <button class="btn btn-ghost btn-sm" id="swarms-add-step-btn" style="width:100%;justify-content:center">
+            <i data-lucide="plus" aria-hidden="true"></i> Add Step
+          </button>
+        </div>
+        <!-- Output step -->
+        <div class="form-group">
+          <label for="swarms-tmpl-output-step">Output Step</label>
+          <select id="swarms-tmpl-output-step">
+            <option value="">— select a step —</option>
+          </select>
+        </div>
+        <!-- Merge strategy -->
+        <div class="form-group">
+          <label>Merge Strategy</label>
+          <div style="display:flex;gap:16px;margin-top:4px">
+            <label style="display:flex;align-items:center;gap:6px;font-weight:normal">
+              <input type="radio" name="swarms-merge-strategy" value="first" checked> First result
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-weight:normal">
+              <input type="radio" name="swarms-merge-strategy" value="ensemble"> Ensemble (concatenate)
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="swarms-template-modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="swarms-template-modal-save">Save Template</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase 24e: Prompt agent builder modal -->
+  <div id="swarms-agent-modal" class="modal hidden swarms-builder-modal" role="dialog" aria-modal="true" aria-labelledby="swarms-agent-modal-title">
+    <div class="modal-backdrop" id="swarms-agent-modal-backdrop"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="swarms-agent-modal-title">New Prompt Agent</h3>
+        <button class="modal-close" id="swarms-agent-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Name -->
+        <div class="form-group">
+          <label for="swarms-agent-name">Agent Name</label>
+          <input type="text" id="swarms-agent-name" placeholder="e.g. Bullet Point Summariser" autocomplete="off">
+        </div>
+        <!-- Capability -->
+        <div class="form-group">
+          <label for="swarms-agent-capability">Capability Name</label>
+          <input type="text" id="swarms-agent-capability" placeholder="e.g. summarise_bullets" autocomplete="off">
+          <small style="color:var(--text-muted);display:block;margin-top:4px">Snake_case identifier used in workflow templates.</small>
+        </div>
+        <!-- System prompt -->
+        <div class="form-group">
+          <label for="swarms-agent-prompt">System Prompt</label>
+          <textarea id="swarms-agent-prompt" rows="5" placeholder="You are a concise assistant. Given the user's text, return bullet points highlighting the key ideas." style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
+        </div>
+        <!-- Domain tags -->
+        <div class="form-group">
+          <label>Domain Tags</label>
+          <div class="swarms-tag-input-row">
+            <input type="text" id="swarms-agent-domain-input" placeholder="Add tag and press Enter" style="flex:1">
+          </div>
+          <div class="swarms-tag-chips" id="swarms-agent-domain-chips" style="margin-top:6px"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="swarms-agent-modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="swarms-agent-modal-save">Create Agent</button>
+      </div>
+    </div>
+  </div>
+  <!-- /Phase 24e modals -->
 </body>
 </html>

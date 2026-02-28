@@ -684,7 +684,7 @@ class Polly:
             self.kg_index_builder = None
 
     def _init_nexus(self):
-        """Initialize Nexus agent coordinator (Phase 24a)."""
+        """Initialize Nexus agent coordinator (Phase 24a/24b/24c/24e)."""
         nexus_cfg = self.config.get('nexus', {})
         if not nexus_cfg.get('enabled', False):
             logger.info("Nexus disabled in config (nexus.enabled=false)")
@@ -693,14 +693,33 @@ class Polly:
 
         try:
             from pathlib import Path
-            from core.nexus import AgentRegistry, SwarmStorage, NexusCoordinator, PersonaAgent
+            from core.nexus import (
+                AgentRegistry, SwarmStorage, NexusCoordinator,
+                PersonaAgent, TemplateRegistry,
+            )
+            from core.nexus.contexts import NexusContextBroker
 
             db_path_str = nexus_cfg.get('db_path', '~/.polly/swarms.db')
             db_path = Path(db_path_str).expanduser()
 
             registry = AgentRegistry(db_path)
             storage = SwarmStorage(db_path)
-            self.nexus = NexusCoordinator(registry, storage)
+
+            # Phase 24b: TemplateRegistry — seed built-in templates on first run
+            tmpl_reg = TemplateRegistry(storage)
+            tmpl_reg.seed_builtins()
+
+            # Phase 24c: NexusContextBroker — config-driven context mediation
+            ctx_cfg = nexus_cfg.get('contexts', {})
+            broker = NexusContextBroker(ctx_cfg)
+
+            self.nexus = NexusCoordinator(
+                registry,
+                storage,
+                template_registry=tmpl_reg,
+                context_broker=broker,
+                pattern_engine=getattr(self, 'pattern_engine', None),  # Phase 24e
+            )
 
             # Wrap registered personas as PersonaAgent executables
             if self.persona_manager is not None:
@@ -714,9 +733,27 @@ class Polly:
                     except Exception as pe:
                         logger.debug(f"Nexus: could not wrap persona '{persona_name}': {pe}")
 
+            # Phase 24e: re-register any persisted PromptAgents from storage
+            try:
+                from core.nexus.prompt_agent import PromptAgent
+                for pa_dict in storage.list_prompt_agents():
+                    pa = PromptAgent(
+                        agent_id=pa_dict["id"],
+                        name=pa_dict["name"],
+                        system_prompt=pa_dict["system_prompt"],
+                        capability_name=pa_dict["capability_name"],
+                        domain_affinity=pa_dict.get("domain_affinity", []),
+                        llm=getattr(self, 'llm', None),
+                    )
+                    self.nexus.register_executable(pa.agent_id, pa)
+                    logger.debug(f"Nexus: re-registered PromptAgent '{pa_dict['id']}'")
+            except Exception as pe_err:
+                logger.debug(f"Nexus: could not re-register prompt agents: {pe_err}")
+
             registered_count = len(self.nexus._executables)
             logger.info(
-                f"Nexus coordinator initialized with {registered_count} persona agent(s)"
+                f"Nexus coordinator initialized with {registered_count} agent(s) "
+                f"(template_registry={tmpl_reg is not None}, broker={broker is not None})"
             )
 
         except Exception as e:
