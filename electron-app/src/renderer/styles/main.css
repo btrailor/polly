@@ -14,15 +14,15 @@
   --text-primary: #e0e0e0;
   --text-secondary: #999999;
   --text-muted: #9a9a9a; /* was #8a8a8a (4.44:1 on bg-secondary — WCAG AA fail); #9a9a9a = 5.44:1 ✓ */
-  
+
   /* Border color */
   --border-color: #2a2a2a;
 
   /* Accent colors */
   --accent-primary: #f0903b;
   --accent-secondary: #e67612;
-  --accent-red: #e06c75;    /* destructive actions, errors */
-  --accent-green: #98c379;  /* success states */
+  --accent-red: #e06c75; /* destructive actions, errors */
+  --accent-green: #98c379; /* success states */
   --accent-yellow: #e5c07b; /* warnings */
 
   /* Glitch effect colors */
@@ -51,11 +51,11 @@
   --spacing-xl: 32px;
 
   /* Border radius */
-  --radius-xs:   2px;    /* subtle rounding on small tags/badges */
-  --radius-sm:   4px;    /* buttons, inputs, tags */
-  --radius-md:   6px;    /* cards, panels */
-  --radius-lg:   8px;    /* larger cards, dialog panels */
-  --radius-xl:   12px;   /* feature cards, overlays */
+  --radius-xs: 2px; /* subtle rounding on small tags/badges */
+  --radius-sm: 4px; /* buttons, inputs, tags */
+  --radius-md: 6px; /* cards, panels */
+  --radius-lg: 8px; /* larger cards, dialog panels */
+  --radius-xl: 12px; /* feature cards, overlays */
   --radius-full: 9999px; /* pills, avatars, toggles */
 
   /* Transitions */
@@ -63,8 +63,9 @@
   --transition-normal: 250ms ease;
 
   /* Typography */
-  --font-mono: 'Courier New', Courier, monospace;
-  --font-ui:   system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: "Courier New", Courier, monospace;
+  --font-ui:
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   /* ── Type scale (use these instead of raw px values) ──────────────────
    * --font-xs   : 10-11px  ultra-small labels, timestamps, ribbon labels
@@ -77,14 +78,14 @@
    * --font-3xl  : 28px     setup hero header
    * --font-stat : 36px     large stat numbers on dashboard
    * ─────────────────────────────────────────────────────────────────────── */
-  --font-xs:   10px;
-  --font-sm:   12px;
+  --font-xs: 10px;
+  --font-sm: 12px;
   --font-body: 13px;
-  --font-md:   14px;
-  --font-lg:   16px;
-  --font-xl:   18px;
-  --font-2xl:  24px;
-  --font-3xl:  28px;
+  --font-md: 14px;
+  --font-lg: 16px;
+  --font-xl: 18px;
+  --font-2xl: 24px;
+  --font-3xl: 28px;
   --font-stat: 36px;
 
   /* ── Variable aliases ───────────────────────────────────────────────────
@@ -92,13 +93,22 @@
    * They exist so that persona-ui.css and notes.css (which use different
    * naming conventions) resolve correctly without silent fallbacks.
    * ─────────────────────────────────────────────────────────────────────── */
-  --accent-color: var(--accent-primary);   /* persona-ui.css uses --accent-color  */
-  --accent: var(--accent-primary);          /* notes.css uses --accent              */
-  --hover-bg: var(--bg-hover);              /* notes.css uses --hover-bg            */
-  --border-primary: var(--border-color);    /* notes.css uses --border-primary      */
-  --text-normal: var(--text-primary);       /* notes.css uses --text-normal         */
-  --text-tertiary: var(--text-muted);       /* notes.css uses --text-tertiary       */
-  --accent-subtle: rgba(240, 144, 59, 0.1); /* notes.css uses --accent-subtle       */
+  --accent-color: var(
+    --accent-primary
+  ); /* persona-ui.css uses --accent-color  */
+  --accent: var(--accent-primary); /* notes.css uses --accent              */
+  --hover-bg: var(--bg-hover); /* notes.css uses --hover-bg            */
+  --border-primary: var(
+    --border-color
+  ); /* notes.css uses --border-primary      */
+  --text-normal: var(--text-primary); /* notes.css uses --text-normal         */
+  --text-tertiary: var(--text-muted); /* notes.css uses --text-tertiary       */
+  --accent-subtle: rgba(
+    240,
+    144,
+    59,
+    0.1
+  ); /* notes.css uses --accent-subtle       */
 
   /* Shadows - brutalist style */
   --shadow-sm: 2px 2px 0 rgba(10, 10, 10, 0.1);
@@ -109,18 +119,20 @@
    * Use these tokens — never raw numbers.
    * Each layer is a clear step above the last.
    * ─────────────────────────────────────────────────────── */
-  --z-base:     0;      /* normal document flow */
-  --z-dropdown: 100;    /* autocomplete, context menus, select dropdowns */
-  --z-sticky:   200;    /* sticky headers, pinned elements */
-  --z-overlay:  300;    /* modal backdrops, drawer overlays */
-  --z-modal:    400;    /* dialogs, pickers that must sit above overlays */
-  --z-toast:    500;    /* toast notifications — always on top */
-  --z-tooltip:  600;    /* tooltips (above everything) */
-  --z-titlebar: 700;    /* Electron titlebar (always on top) */
+  --z-base: 0; /* normal document flow */
+  --z-dropdown: 100; /* autocomplete, context menus, select dropdowns */
+  --z-sticky: 200; /* sticky headers, pinned elements */
+  --z-overlay: 300; /* modal backdrops, drawer overlays */
+  --z-modal: 400; /* dialogs, pickers that must sit above overlays */
+  --z-toast: 500; /* toast notifications — always on top */
+  --z-tooltip: 600; /* tooltips (above everything) */
+  --z-titlebar: 700; /* Electron titlebar (always on top) */
 }
 
 /* Reset */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
@@ -143,7 +155,9 @@
 .send-button:focus-visible,
 .chat-stop-btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--accent-primary);
+  box-shadow:
+    0 0 0 2px var(--bg-primary),
+    0 0 0 4px var(--accent-primary);
 }
 
 /* Input/textarea/select: accent border glow on keyboard focus */
@@ -167,7 +181,7 @@ select:focus-visible {
   position: absolute;
   top: -100%;
   left: 0;
-  z-index: var(--z-tooltip);  /* skip-link: above all content */
+  z-index: var(--z-tooltip); /* skip-link: above all content */
   padding: 8px 16px;
   background: var(--accent-primary);
   color: var(--bg-primary);
@@ -185,7 +199,9 @@ select:focus-visible {
    Accessibility: Reduced Motion
    ============================================================ */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -209,7 +225,8 @@ select:focus-visible {
   }
 }
 
-html, body {
+html,
+body {
   height: 100% !important;
   width: 100% !important;
   overflow: hidden;
@@ -218,7 +235,7 @@ html, body {
 }
 
 body {
-  font-family: 'Courier New', 'Courier', monospace;
+  font-family: "Courier New", "Courier", monospace;
   font-size: var(--font-md);
   line-height: 1.6;
   color: var(--text-primary);
@@ -479,7 +496,7 @@ body {
 
 /* Cursor-style active indicator: left border accent */
 .ribbon-item.active::before {
-  content: '' !important;
+  content: "" !important;
   position: absolute !important;
   left: 0 !important;
   top: 0 !important;
@@ -495,7 +512,7 @@ body {
 }
 
 .ribbon-logo.active::before {
-  content: '' !important;
+  content: "" !important;
   position: absolute !important;
   left: 0 !important;
   top: 0 !important;
@@ -639,7 +656,9 @@ body {
   flex-direction: column !important;
   flex-shrink: 0 !important;
   overflow: hidden !important;
-  transition: width var(--transition-normal), min-width var(--transition-normal);
+  transition:
+    width var(--transition-normal),
+    min-width var(--transition-normal);
   order: 1 !important; /* First item in flex container */
   visibility: visible !important; /* Force visibility */
   opacity: 1 !important; /* Force opacity */
@@ -1201,8 +1220,13 @@ body {
 }
 
 @keyframes stream-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 
 /* Status Bar */
@@ -1247,7 +1271,10 @@ body {
   border-right: none !important; /* No right border */
   display: flex !important;
   flex-direction: column !important;
-  transition: width var(--transition-normal), min-width var(--transition-normal), flex-basis var(--transition-normal);
+  transition:
+    width var(--transition-normal),
+    min-width var(--transition-normal),
+    flex-basis var(--transition-normal);
   overflow: hidden !important;
   position: relative !important; /* Ensure proper positioning - NOT absolute */
   order: 5 !important; /* Fifth and last: left-sidebar(1), main-content(2), resize-handle(3), chat(4), agents(5) */
@@ -1635,7 +1662,7 @@ body {
 .patterns-ribbon-btn.active::before,
 .domains-ribbon-btn.active::before,
 .settings-ribbon-btn.active::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;
@@ -1756,7 +1783,7 @@ body {
 }
 
 .nav-item::before {
-  content: '>';
+  content: ">";
   position: absolute;
   left: 4px;
   opacity: 0;
@@ -1813,8 +1840,14 @@ body {
 
 /* Fade-in when a view becomes visible */
 @keyframes viewFadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0);   }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .view:not(.hidden) {
@@ -1823,8 +1856,12 @@ body {
 
 /* ── Stat card skeleton shimmer ───────────────────────────── */
 @keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 .stat-value[data-loading] {
@@ -1832,7 +1869,7 @@ body {
   background: linear-gradient(
     90deg,
     var(--bg-tertiary) 25%,
-    var(--bg-hover)    50%,
+    var(--bg-hover) 50%,
     var(--bg-tertiary) 75%
   );
   background-size: 200% 100%;
@@ -2060,7 +2097,7 @@ body {
   border: 2px solid var(--text-primary);
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'Courier New', 'Courier', monospace;
+  font-family: "Courier New", "Courier", monospace;
   font-size: var(--font-body);
   border-radius: var(--radius-md);
 }
@@ -2178,7 +2215,7 @@ body {
 }
 
 .conversation-item.starred::before {
-  content: '★';
+  content: "★";
   position: absolute;
   left: 6px;
   top: 6px;
@@ -2341,7 +2378,7 @@ body {
   cursor: pointer;
   font-size: var(--font-body);
   transition: all var(--transition-fast);
-  font-family: 'Courier New', 'Courier', monospace;
+  font-family: "Courier New", "Courier", monospace;
   text-transform: lowercase;
   font-weight: 700;
 }
@@ -2430,7 +2467,7 @@ body {
   cursor: pointer;
   color: var(--text-muted, #666);
   border-radius: 3px;
-  display: none;        /* hidden until message hover */
+  display: none; /* hidden until message hover */
   align-items: center;
   line-height: 1;
 }
@@ -2454,7 +2491,7 @@ body {
 }
 
 .message-content code {
-  font-family: 'Courier New', 'Courier', monospace;
+  font-family: "Courier New", "Courier", monospace;
   font-size: var(--font-body);
   background: #1a1a1a;
   padding: 2px 4px;
@@ -2484,12 +2521,12 @@ body {
   cursor: pointer;
   font-size: var(--font-sm);
   transition: all var(--transition-fast);
-  font-family: 'Courier New', 'Courier', monospace;
+  font-family: "Courier New", "Courier", monospace;
   position: relative;
 }
 
 .quick-btn::before {
-  content: '→ ';
+  content: "→ ";
   opacity: 0;
   transition: opacity var(--transition-fast);
 }
@@ -2519,7 +2556,7 @@ body {
   border: 2px solid var(--text-primary);
   border-radius: var(--radius-md);
   color: var(--text-primary);
-  font-family: 'Courier New', 'Courier', monospace;
+  font-family: "Courier New", "Courier", monospace;
   font-size: var(--font-md);
   line-height: 1.5;
 }
@@ -2546,7 +2583,9 @@ body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Scrollbar */
@@ -2667,19 +2706,21 @@ body {
 
 .glitch-text:hover::before {
   color: var(--error);
-  animation: glitch-before 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both infinite;
+  animation: glitch-before 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both
+    infinite;
   clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
 }
 
 .glitch-text:hover::after {
   color: var(--sigils);
-  animation: glitch-after 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) reverse both infinite;
+  animation: glitch-after 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) reverse both
+    infinite;
   clip-path: polygon(0 60%, 100% 60%, 100% 100%, 0 100%);
 }
 
 /* ASCII Art styling */
 .ascii-art {
-  font-family: 'Courier New', 'Courier', monospace;
+  font-family: "Courier New", "Courier", monospace;
   font-size: var(--font-sm);
   line-height: 1.2;
   color: var(--text-muted);
@@ -2736,7 +2777,9 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--text-muted); /* !important not needed: selector specificity (0,2,0) beats .status-dot (0,1,0) */
+  background: var(
+    --text-muted
+  ); /* !important not needed: selector specificity (0,2,0) beats .status-dot (0,1,0) */
   flex-shrink: 0;
 }
 
@@ -2787,7 +2830,9 @@ body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--text-muted); /* !important not needed: (0,2,0) specificity */
+  background: var(
+    --text-muted
+  ); /* !important not needed: (0,2,0) specificity */
   margin-right: var(--spacing-xs);
   vertical-align: middle;
 }
@@ -2887,7 +2932,6 @@ body {
 #context7-popular-libraries::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
 }
-
 
 /* ========================================
    Responsive Adjustments
@@ -3028,7 +3072,7 @@ body {
   border: 2px solid var(--border-color);
   cursor: pointer;
   transition: all var(--transition-fast);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: var(--font-body);
 }
 
@@ -3354,7 +3398,7 @@ body {
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-family: 'Courier New', 'Courier', monospace;
+  font-family: "Courier New", "Courier", monospace;
   font-size: var(--font-body);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -3735,7 +3779,7 @@ body {
 }
 
 .keyword-tag.suggested::after {
-  content: '+';
+  content: "+";
   margin-left: 4px;
   color: #61afef;
   font-weight: bold;
@@ -3749,7 +3793,7 @@ body {
 }
 
 .btn.loading::after {
-  content: '';
+  content: "";
   position: absolute;
   width: 14px;
   height: 14px;
@@ -3764,7 +3808,9 @@ body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Error Message */
@@ -3873,7 +3919,6 @@ body {
   color: var(--text-secondary);
   font-size: var(--font-md);
 }
-
 
 /* ============================================
    API Keys & Budget Styles  
@@ -4202,12 +4247,12 @@ body {
   .provider-cards {
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   }
-  
+
   .api-key-item {
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .api-key-actions {
     width: 100%;
     justify-content: flex-end;
@@ -4458,7 +4503,6 @@ body {
   cursor: not-allowed;
 }
 
-
 /* ==============================================
    Compression Settings Styles
    ============================================== */
@@ -4572,7 +4616,7 @@ body {
 .mental-model-card-id {
   font-size: var(--font-sm);
   color: var(--text-secondary);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: "JetBrains Mono", monospace;
 }
 
 .mental-model-toggle {
@@ -4590,7 +4634,7 @@ body {
 }
 
 .mental-model-toggle::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 2px;
   left: 2px;
@@ -4817,7 +4861,7 @@ body {
 
 /* Visual indicator for conversations with overrides */
 .conversation-item.has-override::after {
-  content: '🧠';
+  content: "🧠";
   position: absolute;
   top: 8px;
   right: 32px;
@@ -4882,12 +4926,21 @@ body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.05); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+  }
 }
 
 .init-status {
@@ -4915,7 +4968,7 @@ body {
 }
 
 .settings-loading-spinner::before {
-  content: '';
+  content: "";
   width: 20px;
   height: 20px;
   border: 2px solid var(--bg-tertiary);
@@ -5401,11 +5454,26 @@ body {
   font-weight: 600;
 }
 
-.mastery-badge.mastery-1 { background: #ff444433; color: #ff6b6b; }
-.mastery-badge.mastery-2 { background: #ff8c0033; color: #ffa500; }
-.mastery-badge.mastery-3 { background: #ffb70033; color: #ffd700; }
-.mastery-badge.mastery-4 { background: #0099ff33; color: #00d9ff; }
-.mastery-badge.mastery-5 { background: #00cc6633; color: #00ff88; }
+.mastery-badge.mastery-1 {
+  background: #ff444433;
+  color: #ff6b6b;
+}
+.mastery-badge.mastery-2 {
+  background: #ff8c0033;
+  color: #ffa500;
+}
+.mastery-badge.mastery-3 {
+  background: #ffb70033;
+  color: #ffd700;
+}
+.mastery-badge.mastery-4 {
+  background: #0099ff33;
+  color: #00d9ff;
+}
+.mastery-badge.mastery-5 {
+  background: #00cc6633;
+  color: #00ff88;
+}
 
 .topic-meta {
   display: flex;
@@ -5655,7 +5723,7 @@ body {
 }
 
 .code-editor code {
-  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-family: "Monaco", "Menlo", "Courier New", monospace;
   font-size: var(--font-body);
   line-height: 1.6;
   color: #e0e0e0;
@@ -5669,7 +5737,7 @@ body {
   border: none;
   border-bottom: 1px solid #2a2a2a;
   color: #e0e0e0;
-  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-family: "Monaco", "Menlo", "Courier New", monospace;
   font-size: var(--font-body);
   line-height: 1.6;
   resize: vertical;
@@ -5704,7 +5772,7 @@ body {
 
 .output-content pre {
   margin: 0;
-  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-family: "Monaco", "Menlo", "Courier New", monospace;
   font-size: var(--font-body);
   line-height: 1.6;
   color: #e0e0e0;
@@ -5922,7 +5990,7 @@ body {
 .feedback-test .test-info {
   font-size: var(--font-sm);
   color: #a0a0a0;
-  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-family: "Monaco", "Menlo", "Courier New", monospace;
 }
 
 .feedback-success-message {
@@ -6654,7 +6722,7 @@ body {
 }
 
 .graph-ribbon-btn.active::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;
@@ -7167,28 +7235,6 @@ body {
 
 /* ==================== End Graph Ribbon & Garden Styles ==================== */
 
-/* ==================== Knowledge Suggestion Card Animations ==================== */
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeOut {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-/* ==================== End Knowledge Suggestion Card ==================== */
-
 /* ==================== Link Suggestion Modal (Task #22) ==================== */
 .link-suggestion-list {
   display: flex;
@@ -7356,7 +7402,9 @@ body {
   padding: 2px 8px;
   font-size: var(--font-sm);
   border-radius: 3px;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
   font-family: inherit;
 }
 
@@ -7388,7 +7436,9 @@ body {
 }
 
 @keyframes btn-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -7604,4 +7654,3 @@ body {
   color: var(--text-primary);
 }
 /* ==================== End Vault Health ==================== */
-

@@ -1666,100 +1666,6 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         except Exception as e:
             logger.debug(f"Record context metrics failed: {e}")
 
-    async def _detect_and_suggest_knowledge_gap(
-        self,
-        query: str,
-        rag_results: List,
-        cloud_response: str,
-        response_metadata: Dict[str, Any],
-        retrieval_tier: 'RetrievalTier'
-    ) -> None:
-        """
-        Detect knowledge gaps after cloud responses and suggest saving enriched notes.
-        
-        Wave 4 - Knowledge Enrichment Integration: This connects the existing gap detection
-        infrastructure to the main chat flow. Gap detection runs after synthesis or cloud
-        responses to identify when new information should be saved to the knowledge base.
-        
-        Args:
-            query: User's original query
-            rag_results: RAG search results that were used
-            cloud_response: The response from cloud model (or synthesis)
-            response_metadata: Response metadata with provider, model, cost info
-            retrieval_tier: Three-tier retrieval classification (DIRECT/ADJACENT/ABSENT)
-        """
-        # Check if knowledge writer and gap detection are enabled
-        if not self.knowledge_writer:
-            return
-        
-        # Check config flag
-        gap_detection_enabled = self.config.get("ai_features.knowledge_suggestions.enabled", True)
-        if not gap_detection_enabled:
-            logger.debug("Knowledge gap detection disabled in config")
-            return
-        
-        # Only detect gaps for cloud responses (local responses use existing KB)
-        provider = response_metadata.get("provider", "")
-        if provider == "ollama" or (provider == "wave3_hybrid" and response_metadata.get("wave3_metrics", {}).get("cloud_count", 0) == 0):
-            # Pure local response - no gap detection needed
-            logger.debug(f"Skipping gap detection for pure local response (provider={provider})")
-            return
-        
-        # Import RetrievalTier enum for comparison
-        from core.hardened.classifier import RetrievalTier
-        
-        try:
-            # Calculate RAG coverage from retrieval tier or result scores
-            # Higher coverage = better local knowledge, lower chance of gap
-            rag_coverage = 0.0
-            if retrieval_tier and retrieval_tier == RetrievalTier.DIRECT:
-                rag_coverage = 0.9  # High coverage - local KB has strong match
-            elif retrieval_tier and retrieval_tier == RetrievalTier.ADJACENT:
-                rag_coverage = 0.5  # Moderate coverage - related but not direct
-            elif retrieval_tier and retrieval_tier == RetrievalTier.ABSENT:
-                rag_coverage = 0.1  # Low coverage - KB has little to offer
-            else:
-                # Fallback: calculate from result scores if available
-                if rag_results:
-                    scores = [getattr(r, 'score', 0.0) for r in rag_results]
-                    rag_coverage = max(scores) if scores else 0.0
-                else:
-                    rag_coverage = 0.0
-            
-            logger.debug(f"Gap detection: rag_coverage={rag_coverage:.2f}, retrieval_tier={retrieval_tier}")
-            
-            # Run gap detection
-            gap = await self.knowledge_writer.detect_knowledge_gap(
-                original_query=query,
-                local_results=rag_results or [],
-                cloud_response=cloud_response or "",
-                rag_coverage=rag_coverage,
-                cloud_provider=provider
-            )
-            
-            if gap:
-                logger.info(f"Knowledge gap detected: score={gap.gap_score:.2f}, concepts={len(gap.novel_concepts)}")
-                
-                # Create suggestion PersonaAction
-                suggestion = self.knowledge_writer.create_suggestion(gap)
-                
-                if suggestion:
-                    # Store suggestion for frontend to display
-                    # This will be included in the response metadata
-                    if not hasattr(self, '_last_persona_actions'):
-                        self._last_persona_actions = []
-                    self._last_persona_actions.append(suggestion)
-                    
-                    logger.info(f"Knowledge suggestion created: {gap.suggested_title} ({gap.suggested_domain})")
-                    logger.debug(f"Novel concepts: {', '.join(gap.novel_concepts[:5])}")
-            else:
-                logger.debug("No significant knowledge gap detected")
-                
-        except Exception as e:
-            # Gap detection is non-critical - log but don't fail the query
-            logger.warning(f"Knowledge gap detection failed (non-critical): {e}")
-            logger.debug(f"Gap detection error details", exc_info=True)
-
     def _should_use_local_model(
         self, 
         query: str, 
@@ -2234,9 +2140,6 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         """
         logger.info(f"[POLLY QUERY] Starting query: {query[:100]}")
         
-        # Clear persona actions from previous query
-        self._last_persona_actions = []
-
         # ------------------------------------------------------------------
         # 0. Semantic Cache Lookup (Spec 01) - short-circuit if cache hit
         # ------------------------------------------------------------------
@@ -3010,15 +2913,6 @@ If you suggest an exercise, copy the description directly from the context above
                     }
                     self._last_response_metadata = response_metadata
                     
-                    # Knowledge gap detection for Wave 3 synthesis (Wave 4 Integration)
-                    await self._detect_and_suggest_knowledge_gap(
-                        query=query,
-                        rag_results=filtered_search_results,
-                        cloud_response=full_response,
-                        response_metadata=response_metadata,
-                        retrieval_tier=retrieval_tier.tier
-                    )
-                    
                     # Update conversation history for Wave 3 path
                     self.conversation_history.append({'role': 'user', 'content': query})
                     self.conversation_history.append({'role': 'assistant', 'content': full_response})
@@ -3392,15 +3286,6 @@ If you suggest an exercise, copy the description directly from the context above
             logger.info("Background post-response tasks completed")
 
         asyncio.get_event_loop().run_in_executor(None, _post_response_background)
-
-        # Knowledge gap detection (async, needs event loop — keep inline but lightweight)
-        await self._detect_and_suggest_knowledge_gap(
-            query=query,
-            rag_results=filtered_search_results,
-            cloud_response=full_response,
-            response_metadata=response_metadata,
-            retrieval_tier=retrieval_tier.tier
-        )
 
     async def index(
         self,

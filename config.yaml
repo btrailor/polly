@@ -102,28 +102,28 @@ obsidian:
 # Notes management (Phase 16)
 notes:
   # Active source: "obsidian" or "native"
-  source: "native"  # Changed to use native knowledge base by default
-  
+  source: "native" # Changed to use native knowledge base by default
+
   # Obsidian vault configuration
   obsidian:
     vault_path: "/Users/brettgershon/Library/Mobile Documents/iCloud~md~obsidian/Documents/Organizer"
     enabled: true
-  
+
   # Native Polly notes configuration
   native:
     path: "~/.polly/notes"
-    enabled: true  # Enabled for native knowledge base use
-  
+    enabled: true # Enabled for native knowledge base use
+
   # File watcher for auto-indexing
   auto_index: true
-  
+
   # Domain validation
   domain_validation: true
 
 # Template system (Phase 16e)
 templates:
-  folder: ".polly/templates"  # Relative to vault root
-  auto_reload: true           # Watch for template changes
+  folder: ".polly/templates" # Relative to vault root
+  auto_reload: true # Watch for template changes
 
 # Codebase indexing
 codebases:
@@ -148,13 +148,13 @@ models:
     chat_models:
       fast: "qwen2.5:7b"
       balanced: "qwen2.5:7b"
-      quality: "qwen2.5:7b"  # If you have the VRAM
+      quality: "qwen2.5:7b" # If you have the VRAM
     default: "balanced"
 
   # Cloud models for complex queries or when local unavailable
   cloud:
-    provider: "anthropic"  # or "openai", "openrouter"
-    api_key_env: "ANTHROPIC_API_KEY"  # Environment variable name
+    provider: "anthropic" # or "openai", "openrouter"
+    api_key_env: "ANTHROPIC_API_KEY" # Environment variable name
     models:
       default: "claude-sonnet-4-20250514"
       quality: "claude-opus-4-20250514"
@@ -189,21 +189,21 @@ router:
 routing_v2:
   # Enable new routing system
   enabled: true
-  
+
   # Default confidence level: "fast", "balanced", "thorough"
   default_confidence: "balanced"
-  
+
   # Provider configurations
   providers:
     anthropic:
       enabled: true
-      api_key_env: "ANTHROPIC_API_KEY"  # Environment variable
-      priority: 1  # Higher priority = preferred
+      api_key_env: "ANTHROPIC_API_KEY" # Environment variable
+      priority: 1 # Higher priority = preferred
       models:
         fast: "claude-3-haiku-20240307"
         balanced: "claude-sonnet-4-20250514"
         thorough: "claude-opus-4-20250514"
-    
+
     openai:
       enabled: true
       api_key_env: "OPENAI_API_KEY"
@@ -212,20 +212,20 @@ routing_v2:
         fast: "gpt-3.5-turbo"
         balanced: "gpt-4-turbo"
         thorough: "gpt-4o"
-    
+
     github:
-      enabled: true  # GitHub Models integration (Phase 11b complete!)
+      enabled: true # GitHub Models integration (Phase 11b complete!)
       oauth_token_env: "GITHUB_TOKEN"
-      priority: 1  # Primary provider (fastest + access to multiple models)
+      priority: 1 # Primary provider (fastest + access to multiple models)
       models:
         fast: "openai/gpt-4o-mini"
         balanced: "openai/gpt-4o"
         thorough: "anthropic/claude-3.5-sonnet"
-  
+
   # Three-tier routing configuration
   tiers:
     fast:
-      max_cost_per_request: 0.01  # $0.01 max per request
+      max_cost_per_request: 0.01 # $0.01 max per request
       description: "Quick responses for simple queries"
       models:
         - provider: github
@@ -237,9 +237,9 @@ routing_v2:
         - provider: openai
           model: gpt-3.5-turbo
           priority: 3
-    
+
     balanced:
-      max_cost_per_request: 0.10  # $0.10 max per request
+      max_cost_per_request: 0.10 # $0.10 max per request
       description: "Balance of quality and cost"
       models:
         - provider: github
@@ -251,9 +251,9 @@ routing_v2:
         - provider: openai
           model: gpt-4-turbo
           priority: 3
-    
+
     thorough:
-      max_cost_per_request: 1.00  # $1.00 max per request
+      max_cost_per_request: 1.00 # $1.00 max per request
       description: "Maximum quality for complex tasks"
       models:
         - provider: github
@@ -268,14 +268,14 @@ routing_v2:
         - provider: openai
           model: o1-preview
           priority: 4
-  
+
   # Budget limits
   budget:
-    daily_limit: 10.00       # $10 per day
-    monthly_limit: 200.00    # $200 per month
-    warn_at_percent: 80      # Warn at 80% usage
+    daily_limit: 10.00 # $10 per day
+    monthly_limit: 200.00 # $200 per month
+    warn_at_percent: 80 # Warn at 80% usage
     database_path: "~/.polly/usage.db"
-  
+
   # Complexity classification hints
   complexity:
     # High complexity indicators (score 7-10)
@@ -284,21 +284,21 @@ routing_v2:
       - "multi-file|across files|whole codebase"
       - "complex|sophisticated|advanced"
       - "optimize|performance|scalability"
-    
+
     # Medium complexity indicators (score 4-6)
     medium:
       - "implement|create|build"
       - "review|analyze|explain"
       - "debug|fix bug|troubleshoot"
       - "refactor|improve|enhance"
-    
+
     # Low complexity indicators (score 1-3)
     low:
       - "what is|define|explain simple"
       - "quick|simple|basic"
       - "complete this|finish|autocomplete"
       - "fix typo|format|prettify"
-  
+
   # Fallback behavior
   fallback:
     # Retry failed providers
@@ -313,17 +313,17 @@ memory:
   provider: "mem0"
   extraction:
     enabled: true
-    cloud_threshold: "balanced"      # Session complexity that triggers cloud model
+    cloud_threshold: "balanced" # Session complexity that triggers cloud model
     cloud_model: "claude-haiku"
     local_model: "qwen2.5:7b"
-    max_cloud_cost: 0.02             # Per-extraction budget cap
+    max_cloud_cost: 0.02 # Per-extraction budget cap
   tiers:
     stable:
       collection: "memory_stable"
-      decay: null                    # No decay for stable facts
+      decay: null # No decay for stable facts
     episodic:
       collection: "memory_episodic"
-      decay_halflife_days: 90        # Score halves every 90 days
+      decay_halflife_days: 90 # Score halves every 90 days
     working:
       collection: "memory_working"
       session_scoped: true
@@ -348,32 +348,32 @@ context_budget:
       min: 500
       max: 2000
       target_pct: 0.10
-      priority: 1              # Guaranteed — persona + constitutional layer
+      priority: 1 # Guaranteed — persona + constitutional layer
     conversation:
       min: 1000
       max: 8000
       target_pct: 0.25
-      priority: 2              # Guaranteed — recent conversation history
+      priority: 2 # Guaranteed — recent conversation history
     memory:
       min: 500
       max: 4000
       target_pct: 0.20
-      priority: 3              # Tiered memory retrieval
+      priority: 3 # Tiered memory retrieval
     rag:
       min: 1000
       max: 6000
       target_pct: 0.30
-      priority: 4              # RAG search results
+      priority: 4 # RAG search results
     mental_models:
       min: 200
       max: 2000
       target_pct: 0.10
-      priority: 5              # Active mental models
+      priority: 5 # Active mental models
     entities:
       min: 100
       max: 1000
       target_pct: 0.05
-      priority: 6              # Entity + pattern context
+      priority: 6 # Entity + pattern context
   relevance_weights:
     retrieval_similarity: 0.35
     recency: 0.25
@@ -393,13 +393,13 @@ rag:
   chunk_size: 800
   chunk_overlap: 100
   # Retrieval
-  n_results: 10  # Increased from 5 to 10 for better coverage
+  n_results: 10 # Increased from 5 to 10 for better coverage
   # Reranking (when available)
   rerank: true
   # BM25 index persistence (Spec 08)
   bm25:
-    persist: true           # Save/load BM25 index to/from disk
-    index_path: null        # null = auto (sibling of chroma_db as bm25_index.pkl)
+    persist: true # Save/load BM25 index to/from disk
+    index_path: null # null = auto (sibling of chroma_db as bm25_index.pkl)
     rebuild_on_index: false # If true, rebuild immediately after index_single_document
     background_rebuild: false # If true, rebuild in background thread on startup
 
@@ -422,19 +422,19 @@ mental_models:
     # A/B validation framework (Spec 07)
     ab_test:
       enabled: true
-      sample_rate: 0.15     # 15% of turns use full-text format
-      min_samples: 50       # Minimum samples before drawing conclusions
-      per_model: true       # Track separately per model_used
+      sample_rate: 0.15 # 15% of turns use full-text format
+      min_samples: 50 # Minimum samples before drawing conclusions
+      per_model: true # Track separately per model_used
     # Per-model static profiles (used when A/B data is insufficient)
     model_format_profiles:
-      "qwen2.5:7b": "full"          # Local small models: use full text
+      "qwen2.5:7b": "full" # Local small models: use full text
       "qwen2.5:3b": "full"
       "llama3": "full"
       "mistral": "full"
-      "claude-sonnet-4": "compact"  # Claude handles symbols correctly
+      "claude-sonnet-4": "compact" # Claude handles symbols correctly
       "claude-opus-4": "compact"
       "gpt-4": "compact"
-      "default": "compact"          # Fallback for unknown models
+      "default": "compact" # Fallback for unknown models
 
 # Personal knowledge graph
 graph:
@@ -486,12 +486,8 @@ learning:
   spaced_repetition: true
   auto_suggest_review: true
 
-# AI Features (Knowledge Writing & Progressive Autonomy)
+# AI Features (Progressive Autonomy)
 ai_features:
-  knowledge_suggestions:
-    enabled: true
-    style: "inline"         # "subtle" | "inline" | "ask_first"
-    min_gap_score: 0.5      # 0.0-1.0 — only suggest when gap confidence exceeds this
   autonomy_dashboard:
     enabled: true
     show_in_status_bar: true
@@ -499,13 +495,13 @@ ai_features:
 # Server settings
 server:
   host: "0.0.0.0"
-  port: 11436  # Different from Ollama (11434) and RAG (8000)
+  port: 11436 # Different from Ollama (11434) and RAG (8000)
   # Enable for mobile access via Tailscale
   enable_remote: true
 
 # Startup warm-up: pre-load Ollama models so first query avoids cold-start penalty
 startup:
-  warmup_ollama: true  # Set to false to skip warm-up (e.g. if Ollama not always running)
+  warmup_ollama: true # Set to false to skip warm-up (e.g. if Ollama not always running)
 
 # CLI settings
 cli:

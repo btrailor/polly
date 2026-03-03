@@ -14,10 +14,14 @@ let _slashCommandsCache = null;
  * These explicitly invoke the persona mode so it doesn't get confused.
  */
 const SLASH_COMMAND_DEFAULTS = {
-  curriculum: "I want to create a structured curriculum. What topic or skill should we focus on?",
-  "learning-path": "I want to create a structured curriculum. What topic or skill should we focus on?",
-  teach: "I'd like to learn through guided dialogue. What topic should we explore?",
-  socratic: "I'd like to learn through guided dialogue. What topic should we explore?",
+  curriculum:
+    "I want to create a structured curriculum. What topic or skill should we focus on?",
+  "learning-path":
+    "I want to create a structured curriculum. What topic or skill should we focus on?",
+  teach:
+    "I'd like to learn through guided dialogue. What topic should we explore?",
+  socratic:
+    "I'd like to learn through guided dialogue. What topic should we explore?",
   explain: "Please explain this concept. What would you like me to explain?",
   quiz: "I'm ready for a quiz. What topic should we test?",
   save: "Please save this conversation as a note in my knowledge base.",
@@ -36,7 +40,8 @@ function parseSlashCommand(message) {
   if (!trimmed.startsWith("/")) return null;
   const rest = trimmed.slice(1).trim();
   const spaceIdx = rest.indexOf(" ");
-  const cmd = spaceIdx >= 0 ? rest.slice(0, spaceIdx).toLowerCase() : rest.toLowerCase();
+  const cmd =
+    spaceIdx >= 0 ? rest.slice(0, spaceIdx).toLowerCase() : rest.toLowerCase();
   const userMsg = spaceIdx >= 0 ? rest.slice(spaceIdx).trim() : "";
   if (!cmd) return null;
   const resolved = resolveSlashCommand(cmd);
@@ -73,7 +78,8 @@ function resolveSlashCommand(cmd) {
     return fallback[c] || null;
   }
   for (const item of _slashCommandsCache) {
-    if (item.command === c) return { persona: item.persona, mode: item.mode || null };
+    if (item.command === c)
+      return { persona: item.persona, mode: item.mode || null };
   }
   return null;
 }
@@ -189,11 +195,11 @@ let currentView = "setup";
 let currentPage = "dashboard"; // Track current page for conversation context
 
 // Swarms (Nexus Workflow) state (Phase 24d)
-let currentSwarmsTemplate = null;     // WorkflowTemplate object currently selected
-let currentSwarmsExecId = null;       // Active execution ID (for intervention/cancel)
-let swarmsCurrentDomain = "";         // Active domain filter in sidebar
-let swarmsAnimTimers = [];            // Cosmetic animation timer IDs (cleared on completion)
-let swarmsHistoryLoaded = false;      // Track if history tab has been loaded once
+let currentSwarmsTemplate = null; // WorkflowTemplate object currently selected
+let currentSwarmsExecId = null; // Active execution ID (for intervention/cancel)
+let swarmsCurrentDomain = ""; // Active domain filter in sidebar
+let swarmsAnimTimers = []; // Cosmetic animation timer IDs (cleared on completion)
+let swarmsHistoryLoaded = false; // Track if history tab has been loaded once
 let currentMode = "auto";
 let setupStep = 1;
 let codePaths = [];
@@ -216,13 +222,13 @@ let agents = []; // { id, persona_name, display_name, icon, created_at }
 let currentAgentId = "default"; // Currently active agent
 
 // Notes Browse State
-let notesViewMode = localStorage.getItem('notes-view-mode') || 'list'; // 'list' | 'grouped' | 'card'
+let notesViewMode = localStorage.getItem("notes-view-mode") || "list"; // 'list' | 'grouped' | 'card'
 let notesBrowseFilters = {
   domain: null,
   type: null,
   maturity: null,
   connectionStatus: null,
-  sort: 'recent',
+  sort: "recent",
   tag: null,
   q: null,
 };
@@ -247,7 +253,11 @@ const MAX_STATS_RETRIES = 3;
  * @returns {string} Effective page name for the backend
  */
 function getEffectivePage() {
-  if (currentPage === "chat" && currentConversation && currentConversation.page_context) {
+  if (
+    currentPage === "chat" &&
+    currentConversation &&
+    currentConversation.page_context
+  ) {
     return currentConversation.page_context;
   }
   return currentPage;
@@ -347,7 +357,10 @@ function showToast(message, type = "info", options = {}) {
 
   const effectiveDuration = persistent ? 0 : duration;
   if (effectiveDuration > 0) {
-    toast._dismissTimer = setTimeout(() => _dismissToastEl(toast), effectiveDuration);
+    toast._dismissTimer = setTimeout(
+      () => _dismissToastEl(toast),
+      effectiveDuration,
+    );
   }
 
   return toastId;
@@ -537,15 +550,21 @@ async function syncConversationToBackend(messages, conversationId = null) {
     })),
   };
   if (conversationId) payload.conversation_id = conversationId;
-  const result = await safeFetch(`${API_URL}/polly/conversation/sync`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  }, true);
+  const result = await safeFetch(
+    `${API_URL}/polly/conversation/sync`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+    true,
+  );
   if (!result.ok && !result.isConnectionError) {
     const is503 = (result.error || "").includes("503");
     if (is503) {
-      console.warn("[ConversationSync] Backend not ready yet (503); will retry on next action.");
+      console.warn(
+        "[ConversationSync] Backend not ready yet (503); will retry on next action.",
+      );
     } else {
       console.warn("[ConversationSync] Backend sync failed:", result.error);
     }
@@ -624,7 +643,7 @@ function waitForPollyReady(options = {}) {
   return new Promise((resolve) => {
     const tryOnce = () => {
       fetch(POLLY_STATUS_URL, { method: "GET" })
-        .then((r) => r.ok ? r.json() : null)
+        .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (data && data.status === "ready") {
             resolve(true);
@@ -825,10 +844,14 @@ const initialize = withErrorBoundary(async function () {
       if (pollyReady) {
         console.log("[Init] Polly ready");
       } else {
-        console.warn("[Init] Polly not ready within timeout; continuing anyway (will retry on use)");
+        console.warn(
+          "[Init] Polly not ready within timeout; continuing anyway (will retry on use)",
+        );
       }
     } else {
-      console.warn("[Init] Backend server not ready within timeout; continuing anyway");
+      console.warn(
+        "[Init] Backend server not ready within timeout; continuing anyway",
+      );
     }
 
     showView("dashboard");
@@ -956,10 +979,34 @@ const initialize = withErrorBoundary(async function () {
 // ============================================
 
 const DEFAULT_AGENTS = [
-  { id: "default", persona_name: "", display_name: "Default", icon: "message-square", created_at: 0 },
-  { id: "architect", persona_name: "architect", display_name: "Architect", icon: "layout", created_at: 0 },
-  { id: "scribe", persona_name: "scribe", display_name: "Scribe", icon: "pen-line", created_at: 0 },
-  { id: "professor", persona_name: "professor", display_name: "Professor", icon: "graduation-cap", created_at: 0 },
+  {
+    id: "default",
+    persona_name: "",
+    display_name: "Default",
+    icon: "message-square",
+    created_at: 0,
+  },
+  {
+    id: "architect",
+    persona_name: "architect",
+    display_name: "Architect",
+    icon: "layout",
+    created_at: 0,
+  },
+  {
+    id: "scribe",
+    persona_name: "scribe",
+    display_name: "Scribe",
+    icon: "pen-line",
+    created_at: 0,
+  },
+  {
+    id: "professor",
+    persona_name: "professor",
+    display_name: "Professor",
+    icon: "graduation-cap",
+    created_at: 0,
+  },
 ];
 
 function saveAgents() {
@@ -976,13 +1023,15 @@ function loadAgents() {
     const raw = localStorage.getItem(AGENTS_STORAGE_KEY);
     if (raw) {
       agents = JSON.parse(raw);
-      if (!Array.isArray(agents) || agents.length === 0) agents = [...DEFAULT_AGENTS];
+      if (!Array.isArray(agents) || agents.length === 0)
+        agents = [...DEFAULT_AGENTS];
     } else {
       agents = [...DEFAULT_AGENTS];
       saveAgents();
     }
     const savedId = sessionStorage.getItem("polly-current-agent-id");
-    if (savedId && agents.some((a) => a.id === savedId)) currentAgentId = savedId;
+    if (savedId && agents.some((a) => a.id === savedId))
+      currentAgentId = savedId;
   } catch (e) {
     console.error("Failed to load agents:", e);
     agents = [...DEFAULT_AGENTS];
@@ -1000,7 +1049,14 @@ function createAgent(personaName, displayName) {
     id,
     persona_name: personaName || "",
     display_name: displayName || personaName || "New Agent",
-    icon: personaName === "architect" ? "layout" : personaName === "scribe" ? "pen-line" : personaName === "professor" ? "graduation-cap" : "message-square",
+    icon:
+      personaName === "architect"
+        ? "layout"
+        : personaName === "scribe"
+          ? "pen-line"
+          : personaName === "professor"
+            ? "graduation-cap"
+            : "message-square",
     created_at: Date.now(),
   };
   agents.push(agent);
@@ -1009,7 +1065,11 @@ function createAgent(personaName, displayName) {
 }
 
 function deleteAgent(agentId) {
-  if (agentId === "default" || ["architect", "scribe", "professor"].includes(agentId)) return;
+  if (
+    agentId === "default" ||
+    ["architect", "scribe", "professor"].includes(agentId)
+  )
+    return;
   agents = agents.filter((a) => a.id !== agentId);
   if (currentAgentId === agentId) currentAgentId = "default";
   saveAgents();
@@ -1020,7 +1080,9 @@ function getAgentById(agentId) {
 }
 
 async function getAgentConversations(agentId) {
-  const list = await window.polly.conversationList({ agent_id: agentId || "default" });
+  const list = await window.polly.conversationList({
+    agent_id: agentId || "default",
+  });
   return list || [];
 }
 
@@ -1036,10 +1098,17 @@ async function switchToAgent(agentId) {
         body: JSON.stringify({ persona_name: agent.persona_name }),
       });
       const activateData = await activateResponse.json();
-      if (activateData.success && activateData.state && activateData.state.introduction) {
+      if (
+        activateData.success &&
+        activateData.state &&
+        activateData.state.introduction
+      ) {
         const formattedIntro = formatResponse(activateData.state.introduction);
         addMessageToUI("assistant", formattedIntro);
-        await addMessageToConversation("assistant", activateData.state.introduction);
+        await addMessageToConversation(
+          "assistant",
+          activateData.state.introduction,
+        );
       }
     } catch (e) {
       console.warn("Persona activate failed:", e);
@@ -1094,7 +1163,10 @@ async function initializeConversations() {
 
     // Load conversations for current agent only
     conversations = await window.polly.conversationList({
-      agent_id: (currentAgentId != null && currentAgentId !== "") ? currentAgentId : "default",
+      agent_id:
+        currentAgentId != null && currentAgentId !== ""
+          ? currentAgentId
+          : "default",
     });
 
     // Determine which conversation to load
@@ -1284,19 +1356,22 @@ async function addMessageToConversation(role, content) {
     }
     currentConversation.messages.push(message);
     currentConversation.message_count++;
-    
+
     // Update timestamp to current time (matches database update)
     const now = Date.now();
     currentConversation.updated_at = now;
     currentConversation.last_message_at = now;
-    
+
     // Update the conversation in the conversations array so timestamps refresh in sidebar
-    const convIndex = conversations.findIndex(c => c.id === currentConversationId);
+    const convIndex = conversations.findIndex(
+      (c) => c.id === currentConversationId,
+    );
     if (convIndex !== -1) {
       conversations[convIndex].updated_at = now;
       conversations[convIndex].last_message_at = now;
-      conversations[convIndex].message_count = currentConversation.message_count;
-      
+      conversations[convIndex].message_count =
+        currentConversation.message_count;
+
       // Re-render conversation list to update timestamps
       if (typeof renderConversationList === "function") {
         renderConversationList();
@@ -1570,14 +1645,16 @@ function renderConversationList(searchQuery = "") {
 
   if (!conversations || conversations.length === 0) {
     listEl.innerHTML = "";
-    listEl.appendChild(EmptyState.render({
-      icon: "message-square",
-      title: "No conversations yet",
-      description: "Start a conversation with Polly to see it appear here.",
-      actionLabel: "New Chat",
-      onAction: () => createNewConversation(),
-      size: "small",
-    }));
+    listEl.appendChild(
+      EmptyState.render({
+        icon: "message-square",
+        title: "No conversations yet",
+        description: "Start a conversation with Polly to see it appear here.",
+        actionLabel: "New Chat",
+        onAction: () => createNewConversation(),
+        size: "small",
+      }),
+    );
     return;
   }
 
@@ -1615,27 +1692,37 @@ function renderConversationList(searchQuery = "") {
   // Handle filtered-to-zero cases
   if (filteredConvs.length === 0) {
     if (searchQuery) {
-      const searchInputEl = document.getElementById("conversations-search-input");
-      listEl.appendChild(EmptyState.render({
-        icon: "search",
-        title: `No results for "${searchQuery}"`,
-        description: "Try a different search term or clear the search.",
-        actionLabel: "Clear",
-        onAction: () => {
-          if (searchInputEl) { searchInputEl.value = ""; searchInputEl.classList.remove("input-searching"); }
-          searchConversations();
-        },
-        size: "small",
-      }));
+      const searchInputEl = document.getElementById(
+        "conversations-search-input",
+      );
+      listEl.appendChild(
+        EmptyState.render({
+          icon: "search",
+          title: `No results for "${searchQuery}"`,
+          description: "Try a different search term or clear the search.",
+          actionLabel: "Clear",
+          onAction: () => {
+            if (searchInputEl) {
+              searchInputEl.value = "";
+              searchInputEl.classList.remove("input-searching");
+            }
+            searchConversations();
+          },
+          size: "small",
+        }),
+      );
     } else {
-      listEl.appendChild(EmptyState.render({
-        icon: "filter",
-        title: "No conversations on this page",
-        description: "Start a new conversation from this view to see it here.",
-        actionLabel: "New Chat",
-        onAction: () => createNewConversation(),
-        size: "small",
-      }));
+      listEl.appendChild(
+        EmptyState.render({
+          icon: "filter",
+          title: "No conversations on this page",
+          description:
+            "Start a new conversation from this view to see it here.",
+          actionLabel: "New Chat",
+          onAction: () => createNewConversation(),
+          size: "small",
+        }),
+      );
     }
     return;
   }
@@ -1687,7 +1774,10 @@ function renderConversationList(searchQuery = "") {
     });
 
     item.addEventListener("keydown", (e) => {
-      if ((e.key === "Enter" || e.key === " ") && !e.target.closest(".conversation-menu-btn")) {
+      if (
+        (e.key === "Enter" || e.key === " ") &&
+        !e.target.closest(".conversation-menu-btn")
+      ) {
         e.preventDefault();
         switchToConversation(convId);
       }
@@ -1732,27 +1822,30 @@ function renderAgentsSidebar() {
       const isActive = agent.id === currentAgentId;
       const icon = agent.icon || "message-square";
       const convs =
-        isActive && Array.isArray(conversations)
-          ? conversations
-          : [];
+        isActive && Array.isArray(conversations) ? conversations : [];
       const convsHtml =
         isActive && convs.length > 0
           ? `<div class="agent-conversations">
                ${convs
                  .map(
                    (c) =>
-                      `<div class="agent-conversation-item ${
-                        c.id === currentConversationId ? "active" : ""
-                      }" data-conversation-id="${c.id}" title="${(c.title || "").replace(/"/g, "&quot;")}" tabindex="0" role="button">
+                     `<div class="agent-conversation-item ${
+                       c.id === currentConversationId ? "active" : ""
+                     }" data-conversation-id="${c.id}" title="${(c.title || "").replace(/"/g, "&quot;")}" tabindex="0" role="button">
                      <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i>
                      <span class="agent-conversation-title">${escapeHtml((c.title || "New conversation").slice(0, 24))}${(c.title || "").length > 24 ? "…" : ""}</span>
                      <button type="button" class="agent-conversation-menu-btn" aria-label="Conversation options" data-conversation-id="${c.id}"><i data-lucide="more-vertical" style="width: 14px; height: 14px;"></i></button>
-                   </div>`
+                   </div>`,
                  )
                  .join("")}
              </div>`
           : "";
-      const isBuiltIn = ["default", "architect", "scribe", "professor"].includes(agent.id);
+      const isBuiltIn = [
+        "default",
+        "architect",
+        "scribe",
+        "professor",
+      ].includes(agent.id);
       const deleteBtnHtml = !isBuiltIn
         ? `<button type="button" class="agent-delete-btn" data-agent-id="${escapeHtml(agent.id)}" aria-label="Delete agent" title="Delete agent"><i data-lucide="trash-2" style="width: 12px; height: 12px;"></i></button>`
         : "";
@@ -1784,30 +1877,30 @@ function renderAgentsSidebar() {
   listEl.querySelectorAll(".agent-delete-btn").forEach((btn) => {
     const agentId = btn.dataset.agentId;
     if (!agentId) return;
-      btn.addEventListener("click", async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const agent = getAgentById(agentId);
-        if (!agent) return;
-        const name = agent.display_name || agentId;
+    btn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const agent = getAgentById(agentId);
+      if (!agent) return;
+      const name = agent.display_name || agentId;
 
-        // Hide agent from local state immediately
-        agents = agents.filter((a) => a.id !== agentId);
-        if (currentAgentId === agentId) currentAgentId = "default";
-        renderAgentsSidebar();
-        if (typeof renderChatTabs === "function") renderChatTabs();
+      // Hide agent from local state immediately
+      agents = agents.filter((a) => a.id !== agentId);
+      if (currentAgentId === agentId) currentAgentId = "default";
+      renderAgentsSidebar();
+      if (typeof renderChatTabs === "function") renderChatTabs();
 
-        window.undoManager.schedule(`agent-${agentId}`, {
-          label: name,
-          onDelete: () => {
-            saveAgents();
-          },
-          onRestore: () => {
-            agents.push(agent);
-            renderAgentsSidebar();
-            if (typeof renderChatTabs === "function") renderChatTabs();
-          },
-        });
+      window.undoManager.schedule(`agent-${agentId}`, {
+        label: name,
+        onDelete: () => {
+          saveAgents();
+        },
+        onRestore: () => {
+          agents.push(agent);
+          renderAgentsSidebar();
+          if (typeof renderChatTabs === "function") renderChatTabs();
+        },
+      });
     });
   });
 
@@ -1862,7 +1955,9 @@ function renderChatTabs() {
   container.innerHTML =
     convos
       .map((c) => {
-        const title = (c.title || "New conversation").slice(0, 20) + ((c.title || "").length > 20 ? "…" : "");
+        const title =
+          (c.title || "New conversation").slice(0, 20) +
+          ((c.title || "").length > 20 ? "…" : "");
         const isActive = c.id === currentConversationId;
         return `
         <button type="button" class="chat-tab ${isActive ? "active" : ""}" data-conversation-id="${escapeHtml(c.id)}" title="${escapeHtml(c.title || "New conversation")}">
@@ -1922,9 +2017,13 @@ function openNewAgentDialog() {
 
   // Store trigger and trap focus
   const trigger = document.activeElement;
-  modal._focusTrapCleanup = typeof trapFocus === "function"
-    ? trapFocus(modal, { onEscape: () => closeNewAgentDialog(), returnFocusTo: trigger })
-    : null;
+  modal._focusTrapCleanup =
+    typeof trapFocus === "function"
+      ? trapFocus(modal, {
+          onEscape: () => closeNewAgentDialog(),
+          returnFocusTo: trigger,
+        })
+      : null;
 }
 
 /**
@@ -1934,7 +2033,11 @@ function submitNewAgentFromDialog() {
   const personaSelect = document.getElementById("new-agent-persona");
   const displayNameInput = document.getElementById("new-agent-display-name");
   const persona = personaSelect ? personaSelect.value : "";
-  const displayName = (displayNameInput && displayNameInput.value.trim()) || (persona ? persona.charAt(0).toUpperCase() + persona.slice(1) : "New Agent");
+  const displayName =
+    (displayNameInput && displayNameInput.value.trim()) ||
+    (persona
+      ? persona.charAt(0).toUpperCase() + persona.slice(1)
+      : "New Agent");
   const agent = createAgent(persona, displayName);
   saveAgents();
   closeNewAgentDialog();
@@ -2056,18 +2159,20 @@ function createConversationItemHTML(conv) {
 function formatConversationDate(timestamp) {
   // Debug: Log the incoming timestamp to understand the issue
   if (timestamp === undefined || timestamp === null) {
-    console.warn('[formatConversationDate] Undefined or null timestamp, using current time');
+    console.warn(
+      "[formatConversationDate] Undefined or null timestamp, using current time",
+    );
     return "just now";
   }
-  
+
   const date = new Date(timestamp);
-  
+
   // Check if date is valid
   if (isNaN(date.getTime())) {
-    console.warn('[formatConversationDate] Invalid timestamp:', timestamp);
+    console.warn("[formatConversationDate] Invalid timestamp:", timestamp);
     return "just now";
   }
-  
+
   const now = new Date();
   const diff = now - date;
 
@@ -2245,9 +2350,13 @@ async function renameConversation(conversationId) {
 
   // Focus trap
   const trigger = document.activeElement;
-  const cleanupTrap = typeof trapFocus === "function"
-    ? trapFocus(modal, { onEscape: () => closeModal(), returnFocusTo: trigger })
-    : null;
+  const cleanupTrap =
+    typeof trapFocus === "function"
+      ? trapFocus(modal, {
+          onEscape: () => closeModal(),
+          returnFocusTo: trigger,
+        })
+      : null;
 
   // Setup submit handler
   const submitRename = async () => {
@@ -2351,7 +2460,10 @@ async function changeConversationCategory(conversationId) {
   console.log("changeConversationCategory: categories =", categories);
 
   if (!categories || categories.length === 0) {
-    showToast("No categories available. Please check if categories are loaded.", "warning");
+    showToast(
+      "No categories available. Please check if categories are loaded.",
+      "warning",
+    );
     return;
   }
 
@@ -2398,14 +2510,20 @@ async function changeConversationCategory(conversationId) {
 
         // Reload conversations to refresh grouping
         conversations = await window.polly.conversationList({
-          agent_id: (currentAgentId != null && currentAgentId !== "") ? currentAgentId : "default",
+          agent_id:
+            currentAgentId != null && currentAgentId !== ""
+              ? currentAgentId
+              : "default",
         });
         renderConversationList();
 
         // Close modal
         modal.classList.add("hidden");
         modal.setAttribute("aria-hidden", "true");
-        if (modal._focusTrapCleanup) { modal._focusTrapCleanup(); modal._focusTrapCleanup = null; }
+        if (modal._focusTrapCleanup) {
+          modal._focusTrapCleanup();
+          modal._focusTrapCleanup = null;
+        }
       } catch (error) {
         console.error("Failed to update category:", error);
         showToast(`Failed to update category: ${error.message}`, "error");
@@ -2421,15 +2539,22 @@ async function changeConversationCategory(conversationId) {
 
   // Focus trap
   const trigger = document.activeElement;
-  modal._focusTrapCleanup = typeof trapFocus === "function"
-    ? trapFocus(modal, { onEscape: () => closeModal(), returnFocusTo: trigger })
-    : null;
+  modal._focusTrapCleanup =
+    typeof trapFocus === "function"
+      ? trapFocus(modal, {
+          onEscape: () => closeModal(),
+          returnFocusTo: trigger,
+        })
+      : null;
 
   // Setup close handlers
   const closeModal = () => {
     modal.classList.add("hidden");
     modal.setAttribute("aria-hidden", "true");
-    if (modal._focusTrapCleanup) { modal._focusTrapCleanup(); modal._focusTrapCleanup = null; }
+    if (modal._focusTrapCleanup) {
+      modal._focusTrapCleanup();
+      modal._focusTrapCleanup = null;
+    }
   };
 
   document.getElementById("close-category-modal").onclick = closeModal;
@@ -2477,7 +2602,9 @@ async function deleteConversation(conversationId) {
     },
     onRestore: () => {
       conversations.push(conv);
-      conversations.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
+      conversations.sort(
+        (a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0),
+      );
       renderConversationList();
       if (typeof renderAgentsSidebar === "function") renderAgentsSidebar();
       if (typeof renderChatTabs === "function") renderChatTabs();
@@ -2857,7 +2984,9 @@ function setupEventListeners() {
   if (newAgentCancel) {
     newAgentCancel.addEventListener("click", closeNewAgentDialog);
   }
-  const newAgentModalBackdrop = document.getElementById("new-agent-modal-backdrop");
+  const newAgentModalBackdrop = document.getElementById(
+    "new-agent-modal-backdrop",
+  );
   if (newAgentModalBackdrop) {
     newAgentModalBackdrop.addEventListener("click", closeNewAgentDialog);
   }
@@ -3003,9 +3132,20 @@ function setupEventListeners() {
     }
 
     // Cmd+1-6: Navigate to views
-    if (modifier && !e.shiftKey && ["1","2","3","4","5","6"].includes(e.key)) {
+    if (
+      modifier &&
+      !e.shiftKey &&
+      ["1", "2", "3", "4", "5", "6"].includes(e.key)
+    ) {
       e.preventDefault();
-      const viewMap = { "1": "dashboard", "2": "code", "3": "notes", "4": "knowledge", "5": "patterns", "6": "settings" };
+      const viewMap = {
+        1: "dashboard",
+        2: "code",
+        3: "notes",
+        4: "knowledge",
+        5: "patterns",
+        6: "settings",
+      };
       showView(viewMap[e.key]);
     }
 
@@ -3016,12 +3156,17 @@ function setupEventListeners() {
     }
 
     // /: Focus query input (like Slack/Discord) — guard against interactive elements
-    if (e.key === "/" && currentView === "chat" &&
-        !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName) &&
-        !document.activeElement.isContentEditable &&
-        document.activeElement.tagName !== "BUTTON" &&
-        document.activeElement.tagName !== "A" &&
-        document.activeElement.getAttribute("role") !== "button") {
+    if (
+      e.key === "/" &&
+      currentView === "chat" &&
+      !["INPUT", "TEXTAREA", "SELECT"].includes(
+        document.activeElement.tagName,
+      ) &&
+      !document.activeElement.isContentEditable &&
+      document.activeElement.tagName !== "BUTTON" &&
+      document.activeElement.tagName !== "A" &&
+      document.activeElement.getAttribute("role") !== "button"
+    ) {
       e.preventDefault();
       const chatInput = document.getElementById("chat-input");
       const queryInput = document.getElementById("query-input");
@@ -3088,12 +3233,14 @@ function setupEventListeners() {
   document
     .getElementById("btn-reset-setup")
     .addEventListener("click", async () => {
-      if (await ConfirmDialog.show({
-        title: 'Reset all settings',
-        message: 'This will reset all settings to defaults. Are you sure?',
-        confirmLabel: 'Reset',
-        destructive: true,
-      })) {
+      if (
+        await ConfirmDialog.show({
+          title: "Reset all settings",
+          message: "This will reset all settings to defaults. Are you sure?",
+          confirmLabel: "Reset",
+          destructive: true,
+        })
+      ) {
         await window.polly.setStore("setupComplete", false);
         location.reload();
       }
@@ -3255,7 +3402,9 @@ function setupEventListeners() {
 
   // Autonomy Dashboard (Task #21)
   // Status bar indicator click → navigate to dashboard
-  const autonomyIndicator = document.getElementById("autonomy-status-indicator");
+  const autonomyIndicator = document.getElementById(
+    "autonomy-status-indicator",
+  );
   if (autonomyIndicator) {
     autonomyIndicator.addEventListener("click", () => {
       showView("dashboard");
@@ -3263,7 +3412,9 @@ function setupEventListeners() {
       document.querySelectorAll(".ribbon-item").forEach((b) => {
         b.classList.remove("active", "glitch");
       });
-      const dashboardBtn = document.querySelector('.ribbon-item[data-view="dashboard"]');
+      const dashboardBtn = document.querySelector(
+        '.ribbon-item[data-view="dashboard"]',
+      );
       if (dashboardBtn) dashboardBtn.classList.add("active", "glitch");
     });
   }
@@ -3273,7 +3424,10 @@ function setupEventListeners() {
   if (autonomyToggle) {
     autonomyToggle.addEventListener("change", () => {
       // Persist to localStorage
-      localStorage.setItem("polly-autonomy-enabled", autonomyToggle.checked ? "true" : "false");
+      localStorage.setItem(
+        "polly-autonomy-enabled",
+        autonomyToggle.checked ? "true" : "false",
+      );
       // Immediately reflect in UI
       if (currentView === "dashboard") {
         loadAutonomyData();
@@ -3291,53 +3445,76 @@ function setupEventListeners() {
   }
 
   // AI Features → Semantic Cache toggle + sliders (restore from localStorage)
-  const semanticCacheToggle = document.getElementById("ai-feat-semantic-cache-enabled");
+  const semanticCacheToggle = document.getElementById(
+    "ai-feat-semantic-cache-enabled",
+  );
   if (semanticCacheToggle) {
     const savedEnabled = localStorage.getItem("polly-semantic-cache-enabled");
     if (savedEnabled !== null) {
       semanticCacheToggle.checked = savedEnabled === "true";
     }
   }
-  const semanticCacheThreshold = document.getElementById("ai-feat-semantic-cache-threshold");
+  const semanticCacheThreshold = document.getElementById(
+    "ai-feat-semantic-cache-threshold",
+  );
   if (semanticCacheThreshold) {
-    const savedThreshold = localStorage.getItem("polly-semantic-cache-threshold");
+    const savedThreshold = localStorage.getItem(
+      "polly-semantic-cache-threshold",
+    );
     if (savedThreshold !== null) {
       semanticCacheThreshold.value = savedThreshold;
-      const display = document.getElementById("ai-feat-semantic-cache-threshold-value");
-      if (display) display.textContent = (parseInt(savedThreshold) / 100).toFixed(2);
+      const display = document.getElementById(
+        "ai-feat-semantic-cache-threshold-value",
+      );
+      if (display)
+        display.textContent = (parseInt(savedThreshold) / 100).toFixed(2);
     }
   }
-  const semanticCacheTtl = document.getElementById("ai-feat-semantic-cache-ttl");
+  const semanticCacheTtl = document.getElementById(
+    "ai-feat-semantic-cache-ttl",
+  );
   if (semanticCacheTtl) {
     const savedTtl = localStorage.getItem("polly-semantic-cache-ttl");
     if (savedTtl !== null) {
       semanticCacheTtl.value = savedTtl;
-      const display = document.getElementById("ai-feat-semantic-cache-ttl-value");
+      const display = document.getElementById(
+        "ai-feat-semantic-cache-ttl-value",
+      );
       if (display) display.textContent = savedTtl + "h";
     }
   }
-  const semanticCacheMax = document.getElementById("ai-feat-semantic-cache-max");
+  const semanticCacheMax = document.getElementById(
+    "ai-feat-semantic-cache-max",
+  );
   if (semanticCacheMax) {
     const savedMax = localStorage.getItem("polly-semantic-cache-max");
     if (savedMax !== null) {
       semanticCacheMax.value = savedMax;
-      const display = document.getElementById("ai-feat-semantic-cache-max-value");
+      const display = document.getElementById(
+        "ai-feat-semantic-cache-max-value",
+      );
       if (display) display.textContent = savedMax;
     }
   }
 
   // Spec 03: context persistence toggle + decay slider (restore from localStorage)
-  const contextPersistToggle = document.getElementById("ai-feat-context-persist-enabled");
+  const contextPersistToggle = document.getElementById(
+    "ai-feat-context-persist-enabled",
+  );
   if (contextPersistToggle) {
     const saved = localStorage.getItem("polly-context-persist-enabled");
     if (saved !== null) contextPersistToggle.checked = saved === "true";
   }
-  const contextPersistDecay = document.getElementById("ai-feat-context-persist-decay");
+  const contextPersistDecay = document.getElementById(
+    "ai-feat-context-persist-decay",
+  );
   if (contextPersistDecay) {
     const saved = localStorage.getItem("polly-context-persist-decay");
     if (saved !== null) {
       contextPersistDecay.value = saved;
-      const display = document.getElementById("ai-feat-context-persist-decay-value");
+      const display = document.getElementById(
+        "ai-feat-context-persist-decay-value",
+      );
       if (display) display.textContent = saved + "h";
     }
   }
@@ -3345,7 +3522,9 @@ function setupEventListeners() {
   // Spec 07: MM format radio (restore from localStorage)
   const savedMmFormat = localStorage.getItem("polly-mm-format");
   if (savedMmFormat) {
-    const radio = document.querySelector(`input[name="ai-feat-mm-format"][value="${savedMmFormat}"]`);
+    const radio = document.querySelector(
+      `input[name="ai-feat-mm-format"][value="${savedMmFormat}"]`,
+    );
     if (radio) radio.checked = true;
   }
 
@@ -3362,9 +3541,15 @@ function setupEventListeners() {
   }, 3000);
 
   // Link Suggestion Modal (Task #22)
-  const closeLinkSuggestionBtn = document.getElementById("close-link-suggestion-modal");
-  const dismissLinkSuggestionsBtn = document.getElementById("dismiss-link-suggestions");
-  const applyLinkSuggestionsBtn = document.getElementById("apply-link-suggestions");
+  const closeLinkSuggestionBtn = document.getElementById(
+    "close-link-suggestion-modal",
+  );
+  const dismissLinkSuggestionsBtn = document.getElementById(
+    "dismiss-link-suggestions",
+  );
+  const applyLinkSuggestionsBtn = document.getElementById(
+    "apply-link-suggestions",
+  );
   const linkSuggestionModal = document.getElementById("link-suggestion-modal");
 
   if (closeLinkSuggestionBtn) {
@@ -3394,18 +3579,27 @@ function setupEventListeners() {
   if (vaultHealthBtn) {
     vaultHealthBtn.addEventListener("click", runVaultHealthScan);
   }
-  const closeVaultHealthBtn = document.getElementById("close-vault-health-modal");
-  const closeVaultHealthBtn2 = document.getElementById("close-vault-health-btn");
+  const closeVaultHealthBtn = document.getElementById(
+    "close-vault-health-modal",
+  );
+  const closeVaultHealthBtn2 = document.getElementById(
+    "close-vault-health-btn",
+  );
   const vaultHealthModal = document.getElementById("vault-health-modal");
   if (closeVaultHealthBtn) {
-    closeVaultHealthBtn.addEventListener("click", () => vaultHealthModal.classList.add("hidden"));
+    closeVaultHealthBtn.addEventListener("click", () =>
+      vaultHealthModal.classList.add("hidden"),
+    );
   }
   if (closeVaultHealthBtn2) {
-    closeVaultHealthBtn2.addEventListener("click", () => vaultHealthModal.classList.add("hidden"));
+    closeVaultHealthBtn2.addEventListener("click", () =>
+      vaultHealthModal.classList.add("hidden"),
+    );
   }
   if (vaultHealthModal) {
     vaultHealthModal.addEventListener("click", (e) => {
-      if (e.target === vaultHealthModal) vaultHealthModal.classList.add("hidden");
+      if (e.target === vaultHealthModal)
+        vaultHealthModal.classList.add("hidden");
     });
   }
 }
@@ -3421,8 +3615,8 @@ function showView(view) {
   cancelPersonaAutoAdvance();
 
   // Remove "Back to Graph" button when navigating away from notes
-  if (view !== 'notes') {
-    const backBtn = document.getElementById('back-to-graph-btn');
+  if (view !== "notes") {
+    const backBtn = document.getElementById("back-to-graph-btn");
     if (backBtn) backBtn.remove();
   }
 
@@ -3435,21 +3629,37 @@ function showView(view) {
   if (viewElement) {
     viewElement.classList.remove("hidden");
     // Populate placeholder views with empty state on first visit
-    const placeholder = viewElement.querySelector(".view-placeholder-container");
+    const placeholder = viewElement.querySelector(
+      ".view-placeholder-container",
+    );
     if (placeholder && !placeholder.hasChildNodes()) {
       const placeholderDefs = {
-        calendar: { icon: "calendar", title: "Calendar", desc: "Calendar integration is planned for a future release." },
-        mail: { icon: "mail", title: "Mail", desc: "Mail integration is planned for a future release." },
-        projects: { icon: "kanban", title: "Projects", desc: "Projects is planned for a future release." },
+        calendar: {
+          icon: "calendar",
+          title: "Calendar",
+          desc: "Calendar integration is planned for a future release.",
+        },
+        mail: {
+          icon: "mail",
+          title: "Mail",
+          desc: "Mail integration is planned for a future release.",
+        },
+        projects: {
+          icon: "kanban",
+          title: "Projects",
+          desc: "Projects is planned for a future release.",
+        },
       };
       const def = placeholderDefs[view];
       if (def) {
-        placeholder.appendChild(EmptyState.render({
-          icon: def.icon,
-          title: def.title,
-          description: def.desc,
-          size: "large",
-        }));
+        placeholder.appendChild(
+          EmptyState.render({
+            icon: def.icon,
+            title: def.title,
+            description: def.desc,
+            size: "large",
+          }),
+        );
       }
     }
   } else {
@@ -3533,26 +3743,36 @@ function showView(view) {
         console.log("[Graph] Restoring existing graph instance");
         cytoscapeInstance.resize();
         cytoscapeInstance.fit(undefined, 30);
-        
+
         // Reload sidebar content that was wiped by updateLeftSidebar
         loadGraphBrowseList();
         setupLowerPanel("graph");
-        
+
         // Re-attach lower panel tab handler (DOM was rebuilt)
         if (graphTabChangeHandler) {
-          document.removeEventListener('lower-panel-tab-change', graphTabChangeHandler);
+          document.removeEventListener(
+            "lower-panel-tab-change",
+            graphTabChangeHandler,
+          );
         }
         graphTabChangeHandler = (e) => {
-          if (e.detail.view === 'graph') {
+          if (e.detail.view === "graph") {
             const tabId = e.detail.tabId;
             switch (tabId) {
-              case 'filters': renderGraphFiltersPanel(); break;
-              case 'details': renderGraphDetailsPanel(); break;
+              case "filters":
+                renderGraphFiltersPanel();
+                break;
+              case "details":
+                renderGraphDetailsPanel();
+                break;
             }
           }
         };
-        document.addEventListener('lower-panel-tab-change', graphTabChangeHandler);
-        
+        document.addEventListener(
+          "lower-panel-tab-change",
+          graphTabChangeHandler,
+        );
+
         // Cross-highlight source node if returning from notes
         if (graphState.sourceNode) {
           const node = cytoscapeInstance.getElementById(graphState.sourceNode);
@@ -3582,13 +3802,13 @@ let filterDebounce = null;
 async function applyGraphFilters() {
   clearTimeout(filterDebounce);
   filterDebounce = setTimeout(async () => {
-    console.log('[Graph] Applying filters:', graphState.filters);
-    
+    console.log("[Graph] Applying filters:", graphState.filters);
+
     // Clear saved viewport when applying filters so graph refits to new node set
     graphState.position = null;
     graphState.zoom = null;
     saveGraphState();
-    
+
     // Re-initialize with new filters (reads from graphState.filters)
     // Pass flag to prevent restoring filters from session storage
     await initGraphCanvas(true); // skipFilterRestore = true
@@ -3617,9 +3837,7 @@ const sidebarRibbonConfigs = {
   notes: {
     containerClass: "notes-ribbon-buttons",
     btnClass: "notes-ribbon-btn",
-    buttons: [
-      { id: "browse", icon: "list", label: "Browse", default: true },
-    ],
+    buttons: [{ id: "browse", icon: "list", label: "Browse", default: true }],
   },
   code: {
     containerClass: "code-ribbon-buttons",
@@ -3782,7 +4000,7 @@ function setupSidebarRibbonHandlers(view) {
       if (view === "learning") {
         switchLearningSidebarPanel(tab);
       }
-      
+
       // Graph view: switch between Browse and Garden panels
       if (view === "graph") {
         switchGraphSidebarPanel(tab);
@@ -3955,13 +4173,13 @@ function updateLeftSidebar(view) {
           <div class="notes-active-filters" id="notes-active-filters"></div>
         </div>
         <div id="notes-browse-list" style="flex: 1; overflow-y: auto; padding: 0 12px;">
-          ${SkeletonLoader.forView('notes')}
+          ${SkeletonLoader.forView("notes")}
         </div>
         ${renderLowerPanel("notes", [
-          {id: "filters", label: "Filters"},
-          {id: "backlinks", label: "Backlinks"},
-          {id: "tags", label: "Tags"},
-          {id: "toc", label: "TOC"}
+          { id: "filters", label: "Filters" },
+          { id: "backlinks", label: "Backlinks" },
+          { id: "tags", label: "Tags" },
+          { id: "toc", label: "TOC" },
         ])}
       `,
     },
@@ -3970,7 +4188,7 @@ function updateLeftSidebar(view) {
       content: `
         <div id="learning-sidebar-curricula" class="learning-sidebar-panel">
           <div id="learning-curricula-list" style="margin-bottom: 12px;">
-            ${SkeletonLoader.forView('curricula')}
+            ${SkeletonLoader.forView("curricula")}
           </div>
         </div>
         <div id="learning-sidebar-progress" class="learning-sidebar-panel hidden">
@@ -4019,7 +4237,7 @@ function updateLeftSidebar(view) {
               </select>
             </div>
             <div class="topics-browser-list" id="topics-browser-list">
-              ${SkeletonLoader.forView('learning')}
+              ${SkeletonLoader.forView("learning")}
             </div>
           </div>
         </div>
@@ -4055,7 +4273,7 @@ function updateLeftSidebar(view) {
           <button class="swarms-filter-btn" data-domain="code">Code</button>
         </div>
         <div class="swarms-template-list" id="swarms-template-list">
-          ${SkeletonLoader.forView ? SkeletonLoader.forView('swarms') : '<div class="skeleton-list"></div>'}
+          ${SkeletonLoader.forView ? SkeletonLoader.forView("swarms") : '<div class="skeleton-list"></div>'}
         </div>`,
     },
   };
@@ -4086,36 +4304,36 @@ function updateLeftSidebar(view) {
   // Setup lower panel for notes view
   if (view === "notes") {
     setupLowerPanel("notes");
-    
+
     // Setup lower panel tab change event listener
-    document.addEventListener('lower-panel-tab-change', (e) => {
-      if (e.detail.view === 'notes' && window.notesManager) {
+    document.addEventListener("lower-panel-tab-change", (e) => {
+      if (e.detail.view === "notes" && window.notesManager) {
         const tabId = e.detail.tabId;
         console.log(`[Notes] Lower panel tab changed to: ${tabId}`);
-        
+
         // Render content for the selected tab
         switch (tabId) {
-          case 'backlinks':
+          case "backlinks":
             window.notesManager.updateBacklinksPanel();
             break;
-          case 'tags':
+          case "tags":
             window.notesManager.updateTagsPanel();
             break;
-          case 'toc':
+          case "toc":
             window.notesManager.updateTOCPanel();
             break;
-          case 'filters':
+          case "filters":
             renderNotesFiltersPanel();
             break;
         }
       }
     });
-    
+
     // Re-initialize icons for lower panel
     if (typeof lucide !== "undefined") {
       refreshIcons();
     }
-    
+
     // Setup notes browse toolbar (search + view toggle + active filters)
     setupNotesBrowseToolbar();
 
@@ -4127,182 +4345,190 @@ function updateLeftSidebar(view) {
   // Double-rAF ensures sidebar DOM rendered by updateLeftSidebar() is fully painted.
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-    if (view === "dashboard") {
-      // Quick links navigation
-      document
-        .querySelectorAll(".left-sidebar .nav-item[data-view]")
-        .forEach((btn) => {
+      if (view === "dashboard") {
+        // Quick links navigation
+        document
+          .querySelectorAll(".left-sidebar .nav-item[data-view]")
+          .forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const targetView = btn.dataset.view;
+              showView(targetView);
+            });
+          });
+
+        // Recent conversations
+        document.querySelectorAll(".recent-conv-item").forEach((btn) => {
           btn.addEventListener("click", () => {
-            const targetView = btn.dataset.view;
-            showView(targetView);
-          });
-        });
-
-      // Recent conversations
-      document.querySelectorAll(".recent-conv-item").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const convId = parseInt(btn.dataset.convId);
-          const conv = conversations.find((c) => c.id === convId);
-          if (conv) {
-            switchToConversation(conv);
-          }
-        });
-      });
-    } else if (view === "learning") {
-      // Load curricula list and set initial panel visibility
-      loadLearningSidebarCurricula();
-      switchLearningSidebarPanel(activeSidebarRibbonTab["learning"] || "curricula");
-    } else if (view === "knowledge") {
-      const indexObsidianBtn = document.getElementById(
-        "sidebar-index-obsidian",
-      );
-      const indexCodeBtn = document.getElementById("sidebar-index-code");
-      const domainFilter = document.getElementById("sidebar-domain-filter");
-
-      if (indexObsidianBtn) {
-        indexObsidianBtn.addEventListener("click", async () => {
-          await indexKnowledge({ obsidian: true });
-        });
-      }
-      if (indexCodeBtn) {
-        indexCodeBtn.addEventListener("click", async () => {
-          await indexKnowledge({ codebase: true });
-        });
-      }
-      if (domainFilter) {
-        domainFilter.addEventListener("change", () => {
-          const selectedDomain = domainFilter.value;
-          console.log("Knowledge domain filter changed:", selectedDomain);
-          // TODO: Filter knowledge results by domain
-        });
-      }
-    } else if (view === "patterns") {
-      const refreshBtn = document.getElementById("sidebar-refresh-patterns");
-      const filterSelect = document.getElementById("sidebar-pattern-filter");
-      const categorySelect = document.getElementById(
-        "sidebar-pattern-category",
-      );
-      const exportBtn = document.getElementById("sidebar-export-patterns");
-
-      if (refreshBtn) {
-        refreshBtn.addEventListener("click", async () => {
-          await loadPatterns();
-        });
-      }
-      if (filterSelect) {
-        filterSelect.addEventListener("change", async () => {
-          // Filter patterns based on time range
-          await loadPatterns();
-        });
-      }
-      if (categorySelect) {
-        categorySelect.addEventListener("change", async () => {
-          // Filter patterns based on category
-          console.log("Pattern category filter changed:", categorySelect.value);
-          await loadPatterns();
-        });
-      }
-      if (exportBtn) {
-        exportBtn.addEventListener("click", () => {
-          console.log("Export patterns clicked");
-          // TODO: Implement pattern export
-        });
-      }
-    } else if (view === "settings") {
-      document.querySelectorAll(".settings-nav-item").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const tab = btn.dataset.tab;
-
-          // Update sidebar active state
-          document
-            .querySelectorAll(".settings-nav-item")
-            .forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
-
-          // Switch legacy tab content
-          const tabContents = document.querySelectorAll(
-            ".settings-tab-content",
-          );
-          tabContents.forEach((content) => {
-            if (content.id === `tab-${tab}`) {
-              content.classList.remove("hidden");
-            } else {
-              content.classList.add("hidden");
+            const convId = parseInt(btn.dataset.convId);
+            const conv = conversations.find((c) => c.id === convId);
+            if (conv) {
+              switchToConversation(conv);
             }
           });
+        });
+      } else if (view === "learning") {
+        // Load curricula list and set initial panel visibility
+        loadLearningSidebarCurricula();
+        switchLearningSidebarPanel(
+          activeSidebarRibbonTab["learning"] || "curricula",
+        );
+      } else if (view === "knowledge") {
+        const indexObsidianBtn = document.getElementById(
+          "sidebar-index-obsidian",
+        );
+        const indexCodeBtn = document.getElementById("sidebar-index-code");
+        const domainFilter = document.getElementById("sidebar-domain-filter");
 
-          // Also switch new settings section content
-          const sectionContents = document.querySelectorAll(
-            ".settings-section-content",
-          );
-          sectionContents.forEach((section) => {
-            if (section.id === `settings-section-${tab}`) {
-              section.classList.remove("hidden");
-            } else {
-              section.classList.add("hidden");
-            }
+        if (indexObsidianBtn) {
+          indexObsidianBtn.addEventListener("click", async () => {
+            await indexKnowledge({ obsidian: true });
           });
-
-          // Load tab-specific data
-          if (tab === "general") {
-            loadGeneralSettings();
-          } else if (tab === "domains") {
-            loadDomainsConfig();
-          } else if (tab === "routing") {
-            loadRoutingSettings();
-            loadRoutingStats();
-          } else if (tab === "api-keys") {
-            console.log("[Settings Sidebar] Switched to API Keys tab");
-            console.log(
-              "[Settings Sidebar] loadAPIKeys type:",
-              typeof loadAPIKeys,
-            );
-            console.log(
-              "[Settings Sidebar] loadBudgetStatus type:",
-              typeof loadBudgetStatus,
-            );
-            if (typeof loadAPIKeys === "function") {
-              console.log("[Settings Sidebar] Calling loadAPIKeys()");
-              loadAPIKeys();
-            }
-            if (typeof loadBudgetStatus === "function") {
-              console.log("[Settings Sidebar] Calling loadBudgetStatus()");
-              loadBudgetStatus();
-            }
-          } else if (tab === "compression") {
-            loadCompressionSettings();
-            loadCompressionStats();
-          } else if (tab === "rag") {
-            loadRAGSettings();
-          } else if (tab === "memory") {
-            loadMemorySettings();
-          } else if (tab === "mental-models") {
-            loadMentalModels();
-            refreshMentalModelsStats();
-            loadGlobalDefaultsPicker();
-          } else if (tab === "advanced") {
-            loadDedupSettings();
-          } else if (tab === "providers") {
-          loadProviderSettings();
         }
-      });
-    });
-    } else if (view === "graph") {
-      // Graph page event handlers will be set up in initGraphPage()
-      console.log("[Graph] Sidebar initialized, waiting for initGraphPage()");
-    } else if (view === "swarms") {
-      // Domain filter chips
-      document.querySelectorAll("#swarms-domain-filters .swarms-filter-btn").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          document.querySelectorAll("#swarms-domain-filters .swarms-filter-btn")
-            .forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
-          swarmsCurrentDomain = btn.dataset.domain;
-          loadSwarmsTemplates(swarmsCurrentDomain);
+        if (indexCodeBtn) {
+          indexCodeBtn.addEventListener("click", async () => {
+            await indexKnowledge({ codebase: true });
+          });
+        }
+        if (domainFilter) {
+          domainFilter.addEventListener("change", () => {
+            const selectedDomain = domainFilter.value;
+            console.log("Knowledge domain filter changed:", selectedDomain);
+            // TODO: Filter knowledge results by domain
+          });
+        }
+      } else if (view === "patterns") {
+        const refreshBtn = document.getElementById("sidebar-refresh-patterns");
+        const filterSelect = document.getElementById("sidebar-pattern-filter");
+        const categorySelect = document.getElementById(
+          "sidebar-pattern-category",
+        );
+        const exportBtn = document.getElementById("sidebar-export-patterns");
+
+        if (refreshBtn) {
+          refreshBtn.addEventListener("click", async () => {
+            await loadPatterns();
+          });
+        }
+        if (filterSelect) {
+          filterSelect.addEventListener("change", async () => {
+            // Filter patterns based on time range
+            await loadPatterns();
+          });
+        }
+        if (categorySelect) {
+          categorySelect.addEventListener("change", async () => {
+            // Filter patterns based on category
+            console.log(
+              "Pattern category filter changed:",
+              categorySelect.value,
+            );
+            await loadPatterns();
+          });
+        }
+        if (exportBtn) {
+          exportBtn.addEventListener("click", () => {
+            console.log("Export patterns clicked");
+            // TODO: Implement pattern export
+          });
+        }
+      } else if (view === "settings") {
+        document.querySelectorAll(".settings-nav-item").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const tab = btn.dataset.tab;
+
+            // Update sidebar active state
+            document
+              .querySelectorAll(".settings-nav-item")
+              .forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+
+            // Switch legacy tab content
+            const tabContents = document.querySelectorAll(
+              ".settings-tab-content",
+            );
+            tabContents.forEach((content) => {
+              if (content.id === `tab-${tab}`) {
+                content.classList.remove("hidden");
+              } else {
+                content.classList.add("hidden");
+              }
+            });
+
+            // Also switch new settings section content
+            const sectionContents = document.querySelectorAll(
+              ".settings-section-content",
+            );
+            sectionContents.forEach((section) => {
+              if (section.id === `settings-section-${tab}`) {
+                section.classList.remove("hidden");
+              } else {
+                section.classList.add("hidden");
+              }
+            });
+
+            // Load tab-specific data
+            if (tab === "general") {
+              loadGeneralSettings();
+            } else if (tab === "domains") {
+              loadDomainsConfig();
+            } else if (tab === "routing") {
+              loadRoutingSettings();
+              loadRoutingStats();
+            } else if (tab === "api-keys") {
+              console.log("[Settings Sidebar] Switched to API Keys tab");
+              console.log(
+                "[Settings Sidebar] loadAPIKeys type:",
+                typeof loadAPIKeys,
+              );
+              console.log(
+                "[Settings Sidebar] loadBudgetStatus type:",
+                typeof loadBudgetStatus,
+              );
+              if (typeof loadAPIKeys === "function") {
+                console.log("[Settings Sidebar] Calling loadAPIKeys()");
+                loadAPIKeys();
+              }
+              if (typeof loadBudgetStatus === "function") {
+                console.log("[Settings Sidebar] Calling loadBudgetStatus()");
+                loadBudgetStatus();
+              }
+            } else if (tab === "compression") {
+              loadCompressionSettings();
+              loadCompressionStats();
+            } else if (tab === "rag") {
+              loadRAGSettings();
+            } else if (tab === "memory") {
+              loadMemorySettings();
+            } else if (tab === "mental-models") {
+              loadMentalModels();
+              refreshMentalModelsStats();
+              loadGlobalDefaultsPicker();
+            } else if (tab === "advanced") {
+              loadDedupSettings();
+            } else if (tab === "providers") {
+              loadProviderSettings();
+            }
+          });
         });
-      });
-      loadSwarmsTemplates(swarmsCurrentDomain);
-    }
+      } else if (view === "graph") {
+        // Graph page event handlers will be set up in initGraphPage()
+        console.log("[Graph] Sidebar initialized, waiting for initGraphPage()");
+      } else if (view === "swarms") {
+        // Domain filter chips
+        document
+          .querySelectorAll("#swarms-domain-filters .swarms-filter-btn")
+          .forEach((btn) => {
+            btn.addEventListener("click", () => {
+              document
+                .querySelectorAll("#swarms-domain-filters .swarms-filter-btn")
+                .forEach((b) => b.classList.remove("active"));
+              btn.classList.add("active");
+              swarmsCurrentDomain = btn.dataset.domain;
+              loadSwarmsTemplates(swarmsCurrentDomain);
+            });
+          });
+        loadSwarmsTemplates(swarmsCurrentDomain);
+      }
     });
   });
 }
@@ -4317,7 +4543,9 @@ function updateLeftSidebar(view) {
 async function loadSwarmsView() {
   // Bind header tab buttons
   document.querySelectorAll(".swarms-tab").forEach((btn) => {
-    btn.addEventListener("click", () => _onSwarmsTabClick(btn.dataset.swarmTab));
+    btn.addEventListener("click", () =>
+      _onSwarmsTabClick(btn.dataset.swarmTab),
+    );
   });
 
   // Bind execution buttons
@@ -4327,10 +4555,12 @@ async function loadSwarmsView() {
   const continueBtn = document.getElementById("swarms-continue-btn");
   if (runBtn) runBtn.addEventListener("click", runSwarmsWorkflow);
   if (cancelBtn) cancelBtn.addEventListener("click", cancelSwarmsWorkflow);
-  if (runAgainBtn) runAgainBtn.addEventListener("click", () => {
-    _showSwarmsPanel("detail");
-  });
-  if (continueBtn) continueBtn.addEventListener("click", continueSwarmsWorkflow);
+  if (runAgainBtn)
+    runAgainBtn.addEventListener("click", () => {
+      _showSwarmsPanel("detail");
+    });
+  if (continueBtn)
+    continueBtn.addEventListener("click", continueSwarmsWorkflow);
 
   // Fetch and render metrics
   const r = await safeFetch(`${API_URL}/swarms/metrics`, {}, true);
@@ -4341,9 +4571,15 @@ async function loadSwarmsView() {
       const execCount = m.total_executions ?? 0;
       const wfCount = m.workflow_executions ?? 0;
       row.innerHTML = [
-        execCount ? `<span class="swarms-metric-chip">${execCount} runs</span>` : "",
-        wfCount ? `<span class="swarms-metric-chip">${wfCount} workflows</span>` : "",
-      ].filter(Boolean).join("");
+        execCount
+          ? `<span class="swarms-metric-chip">${execCount} runs</span>`
+          : "",
+        wfCount
+          ? `<span class="swarms-metric-chip">${wfCount} workflows</span>`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("");
     }
   }
 
@@ -4362,8 +4598,12 @@ function _onSwarmsTabClick(tab) {
     btn.classList.toggle("active", isActive);
     btn.setAttribute("aria-selected", isActive ? "true" : "false");
   });
-  document.getElementById("swarms-tab-execute")?.classList.toggle("hidden", tab !== "execute");
-  document.getElementById("swarms-tab-history")?.classList.toggle("hidden", tab !== "history");
+  document
+    .getElementById("swarms-tab-execute")
+    ?.classList.toggle("hidden", tab !== "execute");
+  document
+    .getElementById("swarms-tab-history")
+    ?.classList.toggle("hidden", tab !== "history");
 
   if (tab === "history" && !swarmsHistoryLoaded) {
     swarmsHistoryLoaded = true;
@@ -4378,46 +4618,56 @@ function _onSwarmsTabClick(tab) {
 async function loadSwarmsTemplates(domain) {
   const list = document.getElementById("swarms-template-list");
   if (!list) return;
-  list.innerHTML = '<div class="skeleton-list" style="padding:8px;color:var(--text-muted);font-size:var(--font-xs);">Loading…</div>';
+  list.innerHTML =
+    '<div class="skeleton-list" style="padding:8px;color:var(--text-muted);font-size:var(--font-xs);">Loading…</div>';
 
   const url = domain
     ? `${API_URL}/swarms/templates?domain=${encodeURIComponent(domain)}`
     : `${API_URL}/swarms/templates`;
   const r = await safeFetch(url, {}, true);
   if (!r.ok) {
-    list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:var(--font-xs);">Could not load templates.</div>';
+    list.innerHTML =
+      '<div style="padding:12px;color:var(--text-muted);font-size:var(--font-xs);">Could not load templates.</div>';
     return;
   }
 
   const templates = r.data.templates || [];
   if (!templates.length) {
-    list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:var(--font-xs);">No templates found.</div>';
+    list.innerHTML =
+      '<div style="padding:12px;color:var(--text-muted);font-size:var(--font-xs);">No templates found.</div>';
     return;
   }
 
-  list.innerHTML = templates.map((t) => {
-    const tags = (t.domain_affinity || []).map((d) =>
-      `<span class="swarms-domain-tag">${d}</span>`
-    ).join("");
-    const desc = (t.description || "").length > 70
-      ? t.description.slice(0, 70) + "…"
-      : (t.description || "");
-    const isActive = currentSwarmsTemplate && currentSwarmsTemplate.id === t.id;
-    const usageChip = t.usage_count > 0
-      ? `<span class="swarms-usage-chip">${t.usage_count} run${t.usage_count !== 1 ? "s" : ""}</span>`
-      : "";
-    return `
+  list.innerHTML = templates
+    .map((t) => {
+      const tags = (t.domain_affinity || [])
+        .map((d) => `<span class="swarms-domain-tag">${d}</span>`)
+        .join("");
+      const desc =
+        (t.description || "").length > 70
+          ? t.description.slice(0, 70) + "…"
+          : t.description || "";
+      const isActive =
+        currentSwarmsTemplate && currentSwarmsTemplate.id === t.id;
+      const usageChip =
+        t.usage_count > 0
+          ? `<span class="swarms-usage-chip">${t.usage_count} run${t.usage_count !== 1 ? "s" : ""}</span>`
+          : "";
+      return `
       <div class="swarms-template-card${isActive ? " active" : ""}" data-template-id="${t.id}" tabindex="0" role="button"
            aria-label="${t.name}">
         <div class="swarms-template-card-name">${t.name || t.id}${usageChip}</div>
         <div class="swarms-template-card-desc">${desc}</div>
         ${tags ? `<div class="swarms-template-card-tags">${tags}</div>` : ""}
       </div>`;
-  }).join("");
+    })
+    .join("");
 
   // Attach click handlers
   list.querySelectorAll(".swarms-template-card").forEach((card) => {
-    card.addEventListener("click", () => selectSwarmsTemplate(card.dataset.templateId));
+    card.addEventListener("click", () =>
+      selectSwarmsTemplate(card.dataset.templateId),
+    );
     card.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
@@ -4432,7 +4682,11 @@ async function loadSwarmsTemplates(domain) {
  * @param {string} templateId
  */
 async function selectSwarmsTemplate(templateId) {
-  const r = await safeFetch(`${API_URL}/swarms/templates/${encodeURIComponent(templateId)}`, {}, false);
+  const r = await safeFetch(
+    `${API_URL}/swarms/templates/${encodeURIComponent(templateId)}`,
+    {},
+    false,
+  );
   if (!r.ok) {
     showToast("Could not load template details.", "error");
     return;
@@ -4485,28 +4739,38 @@ function _renderSwarmsPipeline(steps) {
   // Group steps into execution waves using depends_on
   const waves = _computeSwarmsWaves(steps);
 
-  const html = waves.map((wave, i) => {
-    const connectorHTML = i > 0
-      ? '<div class="swarms-pipeline-connector"></div>'
-      : "";
-    const nodesHTML = wave.length === 1
-      ? `<div class="swarms-pipeline-node">
+  const html = waves
+    .map((wave, i) => {
+      const connectorHTML =
+        i > 0 ? '<div class="swarms-pipeline-connector"></div>' : "";
+      const nodesHTML =
+        wave.length === 1
+          ? `<div class="swarms-pipeline-node">
            <i data-lucide="circle-dot" aria-hidden="true"></i>
            <span class="swarms-pipeline-node-label">${wave[0].id}</span>
            <span class="swarms-pipeline-node-cap">${wave[0].agent_capability || ""}</span>
          </div>`
-      : `<div class="swarms-pipeline-parallel">
-           ${wave.map((s) => `
+          : `<div class="swarms-pipeline-parallel">
+           ${wave
+             .map(
+               (s) => `
              <div class="swarms-pipeline-node" style="flex:1;">
                <i data-lucide="circle-dot" aria-hidden="true"></i>
                <span class="swarms-pipeline-node-label">${s.id}</span>
                <span class="swarms-pipeline-node-cap">${s.agent_capability || ""}</span>
-             </div>`).join("")}
+             </div>`,
+             )
+             .join("")}
          </div>`;
-    return connectorHTML + `<div class="swarms-pipeline-row">${nodesHTML}</div>`;
-  }).join("");
+      return (
+        connectorHTML + `<div class="swarms-pipeline-row">${nodesHTML}</div>`
+      );
+    })
+    .join("");
 
-  container.innerHTML = html || '<div style="color:var(--text-muted);font-size:var(--font-xs);padding:4px;">No steps defined.</div>';
+  container.innerHTML =
+    html ||
+    '<div style="color:var(--text-muted);font-size:var(--font-xs);padding:4px;">No steps defined.</div>';
   if (typeof lucide !== "undefined") refreshIcons();
 }
 
@@ -4526,8 +4790,14 @@ function _renderSwarmsContextBadges(steps) {
   });
 
   const badges = [
-    ...[...required].map((c) => `<span class="swarms-context-badge required" title="Required context"><i data-lucide="lock" aria-hidden="true" style="width:10px;height:10px;"></i> ${c}</span>`),
-    ...[...optional].map((c) => `<span class="swarms-context-badge optional" title="Optional context">${c}</span>`),
+    ...[...required].map(
+      (c) =>
+        `<span class="swarms-context-badge required" title="Required context"><i data-lucide="lock" aria-hidden="true" style="width:10px;height:10px;"></i> ${c}</span>`,
+    ),
+    ...[...optional].map(
+      (c) =>
+        `<span class="swarms-context-badge optional" title="Optional context">${c}</span>`,
+    ),
   ];
 
   row.innerHTML = badges.join("");
@@ -4561,16 +4831,24 @@ function _computeSwarmsWaves(steps) {
  * Show one of the mutually exclusive main panels: "empty" | "detail" | "execution"
  */
 function _showSwarmsPanel(panel) {
-  document.getElementById("swarms-empty-state")?.classList.toggle("hidden", panel !== "empty");
-  document.getElementById("swarms-template-detail")?.classList.toggle("hidden", panel !== "detail");
-  document.getElementById("swarms-execution")?.classList.toggle("hidden", panel !== "execution");
+  document
+    .getElementById("swarms-empty-state")
+    ?.classList.toggle("hidden", panel !== "empty");
+  document
+    .getElementById("swarms-template-detail")
+    ?.classList.toggle("hidden", panel !== "detail");
+  document
+    .getElementById("swarms-execution")
+    ?.classList.toggle("hidden", panel !== "execution");
 }
 
 /**
  * Run the selected workflow template.
  */
 async function runSwarmsWorkflow() {
-  const query = (document.getElementById("swarms-query-input")?.value || "").trim();
+  const query = (
+    document.getElementById("swarms-query-input")?.value || ""
+  ).trim();
   if (!query || !currentSwarmsTemplate) return;
 
   // Transition to execution panel
@@ -4582,8 +4860,13 @@ async function runSwarmsWorkflow() {
   const interventionEl = document.getElementById("swarms-intervention");
   const resultEl = document.getElementById("swarms-result");
 
-  if (templateNameEl) templateNameEl.textContent = currentSwarmsTemplate.name || currentSwarmsTemplate.id;
-  if (statusEl) { statusEl.textContent = "running"; statusEl.className = "badge swarms-status-running"; }
+  if (templateNameEl)
+    templateNameEl.textContent =
+      currentSwarmsTemplate.name || currentSwarmsTemplate.id;
+  if (statusEl) {
+    statusEl.textContent = "running";
+    statusEl.className = "badge swarms-status-running";
+  }
   cancelBtn?.classList.remove("hidden");
   runAgainBtn?.classList.add("hidden");
   interventionEl?.classList.add("hidden");
@@ -4613,7 +4896,10 @@ async function runSwarmsWorkflow() {
 
   if (!r.ok) {
     _setSwarmsAllStepsStatus("failed");
-    if (statusEl) { statusEl.textContent = "failed"; statusEl.className = "badge swarms-status-failed"; }
+    if (statusEl) {
+      statusEl.textContent = "failed";
+      statusEl.className = "badge swarms-status-failed";
+    }
     showToast("Workflow failed: " + (r.error || "unknown error"), "error");
     runAgainBtn?.classList.remove("hidden");
     return;
@@ -4625,16 +4911,28 @@ async function runSwarmsWorkflow() {
   _applySwarmsStepResults(r.data.step_results || {});
 
   if (status === "paused") {
-    if (statusEl) { statusEl.textContent = "paused"; statusEl.className = "badge swarms-status-paused"; }
+    if (statusEl) {
+      statusEl.textContent = "paused";
+      statusEl.className = "badge swarms-status-paused";
+    }
     _showSwarmsIntervention(r.data.paused_at_step || "");
   } else if (status === "completed") {
-    if (statusEl) { statusEl.textContent = "completed"; statusEl.className = "badge swarms-status-completed"; }
+    if (statusEl) {
+      statusEl.textContent = "completed";
+      statusEl.className = "badge swarms-status-completed";
+    }
     runAgainBtn?.classList.remove("hidden");
     _showSwarmsResult(r.data);
   } else {
-    if (statusEl) { statusEl.textContent = status || "failed"; statusEl.className = "badge swarms-status-failed"; }
+    if (statusEl) {
+      statusEl.textContent = status || "failed";
+      statusEl.className = "badge swarms-status-failed";
+    }
     runAgainBtn?.classList.remove("hidden");
-    showToast("Workflow ended with status: " + (status || "unknown"), "warning");
+    showToast(
+      "Workflow ended with status: " + (status || "unknown"),
+      "warning",
+    );
   }
 }
 
@@ -4646,7 +4944,9 @@ function _buildSwarmsStepCards(steps) {
   const list = document.getElementById("swarms-steps-list");
   if (!list) return;
 
-  list.innerHTML = steps.map((s) => `
+  list.innerHTML = steps
+    .map(
+      (s) => `
     <div class="swarms-step-card" data-step-id="${s.id}" data-status="pending">
       <div class="swarms-step-indicator">
         <i data-lucide="circle" aria-hidden="true"></i>
@@ -4657,7 +4957,9 @@ function _buildSwarmsStepCards(steps) {
         <div class="swarms-step-result-preview hidden"></div>
       </div>
       <div class="swarms-step-meta"></div>
-    </div>`).join("");
+    </div>`,
+    )
+    .join("");
 
   if (typeof lucide !== "undefined") refreshIcons();
 }
@@ -4685,12 +4987,20 @@ function _startSwarmsStepAnimation(template) {
  * @param {string} status - "pending" | "running" | "completed" | "failed" | "skipped"
  */
 function _setSwarmsStepStatus(stepId, status) {
-  const card = document.querySelector(`.swarms-step-card[data-step-id="${stepId}"]`);
+  const card = document.querySelector(
+    `.swarms-step-card[data-step-id="${stepId}"]`,
+  );
   if (!card) return;
   card.dataset.status = status;
   const indicator = card.querySelector(".swarms-step-indicator");
   if (!indicator) return;
-  const icons = { pending: "circle", running: "loader", completed: "check-circle", failed: "x-circle", skipped: "minus-circle" };
+  const icons = {
+    pending: "circle",
+    running: "loader",
+    completed: "check-circle",
+    failed: "x-circle",
+    skipped: "minus-circle",
+  };
   indicator.innerHTML = `<i data-lucide="${icons[status] || "circle"}" aria-hidden="true"></i>`;
 }
 
@@ -4710,21 +5020,28 @@ function _setSwarmsAllStepsStatus(status) {
  */
 function _applySwarmsStepResults(stepResults) {
   Object.entries(stepResults).forEach(([stepId, result]) => {
-    const status = result.status === "completed" ? "completed"
-      : result.status === "failed" ? "failed"
-      : result.status === "skipped" ? "skipped"
-      : "completed";
+    const status =
+      result.status === "completed"
+        ? "completed"
+        : result.status === "failed"
+          ? "failed"
+          : result.status === "skipped"
+            ? "skipped"
+            : "completed";
     _setSwarmsStepStatus(stepId, status);
 
-    const card = document.querySelector(`.swarms-step-card[data-step-id="${stepId}"]`);
+    const card = document.querySelector(
+      `.swarms-step-card[data-step-id="${stepId}"]`,
+    );
     if (!card) return;
 
     // Duration
     const meta = card.querySelector(".swarms-step-meta");
     if (meta && result.duration_ms != null) {
-      meta.textContent = result.duration_ms < 1000
-        ? `${result.duration_ms}ms`
-        : `${(result.duration_ms / 1000).toFixed(1)}s`;
+      meta.textContent =
+        result.duration_ms < 1000
+          ? `${result.duration_ms}ms`
+          : `${(result.duration_ms / 1000).toFixed(1)}s`;
     }
 
     // Content preview (first 140 chars)
@@ -4739,7 +5056,9 @@ function _applySwarmsStepResults(stepResults) {
         const expanded = preview.dataset.expanded === "true";
         preview.dataset.expanded = expanded ? "" : "true";
         preview.textContent = expanded
-          ? (truncated ? text + "…" : text)
+          ? truncated
+            ? text + "…"
+            : text
           : result.output.content;
         preview.title = expanded ? "Click to expand" : "Click to collapse";
       });
@@ -4768,26 +5087,36 @@ function _showSwarmsIntervention(pausedAtStep) {
  */
 async function continueSwarmsWorkflow() {
   if (!currentSwarmsExecId) return;
-  const userInput = (document.getElementById("swarms-intervention-input")?.value || "").trim();
+  const userInput = (
+    document.getElementById("swarms-intervention-input")?.value || ""
+  ).trim();
 
   document.getElementById("swarms-intervention")?.classList.add("hidden");
   const statusEl = document.getElementById("swarms-execution-status");
-  if (statusEl) { statusEl.textContent = "running"; statusEl.className = "badge swarms-status-running"; }
+  if (statusEl) {
+    statusEl.textContent = "running";
+    statusEl.className = "badge swarms-status-running";
+  }
 
   // Re-animate remaining pending steps
   if (currentSwarmsTemplate) {
     const remaining = (currentSwarmsTemplate.steps || []).filter((s) => {
-      const card = document.querySelector(`.swarms-step-card[data-step-id="${s.id}"]`);
+      const card = document.querySelector(
+        `.swarms-step-card[data-step-id="${s.id}"]`,
+      );
       return card && card.dataset.status === "pending";
     });
     _startSwarmsStepAnimation({ steps: remaining });
   }
 
-  const r = await safeFetch(`${API_URL}/swarms/${currentSwarmsExecId}/intervene`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_input: userInput, resume: true }),
-  });
+  const r = await safeFetch(
+    `${API_URL}/swarms/${currentSwarmsExecId}/intervene`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_input: userInput, resume: true }),
+    },
+  );
 
   swarmsAnimTimers.forEach(clearTimeout);
   swarmsAnimTimers = [];
@@ -4795,7 +5124,10 @@ async function continueSwarmsWorkflow() {
   const runAgainBtn = document.getElementById("swarms-run-again-btn");
 
   if (!r.ok) {
-    if (statusEl) { statusEl.textContent = "failed"; statusEl.className = "badge swarms-status-failed"; }
+    if (statusEl) {
+      statusEl.textContent = "failed";
+      statusEl.className = "badge swarms-status-failed";
+    }
     showToast("Intervention failed: " + (r.error || "unknown"), "error");
     runAgainBtn?.classList.remove("hidden");
     return;
@@ -4804,10 +5136,16 @@ async function continueSwarmsWorkflow() {
   _applySwarmsStepResults(r.data.step_results || {});
 
   if (r.data.status === "paused") {
-    if (statusEl) { statusEl.textContent = "paused"; statusEl.className = "badge swarms-status-paused"; }
+    if (statusEl) {
+      statusEl.textContent = "paused";
+      statusEl.className = "badge swarms-status-paused";
+    }
     _showSwarmsIntervention(r.data.paused_at_step || "");
   } else {
-    if (statusEl) { statusEl.textContent = "completed"; statusEl.className = "badge swarms-status-completed"; }
+    if (statusEl) {
+      statusEl.textContent = "completed";
+      statusEl.className = "badge swarms-status-completed";
+    }
     runAgainBtn?.classList.remove("hidden");
     _showSwarmsResult(r.data);
   }
@@ -4824,17 +5162,20 @@ function _showSwarmsResult(result) {
   const content = result.final_content || result.output || "";
   const contentEl = document.getElementById("swarms-result-content");
   if (contentEl) {
-    contentEl.innerHTML = typeof marked !== "undefined"
-      ? marked.parse(content)
-      : content.replace(/\n/g, "<br>");
+    contentEl.innerHTML =
+      typeof marked !== "undefined"
+        ? marked.parse(content)
+        : content.replace(/\n/g, "<br>");
   }
 
   const metricsEl = document.getElementById("swarms-result-metrics");
   if (metricsEl) {
     const parts = [];
     if (result.total_tokens) parts.push(`${result.total_tokens} tokens`);
-    if (result.total_cost_usd != null) parts.push(`$${result.total_cost_usd.toFixed(4)}`);
-    if (result.total_duration_ms != null) parts.push(`${result.total_duration_ms}ms`);
+    if (result.total_cost_usd != null)
+      parts.push(`$${result.total_cost_usd.toFixed(4)}`);
+    if (result.total_duration_ms != null)
+      parts.push(`${result.total_duration_ms}ms`);
     metricsEl.textContent = parts.join(" · ");
   }
 
@@ -4854,12 +5195,19 @@ async function cancelSwarmsWorkflow() {
   swarmsAnimTimers.forEach(clearTimeout);
   swarmsAnimTimers = [];
 
-  await safeFetch(`${API_URL}/swarms/${currentSwarmsExecId}/cancel`, {
-    method: "POST",
-  }, true);
+  await safeFetch(
+    `${API_URL}/swarms/${currentSwarmsExecId}/cancel`,
+    {
+      method: "POST",
+    },
+    true,
+  );
 
   const statusEl = document.getElementById("swarms-execution-status");
-  if (statusEl) { statusEl.textContent = "cancelled"; statusEl.className = "badge swarms-status-cancelled"; }
+  if (statusEl) {
+    statusEl.textContent = "cancelled";
+    statusEl.className = "badge swarms-status-cancelled";
+  }
   document.getElementById("swarms-cancel-btn")?.classList.add("hidden");
   document.getElementById("swarms-run-again-btn")?.classList.remove("hidden");
   showToast("Workflow cancelled.", "info");
@@ -4871,11 +5219,13 @@ async function cancelSwarmsWorkflow() {
 async function loadSwarmsHistory() {
   const list = document.getElementById("swarms-history-list");
   if (!list) return;
-  list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:var(--font-xs);">Loading history…</div>';
+  list.innerHTML =
+    '<div style="padding:12px;color:var(--text-muted);font-size:var(--font-xs);">Loading history…</div>';
 
   const r = await safeFetch(`${API_URL}/swarms/history`, {}, true);
   if (!r.ok) {
-    list.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:var(--font-xs);">Could not load history.</div>';
+    list.innerHTML =
+      '<div style="padding:12px;color:var(--text-muted);font-size:var(--font-xs);">Could not load history.</div>';
     return;
   }
 
@@ -4890,20 +5240,23 @@ async function loadSwarmsHistory() {
     return;
   }
 
-  list.innerHTML = executions.map((exec) => {
-    const statusClass = `swarms-status-${exec.status || "unknown"}`;
-    const relTime = _swarmsRelativeTime(exec.created_at);
-    const costStr = exec.total_cost_usd != null ? `$${exec.total_cost_usd.toFixed(4)}` : "";
-    const tokStr = exec.total_tokens ? `${exec.total_tokens} tok` : "";
-    const meta = [relTime, tokStr, costStr].filter(Boolean).join(" · ");
-    return `
+  list.innerHTML = executions
+    .map((exec) => {
+      const statusClass = `swarms-status-${exec.status || "unknown"}`;
+      const relTime = _swarmsRelativeTime(exec.created_at);
+      const costStr =
+        exec.total_cost_usd != null ? `$${exec.total_cost_usd.toFixed(4)}` : "";
+      const tokStr = exec.total_tokens ? `${exec.total_tokens} tok` : "";
+      const meta = [relTime, tokStr, costStr].filter(Boolean).join(" · ");
+      return `
       <div class="swarms-history-entry" data-exec-id="${exec.id}" tabindex="0" role="button">
         <div class="swarms-history-entry-name">${exec.template_id || exec.id}</div>
         <span class="badge ${statusClass}" style="font-size:10px;">${exec.status || "?"}</span>
         <div class="swarms-history-entry-meta">${meta}</div>
       </div>
       <div class="swarms-history-steps" id="swarms-hist-steps-${exec.id}"></div>`;
-  }).join("");
+    })
+    .join("");
 
   // Attach click handlers to expand/collapse step summaries
   list.querySelectorAll(".swarms-history-entry").forEach((entry) => {
@@ -4917,10 +5270,17 @@ async function loadSwarmsHistory() {
         const exec = executions.find((e) => e.id === execId);
         const stepResults = exec?.step_results || {};
         const rows = Object.entries(stepResults).map(([id, sr]) => {
-          const icon = sr.status === "completed" ? "✓" : sr.status === "failed" ? "✗" : "–";
+          const icon =
+            sr.status === "completed"
+              ? "✓"
+              : sr.status === "failed"
+                ? "✗"
+                : "–";
           return `<div class="swarms-history-step-row"><span>${icon}</span><span>${id}</span></div>`;
         });
-        stepsEl.innerHTML = rows.length ? rows.join("") : '<div class="swarms-history-step-row"><span style="color:var(--text-muted)">No step data</span></div>';
+        stepsEl.innerHTML = rows.length
+          ? rows.join("")
+          : '<div class="swarms-history-step-row"><span style="color:var(--text-muted)">No step data</span></div>';
       }
     });
   });
@@ -4961,7 +5321,8 @@ let swarmsAgentDomains = [];
 async function loadSwarmsCapabilities() {
   try {
     const r = await safeFetch(`${API_URL}/swarms/capabilities`, {}, true);
-    swarmsCapabilities = (r.ok && r.data && r.data.capabilities) ? r.data.capabilities : [];
+    swarmsCapabilities =
+      r.ok && r.data && r.data.capabilities ? r.data.capabilities : [];
   } catch (e) {
     swarmsCapabilities = [];
   }
@@ -4984,7 +5345,7 @@ function _renderTagChips(chipsEl, domains, onUpdate) {
       (d, i) =>
         `<span class="swarms-tag-chip">${d}
           <button class="swarms-tag-chip-remove" data-idx="${i}" aria-label="Remove ${d}">×</button>
-        </span>`
+        </span>`,
     )
     .join("");
   chipsEl.querySelectorAll(".swarms-tag-chip-remove").forEach((btn) => {
@@ -5020,8 +5381,15 @@ function _bindTagInput(inputId, chipsId, domainsArr, onUpdate) {
 /** Open the "New Workflow Template" modal and reset all fields. */
 function openNewTemplateModal() {
   swarmsTmplDomains = [];
-  _renderTagChips(document.getElementById("swarms-tmpl-domain-chips"), swarmsTmplDomains);
-  _bindTagInput("swarms-tmpl-domain-input", "swarms-tmpl-domain-chips", swarmsTmplDomains);
+  _renderTagChips(
+    document.getElementById("swarms-tmpl-domain-chips"),
+    swarmsTmplDomains,
+  );
+  _bindTagInput(
+    "swarms-tmpl-domain-input",
+    "swarms-tmpl-domain-chips",
+    swarmsTmplDomains,
+  );
 
   document.getElementById("swarms-tmpl-name").value = "";
   document.getElementById("swarms-tmpl-id").value = "";
@@ -5033,7 +5401,10 @@ function openNewTemplateModal() {
   const nameInput = document.getElementById("swarms-tmpl-name");
   const idInput = document.getElementById("swarms-tmpl-id");
   nameInput.oninput = () => {
-    idInput.value = nameInput.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    idInput.value = nameInput.value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-");
   };
 
   loadSwarmsCapabilities();
@@ -5101,28 +5472,56 @@ function _updateOutputStepOptions() {
 function _collectTemplateForm() {
   const name = document.getElementById("swarms-tmpl-name").value.trim();
   const id = document.getElementById("swarms-tmpl-id").value.trim();
-  const description = document.getElementById("swarms-tmpl-description").value.trim();
-  const outputStep = document.getElementById("swarms-tmpl-output-step").value.trim();
-  const mergeStrategy = document.querySelector("input[name='swarms-merge-strategy']:checked")?.value || "first";
+  const description = document
+    .getElementById("swarms-tmpl-description")
+    .value.trim();
+  const outputStep = document
+    .getElementById("swarms-tmpl-output-step")
+    .value.trim();
+  const mergeStrategy =
+    document.querySelector("input[name='swarms-merge-strategy']:checked")
+      ?.value || "first";
 
-  if (!name) { alert("Template name is required."); return null; }
-  if (!id) { alert("Template ID is required."); return null; }
+  if (!name) {
+    alert("Template name is required.");
+    return null;
+  }
+  if (!id) {
+    alert("Template ID is required.");
+    return null;
+  }
 
   const rows = document.querySelectorAll("#swarms-step-rows .swarms-step-row");
-  if (rows.length === 0) { alert("Add at least one step."); return null; }
+  if (rows.length === 0) {
+    alert("Add at least one step.");
+    return null;
+  }
 
   const steps = [];
   for (const row of rows) {
     const stepId = row.querySelector(".swarms-step-id")?.value.trim();
     const cap = row.querySelector(".swarms-step-cap")?.value.trim();
-    const intervene = row.querySelector(".swarms-step-intervene")?.checked || false;
-    if (!stepId) { alert("Every step needs a Step ID."); return null; }
-    if (!cap) { alert(`Step '${stepId}' needs a capability.`); return null; }
-    steps.push({ id: stepId, capability: cap, requires_intervention: intervene, depends_on: [] });
+    const intervene =
+      row.querySelector(".swarms-step-intervene")?.checked || false;
+    if (!stepId) {
+      alert("Every step needs a Step ID.");
+      return null;
+    }
+    if (!cap) {
+      alert(`Step '${stepId}' needs a capability.`);
+      return null;
+    }
+    steps.push({
+      id: stepId,
+      capability: cap,
+      requires_intervention: intervene,
+      depends_on: [],
+    });
   }
 
   if (outputStep && !steps.find((s) => s.id === outputStep)) {
-    alert("Output step must be one of the defined step IDs."); return null;
+    alert("Output step must be one of the defined step IDs.");
+    return null;
   }
 
   return {
@@ -5162,8 +5561,15 @@ async function saveNewTemplate() {
 /** Open the "New Prompt Agent" modal and reset all fields. */
 function openNewAgentModal() {
   swarmsAgentDomains = [];
-  _renderTagChips(document.getElementById("swarms-agent-domain-chips"), swarmsAgentDomains);
-  _bindTagInput("swarms-agent-domain-input", "swarms-agent-domain-chips", swarmsAgentDomains);
+  _renderTagChips(
+    document.getElementById("swarms-agent-domain-chips"),
+    swarmsAgentDomains,
+  );
+  _bindTagInput(
+    "swarms-agent-domain-input",
+    "swarms-agent-domain-chips",
+    swarmsAgentDomains,
+  );
 
   document.getElementById("swarms-agent-name").value = "";
   document.getElementById("swarms-agent-capability").value = "";
@@ -5179,12 +5585,25 @@ function _closeAgentModal() {
 /** POST the new agent to /agents and refresh capabilities. */
 async function saveNewAgent() {
   const name = document.getElementById("swarms-agent-name").value.trim();
-  const capability = document.getElementById("swarms-agent-capability").value.trim();
-  const system_prompt = document.getElementById("swarms-agent-prompt").value.trim();
+  const capability = document
+    .getElementById("swarms-agent-capability")
+    .value.trim();
+  const system_prompt = document
+    .getElementById("swarms-agent-prompt")
+    .value.trim();
 
-  if (!name) { alert("Agent name is required."); return; }
-  if (!capability) { alert("Capability name is required."); return; }
-  if (!system_prompt) { alert("System prompt is required."); return; }
+  if (!name) {
+    alert("Agent name is required.");
+    return;
+  }
+  if (!capability) {
+    alert("Capability name is required.");
+    return;
+  }
+  if (!system_prompt) {
+    alert("System prompt is required.");
+    return;
+  }
 
   try {
     const r = await safeFetch(`${API_URL}/agents`, {
@@ -5229,15 +5648,21 @@ function _closeAiNoteModal() {
 
 async function saveAiNoteQuick() {
   const prompt = document.getElementById("ai-note-prompt").value.trim();
-  if (!prompt) { showToast("Please enter some text first", "warning"); return; }
+  if (!prompt) {
+    showToast("Please enter some text first", "warning");
+    return;
+  }
   const domain = document.getElementById("ai-note-domain").value;
   const title = prompt.split(/\n/)[0].substring(0, 80) || "Quick Note";
   try {
-    const res = await safeFetch(`${API_URL}/api/settings/knowledge/save-quick`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: prompt, title, domain }),
-    });
+    const res = await safeFetch(
+      `${API_URL}/api/settings/knowledge/save-quick`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: prompt, title, domain }),
+      },
+    );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     _closeAiNoteModal();
     showToast("Note saved", "success");
@@ -5249,21 +5674,30 @@ async function saveAiNoteQuick() {
 
 async function saveAiNoteScribe() {
   const prompt = document.getElementById("ai-note-prompt").value.trim();
-  if (!prompt) { showToast("Please enter some text first", "warning"); return; }
+  if (!prompt) {
+    showToast("Please enter some text first", "warning");
+    return;
+  }
   const domain = document.getElementById("ai-note-domain").value;
   const btn = document.getElementById("ai-note-scribe-btn");
-  if (btn) { btn.disabled = true; btn.textContent = "Generating…"; }
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Generating…";
+  }
   try {
-    const res = await safeFetch(`${API_URL}/api/settings/knowledge/save-message`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message_content: prompt,
-        message_role: "user",
-        save_mode: "scribe",
-        domain,
-      }),
-    });
+    const res = await safeFetch(
+      `${API_URL}/api/settings/knowledge/save-message`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message_content: prompt,
+          message_role: "user",
+          save_mode: "scribe",
+          domain,
+        }),
+      },
+    );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     _closeAiNoteModal();
@@ -5276,7 +5710,10 @@ async function saveAiNoteScribe() {
   } catch (e) {
     showToast(`Scribe failed: ${e.message}`, "error");
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = "Generate with Scribe"; }
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Generate with Scribe";
+    }
   }
 }
 
@@ -5287,13 +5724,23 @@ function _initAiNoteListeners() {
   const modal = document.getElementById("ai-note-modal");
   if (!modal) return;
 
-  document.getElementById("ai-note-modal-close")?.addEventListener("click", _closeAiNoteModal);
-  document.getElementById("ai-note-modal-cancel")?.addEventListener("click", _closeAiNoteModal);
-  document.getElementById("ai-note-quick-save")?.addEventListener("click", saveAiNoteQuick);
-  document.getElementById("ai-note-scribe-btn")?.addEventListener("click", saveAiNoteScribe);
+  document
+    .getElementById("ai-note-modal-close")
+    ?.addEventListener("click", _closeAiNoteModal);
+  document
+    .getElementById("ai-note-modal-cancel")
+    ?.addEventListener("click", _closeAiNoteModal);
+  document
+    .getElementById("ai-note-quick-save")
+    ?.addEventListener("click", saveAiNoteQuick);
+  document
+    .getElementById("ai-note-scribe-btn")
+    ?.addEventListener("click", saveAiNoteScribe);
 
   // Close on backdrop click
-  modal.addEventListener("click", (e) => { if (e.target === modal) _closeAiNoteModal(); });
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) _closeAiNoteModal();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -5313,7 +5760,9 @@ function _initSwarms24eListeners() {
   const tmplClose = document.getElementById("swarms-template-modal-close");
   const tmplCancel = document.getElementById("swarms-template-modal-cancel");
   const tmplSave = document.getElementById("swarms-template-modal-save");
-  const tmplBackdrop = document.getElementById("swarms-template-modal-backdrop");
+  const tmplBackdrop = document.getElementById(
+    "swarms-template-modal-backdrop",
+  );
   const addStepBtn = document.getElementById("swarms-add-step-btn");
 
   if (tmplClose) tmplClose.addEventListener("click", _closeTemplateModal);
@@ -5761,7 +6210,9 @@ const ContextPills = (() => {
     const domainItems = document.querySelectorAll(
       "#domains-list .domain-item, .domain-card, [data-domain-name]",
     );
-    const seenDomains = new Set(_pills.filter((p) => p.type === "domain").map((p) => p.value));
+    const seenDomains = new Set(
+      _pills.filter((p) => p.type === "domain").map((p) => p.value),
+    );
     domainItems.forEach((el) => {
       const name =
         el.dataset.domainName ||
@@ -5778,8 +6229,10 @@ const ContextPills = (() => {
     if (domainFilter) {
       Array.from(domainFilter.options).forEach((opt) => {
         if (!opt.value) return; // skip "All domains" placeholder
-        if (_pills.some((p) => p.type === "domain" && p.value === opt.value)) return;
-        if (options.some((o) => o.type === "domain" && o.value === opt.value)) return;
+        if (_pills.some((p) => p.type === "domain" && p.value === opt.value))
+          return;
+        if (options.some((o) => o.type === "domain" && o.value === opt.value))
+          return;
         options.push({ type: "domain", label: opt.text, value: opt.value });
       });
     }
@@ -5794,7 +6247,10 @@ const ContextPills = (() => {
 
     const options = _buildPickerOptions();
     if (options.length === 0) {
-      showToast("No context available to attach. Open a note or add domains.", "info");
+      showToast(
+        "No context available to attach. Open a note or add domains.",
+        "info",
+      );
       return;
     }
 
@@ -5908,7 +6364,11 @@ const ContextPills = (() => {
   function getContextPayload() {
     if (_pills.length === 0) return null;
     return {
-      attached: _pills.map(({ type, label, value }) => ({ type, label, value })),
+      attached: _pills.map(({ type, label, value }) => ({
+        type,
+        label,
+        value,
+      })),
     };
   }
 
@@ -6814,8 +7274,8 @@ function buildModelSelectorOptions() {
   html += '<option value="auto:fast">Polly (Auto) — Fast</option>';
   html += '<option value="auto:balanced">Polly (Auto) — Balanced</option>';
   html += '<option value="auto:thorough">Polly (Auto) — Thorough</option>';
-  html += '</optgroup>';
-  
+  html += "</optgroup>";
+
   // Then add specific provider options organized by tier
   for (const tier of MODEL_TIERS) {
     html += `<optgroup label="${tier.label}">`;
@@ -6833,10 +7293,7 @@ function buildModelSelectorOptions() {
  */
 function populateModelSelectors() {
   const optionsHtml = buildModelSelectorOptions();
-  const selectIds = [
-    "chat-model-select",
-    "model-select",
-  ];
+  const selectIds = ["chat-model-select", "model-select"];
   const confidence = sessionStorage.getItem("model-confidence") || "balanced";
   const providerOverride = sessionStorage.getItem("model-provider");
   const saved = providerOverride
@@ -6880,10 +7337,7 @@ function handleModelChange(e) {
     console.log(`[Model] ${provider} provider with ${tier} tier`);
   }
   // Keep selects in sync
-  const selectIds = [
-    "chat-model-select",
-    "model-select",
-  ];
+  const selectIds = ["chat-model-select", "model-select"];
   for (const id of selectIds) {
     const el = document.getElementById(id);
     if (el && el !== e.target && el.value !== modelValue) el.value = modelValue;
@@ -6899,7 +7353,13 @@ function handleModelChange(e) {
  * @param {string} [personaName] - Persona from dropdown or slash command
  * @param {string} [personaMode] - Mode from slash command (e.g. curriculum, socratic)
  */
-async function sendToPersona(query, conversationHistory, loadingId, personaName, personaMode) {
+async function sendToPersona(
+  query,
+  conversationHistory,
+  loadingId,
+  personaName,
+  personaMode,
+) {
   try {
     const body = {
       user_message: query,
@@ -6924,7 +7384,11 @@ async function sendToPersona(query, conversationHistory, loadingId, personaName,
         if (body) {
           try {
             const parsed = JSON.parse(body);
-            if (parsed.detail) errDetail = typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+            if (parsed.detail)
+              errDetail =
+                typeof parsed.detail === "string"
+                  ? parsed.detail
+                  : JSON.stringify(parsed.detail);
             else errDetail = body.slice(0, 200);
           } catch (_) {
             errDetail = body.slice(0, 200);
@@ -6956,12 +7420,7 @@ async function sendToPersona(query, conversationHistory, loadingId, personaName,
     // Handle actions
     if (personaResponse.actions && personaResponse.actions.length > 0) {
       for (const action of personaResponse.actions) {
-        // Check for knowledge gap suggestion first
-        if (action.type === 'suggest_kb_write' && window.showKnowledgeSuggestion && messageDiv) {
-          window.showKnowledgeSuggestion(messageDiv, action);
-        } else {
-          await handlePersonaAction(action, personaResponse.content);
-        }
+        await handlePersonaAction(action, personaResponse.content);
       }
     }
 
@@ -6996,12 +7455,6 @@ async function handlePersonaAction(action, responseContent) {
   console.log("[Persona] Handling action:", action.type);
 
   switch (action.type) {
-    case "suggest_kb_write":
-      // Knowledge gap suggestion - handled inline in sendToPersona
-      // This case is here for completeness but shouldn't be called directly
-      console.log("[Persona] suggest_kb_write action (handled inline)");
-      break;
-
     case "review_curriculum":
       // Show curriculum review dialog (Phase 23)
       console.log("[Persona] review_curriculum action received");
@@ -7211,7 +7664,12 @@ async function handlePersonaAction(action, responseContent) {
       if (action.data && responseContent) {
         const noteTitle = action.data.suggested_title || "Learning Path";
         const noteDomain = action.data.domain || "general";
-        console.log("[Persona] offer_save_as_note - domain:", noteDomain, "title:", noteTitle);
+        console.log(
+          "[Persona] offer_save_as_note - domain:",
+          noteDomain,
+          "title:",
+          noteTitle,
+        );
 
         showSaveAsNotePrompt(noteTitle, noteDomain, responseContent);
       }
@@ -7495,25 +7953,29 @@ function showSaveAsNotePrompt(title, domain, content) {
   }
 
   // Handle Save
-  promptBar.querySelector(".save-note-accept").addEventListener("click", async () => {
-    promptBar.remove();
-    try {
-      await saveNoteToKnowledgeBase({
-        title: title,
-        domain: domain,
-        content: content,
-      });
-      showToast(`Saved "${title}" to ${domain}`, "success");
-    } catch (err) {
-      console.error("[Persona] Failed to save note:", err);
-      showToast("Failed to save note: " + err.message, "error");
-    }
-  });
+  promptBar
+    .querySelector(".save-note-accept")
+    .addEventListener("click", async () => {
+      promptBar.remove();
+      try {
+        await saveNoteToKnowledgeBase({
+          title: title,
+          domain: domain,
+          content: content,
+        });
+        showToast(`Saved "${title}" to ${domain}`, "success");
+      } catch (err) {
+        console.error("[Persona] Failed to save note:", err);
+        showToast("Failed to save note: " + err.message, "error");
+      }
+    });
 
   // Handle Dismiss
-  promptBar.querySelector(".save-note-dismiss").addEventListener("click", () => {
-    promptBar.remove();
-  });
+  promptBar
+    .querySelector(".save-note-dismiss")
+    .addEventListener("click", () => {
+      promptBar.remove();
+    });
 }
 
 /**
@@ -7593,12 +8055,14 @@ async function saveNoteToKnowledgeBase(noteData) {
       const similarList = result.similar_notes
         .map((n) => `${n.title} (${Math.round(n.similarity * 100)}% similar)`)
         .join(", ");
-      if (!(await ConfirmDialog.show({
-        title: 'Similar notes found',
-        message: `Found ${result.similar_notes.length} similar note(s): ${similarList}. Do you still want to create this note?`,
-        confirmLabel: 'Create anyway',
-        cancelLabel: 'Cancel',
-      }))) {
+      if (
+        !(await ConfirmDialog.show({
+          title: "Similar notes found",
+          message: `Found ${result.similar_notes.length} similar note(s): ${similarList}. Do you still want to create this note?`,
+          confirmLabel: "Create anyway",
+          cancelLabel: "Cancel",
+        }))
+      ) {
         console.log("[Persona] User cancelled note creation due to duplicates");
         return;
       }
@@ -8117,18 +8581,24 @@ async function loadLearningSidebarCurricula() {
 
     if (!curricula || curricula.length === 0) {
       container.innerHTML = "";
-      container.appendChild(EmptyState.render({
-        icon: "graduation-cap",
-        title: "No curricula created",
-        description: "Use the Professor persona to create structured learning paths.",
-        actionLabel: "Start with /curriculum",
-        onAction: () => {
-          const chatInput = document.getElementById("chat-input");
-          if (chatInput) { chatInput.value = "/curriculum "; chatInput.focus(); }
-          showView("chat");
-        },
-        size: "small",
-      }));
+      container.appendChild(
+        EmptyState.render({
+          icon: "graduation-cap",
+          title: "No curricula created",
+          description:
+            "Use the Professor persona to create structured learning paths.",
+          actionLabel: "Start with /curriculum",
+          onAction: () => {
+            const chatInput = document.getElementById("chat-input");
+            if (chatInput) {
+              chatInput.value = "/curriculum ";
+              chatInput.focus();
+            }
+            showView("chat");
+          },
+          size: "small",
+        }),
+      );
       return;
     }
 
@@ -8281,12 +8751,15 @@ async function loadLearningSidebarCurricula() {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const id = btn.dataset.id;
-        if (await ConfirmDialog.show({
-          title: 'Delete curriculum',
-          message: 'Are you sure you want to delete this curriculum? This cannot be undone.',
-          confirmLabel: 'Delete',
-          destructive: true,
-        })) {
+        if (
+          await ConfirmDialog.show({
+            title: "Delete curriculum",
+            message:
+              "Are you sure you want to delete this curriculum? This cannot be undone.",
+            confirmLabel: "Delete",
+            destructive: true,
+          })
+        ) {
           await handleDeleteCurriculum(id);
           await loadLearningSidebarCurricula(); // Reload
         }
@@ -8395,7 +8868,7 @@ async function loadCurriculaView() {
   }
 
   // Show loading state
-  container.innerHTML = SkeletonLoader.forView('curricula');
+  container.innerHTML = SkeletonLoader.forView("curricula");
 
   try {
     const curricula = await fetchCurricula();
@@ -9001,7 +9474,9 @@ async function handleDeleteCurriculum(curriculumId) {
 
   window.undoManager.schedule(`curriculum-${curriculumId}`, {
     label: curriculumSnapshot.title || curriculumSnapshot.topic || "Curriculum",
-    onDelete: () => { /* already deleted */ },
+    onDelete: () => {
+      /* already deleted */
+    },
     onRestore: async () => {
       try {
         const res = await fetch(`${API_URL}/polly/curricula/create`, {
@@ -10337,7 +10812,7 @@ async function regenerateCurriculum() {
  */
 let _sendQueryInProgress = false;
 
- async function sendQuery() {
+async function sendQuery() {
   if (_sendQueryInProgress) return;
   _sendQueryInProgress = true;
 
@@ -10363,7 +10838,16 @@ async function sendQueryCore(query) {
   // Slash command: parse and route directly to persona+mode
   const parsed = parseSlashCommand(query);
   if (parsed) {
-    console.log("[SlashCommand] Resolved:", query.slice(0, 30), "->", parsed.persona, ":", parsed.mode, "| message:", parsed.userMessage.slice(0, 60));
+    console.log(
+      "[SlashCommand] Resolved:",
+      query.slice(0, 30),
+      "->",
+      parsed.persona,
+      ":",
+      parsed.mode,
+      "| message:",
+      parsed.userMessage.slice(0, 60),
+    );
     await fetchSlashCommands(); // populate cache for next time
     await sendQueryInternal(query, parsed.userMessage, {
       personaOverride: parsed.persona,
@@ -10377,7 +10861,6 @@ async function sendQueryCore(query) {
     await sendQueryInternal(query, query, null);
   });
 }
-
 
 /**
  * Internal function to send query after persona check
@@ -10474,16 +10957,26 @@ function _showStreamError(errorText) {
 async function retryLastQuery() {
   if (!_lastQueryContext) return;
   // Remove all existing error messages
-  document.querySelectorAll(".message.system .message-error").forEach(el => {
+  document.querySelectorAll(".message.system .message-error").forEach((el) => {
     el.closest(".message.system")?.remove();
   });
   const { displayQuery, apiQuery, overrides } = _lastQueryContext;
-  await sendQueryInternal(displayQuery, apiQuery, overrides, /* isRetry= */ true);
+  await sendQueryInternal(
+    displayQuery,
+    apiQuery,
+    overrides,
+    /* isRetry= */ true,
+  );
 }
 
 // ============================================================================
 
-async function sendQueryInternal(displayQuery, apiQuery, overrides, isRetry = false) {
+async function sendQueryInternal(
+  displayQuery,
+  apiQuery,
+  overrides,
+  isRetry = false,
+) {
   // Ensure we have a conversation
   if (!currentConversationId) {
     console.log("No conversation, creating new one...");
@@ -10522,7 +11015,10 @@ async function sendQueryInternal(displayQuery, apiQuery, overrides, isRetry = fa
     // Persona: from slash command overrides or dropdown
     const chatPersonaSelect = document.getElementById("chat-persona-select");
     const personaSelect = document.getElementById("persona-select");
-    const activePersona = overrides?.personaOverride ?? (chatPersonaSelect || personaSelect)?.value ?? null;
+    const activePersona =
+      overrides?.personaOverride ??
+      (chatPersonaSelect || personaSelect)?.value ??
+      null;
     const activeMode = overrides?.modeOverride ?? null;
 
     // Get conversation history (excluding the message we just added)
@@ -10540,11 +11036,19 @@ async function sendQueryInternal(displayQuery, apiQuery, overrides, isRetry = fa
 
     // Route through persona if active (or from slash command)
     if (activePersona) {
-      const result = await sendToPersona(apiQuery, conversationHistory, loadingId, activePersona, activeMode);
+      const result = await sendToPersona(
+        apiQuery,
+        conversationHistory,
+        loadingId,
+        activePersona,
+        activeMode,
+      );
       if (result) {
         // Sync persona selector when invoked via slash command
         if (overrides?.personaOverride) {
-          const sel = document.getElementById("chat-persona-select") || document.getElementById("persona-select");
+          const sel =
+            document.getElementById("chat-persona-select") ||
+            document.getElementById("persona-select");
           if (sel && sel.value !== activePersona) {
             sel.value = activePersona;
             sel.dispatchEvent(new Event("change"));
@@ -10582,7 +11086,11 @@ async function sendQueryInternal(displayQuery, apiQuery, overrides, isRetry = fa
       queryOptions.mental_models_override = mentalModelsOverride.modelIds;
     } else {
       const globalDefaults = getGlobalDefaultModels();
-      if (globalDefaults && globalDefaults.enabled && globalDefaults.modelIds.length > 0) {
+      if (
+        globalDefaults &&
+        globalDefaults.enabled &&
+        globalDefaults.modelIds.length > 0
+      ) {
         queryOptions.mental_models_override = globalDefaults.modelIds;
       }
     }
@@ -10595,7 +11103,6 @@ async function sendQueryInternal(displayQuery, apiQuery, overrides, isRetry = fa
 
     // ---- Attempt streaming ----
     await _sendQueryStreaming(apiQuery, queryOptions, loadingId);
-
   } catch (error) {
     removeMessage(loadingId);
     _hideStopButton();
@@ -10645,7 +11152,10 @@ async function _sendQueryStreaming(apiQuery, queryOptions, loadingId) {
     }
 
     // Server unreachable — fall back to IPC
-    console.warn("[Streaming] fetch failed, falling back to IPC:", fetchErr.message);
+    console.warn(
+      "[Streaming] fetch failed, falling back to IPC:",
+      fetchErr.message,
+    );
     await _sendQueryFallbackIPC(apiQuery, queryOptions, loadingId);
     return;
   }
@@ -10656,7 +11166,11 @@ async function _sendQueryStreaming(apiQuery, queryOptions, loadingId) {
     _clearStreamTimeout();
     _hideStopButton();
     _streamAbortController = null;
-    console.warn("[Streaming] Server returned non-SSE content-type:", contentType, "— falling back to IPC");
+    console.warn(
+      "[Streaming] Server returned non-SSE content-type:",
+      contentType,
+      "— falling back to IPC",
+    );
     removeMessage(loadingId);
     await _sendQueryFallbackIPC(apiQuery, queryOptions, loadingId);
     return;
@@ -10701,9 +11215,8 @@ async function _sendQueryStreaming(apiQuery, queryOptions, loadingId) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let textBuffer = "";       // Raw accumulated text
+  let textBuffer = ""; // Raw accumulated text
   let metadata = null;
-  let personaActions = [];
   let aborted = false;
   let lastRenderTime = 0;
   const RENDER_INTERVAL_MS = 100;
@@ -10757,8 +11270,6 @@ async function _sendQueryStreaming(apiQuery, queryOptions, loadingId) {
         } else if (event.metadata) {
           metadata = event.metadata;
           console.log("[Streaming] metadata:", metadata);
-        } else if (event.persona_actions) {
-          personaActions = event.persona_actions;
         } else if (event.error) {
           throw new Error(event.error);
         }
@@ -10799,7 +11310,10 @@ async function _sendQueryStreaming(apiQuery, queryOptions, loadingId) {
     contentEl.appendChild(stopBadge);
     // Save partial to DB
     if (textBuffer) {
-      await addMessageToConversation("assistant", textBuffer + " (stopped)").catch(() => {});
+      await addMessageToConversation(
+        "assistant",
+        textBuffer + " (stopped)",
+      ).catch(() => {});
     }
     // Re-enable
     const chatInputEl = document.getElementById("chat-input");
@@ -10824,20 +11338,13 @@ async function _sendQueryStreaming(apiQuery, queryOptions, loadingId) {
   // Save full response to DB
   await addMessageToConversation("assistant", textBuffer);
 
-  // Process persona_actions (knowledge gap suggestions)
-  if (personaActions.length > 0) {
-    for (const action of personaActions) {
-      if (action.type === "suggest_kb_write" && window.showKnowledgeSuggestion && msgDiv) {
-        window.showKnowledgeSuggestion(msgDiv, action);
-      }
-    }
-  }
-
   // Re-init Lucide icons that may have been rendered into markdown
   if (typeof lucide !== "undefined") refreshIcons();
 
   // Auto-categorize (non-blocking) — run when browser is idle, within 1s
-  requestIdleCallback(() => autoCategorizeConversation(currentConversationId), { timeout: 1000 });
+  requestIdleCallback(() => autoCategorizeConversation(currentConversationId), {
+    timeout: 1000,
+  });
 
   // Refresh autonomy metrics after each completed query (routing decision just recorded)
   if (window.loadAutonomyData) {
@@ -10887,16 +11394,12 @@ async function _sendQueryFallbackIPC(apiQuery, queryOptions, loadingId) {
       const messageDiv = addMessageToUI("assistant", messageContent);
       await addMessageToConversation("assistant", result.result.response);
 
-      if (result.result.persona_actions && result.result.persona_actions.length > 0) {
-        for (const action of result.result.persona_actions) {
-          if (action.type === "suggest_kb_write" && window.showKnowledgeSuggestion && messageDiv) {
-            window.showKnowledgeSuggestion(messageDiv, action);
-          }
-        }
-      }
-
-      requestIdleCallback(() => autoCategorizeConversation(currentConversationId), { timeout: 1000 });
-      if (window.loadAutonomyData) setTimeout(() => window.loadAutonomyData(), 500);
+      requestIdleCallback(
+        () => autoCategorizeConversation(currentConversationId),
+        { timeout: 1000 },
+      );
+      if (window.loadAutonomyData)
+        setTimeout(() => window.loadAutonomyData(), 500);
     } else {
       _showStreamError(`Error: ${result.error}`);
     }
@@ -10940,11 +11443,12 @@ function addMessageToUI(role, content) {
   div.id = id;
   div.dataset.timestamp = timestamp.toISOString();
 
-  const saveBtn = role === "assistant"
-    ? `<button class="msg-save-btn" title="Save as note" aria-label="Save as note">
+  const saveBtn =
+    role === "assistant"
+      ? `<button class="msg-save-btn" title="Save as note" aria-label="Save as note">
          <i data-lucide="bookmark-plus" style="width:13px;height:13px;"></i>
        </button>`
-    : "";
+      : "";
 
   div.innerHTML = `
     <div class="message-content">${content}</div>
@@ -10960,7 +11464,8 @@ function addMessageToUI(role, content) {
     if (btn) {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const rawContent = div.querySelector(".message-content")?.innerText || "";
+        const rawContent =
+          div.querySelector(".message-content")?.innerText || "";
         if (typeof window.showSaveMessageForm === "function") {
           window.showSaveMessageForm(div, rawContent);
         }
@@ -11033,9 +11538,10 @@ function addMessage(role, content) {
  * Remove message (accepts ID string or element)
  */
 function removeMessage(idOrElement) {
-  const el = typeof idOrElement === 'string' 
-    ? document.getElementById(idOrElement) 
-    : idOrElement;
+  const el =
+    typeof idOrElement === "string"
+      ? document.getElementById(idOrElement)
+      : idOrElement;
   if (el) el.remove();
 }
 
@@ -11334,26 +11840,49 @@ const loadDashboardData = withErrorBoundary(async function () {
     const statPatterns = document.getElementById("stat-patterns");
     const statEntities = document.getElementById("stat-entities");
 
-    if (statObsidian) { statObsidian.textContent = notesStats.count || 0; statObsidian.removeAttribute("data-loading"); statObsidian.removeAttribute("aria-busy"); }
-    if (statCodebase) { statCodebase.textContent = data.rag?.codebase?.count || 0; statCodebase.removeAttribute("data-loading"); statCodebase.removeAttribute("aria-busy"); }
-    if (statPatterns) { statPatterns.textContent = data.patterns || 0; statPatterns.removeAttribute("data-loading"); statPatterns.removeAttribute("aria-busy"); }
-    if (statEntities) { statEntities.textContent = data.graph?.entities || 0; statEntities.removeAttribute("data-loading"); statEntities.removeAttribute("aria-busy"); }
+    if (statObsidian) {
+      statObsidian.textContent = notesStats.count || 0;
+      statObsidian.removeAttribute("data-loading");
+      statObsidian.removeAttribute("aria-busy");
+    }
+    if (statCodebase) {
+      statCodebase.textContent = data.rag?.codebase?.count || 0;
+      statCodebase.removeAttribute("data-loading");
+      statCodebase.removeAttribute("aria-busy");
+    }
+    if (statPatterns) {
+      statPatterns.textContent = data.patterns || 0;
+      statPatterns.removeAttribute("data-loading");
+      statPatterns.removeAttribute("aria-busy");
+    }
+    if (statEntities) {
+      statEntities.textContent = data.graph?.entities || 0;
+      statEntities.removeAttribute("data-loading");
+      statEntities.removeAttribute("aria-busy");
+    }
 
     // Show dashboard empty state when nothing is indexed
     const dashboardEmptyEl = document.getElementById("dashboard-empty-state");
     if (dashboardEmptyEl) {
-      const totalIndexed = (notesStats.count || 0) + (data.rag?.codebase?.count || 0) + (data.patterns || 0) + (data.graph?.entities || 0);
+      const totalIndexed =
+        (notesStats.count || 0) +
+        (data.rag?.codebase?.count || 0) +
+        (data.patterns || 0) +
+        (data.graph?.entities || 0);
       if (totalIndexed === 0) {
         dashboardEmptyEl.classList.remove("hidden");
         dashboardEmptyEl.innerHTML = "";
-        dashboardEmptyEl.appendChild(EmptyState.render({
-          icon: "layout-dashboard",
-          title: "Welcome to Polly",
-          description: "Index your knowledge base to see stats and insights here.",
-          actionLabel: "Go to Knowledge Base",
-          onAction: () => showView("knowledge"),
-          size: "medium",
-        }));
+        dashboardEmptyEl.appendChild(
+          EmptyState.render({
+            icon: "layout-dashboard",
+            title: "Welcome to Polly",
+            description:
+              "Index your knowledge base to see stats and insights here.",
+            actionLabel: "Go to Knowledge Base",
+            onAction: () => showView("knowledge"),
+            size: "medium",
+          }),
+        );
       } else {
         dashboardEmptyEl.classList.add("hidden");
       }
@@ -11424,9 +11953,21 @@ const loadAutonomyData = withErrorBoundary(async function () {
 
   // Fetch all 3 endpoints in parallel
   const [snapshotResult, writesResult, trendResult] = await Promise.all([
-    safeFetch("http://127.0.0.1:11436/api/settings/autonomy/snapshot?days=30", {}, true),
-    safeFetch("http://127.0.0.1:11436/api/settings/autonomy/recent-writes?limit=10", {}, true),
-    safeFetch("http://127.0.0.1:11436/api/settings/autonomy/routing-trend?days=30", {}, true),
+    safeFetch(
+      "http://127.0.0.1:11436/api/settings/autonomy/snapshot?days=30",
+      {},
+      true,
+    ),
+    safeFetch(
+      "http://127.0.0.1:11436/api/settings/autonomy/recent-writes?limit=10",
+      {},
+      true,
+    ),
+    safeFetch(
+      "http://127.0.0.1:11436/api/settings/autonomy/routing-trend?days=30",
+      {},
+      true,
+    ),
   ]);
 
   // --- Render snapshot (hero ring + stat cards) ---
@@ -11455,7 +11996,7 @@ const loadAutonomyData = withErrorBoundary(async function () {
   }
 }, "loadAutonomyData");
 
-// Expose globally so suggestion-card.js can call it after saves
+// Expose globally so components can call it after saves
 window.loadAutonomyData = loadAutonomyData;
 
 /**
@@ -11499,21 +12040,26 @@ function renderAutonomyChart(trend) {
   if (!container) return;
 
   if (!trend || trend.length === 0) {
-    container.innerHTML = '<div class="autonomy-chart-empty">No routing data yet</div>';
+    container.innerHTML =
+      '<div class="autonomy-chart-empty">No routing data yet</div>';
     return;
   }
 
   // Find max total queries for scaling
   const maxQueries = Math.max(...trend.map((t) => t.total_queries), 1);
 
-  const barsHtml = trend.map((entry) => {
-    const localH = Math.max((entry.local_pct / 100) * 140, 0);
-    const cloudH = Math.max((entry.cloud_pct / 100) * 140, 0);
-    // Format date label: "Feb 10"
-    const d = new Date(entry.period_start);
-    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const barsHtml = trend
+    .map((entry) => {
+      const localH = Math.max((entry.local_pct / 100) * 140, 0);
+      const cloudH = Math.max((entry.cloud_pct / 100) * 140, 0);
+      // Format date label: "Feb 10"
+      const d = new Date(entry.period_start);
+      const label = d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
 
-    return `
+      return `
       <div class="autonomy-chart-bar-group" title="${label}: ${Math.round(entry.local_pct)}% local, ${Math.round(entry.cloud_pct)}% cloud (${entry.total_queries} queries)">
         <div class="autonomy-bar-stack">
           <div class="autonomy-bar-local" style="height: ${localH}px;"></div>
@@ -11521,7 +12067,8 @@ function renderAutonomyChart(trend) {
         </div>
         <div class="autonomy-bar-label">${label}</div>
       </div>`;
-  }).join("");
+    })
+    .join("");
 
   container.innerHTML = barsHtml;
 }
@@ -11535,27 +12082,29 @@ function renderAutonomyWrites(writes) {
   if (!list) return;
 
   if (!writes || writes.length === 0) {
-    list.innerHTML = '<div class="autonomy-empty-state">No knowledge writes yet. Use KB suggestions to grow your local knowledge.</div>';
+    list.innerHTML =
+      '<div class="autonomy-empty-state">No knowledge writes yet. Save assistant messages as notes to grow your local knowledge.</div>';
     return;
   }
 
-  const html = writes.map((w) => {
-    const sourceClass = (w.source_type || "manual").replace(/_/g, "-");
-    const sourceLabel = (w.source_type || "manual").replace(/_/g, " ");
-    const savings = w.estimated_future_savings
-      ? `~${formatTokenCount(w.estimated_future_savings)} tokens`
-      : "";
-    const domain = w.domain || "";
-    const ts = w.timestamp
-      ? new Date(w.timestamp).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        })
-      : "";
+  const html = writes
+    .map((w) => {
+      const sourceClass = (w.source_type || "manual").replace(/_/g, "-");
+      const sourceLabel = (w.source_type || "manual").replace(/_/g, " ");
+      const savings = w.estimated_future_savings
+        ? `~${formatTokenCount(w.estimated_future_savings)} tokens`
+        : "";
+      const domain = w.domain || "";
+      const ts = w.timestamp
+        ? new Date(w.timestamp).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })
+        : "";
 
-    return `
+      return `
       <div class="autonomy-write-item">
         <span class="autonomy-write-source ${sourceClass}">${sourceLabel}</span>
         <div class="autonomy-write-info">
@@ -11564,7 +12113,8 @@ function renderAutonomyWrites(writes) {
         </div>
         ${savings ? `<span class="autonomy-write-savings">${savings}</span>` : ""}
       </div>`;
-  }).join("");
+    })
+    .join("");
 
   list.innerHTML = html;
 }
@@ -11584,7 +12134,8 @@ function updateAutonomyStatusBar(snap) {
   }
 
   indicator.style.display = "";
-  if (pctSpan) pctSpan.textContent = Math.round(snap.local_routing_pct) + "% local";
+  if (pctSpan)
+    pctSpan.textContent = Math.round(snap.local_routing_pct) + "% local";
 }
 
 // ==================== Link Suggestion Modal (Task #22) ====================
@@ -11606,13 +12157,16 @@ function showLinkSuggestionModal(linkSuggestion, savedNotePath) {
   const listEl = document.getElementById("link-suggestion-candidates");
   if (!modal || !msgEl || !listEl) return;
 
-  msgEl.textContent = data.message || `Found ${candidates.length} related note(s). Add wiki-links?`;
+  msgEl.textContent =
+    data.message ||
+    `Found ${candidates.length} related note(s). Add wiki-links?`;
 
-  listEl.innerHTML = candidates.map((c, i) => {
-    const simPct = Math.round((c.similarity || 0) * 100);
-    const title = escapeHtml(c.title || c.name || "Untitled");
-    const pathDisplay = escapeHtml(c.path || "");
-    return `
+  listEl.innerHTML = candidates
+    .map((c, i) => {
+      const simPct = Math.round((c.similarity || 0) * 100);
+      const title = escapeHtml(c.title || c.name || "Untitled");
+      const pathDisplay = escapeHtml(c.path || "");
+      return `
       <label class="link-suggestion-item" data-index="${i}">
         <input type="checkbox" checked data-name="${escapeHtml(c.name || c.title || "")}" data-path="${escapeHtml(c.path || "")}">
         <div class="link-suggestion-item-info">
@@ -11621,12 +12175,16 @@ function showLinkSuggestionModal(linkSuggestion, savedNotePath) {
         </div>
         <span class="link-suggestion-item-similarity">${simPct}%</span>
       </label>`;
-  }).join("");
+    })
+    .join("");
 
   // Toggle selected class on checkbox change
   listEl.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
     cb.addEventListener("change", () => {
-      cb.closest(".link-suggestion-item").classList.toggle("selected", cb.checked);
+      cb.closest(".link-suggestion-item").classList.toggle(
+        "selected",
+        cb.checked,
+      );
     });
     // Mark initially selected
     cb.closest(".link-suggestion-item").classList.add("selected");
@@ -11648,8 +12206,12 @@ async function applyLinkSuggestions() {
   if (!modal || !listEl) return;
 
   const notePath = modal.dataset.notePath || "";
-  const checkedBoxes = listEl.querySelectorAll('input[type="checkbox"]:checked');
-  const selectedNames = Array.from(checkedBoxes).map((cb) => cb.dataset.name).filter(Boolean);
+  const checkedBoxes = listEl.querySelectorAll(
+    'input[type="checkbox"]:checked',
+  );
+  const selectedNames = Array.from(checkedBoxes)
+    .map((cb) => cb.dataset.name)
+    .filter(Boolean);
 
   if (selectedNames.length === 0) {
     modal.classList.add("hidden");
@@ -11657,12 +12219,17 @@ async function applyLinkSuggestions() {
   }
 
   // Build the wiki-links section to append
-  const linksSection = "\n\n## See Also\n" + selectedNames.map((n) => `- [[${n}]]`).join("\n") + "\n";
+  const linksSection =
+    "\n\n## See Also\n" +
+    selectedNames.map((n) => `- [[${n}]]`).join("\n") +
+    "\n";
 
   try {
     if (notePath) {
       // Read the current note content, append links, write back
-      const readResp = await fetch(`http://127.0.0.1:11436/polly/notes/read?path=${encodeURIComponent(notePath)}`);
+      const readResp = await fetch(
+        `http://127.0.0.1:11436/polly/notes/read?path=${encodeURIComponent(notePath)}`,
+      );
       if (readResp.ok) {
         const noteData = await readResp.json();
         const currentContent = noteData.content || "";
@@ -11673,22 +12240,32 @@ async function applyLinkSuggestions() {
         if (hasSection) {
           // Append links to existing section (before next ## heading or EOF)
           const seeAlsoIdx = currentContent.indexOf("## See Also");
-          const afterSection = currentContent.substring(seeAlsoIdx + "## See Also".length);
+          const afterSection = currentContent.substring(
+            seeAlsoIdx + "## See Also".length,
+          );
           const nextHeading = afterSection.search(/\n## /);
-          const insertPos = nextHeading >= 0
-            ? seeAlsoIdx + "## See Also".length + nextHeading
-            : currentContent.length;
+          const insertPos =
+            nextHeading >= 0
+              ? seeAlsoIdx + "## See Also".length + nextHeading
+              : currentContent.length;
           const newLinks = selectedNames.map((n) => `- [[${n}]]`).join("\n");
-          updatedContent = currentContent.substring(0, insertPos) + "\n" + newLinks + currentContent.substring(insertPos);
+          updatedContent =
+            currentContent.substring(0, insertPos) +
+            "\n" +
+            newLinks +
+            currentContent.substring(insertPos);
         } else {
           updatedContent = currentContent.trimEnd() + linksSection;
         }
 
-        const writeResp = await fetch("http://127.0.0.1:11436/polly/notes/update", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: notePath, content: updatedContent }),
-        });
+        const writeResp = await fetch(
+          "http://127.0.0.1:11436/polly/notes/update",
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: notePath, content: updatedContent }),
+          },
+        );
 
         if (writeResp.ok) {
           showToast(`Added ${selectedNames.length} link(s) to note`, "success");
@@ -11716,9 +12293,10 @@ function showBrokenLinkWarning(brokenLinks, noteTitle) {
   if (!brokenLinks || brokenLinks.length === 0) return;
 
   const targets = brokenLinks.map((bl) => bl.target).join(", ");
-  const msg = brokenLinks.length === 1
-    ? `Broken link in "${noteTitle}": [[${targets}]] — target note not found`
-    : `${brokenLinks.length} broken links in "${noteTitle}": ${targets}`;
+  const msg =
+    brokenLinks.length === 1
+      ? `Broken link in "${noteTitle}": [[${targets}]] — target note not found`
+      : `${brokenLinks.length} broken links in "${noteTitle}": ${targets}`;
 
   showToast(msg, "warning", 6000);
 }
@@ -11741,7 +12319,7 @@ function handlePostSaveActions(result) {
     showToast(
       `Backlinks added to ${result.backlinks_added.length} related note(s)`,
       "info",
-      3000
+      3000,
     );
   }
 
@@ -11754,7 +12332,7 @@ function handlePostSaveActions(result) {
   }
 }
 
-// Export to global scope for suggestion-card.js and other components
+// Export to global scope for save-message-form.js and other components
 window.handlePostSaveActions = handlePostSaveActions;
 window.showLinkSuggestionModal = showLinkSuggestionModal;
 
@@ -11787,7 +12365,9 @@ async function runVaultHealthScan() {
   if (window.lucide) lucide.createIcons();
 
   try {
-    const response = await fetch("http://127.0.0.1:11436/polly/notes/validate-links");
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/notes/validate-links",
+    );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const data = await response.json();
@@ -11798,7 +12378,12 @@ async function runVaultHealthScan() {
     }
 
     // Render summary stats
-    const brokenClass = data.broken_count === 0 ? "healthy" : data.broken_count <= 3 ? "warning" : "error";
+    const brokenClass =
+      data.broken_count === 0
+        ? "healthy"
+        : data.broken_count <= 3
+          ? "warning"
+          : "error";
     const orphanClass = data.orphan_count === 0 ? "healthy" : "warning";
 
     summary.innerHTML = `
@@ -11821,14 +12406,18 @@ async function runVaultHealthScan() {
 
     // Render broken links
     if (data.broken_count > 0) {
-      brokenList.innerHTML = data.broken_links.map((bl) => `
+      brokenList.innerHTML = data.broken_links
+        .map(
+          (bl) => `
         <div class="vault-health-item" data-source="${escapeHtml(bl.source_name || "")}">
           <span class="vault-health-item-source">${escapeHtml(bl.source_name || "?")}</span>
           <span class="vault-health-item-arrow">&rarr;</span>
           <span class="vault-health-item-target">[[${escapeHtml(bl.target)}]]</span>
           ${bl.source_domain ? `<span class="vault-health-item-domain">${escapeHtml(bl.source_domain)}</span>` : ""}
           ${bl.line_number ? `<span class="vault-health-item-line">L${bl.line_number}</span>` : ""}
-        </div>`).join("");
+        </div>`,
+        )
+        .join("");
 
       // Click handler: navigate to source note
       brokenList.querySelectorAll(".vault-health-item").forEach((item) => {
@@ -11837,7 +12426,11 @@ async function runVaultHealthScan() {
           if (sourceName && window.notesManager) {
             modal.classList.add("hidden");
             showView("notes");
-            requestAnimationFrame(() => requestAnimationFrame(() => window.notesManager.openNote(sourceName)));
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() =>
+                window.notesManager.openNote(sourceName),
+              ),
+            );
           }
         });
       });
@@ -11847,11 +12440,15 @@ async function runVaultHealthScan() {
 
     // Render orphan notes
     if (data.orphan_count > 0) {
-      orphanList.innerHTML = data.orphan_notes.map((n) => `
+      orphanList.innerHTML = data.orphan_notes
+        .map(
+          (n) => `
         <div class="vault-health-item" data-name="${escapeHtml(n.name || "")}">
           <span class="vault-health-orphan-name">${escapeHtml(n.name || "?")}</span>
           ${n.domain ? `<span class="vault-health-item-domain">${escapeHtml(n.domain)}</span>` : ""}
-        </div>`).join("");
+        </div>`,
+        )
+        .join("");
 
       orphanList.querySelectorAll(".vault-health-item").forEach((item) => {
         item.addEventListener("click", () => {
@@ -11859,7 +12456,9 @@ async function runVaultHealthScan() {
           if (name && window.notesManager) {
             modal.classList.add("hidden");
             showView("notes");
-            requestAnimationFrame(() => requestAnimationFrame(() => window.notesManager.openNote(name)));
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => window.notesManager.openNote(name)),
+            );
           }
         });
       });
@@ -11872,7 +12471,6 @@ async function runVaultHealthScan() {
       brokenSection.classList.remove("hidden");
       brokenList.innerHTML = `<div style="padding: 12px; color: var(--success); font-size: 13px;">All links valid. No orphan notes detected.</div>`;
     }
-
   } catch (err) {
     console.error("[VaultHealth] Scan failed:", err);
     summary.innerHTML = `<div style="color: var(--error); padding: 12px;">Failed to scan vault: ${escapeHtml(err.message)}</div>`;
@@ -12021,10 +12619,26 @@ const loadKnowledgeData = withErrorBoundary(async function () {
     const statPatterns = document.getElementById("stat-patterns");
     const statEntities = document.getElementById("stat-entities");
 
-    if (statObsidian) { statObsidian.textContent = notesCount; statObsidian.removeAttribute("data-loading"); statObsidian.removeAttribute("aria-busy"); }
-    if (statCodebase) { statCodebase.textContent = codebaseCount; statCodebase.removeAttribute("data-loading"); statCodebase.removeAttribute("aria-busy"); }
-    if (statPatterns) { statPatterns.textContent = data.rag?.patterns?.count || 0; statPatterns.removeAttribute("data-loading"); statPatterns.removeAttribute("aria-busy"); }
-    if (statEntities) { statEntities.textContent = data.graph?.entities || 0; statEntities.removeAttribute("data-loading"); statEntities.removeAttribute("aria-busy"); }
+    if (statObsidian) {
+      statObsidian.textContent = notesCount;
+      statObsidian.removeAttribute("data-loading");
+      statObsidian.removeAttribute("aria-busy");
+    }
+    if (statCodebase) {
+      statCodebase.textContent = codebaseCount;
+      statCodebase.removeAttribute("data-loading");
+      statCodebase.removeAttribute("aria-busy");
+    }
+    if (statPatterns) {
+      statPatterns.textContent = data.rag?.patterns?.count || 0;
+      statPatterns.removeAttribute("data-loading");
+      statPatterns.removeAttribute("aria-busy");
+    }
+    if (statEntities) {
+      statEntities.textContent = data.graph?.entities || 0;
+      statEntities.removeAttribute("data-loading");
+      statEntities.removeAttribute("aria-busy");
+    }
 
     // Update right sidebar if on knowledge view (NOT on chat view to avoid re-renders)
     if (currentView === "knowledge") {
@@ -12103,12 +12717,15 @@ async function loadPatterns() {
     if (data.total_count === 0) {
       // Show empty state
       patternsList.innerHTML = "";
-      patternsList.appendChild(EmptyState.render({
-        icon: "brain",
-        title: "No patterns learned yet",
-        description: "Polly learns patterns from your conversations over time. Have a few conversations and check back.",
-        size: "medium",
-      }));
+      patternsList.appendChild(
+        EmptyState.render({
+          icon: "brain",
+          title: "No patterns learned yet",
+          description:
+            "Polly learns patterns from your conversations over time. Have a few conversations and check back.",
+          size: "medium",
+        }),
+      );
       return;
     }
 
@@ -12334,12 +12951,14 @@ async function filterPatterns() {
 
     if (filteredPatterns.length === 0) {
       patternsList.innerHTML = "";
-      patternsList.appendChild(EmptyState.render({
-        icon: "calendar",
-        title: "No patterns in this time range",
-        description: "Try a different time filter.",
-        size: "medium",
-      }));
+      patternsList.appendChild(
+        EmptyState.render({
+          icon: "calendar",
+          title: "No patterns in this time range",
+          description: "Try a different time filter.",
+          size: "medium",
+        }),
+      );
       lucide.createIcons();
       return;
     }
@@ -12466,9 +13085,10 @@ async function exportPatterns() {
  */
 async function resetPatterns() {
   const confirmed = await ConfirmDialog.show({
-    title: 'Reset all patterns',
-    message: 'This will delete all patterns and clear query history. A backup will be created first. You will have 10 seconds to undo.',
-    confirmLabel: 'Reset',
+    title: "Reset all patterns",
+    message:
+      "This will delete all patterns and clear query history. A backup will be created first. You will have 10 seconds to undo.",
+    confirmLabel: "Reset",
     destructive: true,
   });
 
@@ -12505,18 +13125,23 @@ async function resetPatterns() {
     window.undoManager.schedule("patterns-reset", {
       label,
       timeout: 10000,
-      onDelete: () => { /* reset already executed */ },
+      onDelete: () => {
+        /* reset already executed */
+      },
       onRestore: async () => {
         if (!patternSnapshot || patternSnapshot.length === 0) {
           showToast("No pattern snapshot available to restore", "warning");
           return;
         }
         try {
-          const res = await fetch("http://127.0.0.1:11436/polly/patterns/import", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ patterns: patternSnapshot }),
-          });
+          const res = await fetch(
+            "http://127.0.0.1:11436/polly/patterns/import",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ patterns: patternSnapshot }),
+            },
+          );
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           await loadPatterns();
         } catch (err) {
@@ -12579,7 +13204,10 @@ async function saveSettings() {
     await saveDedupSettings();
   } catch (error) {
     console.error("Failed to save dedup settings:", error);
-    showToast("Settings saved, but deduplication settings failed to save.", "warning");
+    showToast(
+      "Settings saved, but deduplication settings failed to save.",
+      "warning",
+    );
     return;
   }
 
@@ -12591,37 +13219,57 @@ async function saveSettings() {
  * Persists the AI features toggles to localStorage and notifies the user.
  */
 async function saveAIFeaturesSettings() {
-  const kbSuggestions = document.getElementById("ai-feat-kb-suggestions");
-  const contextEnrichment = document.getElementById("ai-feat-context-enrichment");
-  const gapScore = document.getElementById("ai-feat-kb-gap-score");
+  const contextEnrichment = document.getElementById(
+    "ai-feat-context-enrichment",
+  );
   const autonomyEnabled = document.getElementById("ai-feat-autonomy-enabled");
-  const semanticCacheEnabled = document.getElementById("ai-feat-semantic-cache-enabled");
-  const semanticCacheThreshold = document.getElementById("ai-feat-semantic-cache-threshold");
-  const semanticCacheTtl = document.getElementById("ai-feat-semantic-cache-ttl");
-  const semanticCacheMax = document.getElementById("ai-feat-semantic-cache-max");
+  const semanticCacheEnabled = document.getElementById(
+    "ai-feat-semantic-cache-enabled",
+  );
+  const semanticCacheThreshold = document.getElementById(
+    "ai-feat-semantic-cache-threshold",
+  );
+  const semanticCacheTtl = document.getElementById(
+    "ai-feat-semantic-cache-ttl",
+  );
+  const semanticCacheMax = document.getElementById(
+    "ai-feat-semantic-cache-max",
+  );
   // Spec 03: context persistence
-  const contextPersistEnabled = document.getElementById("ai-feat-context-persist-enabled");
-  const contextPersistDecay = document.getElementById("ai-feat-context-persist-decay");
+  const contextPersistEnabled = document.getElementById(
+    "ai-feat-context-persist-enabled",
+  );
+  const contextPersistDecay = document.getElementById(
+    "ai-feat-context-persist-decay",
+  );
   // Spec 07: MM format
-  const mmFormatSelected = document.querySelector('input[name="ai-feat-mm-format"]:checked');
+  const mmFormatSelected = document.querySelector(
+    'input[name="ai-feat-mm-format"]:checked',
+  );
 
-  if (kbSuggestions) {
-    localStorage.setItem("polly-kb-suggestions", kbSuggestions.checked ? "true" : "false");
-  }
   if (contextEnrichment) {
-    localStorage.setItem("polly-context-enrichment", contextEnrichment.checked ? "true" : "false");
-  }
-  if (gapScore) {
-    localStorage.setItem("polly-kb-gap-score", gapScore.value);
+    localStorage.setItem(
+      "polly-context-enrichment",
+      contextEnrichment.checked ? "true" : "false",
+    );
   }
   if (autonomyEnabled) {
-    localStorage.setItem("polly-autonomy-enabled", autonomyEnabled.checked ? "true" : "false");
+    localStorage.setItem(
+      "polly-autonomy-enabled",
+      autonomyEnabled.checked ? "true" : "false",
+    );
   }
   if (semanticCacheEnabled) {
-    localStorage.setItem("polly-semantic-cache-enabled", semanticCacheEnabled.checked ? "true" : "false");
+    localStorage.setItem(
+      "polly-semantic-cache-enabled",
+      semanticCacheEnabled.checked ? "true" : "false",
+    );
   }
   if (semanticCacheThreshold) {
-    localStorage.setItem("polly-semantic-cache-threshold", semanticCacheThreshold.value);
+    localStorage.setItem(
+      "polly-semantic-cache-threshold",
+      semanticCacheThreshold.value,
+    );
   }
   if (semanticCacheTtl) {
     localStorage.setItem("polly-semantic-cache-ttl", semanticCacheTtl.value);
@@ -12631,10 +13279,16 @@ async function saveAIFeaturesSettings() {
   }
   // Spec 03
   if (contextPersistEnabled) {
-    localStorage.setItem("polly-context-persist-enabled", contextPersistEnabled.checked ? "true" : "false");
+    localStorage.setItem(
+      "polly-context-persist-enabled",
+      contextPersistEnabled.checked ? "true" : "false",
+    );
   }
   if (contextPersistDecay) {
-    localStorage.setItem("polly-context-persist-decay", contextPersistDecay.value);
+    localStorage.setItem(
+      "polly-context-persist-decay",
+      contextPersistDecay.value,
+    );
   }
   // Spec 07
   if (mmFormatSelected) {
@@ -12643,20 +13297,22 @@ async function saveAIFeaturesSettings() {
 
   // Also push to backend if server is available
   const payload = {
-    kb_suggestions: kbSuggestions ? kbSuggestions.checked : true,
     context_enrichment: contextEnrichment ? contextEnrichment.checked : true,
-    gap_score_threshold: gapScore ? parseInt(gapScore.value) / 100 : 0.5,
     autonomy_dashboard: autonomyEnabled ? autonomyEnabled.checked : true,
     semantic_cache: {
       enabled: semanticCacheEnabled ? semanticCacheEnabled.checked : false,
-      similarity_threshold: semanticCacheThreshold ? parseInt(semanticCacheThreshold.value) / 100 : 0.92,
+      similarity_threshold: semanticCacheThreshold
+        ? parseInt(semanticCacheThreshold.value) / 100
+        : 0.92,
       ttl_hours: semanticCacheTtl ? parseInt(semanticCacheTtl.value) : 24,
       max_entries: semanticCacheMax ? parseInt(semanticCacheMax.value) : 500,
     },
     // Spec 03
     context_persistence: {
       enabled: contextPersistEnabled ? contextPersistEnabled.checked : true,
-      decay_on_gap_hours: contextPersistDecay ? parseInt(contextPersistDecay.value) : 12,
+      decay_on_gap_hours: contextPersistDecay
+        ? parseInt(contextPersistDecay.value)
+        : 12,
     },
     // Spec 07
     mm_format: mmFormatSelected ? mmFormatSelected.value : "ab_test",
@@ -12760,13 +13416,17 @@ async function loadGeneralSettings() {
     const data = await response.json();
     if (data.success && data.settings) {
       // Update routing mode dropdown
-      const routingModeSelect = document.getElementById("settings-routing-mode");
+      const routingModeSelect = document.getElementById(
+        "settings-routing-mode",
+      );
       if (routingModeSelect) {
         routingModeSelect.value = data.settings.routing_mode || "auto";
       }
 
       // Update LiteLLM toggle
-      const useLiteLLMCheckbox = document.getElementById("settings-use-litellm");
+      const useLiteLLMCheckbox = document.getElementById(
+        "settings-use-litellm",
+      );
       if (useLiteLLMCheckbox) {
         useLiteLLMCheckbox.checked = data.settings.use_litellm !== false;
       }
@@ -12778,16 +13438,18 @@ async function loadGeneralSettings() {
 
 async function saveGeneralSettings() {
   try {
-    const routingMode = document.getElementById("settings-routing-mode")?.value || "auto";
-    const useLiteLLM = document.getElementById("settings-use-litellm")?.checked !== false;
+    const routingMode =
+      document.getElementById("settings-routing-mode")?.value || "auto";
+    const useLiteLLM =
+      document.getElementById("settings-use-litellm")?.checked !== false;
 
     const response = await fetch(`${API_URL}/api/settings/general`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         routing_mode: routingMode,
-        use_litellm: useLiteLLM
-      })
+        use_litellm: useLiteLLM,
+      }),
     });
 
     if (!response.ok) {
@@ -12797,9 +13459,11 @@ async function saveGeneralSettings() {
     const data = await response.json();
     if (data.success) {
       showToast(data.message || "General settings saved", "success");
-      
+
       // If LiteLLM setting changed, reload provider list if on that tab
-      const providersTab = document.getElementById("settings-section-providers");
+      const providersTab = document.getElementById(
+        "settings-section-providers",
+      );
       if (providersTab && !providersTab.classList.contains("hidden")) {
         await loadProviderSettings();
       }
@@ -13036,12 +13700,14 @@ async function saveRoutingSettings() {
  * Reset routing settings to defaults
  */
 async function resetRoutingSettings() {
-  if (!(await ConfirmDialog.show({
-    title: 'Reset routing settings',
-    message: 'Reset routing settings to defaults?',
-    confirmLabel: 'Reset',
-    destructive: true,
-  }))) {
+  if (
+    !(await ConfirmDialog.show({
+      title: "Reset routing settings",
+      message: "Reset routing settings to defaults?",
+      confirmLabel: "Reset",
+      destructive: true,
+    }))
+  ) {
     return;
   }
 
@@ -13211,14 +13877,20 @@ function formatTimeAgo(timestamp) {
 // Restore integration status from stored credentials
 async function restoreIntegrationStatus() {
   // Wait for HTTP server to be reachable (not just process running)
-  const serverReady = await waitForServerReady({ timeoutMs: 15000, intervalMs: 500 });
+  const serverReady = await waitForServerReady({
+    timeoutMs: 15000,
+    intervalMs: 500,
+  });
   if (!serverReady) {
     console.warn("Server not ready, skipping integration restore");
     return;
   }
   // Wait for Polly core to finish initializing before calling integration
   // endpoints — they require polly.config and will 500 if called too early.
-  const pollyReady = await waitForPollyReady({ timeoutMs: 60000, intervalMs: 500 });
+  const pollyReady = await waitForPollyReady({
+    timeoutMs: 60000,
+    intervalMs: 500,
+  });
   if (!pollyReady) {
     console.warn("Polly core not ready in time, skipping integration restore");
     return;
@@ -13243,12 +13915,17 @@ async function restoreIntegrationStatus() {
 
         if (backendResult && !backendResult.success) {
           // 503 / connection issues often mean Polly still initializing
-          console.warn("Backend connection:", backendResult.error || "not ready yet. Click \"sync now\" to retry.");
+          console.warn(
+            "Backend connection:",
+            backendResult.error || 'not ready yet. Click "sync now" to retry.',
+          );
         }
       } catch (error) {
-        const isRefused = (error.message || "").includes("ECONNREFUSED") || (error.message || "").includes("Failed to fetch");
+        const isRefused =
+          (error.message || "").includes("ECONNREFUSED") ||
+          (error.message || "").includes("Failed to fetch");
         if (isRefused) {
-          console.warn("Backend not ready yet; click \"sync now\" to retry.");
+          console.warn('Backend not ready yet; click "sync now" to retry.');
         } else {
           console.error("Backend connection error:", error);
         }
@@ -13303,7 +13980,9 @@ async function restoreIntegrationStatus() {
           console.log("Context7 backend reconnected successfully");
         }
       } catch (error) {
-        const isRefused = (error.message || "").includes("ECONNREFUSED") || (error.message || "").includes("Failed to fetch");
+        const isRefused =
+          (error.message || "").includes("ECONNREFUSED") ||
+          (error.message || "").includes("Failed to fetch");
         if (isRefused) {
           console.warn("Context7: backend not ready yet.");
         } else {
@@ -13325,7 +14004,9 @@ async function restoreIntegrationStatus() {
   try {
     const response = await fetch("http://127.0.0.1:11436/polly/integrations");
     if (!response.ok && response.status === 503) {
-      console.warn("Integrations endpoint returned 503 (Polly still initializing).");
+      console.warn(
+        "Integrations endpoint returned 503 (Polly still initializing).",
+      );
       return;
     }
     const result = await response.json();
@@ -13660,7 +14341,10 @@ function initIntegrationPlaceholders() {
       await window.polly.setStore("github_oauth_client_id", clientId);
       await window.polly.setStore("github_oauth_client_secret", clientSecret);
 
-      showToast('GitHub OAuth configuration saved! You can now click "connect" to authenticate.', "success");
+      showToast(
+        'GitHub OAuth configuration saved! You can now click "connect" to authenticate.',
+        "success",
+      );
 
       // Show the connect button and hide config panel
       const configPanel = document.getElementById("github-config");
@@ -13695,7 +14379,10 @@ function initIntegrationPlaceholders() {
         );
 
         if (!clientId || !clientSecret) {
-          showToast('Please configure GitHub OAuth first. Click the "configure" button to set up your Client ID and Secret.', "warning");
+          showToast(
+            'Please configure GitHub OAuth first. Click the "configure" button to set up your Client ID and Secret.',
+            "warning",
+          );
 
           // Show config panel if available
           const configBtn = document.getElementById("github-config-btn");
@@ -13731,7 +14418,10 @@ function initIntegrationPlaceholders() {
             });
           }
 
-          showToast(`Successfully connected to GitHub as @${result.username}`, "success");
+          showToast(
+            `Successfully connected to GitHub as @${result.username}`,
+            "success",
+          );
         } else {
           showToast(`Failed to connect to GitHub: ${result.error}`, "error");
           githubBtn.disabled = false;
@@ -13832,7 +14522,10 @@ function initIntegrationPlaceholders() {
         });
 
         if (result.success) {
-          showToast(`Synced ${result.fetched} items from GitHub. Indexed ${result.indexed} documents.`, "success");
+          showToast(
+            `Synced ${result.fetched} items from GitHub. Indexed ${result.indexed} documents.`,
+            "success",
+          );
 
           // Update last sync time
           updateIntegrationCard("github", {
@@ -14202,7 +14895,10 @@ function initIntegrationPlaceholders() {
         } else {
           console.error("Obsidian connection failed:", result);
           updateIntegrationStatus("obsidian", "error");
-          showToast(`Connection failed: ${result.error || "Unknown error"}`, "error");
+          showToast(
+            `Connection failed: ${result.error || "Unknown error"}`,
+            "error",
+          );
         }
       } catch (error) {
         console.error("Obsidian connection error:", error);
@@ -14260,7 +14956,10 @@ function initIntegrationPlaceholders() {
       const syncEnabled = syncEnabledCheckbox?.checked || false;
 
       if (syncEnabled && !vaultPath) {
-        showToast("Please select a vault folder when sync is enabled", "warning");
+        showToast(
+          "Please select a vault folder when sync is enabled",
+          "warning",
+        );
         return;
       }
 
@@ -14322,10 +15021,16 @@ function initIntegrationPlaceholders() {
             // Update vault path display
             updateObsidianVaultDisplay(vaultPath);
 
-            showToast("Obsidian sync enabled! New notes will be copied to your vault.", "success");
+            showToast(
+              "Obsidian sync enabled! New notes will be copied to your vault.",
+              "success",
+            );
           } else {
             console.error("Obsidian connection failed:", result);
-            showToast(`Failed to connect to vault: ${result.error || "Unknown error"}`, "error");
+            showToast(
+              `Failed to connect to vault: ${result.error || "Unknown error"}`,
+              "error",
+            );
           }
         } else {
           // Sync disabled
@@ -14394,11 +15099,13 @@ function initIntegrationPlaceholders() {
         console.log("Note preview:", preview);
 
         // Step 2: Show confirmation dialog
-        if (!(await ConfirmDialog.show({
-          title: 'Create test note',
-          message: `Create note at ${preview.note_path}? Preview: ${preview.content_preview}`,
-          confirmLabel: 'Create',
-        }))) {
+        if (
+          !(await ConfirmDialog.show({
+            title: "Create test note",
+            message: `Create note at ${preview.note_path}? Preview: ${preview.content_preview}`,
+            confirmLabel: "Create",
+          }))
+        ) {
           obsidianTestCreateBtn.disabled = false;
           obsidianTestCreateBtn.textContent = "Create Test Note";
           return;
@@ -14421,13 +15128,19 @@ function initIntegrationPlaceholders() {
         console.log("Create result:", result);
 
         if (result.success) {
-          showToast(`Note created successfully! ${result.note_path}`, "success");
+          showToast(
+            `Note created successfully! ${result.note_path}`,
+            "success",
+          );
           // Clear form
           document.getElementById("obsidian-test-title").value = "";
           document.getElementById("obsidian-test-content").value = "";
           document.getElementById("obsidian-test-folder").value = "";
         } else {
-          showToast(`Failed to create note: ${result.error || "Unknown error"}`, "error");
+          showToast(
+            `Failed to create note: ${result.error || "Unknown error"}`,
+            "error",
+          );
         }
       } catch (error) {
         console.error("Error creating note:", error);
@@ -14478,7 +15191,10 @@ function initIntegrationPlaceholders() {
           // Auto-sync
           setTimeout(() => syncCalendar(), 500);
         } else {
-          showToast(`Calendar connection failed: ${result.error || "Unknown error"}`, "error");
+          showToast(
+            `Calendar connection failed: ${result.error || "Unknown error"}`,
+            "error",
+          );
           updateIntegrationStatus("calendar", "error");
         }
       } catch (error) {
@@ -14548,7 +15264,10 @@ function initIntegrationPlaceholders() {
           // Auto-sync
           setTimeout(() => syncReminders(), 500);
         } else {
-          showToast(`Reminders connection failed: ${result.error || "Unknown error"}`, "error");
+          showToast(
+            `Reminders connection failed: ${result.error || "Unknown error"}`,
+            "error",
+          );
           updateIntegrationStatus("reminders", "error");
         }
       } catch (error) {
@@ -14583,7 +15302,10 @@ function initIntegrationPlaceholders() {
   const icalBtn = document.getElementById("ical-connect-btn");
   if (icalBtn) {
     icalBtn.addEventListener("click", () => {
-      showToast("Calendar account modal will be implemented in Phase 4", "info");
+      showToast(
+        "Calendar account modal will be implemented in Phase 4",
+        "info",
+      );
     });
   }
 
@@ -15163,26 +15885,28 @@ function renderMentalModelsList() {
 
   // Update count
   const enabledCount = mentalModels.filter((m) => m.enabled).length;
-  if (countEl) countEl.textContent = `${mentalModels.length} models (${enabledCount} enabled)`;
+  if (countEl)
+    countEl.textContent = `${mentalModels.length} models (${enabledCount} enabled)`;
 
   // Render models
   if (mentalModels.length === 0) {
     listContainer.innerHTML = "";
-    listContainer.appendChild(EmptyState.render({
-      icon: "lightbulb",
-      title: "Using default mental models",
-      description: "Polly applies 12 built-in mental models. Create custom ones to personalize your thinking.",
-      actionLabel: "Create Model",
-      onAction: () => {
-        const addBtn = document.getElementById("add-mental-model-btn");
-        if (addBtn) addBtn.click();
-      },
-      size: "medium",
-    }));
+    listContainer.appendChild(
+      EmptyState.render({
+        icon: "lightbulb",
+        title: "Using default mental models",
+        description:
+          "Polly applies 12 built-in mental models. Create custom ones to personalize your thinking.",
+        actionLabel: "Create Model",
+        onAction: () => {
+          const addBtn = document.getElementById("add-mental-model-btn");
+          if (addBtn) addBtn.click();
+        },
+        size: "medium",
+      }),
+    );
   } else {
-    listContainer.innerHTML = mentalModels
-      .map(renderMentalModelCard)
-      .join("");
+    listContainer.innerHTML = mentalModels.map(renderMentalModelCard).join("");
 
     // Attach event listeners
     mentalModels.forEach((model) => {
@@ -15195,13 +15919,9 @@ function renderMentalModelsList() {
       }
 
       // Edit
-      const editBtn = document.getElementById(
-        `mental-model-edit-${model.id}`,
-      );
+      const editBtn = document.getElementById(`mental-model-edit-${model.id}`);
       if (editBtn) {
-        editBtn.addEventListener("click", () =>
-          openMentalModelModal(model.id),
-        );
+        editBtn.addEventListener("click", () => openMentalModelModal(model.id));
       }
 
       // Delete
@@ -15209,9 +15929,7 @@ function renderMentalModelsList() {
         `mental-model-delete-${model.id}`,
       );
       if (deleteBtn) {
-        deleteBtn.addEventListener("click", () =>
-          deleteMentalModel(model.id),
-        );
+        deleteBtn.addEventListener("click", () => deleteMentalModel(model.id));
       }
     });
   }
@@ -15339,8 +16057,13 @@ function clearModalForm() {
   document.getElementById("mental-model-enabled").checked = true;
 
   // Clear field-error highlights
-  ["mental-model-id", "mental-model-name", "mental-model-description",
-   "mental-model-principles", "mental-model-prompt"].forEach((id) => {
+  [
+    "mental-model-id",
+    "mental-model-name",
+    "mental-model-description",
+    "mental-model-principles",
+    "mental-model-prompt",
+  ].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.classList.remove("field-error");
   });
@@ -15471,13 +16194,19 @@ async function saveMentalModel() {
       }
     }
     if (!id) validationErrors.push("ID is required");
-    else if (!/^[a-z0-9_]+$/.test(id)) validationErrors.push("ID must be lowercase letters, numbers, and underscores only");
+    else if (!/^[a-z0-9_]+$/.test(id))
+      validationErrors.push(
+        "ID must be lowercase letters, numbers, and underscores only",
+      );
     if (!name) validationErrors.push("Name is required");
     if (!description) validationErrors.push("Description is required");
     if (!principlesText) validationErrors.push("Principles are required");
     if (!promptInjection) validationErrors.push("Prompt injection is required");
     if (validationErrors.length > 0) {
-      showToast(`Please fix ${validationErrors.length} validation error${validationErrors.length > 1 ? "s" : ""}: ${validationErrors[0]}`, "warning");
+      showToast(
+        `Please fix ${validationErrors.length} validation error${validationErrors.length > 1 ? "s" : ""}: ${validationErrors[0]}`,
+        "warning",
+      );
       return;
     }
 
@@ -15891,7 +16620,9 @@ async function loadGlobalDefaultsPicker() {
 
   // Fetch models
   try {
-    const response = await fetch("http://127.0.0.1:11436/polly/mental-models/list");
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/mental-models/list",
+    );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     const models = data.models || [];
@@ -15960,17 +16691,24 @@ async function loadGlobalDefaultsPicker() {
           enabled: true,
           modelIds: selectedModelIds,
         });
-        console.log(`[Global Defaults] Saved ${selectedModelIds.length} default models`);
-        showToast(`Saved ${selectedModelIds.length} global default model(s).`, "success");
+        console.log(
+          `[Global Defaults] Saved ${selectedModelIds.length} default models`,
+        );
+        showToast(
+          `Saved ${selectedModelIds.length} global default model(s).`,
+          "success",
+        );
       };
     }
 
     // Clear button
     if (clearBtn) {
       clearBtn.onclick = () => {
-        listEl.querySelectorAll(".global-default-model-checkbox").forEach((cb) => {
-          cb.checked = false;
-        });
+        listEl
+          .querySelectorAll(".global-default-model-checkbox")
+          .forEach((cb) => {
+            cb.checked = false;
+          });
       };
     }
   } catch (error) {
@@ -16036,17 +16774,19 @@ function renderDomainsList() {
   // Empty domains state
   if (sortedDomains.length === 0) {
     listContainer.innerHTML = "";
-    listContainer.appendChild(EmptyState.render({
-      icon: "layers",
-      title: "No custom domains",
-      description: "Domains organize your knowledge into practice areas.",
-      actionLabel: "Create Domain",
-      onAction: () => {
-        const addBtn = document.getElementById("add-domain-btn");
-        if (addBtn) addBtn.click();
-      },
-      size: "medium",
-    }));
+    listContainer.appendChild(
+      EmptyState.render({
+        icon: "layers",
+        title: "No custom domains",
+        description: "Domains organize your knowledge into practice areas.",
+        actionLabel: "Create Domain",
+        onAction: () => {
+          const addBtn = document.getElementById("add-domain-btn");
+          if (addBtn) addBtn.click();
+        },
+        size: "medium",
+      }),
+    );
     return;
   }
 
@@ -16211,7 +16951,9 @@ async function deleteDomain(domainId) {
   }
 
   // Hide from local state immediately
-  domainsConfig.domains = domainsConfig.domains.filter((d) => d.id !== domainId);
+  domainsConfig.domains = domainsConfig.domains.filter(
+    (d) => d.id !== domainId,
+  );
   renderDomainsList();
 
   window.undoManager.schedule(`domain-${domainId}`, {
@@ -16236,7 +16978,9 @@ async function deleteDomain(domainId) {
     },
     onRestore: () => {
       domainsConfig.domains.push(domain);
-      domainsConfig.domains.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+      domainsConfig.domains.sort((a, b) =>
+        (a.name || "").localeCompare(b.name || ""),
+      );
       renderDomainsList();
     },
   });
@@ -17924,7 +18668,8 @@ async function saveCompressionSettings() {
     );
     // Spec 04: Semantic compression trigger
     const semanticTriggerEnabled =
-      document.getElementById("compression-semantic-trigger-enabled")?.checked || false;
+      document.getElementById("compression-semantic-trigger-enabled")
+        ?.checked || false;
     const srsThreshold = parseFloat(
       document.getElementById("compression-srs-threshold")?.value || "0.75",
     );
@@ -18004,12 +18749,14 @@ async function saveCompressionSettings() {
  * Reset compression settings to defaults
  */
 async function resetCompressionSettings() {
-  if (!(await ConfirmDialog.show({
-    title: 'Reset compression settings',
-    message: 'Reset compression settings to defaults?',
-    confirmLabel: 'Reset',
-    destructive: true,
-  }))) {
+  if (
+    !(await ConfirmDialog.show({
+      title: "Reset compression settings",
+      message: "Reset compression settings to defaults?",
+      confirmLabel: "Reset",
+      destructive: true,
+    }))
+  ) {
     return;
   }
 
@@ -18168,24 +18915,25 @@ function setupCompressionSettings() {
  */
 
 async function loadProviderSettings() {
-  const container = document.getElementById('providers-list');
+  const container = document.getElementById("providers-list");
   if (!container) {
-    console.warn('[Providers] Container #providers-list not found');
+    console.warn("[Providers] Container #providers-list not found");
     return;
   }
-  
-  container.innerHTML = '<div class="settings-loading-spinner">Loading providers...</div>';
-  
+
+  container.innerHTML =
+    '<div class="settings-loading-spinner">Loading providers...</div>';
+
   try {
     const response = await fetch(`${API_URL}/api/settings/providers/status`);
-    
+
     if (!response.ok) {
       throw new Error(`Failed to load providers (status ${response.status})`);
     }
-    
+
     const data = await response.json();
-    console.log('[Providers] Data received:', data);
-    
+    console.log("[Providers] Data received:", data);
+
     // Check if LiteLLM is enabled
     if (!data.use_litellm) {
       container.innerHTML = `
@@ -18198,12 +18946,12 @@ async function loadProviderSettings() {
       lucide.createIcons();
       return;
     }
-    
+
     // Merge runtime stats (data.providers object) with config (data.config object)
     const providersList = [];
-    
+
     // Start with config data (has all providers)
-    if (data.config && typeof data.config === 'object') {
+    if (data.config && typeof data.config === "object") {
       for (const [providerName, configInfo] of Object.entries(data.config)) {
         const runtimeStats = data.providers?.[providerName] || {};
         providersList.push({
@@ -18214,10 +18962,10 @@ async function loadProviderSettings() {
           stats: runtimeStats,
           available: runtimeStats.available !== false,
           failures: runtimeStats.failures || 0,
-          last_success: runtimeStats.last_success
+          last_success: runtimeStats.last_success,
         });
       }
-    } else if (data.providers && typeof data.providers === 'object') {
+    } else if (data.providers && typeof data.providers === "object") {
       // Fallback: if no config, use runtime stats only
       for (const [providerName, stats] of Object.entries(data.providers)) {
         providersList.push({
@@ -18228,11 +18976,11 @@ async function loadProviderSettings() {
           stats: stats,
           available: stats.available !== false,
           failures: stats.failures || 0,
-          last_success: stats.last_success
+          last_success: stats.last_success,
         });
       }
     }
-    
+
     if (providersList.length === 0) {
       container.innerHTML = `
         <div style="text-align: center; padding: 40px 20px; color: var(--text-secondary);">
@@ -18243,20 +18991,25 @@ async function loadProviderSettings() {
       lucide.createIcons();
       return;
     }
-    
+
     // Sort providers alphabetically
     providersList.sort((a, b) => a.name.localeCompare(b.name));
-    
+
     let html = `
       <div class="provider-cards">
     `;
-    
-    providersList.forEach(provider => {
+
+    providersList.forEach((provider) => {
       const isEnabled = provider.config_enabled === true;
       const hasApiKey = provider.has_api_key === true;
-      const statusClass = isEnabled && hasApiKey ? 'provider-enabled' : 'provider-disabled';
-      const statusText = !hasApiKey ? 'No API Key' : (isEnabled ? 'Enabled' : 'Disabled');
-      
+      const statusClass =
+        isEnabled && hasApiKey ? "provider-enabled" : "provider-disabled";
+      const statusText = !hasApiKey
+        ? "No API Key"
+        : isEnabled
+          ? "Enabled"
+          : "Disabled";
+
       html += `
         <div class="provider-card ${statusClass}" data-provider="${provider.name}">
           <div class="provider-header">
@@ -18265,8 +19018,8 @@ async function loadProviderSettings() {
               <input type="checkbox" 
                      class="provider-toggle-input" 
                      data-provider="${provider.name}"
-                     ${isEnabled ? 'checked' : ''}
-                     ${!hasApiKey ? 'disabled' : ''}>
+                     ${isEnabled ? "checked" : ""}
+                     ${!hasApiKey ? "disabled" : ""}>
               <span class="provider-toggle-slider"></span>
             </label>
           </div>
@@ -18277,55 +19030,66 @@ async function loadProviderSettings() {
               <span>${statusText}</span>
             </div>
             
-            ${provider.models && provider.models.length > 0 ? `
+            ${
+              provider.models && provider.models.length > 0
+                ? `
               <div class="provider-models">
                 <span style="font-size: 11px; color: var(--text-secondary);">
-                  ${provider.models.length} model${provider.models.length !== 1 ? 's' : ''} available
+                  ${provider.models.length} model${provider.models.length !== 1 ? "s" : ""} available
                 </span>
               </div>
-            ` : ''}
+            `
+                : ""
+            }
             
-            ${provider.failures > 0 ? `
+            ${
+              provider.failures > 0
+                ? `
               <div class="provider-stats">
                 <span style="font-size: 11px; color: var(--error);">
-                  ${provider.failures} recent failure${provider.failures !== 1 ? 's' : ''}
+                  ${provider.failures} recent failure${provider.failures !== 1 ? "s" : ""}
                 </span>
               </div>
-            ` : ''}
+            `
+                : ""
+            }
           </div>
           
           <div class="provider-actions">
-            ${!hasApiKey ? `
+            ${
+              !hasApiKey
+                ? `
               <button class="btn btn-secondary btn-sm provider-add-key-btn" 
                       data-provider="${provider.name}">
                 <i data-lucide="key" style="width: 14px; height: 14px;"></i>
                 Add Key
               </button>
-            ` : `
+            `
+                : `
               <button class="btn btn-secondary btn-sm provider-test-btn" 
                       data-provider="${provider.name}"
-                      ${!isEnabled ? 'disabled' : ''}>
+                      ${!isEnabled ? "disabled" : ""}>
                 <i data-lucide="activity" style="width: 14px; height: 14px;"></i>
                 Test
               </button>
-            `}
+            `
+            }
           </div>
         </div>
       `;
     });
-    
+
     html += `
       </div>
     `;
-    
+
     container.innerHTML = html;
     lucide.createIcons();
-    
+
     // Attach event listeners
     setupProviderEventListeners();
-    
   } catch (error) {
-    console.error('[Providers] Error loading providers:', error);
+    console.error("[Providers] Error loading providers:", error);
     container.innerHTML = `
       <div class="settings-error">
         <i data-lucide="alert-circle" style="width: 24px; height: 24px; margin-bottom: 8px;"></i>
@@ -18339,28 +19103,30 @@ async function loadProviderSettings() {
 
 function setupProviderEventListeners() {
   // Toggle switches
-  document.querySelectorAll('.provider-toggle-input').forEach(toggle => {
-    toggle.addEventListener('change', async (e) => {
+  document.querySelectorAll(".provider-toggle-input").forEach((toggle) => {
+    toggle.addEventListener("change", async (e) => {
       const providerName = e.target.dataset.provider;
       const enabled = e.target.checked;
       await toggleProvider(providerName, enabled);
     });
   });
-  
+
   // Test buttons
-  document.querySelectorAll('.provider-test-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
+  document.querySelectorAll(".provider-test-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
       const providerName = e.currentTarget.dataset.provider;
       await testProvider(providerName, e.currentTarget);
     });
   });
-  
+
   // Add Key buttons - navigate to API Keys tab
-  document.querySelectorAll('.provider-add-key-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  document.querySelectorAll(".provider-add-key-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
       const providerName = e.currentTarget.dataset.provider;
-      console.log(`[Providers] Add key requested for ${providerName}, navigating to API Keys tab`);
-      navigateToSettingsTab('api-keys');
+      console.log(
+        `[Providers] Add key requested for ${providerName}, navigating to API Keys tab`,
+      );
+      navigateToSettingsTab("api-keys");
     });
   });
 }
@@ -18368,40 +19134,50 @@ function setupProviderEventListeners() {
 async function toggleProvider(providerName, enabled) {
   try {
     const response = await fetch(`${API_URL}/api/settings/providers/toggle`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider: providerName, enabled })
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: providerName, enabled }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Failed to toggle provider (status ${response.status})`);
     }
-    
+
     const data = await response.json();
-    
+
     if (data.success) {
-      showToast(`${formatProviderName(providerName)} ${enabled ? 'enabled' : 'disabled'}`, 'success');
+      showToast(
+        `${formatProviderName(providerName)} ${enabled ? "enabled" : "disabled"}`,
+        "success",
+      );
       // Update the provider card UI
-      const card = document.querySelector(`.provider-card[data-provider="${providerName}"]`);
+      const card = document.querySelector(
+        `.provider-card[data-provider="${providerName}"]`,
+      );
       if (card) {
         if (enabled) {
-          card.classList.remove('provider-disabled');
-          card.classList.add('provider-enabled');
+          card.classList.remove("provider-disabled");
+          card.classList.add("provider-enabled");
         } else {
-          card.classList.remove('provider-enabled');
-          card.classList.add('provider-disabled');
+          card.classList.remove("provider-enabled");
+          card.classList.add("provider-disabled");
         }
-        const statusText = card.querySelector('.provider-status span:last-child');
-        if (statusText) statusText.textContent = enabled ? 'Enabled' : 'Disabled';
+        const statusText = card.querySelector(
+          ".provider-status span:last-child",
+        );
+        if (statusText)
+          statusText.textContent = enabled ? "Enabled" : "Disabled";
       }
     } else {
-      throw new Error(data.error || 'Unknown error');
+      throw new Error(data.error || "Unknown error");
     }
   } catch (error) {
     console.error(`[Providers] Error toggling ${providerName}:`, error);
-    showToast(`Failed to toggle provider: ${error.message}`, 'error');
+    showToast(`Failed to toggle provider: ${error.message}`, "error");
     // Revert toggle
-    const toggle = document.querySelector(`.provider-toggle-input[data-provider="${providerName}"]`);
+    const toggle = document.querySelector(
+      `.provider-toggle-input[data-provider="${providerName}"]`,
+    );
     if (toggle) toggle.checked = !enabled;
   }
 }
@@ -18409,30 +19185,34 @@ async function toggleProvider(providerName, enabled) {
 async function testProvider(providerName, button) {
   const originalHTML = button.innerHTML;
   button.disabled = true;
-  button.innerHTML = '<i data-lucide="loader" style="width: 14px; height: 14px; animation: spin 1s linear infinite;"></i> Testing...';
+  button.innerHTML =
+    '<i data-lucide="loader" style="width: 14px; height: 14px; animation: spin 1s linear infinite;"></i> Testing...';
   lucide.createIcons();
-  
+
   try {
     const response = await fetch(`${API_URL}/api/settings/providers/test`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider: providerName })
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: providerName }),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Test request failed (status ${response.status})`);
     }
-    
+
     const data = await response.json();
-    
+
     if (data.success) {
-      showToast(`${formatProviderName(providerName)} test successful`, 'success');
+      showToast(
+        `${formatProviderName(providerName)} test successful`,
+        "success",
+      );
     } else {
-      throw new Error(data.error || 'Test failed');
+      throw new Error(data.error || "Test failed");
     }
   } catch (error) {
     console.error(`[Providers] Error testing ${providerName}:`, error);
-    showToast(`Test failed: ${error.message}`, 'error');
+    showToast(`Test failed: ${error.message}`, "error");
   } finally {
     button.disabled = false;
     button.innerHTML = originalHTML;
@@ -18442,31 +19222,35 @@ async function testProvider(providerName, button) {
 
 function formatProviderName(provider) {
   const nameMap = {
-    'openai': 'OpenAI',
-    'anthropic': 'Anthropic',
-    'google': 'Google',
-    'deepseek': 'DeepSeek',
-    'openrouter': 'OpenRouter',
-    'groq': 'Groq',
-    'together': 'Together AI'
+    openai: "OpenAI",
+    anthropic: "Anthropic",
+    google: "Google",
+    deepseek: "DeepSeek",
+    openrouter: "OpenRouter",
+    groq: "Groq",
+    together: "Together AI",
   };
-  return nameMap[provider] || provider.charAt(0).toUpperCase() + provider.slice(1);
+  return (
+    nameMap[provider] || provider.charAt(0).toUpperCase() + provider.slice(1)
+  );
 }
 
 /**
  * Navigates to a specific settings tab
  */
 function navigateToSettingsTab(tabName) {
-  console.log('[Settings] Navigating to tab:', tabName);
-  
+  console.log("[Settings] Navigating to tab:", tabName);
+
   // Find the tab button with matching data-tab attribute
-  const tabButton = document.querySelector(`.settings-nav-item[data-tab="${tabName}"]`);
-  
+  const tabButton = document.querySelector(
+    `.settings-nav-item[data-tab="${tabName}"]`,
+  );
+
   if (tabButton) {
     // Simulate a click to trigger the existing tab switching logic
     tabButton.click();
   } else {
-    console.warn('[Settings] Tab not found:', tabName);
+    console.warn("[Settings] Tab not found:", tabName);
   }
 }
 
@@ -18474,11 +19258,11 @@ function navigateToSettingsTab(tabName) {
  * Sets up cross-navigation links between settings pages
  */
 function setupSettingsCrossLinks() {
-  console.log('[Settings] Setting up cross-navigation links');
-  
+  console.log("[Settings] Setting up cross-navigation links");
+
   // Find all links with data-goto-tab attribute
-  document.querySelectorAll('[data-goto-tab]').forEach(link => {
-    link.addEventListener('click', (e) => {
+  document.querySelectorAll("[data-goto-tab]").forEach((link) => {
+    link.addEventListener("click", (e) => {
       e.preventDefault();
       const targetTab = e.currentTarget.dataset.gotoTab;
       navigateToSettingsTab(targetTab);
@@ -18556,14 +19340,41 @@ async function loadRAGSettings() {
         const el = document.getElementById(id);
         const display = document.getElementById(valId);
         if (el) el.value = value;
-        if (display) display.textContent = decimals > 0 ? parseFloat(value).toFixed(decimals) : value;
+        if (display)
+          display.textContent =
+            decimals > 0 ? parseFloat(value).toFixed(decimals) : value;
       };
-      setSlider("rag-n-results",            "rag-n-results-value",            s.n_results            ?? 5,    0);
-      setSlider("rag-direct-threshold",     "rag-direct-threshold-value",     s.direct_threshold     ?? 0.72, 2);
-      setSlider("rag-adjacent-threshold",   "rag-adjacent-threshold-value",   s.adjacent_threshold   ?? 0.50, 2);
-      setSlider("rag-domain-boost",         "rag-domain-boost-value",         s.domain_match_boost   ?? 0.10, 2);
-      setSlider("rag-cross-domain-penalty", "rag-cross-domain-penalty-value", s.cross_domain_penalty ?? 0.15, 2);
-      setSlider("rag-complexity-score",     "rag-complexity-score-value",     s.min_complexity_score ?? 0.60, 2);
+      setSlider("rag-n-results", "rag-n-results-value", s.n_results ?? 5, 0);
+      setSlider(
+        "rag-direct-threshold",
+        "rag-direct-threshold-value",
+        s.direct_threshold ?? 0.72,
+        2,
+      );
+      setSlider(
+        "rag-adjacent-threshold",
+        "rag-adjacent-threshold-value",
+        s.adjacent_threshold ?? 0.5,
+        2,
+      );
+      setSlider(
+        "rag-domain-boost",
+        "rag-domain-boost-value",
+        s.domain_match_boost ?? 0.1,
+        2,
+      );
+      setSlider(
+        "rag-cross-domain-penalty",
+        "rag-cross-domain-penalty-value",
+        s.cross_domain_penalty ?? 0.15,
+        2,
+      );
+      setSlider(
+        "rag-complexity-score",
+        "rag-complexity-score-value",
+        s.min_complexity_score ?? 0.6,
+        2,
+      );
       const decomp = document.getElementById("rag-decomposition-enabled");
       if (decomp) decomp.checked = s.decomposition_enabled !== false;
       // Spec 08
@@ -18581,15 +19392,17 @@ async function saveRAGSettings() {
   try {
     const getVal = (id) => document.getElementById(id)?.value;
     const payload = {
-      n_results:            parseInt(getVal("rag-n-results"), 10),
-      direct_threshold:     parseFloat(getVal("rag-direct-threshold")),
-      adjacent_threshold:   parseFloat(getVal("rag-adjacent-threshold")),
-      domain_match_boost:   parseFloat(getVal("rag-domain-boost")),
+      n_results: parseInt(getVal("rag-n-results"), 10),
+      direct_threshold: parseFloat(getVal("rag-direct-threshold")),
+      adjacent_threshold: parseFloat(getVal("rag-adjacent-threshold")),
+      domain_match_boost: parseFloat(getVal("rag-domain-boost")),
       cross_domain_penalty: parseFloat(getVal("rag-cross-domain-penalty")),
       min_complexity_score: parseFloat(getVal("rag-complexity-score")),
-      decomposition_enabled: document.getElementById("rag-decomposition-enabled")?.checked !== false,
+      decomposition_enabled:
+        document.getElementById("rag-decomposition-enabled")?.checked !== false,
       // Spec 08
-      bm25_persist: document.getElementById("rag-bm25-persist-enabled")?.checked !== false,
+      bm25_persist:
+        document.getElementById("rag-bm25-persist-enabled")?.checked !== false,
     };
     const response = await fetch(`${API_URL}/api/settings/rag`, {
       method: "POST",
@@ -18599,12 +19412,17 @@ async function saveRAGSettings() {
     if (!response.ok) throw new Error("Failed to save RAG settings");
     const data = await response.json();
     if (data.success) {
-      showToast("RAG settings saved. Changes take effect on next restart.", "success");
+      showToast(
+        "RAG settings saved. Changes take effect on next restart.",
+        "success",
+      );
       if (statusEl) {
         statusEl.textContent = "Saved successfully.";
         statusEl.style.display = "block";
         statusEl.style.color = "#81c784";
-        setTimeout(() => { statusEl.style.display = "none"; }, 3000);
+        setTimeout(() => {
+          statusEl.style.display = "none";
+        }, 3000);
       }
     } else {
       throw new Error(data.message || "Unknown error");
@@ -18659,10 +19477,16 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Clear field-error highlights when user edits a field
-  ["mental-model-id", "mental-model-name", "mental-model-description",
-   "mental-model-principles", "mental-model-prompt"].forEach((id) => {
+  [
+    "mental-model-id",
+    "mental-model-name",
+    "mental-model-description",
+    "mental-model-principles",
+    "mental-model-prompt",
+  ].forEach((id) => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener("input", () => el.classList.remove("field-error"));
+    if (el)
+      el.addEventListener("input", () => el.classList.remove("field-error"));
   });
 
   // Template selection
@@ -19141,10 +19965,7 @@ async function openChatOverlay(conversationId) {
   // Show overlay
   overlay.classList.remove("hidden");
 
-  console.log(
-    "[Chat] Overlay opened for conversation:",
-    conversationId,
-  );
+  console.log("[Chat] Overlay opened for conversation:", conversationId);
 }
 
 /**
@@ -19221,88 +20042,91 @@ function setupSidebarResize() {
   // Double-rAF ensures DOM is fully painted before attaching resize listeners
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-    const resizeHandle = document.getElementById("sidebar-resize-handle");
-    const conversationsSection = document.getElementById(
-      "chat-conversations-section",
-    );
-    const activeChatSection = document.getElementById("chat-active-section");
+      const resizeHandle = document.getElementById("sidebar-resize-handle");
+      const conversationsSection = document.getElementById(
+        "chat-conversations-section",
+      );
+      const activeChatSection = document.getElementById("chat-active-section");
 
-    console.log("[Sidebar Resize] Elements found:", {
-      resizeHandle: !!resizeHandle,
-      conversationsSection: !!conversationsSection,
-      activeChatSection: !!activeChatSection,
-    });
+      console.log("[Sidebar Resize] Elements found:", {
+        resizeHandle: !!resizeHandle,
+        conversationsSection: !!conversationsSection,
+        activeChatSection: !!activeChatSection,
+      });
 
-    if (!resizeHandle || !conversationsSection || !activeChatSection) {
-      console.error("[Sidebar Resize] Required elements not found!");
-      return;
-    }
+      if (!resizeHandle || !conversationsSection || !activeChatSection) {
+        console.error("[Sidebar Resize] Required elements not found!");
+        return;
+      }
 
-    let isResizing = false;
-    let startY = 0;
-    let startHeight = 0;
+      let isResizing = false;
+      let startY = 0;
+      let startHeight = 0;
 
-    // Load saved height from localStorage
-    const savedHeight = localStorage.getItem("conversations-section-height");
-    if (savedHeight) {
-      console.log("[Sidebar Resize] Loading saved height:", savedHeight);
-      conversationsSection.style.maxHeight = savedHeight + "px";
-      conversationsSection.style.height = savedHeight + "px";
-    }
+      // Load saved height from localStorage
+      const savedHeight = localStorage.getItem("conversations-section-height");
+      if (savedHeight) {
+        console.log("[Sidebar Resize] Loading saved height:", savedHeight);
+        conversationsSection.style.maxHeight = savedHeight + "px";
+        conversationsSection.style.height = savedHeight + "px";
+      }
 
-    // Use direct property assignment instead of addEventListener (works better in Electron)
-    resizeHandle.onmousedown = function (e) {
-      console.log("[Sidebar Resize] Mouse down - starting resize");
-      isResizing = true;
-      startY = e.clientY;
-      startHeight = conversationsSection.offsetHeight;
+      // Use direct property assignment instead of addEventListener (works better in Electron)
+      resizeHandle.onmousedown = function (e) {
+        console.log("[Sidebar Resize] Mouse down - starting resize");
+        isResizing = true;
+        startY = e.clientY;
+        startHeight = conversationsSection.offsetHeight;
 
-      resizeHandle.classList.add("dragging");
-      document.body.style.cursor = "ns-resize";
-      document.body.style.userSelect = "none";
+        resizeHandle.classList.add("dragging");
+        document.body.style.cursor = "ns-resize";
+        document.body.style.userSelect = "none";
 
-      e.preventDefault();
-      e.stopPropagation();
-      return false;
-    };
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      };
 
-    // Mouse move - perform resize
-    document.onmousemove = function (e) {
-      if (!isResizing) return;
+      // Mouse move - perform resize
+      document.onmousemove = function (e) {
+        if (!isResizing) return;
 
-      const deltaY = e.clientY - startY;
-      const newHeight = startHeight + deltaY;
+        const deltaY = e.clientY - startY;
+        const newHeight = startHeight + deltaY;
 
-      // Enforce min/max constraints
-      const minHeight = 150; // Minimum height for conversations section
-      const maxHeight = window.innerHeight - 400; // Leave space for active chat
-      const clampedHeight = Math.max(minHeight, Math.min(newHeight, maxHeight));
+        // Enforce min/max constraints
+        const minHeight = 150; // Minimum height for conversations section
+        const maxHeight = window.innerHeight - 400; // Leave space for active chat
+        const clampedHeight = Math.max(
+          minHeight,
+          Math.min(newHeight, maxHeight),
+        );
 
-      conversationsSection.style.maxHeight = clampedHeight + "px";
-      conversationsSection.style.height = clampedHeight + "px";
+        conversationsSection.style.maxHeight = clampedHeight + "px";
+        conversationsSection.style.height = clampedHeight + "px";
 
-      e.preventDefault();
-      return false;
-    };
+        e.preventDefault();
+        return false;
+      };
 
-    // Mouse up - end resize
-    document.onmouseup = function (e) {
-      if (!isResizing) return;
+      // Mouse up - end resize
+      document.onmouseup = function (e) {
+        if (!isResizing) return;
 
-      console.log("[Sidebar Resize] Mouse up - ending resize");
-      isResizing = false;
-      resizeHandle.classList.remove("dragging");
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
+        console.log("[Sidebar Resize] Mouse up - ending resize");
+        isResizing = false;
+        resizeHandle.classList.remove("dragging");
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
 
-      // Save height to localStorage
-      const currentHeight = conversationsSection.offsetHeight;
-      localStorage.setItem("conversations-section-height", currentHeight);
+        // Save height to localStorage
+        const currentHeight = conversationsSection.offsetHeight;
+        localStorage.setItem("conversations-section-height", currentHeight);
 
-      console.log("[Sidebar Resize] Saved height:", currentHeight);
-    };
+        console.log("[Sidebar Resize] Saved height:", currentHeight);
+      };
 
-    console.log("[Sidebar Resize] Initialized successfully");
+      console.log("[Sidebar Resize] Initialized successfully");
     });
   });
 }
@@ -19321,13 +20145,14 @@ function getMaxChatPanelWidth(overrides = {}) {
   const agentsSidebar = document.getElementById("agents-sidebar");
   if (!layout || !leftSidebar || !agentsSidebar) return 800;
   const layoutWidth = layout.offsetWidth;
-  const leftWidth =
-    overrides.leftWidth ?? leftSidebar.offsetWidth ?? 0;
-  const agentsWidth =
-    overrides.agentsWidth ?? agentsSidebar.offsetWidth ?? 0;
+  const leftWidth = overrides.leftWidth ?? leftSidebar.offsetWidth ?? 0;
+  const agentsWidth = overrides.agentsWidth ?? agentsSidebar.offsetWidth ?? 0;
   const mainMin = 400;
   const handleWidth = 4;
-  return Math.max(300, layoutWidth - leftWidth - agentsWidth - mainMin - handleWidth);
+  return Math.max(
+    300,
+    layoutWidth - leftWidth - agentsWidth - mainMin - handleWidth,
+  );
 }
 
 /**
@@ -19357,64 +20182,64 @@ function setupCenterResizeHandle() {
   // Double-rAF ensures DOM is painted before attaching resize listeners
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-    const resizeHandle = document.getElementById("center-resize-handle");
-    const chatPanel = document.getElementById("chat-panel");
-    const mainContent = document.getElementById("main-content-area");
+      const resizeHandle = document.getElementById("center-resize-handle");
+      const chatPanel = document.getElementById("chat-panel");
+      const mainContent = document.getElementById("main-content-area");
 
-    if (!resizeHandle || !chatPanel || !mainContent) return;
+      if (!resizeHandle || !chatPanel || !mainContent) return;
 
-    let isResizing = false;
-    let startX = 0;
-    let startWidth = 0;
+      let isResizing = false;
+      let startX = 0;
+      let startWidth = 0;
 
-    const minWidth = 300;
+      const minWidth = 300;
 
-    const savedWidth = localStorage.getItem("chat-panel-width");
-    if (savedWidth) {
-      const w = parseInt(savedWidth, 10);
-      const maxW = getMaxChatPanelWidth();
-      if (w >= minWidth && w <= maxW) {
-        chatPanel.style.width = w + "px";
-        chatPanel.style.flex = "0 0 " + w + "px";
+      const savedWidth = localStorage.getItem("chat-panel-width");
+      if (savedWidth) {
+        const w = parseInt(savedWidth, 10);
+        const maxW = getMaxChatPanelWidth();
+        if (w >= minWidth && w <= maxW) {
+          chatPanel.style.width = w + "px";
+          chatPanel.style.flex = "0 0 " + w + "px";
+        }
       }
-    }
 
-    const onMouseMove = (e) => {
-      if (!isResizing) return;
-      const deltaX = e.clientX - startX;
-      // Handle is at left edge of chat panel. Drag right = chat panel narrower.
-      const newWidth = startWidth - deltaX;
-      const maxWidth = getMaxChatPanelWidth();
-      const clamped = Math.max(minWidth, Math.min(newWidth, maxWidth));
-      chatPanel.style.width = clamped + "px";
-      chatPanel.style.flex = "0 0 " + clamped + "px";
-      e.preventDefault();
-      e.stopPropagation();
-    };
+      const onMouseMove = (e) => {
+        if (!isResizing) return;
+        const deltaX = e.clientX - startX;
+        // Handle is at left edge of chat panel. Drag right = chat panel narrower.
+        const newWidth = startWidth - deltaX;
+        const maxWidth = getMaxChatPanelWidth();
+        const clamped = Math.max(minWidth, Math.min(newWidth, maxWidth));
+        chatPanel.style.width = clamped + "px";
+        chatPanel.style.flex = "0 0 " + clamped + "px";
+        e.preventDefault();
+        e.stopPropagation();
+      };
 
-    const onMouseUp = () => {
-      if (!isResizing) return;
-      isResizing = false;
-      resizeHandle.classList.remove("dragging");
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      const w = chatPanel.offsetWidth;
-      localStorage.setItem("chat-panel-width", String(w));
-    };
+      const onMouseUp = () => {
+        if (!isResizing) return;
+        isResizing = false;
+        resizeHandle.classList.remove("dragging");
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+        const w = chatPanel.offsetWidth;
+        localStorage.setItem("chat-panel-width", String(w));
+      };
 
-    resizeHandle.onmousedown = (e) => {
-      isResizing = true;
-      startX = e.clientX;
-      startWidth = chatPanel.offsetWidth;
-      resizeHandle.classList.add("dragging");
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
-      e.preventDefault();
-    };
+      resizeHandle.onmousedown = (e) => {
+        isResizing = true;
+        startX = e.clientX;
+        startWidth = chatPanel.offsetWidth;
+        resizeHandle.classList.add("dragging");
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+        e.preventDefault();
+      };
     });
   });
 }
@@ -20114,18 +20939,21 @@ function updateTopicsUI(topics) {
 
   if (topics.length === 0) {
     topicsContent.innerHTML = "";
-    topicsContent.appendChild(EmptyState.render({
-      icon: "book-open",
-      title: "No learning topics tracked",
-      description: "Use the Professor persona to start a learning path, or add topics manually.",
-      actionLabel: "Start Learning",
-      onAction: () => {
-        const chatInput = document.getElementById("chat-input");
-        if (chatInput) chatInput.focus();
-        showView("chat");
-      },
-      size: "small",
-    }));
+    topicsContent.appendChild(
+      EmptyState.render({
+        icon: "book-open",
+        title: "No learning topics tracked",
+        description:
+          "Use the Professor persona to start a learning path, or add topics manually.",
+        actionLabel: "Start Learning",
+        onAction: () => {
+          const chatInput = document.getElementById("chat-input");
+          if (chatInput) chatInput.focus();
+          showView("chat");
+        },
+        size: "small",
+      }),
+    );
     return;
   }
 
@@ -20422,8 +21250,7 @@ async function loadTopicsBrowser() {
   } catch (error) {
     console.error("[Learning] Error loading topics browser:", error);
     if (listEl) {
-      listEl.innerHTML =
-        '<p class="no-topics">Failed to load topics</p>';
+      listEl.innerHTML = '<p class="no-topics">Failed to load topics</p>';
     }
   }
 }
@@ -20465,9 +21292,7 @@ function setupTopicsFilterHandlers() {
     }
 
     if (mastery) {
-      filtered = filtered.filter(
-        (t) => t.mastery_level === parseInt(mastery),
-      );
+      filtered = filtered.filter((t) => t.mastery_level === parseInt(mastery));
     }
 
     renderTopicsBrowser(filtered);
@@ -20490,12 +21315,14 @@ function renderTopicsBrowser(topics) {
 
   if (topics.length === 0) {
     listEl.innerHTML = "";
-    listEl.appendChild(EmptyState.render({
-      icon: "search",
-      title: "No topics match the current filters",
-      description: "Try adjusting your search or filters.",
-      size: "small",
-    }));
+    listEl.appendChild(
+      EmptyState.render({
+        icon: "search",
+        title: "No topics match the current filters",
+        description: "Try adjusting your search or filters.",
+        size: "small",
+      }),
+    );
     return;
   }
 
@@ -20511,12 +21338,19 @@ function renderTopicsBrowser(topics) {
         <span class="topic-domain">${escapeHtml(topic.domain || "General")}</span>
         <span class="topic-updated">${formatDate(topic.last_reviewed)}</span>
       </div>
-      ${topic.concepts && topic.concepts.length > 0 ? `
+      ${
+        topic.concepts && topic.concepts.length > 0
+          ? `
       <div class="topic-concepts">
-        ${topic.concepts.slice(0, 3).map((c) => `<span class="concept-tag">${escapeHtml(c)}</span>`).join("")}
+        ${topic.concepts
+          .slice(0, 3)
+          .map((c) => `<span class="concept-tag">${escapeHtml(c)}</span>`)
+          .join("")}
         ${topic.concepts.length > 3 ? `<span class="concept-tag concept-more">+${topic.concepts.length - 3}</span>` : ""}
       </div>
-      ` : ""}
+      `
+          : ""
+      }
     </div>
   `,
     )
@@ -20679,12 +21513,15 @@ function updateLearningNotesUI(notes) {
 
   if (notes.length === 0) {
     notesContainer.innerHTML = "";
-    notesContainer.appendChild(EmptyState.render({
-      icon: "file-text",
-      title: "No learning notes yet",
-      description: "Complete a teaching session and create notes to capture your learning.",
-      size: "small",
-    }));
+    notesContainer.appendChild(
+      EmptyState.render({
+        icon: "file-text",
+        title: "No learning notes yet",
+        description:
+          "Complete a teaching session and create notes to capture your learning.",
+        size: "small",
+      }),
+    );
     return;
   }
 
@@ -20742,7 +21579,7 @@ function renderGraphSidebar() {
   return `
     <div id="graph-sidebar-browse" class="graph-sidebar-panel">
       <div id="graph-browse-list" style="flex: 1; overflow-y: auto; padding: 0 12px;">
-        ${SkeletonLoader.forView('graph')}
+        ${SkeletonLoader.forView("graph")}
       </div>
     </div>
     <div id="graph-sidebar-garden" class="graph-sidebar-panel hidden">
@@ -20773,7 +21610,7 @@ function renderGraphSidebar() {
             <button class="garden-tab" data-tab="enrichment">Enrichment</button>
           </div>
           <div id="garden-suggestions-content" style="margin-top: 12px;">
-            ${SkeletonLoader.forView('garden-suggestions')}
+            ${SkeletonLoader.forView("garden-suggestions")}
           </div>
         </div>
         
@@ -20846,8 +21683,8 @@ function renderGraphSidebar() {
       </div>
     </div>
     ${renderLowerPanel("graph", [
-      {id: "filters", label: "Filters"},
-      {id: "details", label: "Details"}
+      { id: "filters", label: "Filters" },
+      { id: "details", label: "Details" },
     ])}
   `;
 }
@@ -20859,28 +21696,35 @@ function renderGraphSidebar() {
  * @returns {string} HTML string for the lower panel
  */
 function renderLowerPanel(view, tabs) {
-  const collapsed = localStorage.getItem(`lowerPanel_${view}_collapsed`) === 'true';
-  const height = localStorage.getItem(`lowerPanel_${view}_height`) || '250';
-  const activeTab = localStorage.getItem(`lowerPanel_${view}_activeTab`) || tabs[0]?.id || 'filters';
-  
-  const tabsHTML = tabs.map(tab => 
-    `<button class="lower-panel-tab ${tab.id === activeTab ? 'active' : ''}" data-tab="${tab.id}">
+  const collapsed =
+    localStorage.getItem(`lowerPanel_${view}_collapsed`) === "true";
+  const height = localStorage.getItem(`lowerPanel_${view}_height`) || "250";
+  const activeTab =
+    localStorage.getItem(`lowerPanel_${view}_activeTab`) ||
+    tabs[0]?.id ||
+    "filters";
+
+  const tabsHTML = tabs
+    .map(
+      (tab) =>
+        `<button class="lower-panel-tab ${tab.id === activeTab ? "active" : ""}" data-tab="${tab.id}">
       ${tab.label}
-    </button>`
-  ).join('');
-  
+    </button>`,
+    )
+    .join("");
+
   return `
-    <div class="lower-panel" data-view="${view}" data-collapsed="${collapsed}" style="height: ${collapsed ? '32' : height}px;">
+    <div class="lower-panel" data-view="${view}" data-collapsed="${collapsed}" style="height: ${collapsed ? "32" : height}px;">
       <div class="lower-panel-header">
-        <div class="lower-panel-handle" title="${collapsed ? 'Expand panel' : 'Collapse panel'}">
-          <i data-lucide="${collapsed ? 'chevron-up' : 'chevron-down'}" style="width: 14px; height: 14px;"></i>
+        <div class="lower-panel-handle" title="${collapsed ? "Expand panel" : "Collapse panel"}">
+          <i data-lucide="${collapsed ? "chevron-up" : "chevron-down"}" style="width: 14px; height: 14px;"></i>
         </div>
         <div class="lower-panel-resize-handle"></div>
       </div>
-      <div class="lower-panel-ribbon" style="${collapsed ? 'display: none;' : ''}">
+      <div class="lower-panel-ribbon" style="${collapsed ? "display: none;" : ""}">
         ${tabsHTML}
       </div>
-      <div class="lower-panel-content" data-active-tab="${activeTab}" style="${collapsed ? 'display: none;' : ''}">
+      <div class="lower-panel-content" data-active-tab="${activeTab}" style="${collapsed ? "display: none;" : ""}">
         <!-- Tab content will be rendered here -->
       </div>
     </div>
@@ -20897,105 +21741,108 @@ function setupLowerPanel(view) {
     console.warn(`[LowerPanel] Panel not found for view: ${view}`);
     return;
   }
-  
-  const header = panel.querySelector('.lower-panel-header');
-  const handle = panel.querySelector('.lower-panel-handle');
-  const resizeHandle = panel.querySelector('.lower-panel-resize-handle');
-  const ribbon = panel.querySelector('.lower-panel-ribbon');
-  const content = panel.querySelector('.lower-panel-content');
-  const tabs = panel.querySelectorAll('.lower-panel-tab');
-  
+
+  const header = panel.querySelector(".lower-panel-header");
+  const handle = panel.querySelector(".lower-panel-handle");
+  const resizeHandle = panel.querySelector(".lower-panel-resize-handle");
+  const ribbon = panel.querySelector(".lower-panel-ribbon");
+  const content = panel.querySelector(".lower-panel-content");
+  const tabs = panel.querySelectorAll(".lower-panel-tab");
+
   // Toggle collapse/expand on header click
-  handle.addEventListener('click', (e) => {
+  handle.addEventListener("click", (e) => {
     e.stopPropagation();
-    const isCollapsed = panel.dataset.collapsed === 'true';
+    const isCollapsed = panel.dataset.collapsed === "true";
     const newCollapsed = !isCollapsed;
-    
+
     panel.dataset.collapsed = newCollapsed;
     localStorage.setItem(`lowerPanel_${view}_collapsed`, newCollapsed);
-    
+
     if (newCollapsed) {
       // Collapse
       const currentHeight = panel.offsetHeight;
       localStorage.setItem(`lowerPanel_${view}_height`, currentHeight);
-      panel.style.height = '32px';
-      ribbon.style.display = 'none';
-      content.style.display = 'none';
-      handle.innerHTML = '<i data-lucide="chevron-up" style="width: 14px; height: 14px;"></i>';
-      handle.title = 'Expand panel';
+      panel.style.height = "32px";
+      ribbon.style.display = "none";
+      content.style.display = "none";
+      handle.innerHTML =
+        '<i data-lucide="chevron-up" style="width: 14px; height: 14px;"></i>';
+      handle.title = "Expand panel";
     } else {
       // Expand
-      const savedHeight = localStorage.getItem(`lowerPanel_${view}_height`) || '250';
+      const savedHeight =
+        localStorage.getItem(`lowerPanel_${view}_height`) || "250";
       panel.style.height = `${savedHeight}px`;
-      ribbon.style.display = '';
-      content.style.display = '';
-      handle.innerHTML = '<i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>';
-      handle.title = 'Collapse panel';
+      ribbon.style.display = "";
+      content.style.display = "";
+      handle.innerHTML =
+        '<i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>';
+      handle.title = "Collapse panel";
     }
-    
+
     // Re-render icons
-    if (typeof lucide !== 'undefined') {
+    if (typeof lucide !== "undefined") {
       lucide.createIcons();
     }
   });
-  
+
   // Drag to resize panel height — guard against stacking listeners on re-entry
   if (!panel._resizeListenersAttached) {
     panel._resizeListenersAttached = true;
     let isResizing = false;
     let startY = 0;
     let startHeight = 0;
-    
-    resizeHandle.addEventListener('mousedown', (e) => {
-      if (panel.dataset.collapsed === 'true') return;
+
+    resizeHandle.addEventListener("mousedown", (e) => {
+      if (panel.dataset.collapsed === "true") return;
       isResizing = true;
       startY = e.clientY;
       startHeight = panel.offsetHeight;
-      document.body.style.cursor = 'ns-resize';
-      document.body.style.userSelect = 'none';
+      document.body.style.cursor = "ns-resize";
+      document.body.style.userSelect = "none";
       e.preventDefault();
     });
-    
+
     const onMouseMove = (e) => {
       if (!isResizing) return;
       const deltaY = startY - e.clientY; // Inverted because panel grows upward
       const newHeight = Math.max(100, Math.min(600, startHeight + deltaY));
       panel.style.height = `${newHeight}px`;
     };
-    
+
     const onMouseUp = () => {
       if (!isResizing) return;
       isResizing = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
       localStorage.setItem(`lowerPanel_${view}_height`, panel.offsetHeight);
     };
-    
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
   }
-  
+
   // Tab switching
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
       const tabId = tab.dataset.tab;
-      
+
       // Update active tab
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      
+      tabs.forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+
       // Update content area
       content.dataset.activeTab = tabId;
       localStorage.setItem(`lowerPanel_${view}_activeTab`, tabId);
-      
+
       // Trigger tab content render (will be handled by specific view implementations)
-      const event = new CustomEvent('lower-panel-tab-change', {
-        detail: { view, tabId }
+      const event = new CustomEvent("lower-panel-tab-change", {
+        detail: { view, tabId },
       });
       document.dispatchEvent(event);
     });
   });
-  
+
   console.log(`[LowerPanel] Setup complete for view: ${view}`);
 }
 
@@ -21006,15 +21853,15 @@ function setupLowerPanel(view) {
  * Called each time the notes sidebar is rendered.
  */
 function setupNotesBrowseToolbar() {
-  const searchInput = document.getElementById('notes-browse-search');
-  const viewBtns = document.querySelectorAll('.notes-view-btn');
-  
+  const searchInput = document.getElementById("notes-browse-search");
+  const viewBtns = document.querySelectorAll(".notes-view-btn");
+
   if (searchInput) {
     // Restore previous query
     if (notesBrowseFilters.q) searchInput.value = notesBrowseFilters.q;
-    
+
     let searchDebounce;
-    searchInput.addEventListener('input', () => {
+    searchInput.addEventListener("input", () => {
       clearTimeout(searchDebounce);
       searchDebounce = setTimeout(() => {
         notesBrowseFilters.q = searchInput.value.trim() || null;
@@ -21022,20 +21869,20 @@ function setupNotesBrowseToolbar() {
       }, 300);
     });
   }
-  
-  viewBtns.forEach(btn => {
+
+  viewBtns.forEach((btn) => {
     // Restore active state
-    btn.classList.toggle('active', btn.dataset.view === notesViewMode);
-    
-    btn.addEventListener('click', () => {
-      viewBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+    btn.classList.toggle("active", btn.dataset.view === notesViewMode);
+
+    btn.addEventListener("click", () => {
+      viewBtns.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
       notesViewMode = btn.dataset.view;
-      localStorage.setItem('notes-view-mode', notesViewMode);
+      localStorage.setItem("notes-view-mode", notesViewMode);
       applyNotesBrowseFilters();
     });
   });
-  
+
   // Render active filter chips
   renderNotesActiveFilters();
 }
@@ -21044,34 +21891,58 @@ function setupNotesBrowseToolbar() {
  * Render active filter chips above the browse list
  */
 function renderNotesActiveFilters() {
-  const container = document.getElementById('notes-active-filters');
+  const container = document.getElementById("notes-active-filters");
   if (!container) return;
-  
+
   const chips = [];
-  if (notesBrowseFilters.domain) chips.push({ key: 'domain', label: `Domain: ${notesBrowseFilters.domain}` });
-  if (notesBrowseFilters.type) chips.push({ key: 'type', label: `Type: ${notesBrowseFilters.type}` });
+  if (notesBrowseFilters.domain)
+    chips.push({
+      key: "domain",
+      label: `Domain: ${notesBrowseFilters.domain}`,
+    });
+  if (notesBrowseFilters.type)
+    chips.push({ key: "type", label: `Type: ${notesBrowseFilters.type}` });
   if (notesBrowseFilters.maturity) {
-    const matLabels = { 10: 'Seedling', 20: 'Growing', 30: 'Evergreen' };
-    chips.push({ key: 'maturity', label: matLabels[notesBrowseFilters.maturity] || `Maturity: ${notesBrowseFilters.maturity}` });
+    const matLabels = { 10: "Seedling", 20: "Growing", 30: "Evergreen" };
+    chips.push({
+      key: "maturity",
+      label:
+        matLabels[notesBrowseFilters.maturity] ||
+        `Maturity: ${notesBrowseFilters.maturity}`,
+    });
   }
-  if (notesBrowseFilters.connectionStatus) chips.push({ key: 'connectionStatus', label: `Status: ${notesBrowseFilters.connectionStatus}` });
-  if (notesBrowseFilters.tag) chips.push({ key: 'tag', label: `#${notesBrowseFilters.tag}` });
-  if (notesBrowseFilters.sort && notesBrowseFilters.sort !== 'recent') chips.push({ key: 'sort', label: `Sort: ${notesBrowseFilters.sort}`, noClear: true });
-  
+  if (notesBrowseFilters.connectionStatus)
+    chips.push({
+      key: "connectionStatus",
+      label: `Status: ${notesBrowseFilters.connectionStatus}`,
+    });
+  if (notesBrowseFilters.tag)
+    chips.push({ key: "tag", label: `#${notesBrowseFilters.tag}` });
+  if (notesBrowseFilters.sort && notesBrowseFilters.sort !== "recent")
+    chips.push({
+      key: "sort",
+      label: `Sort: ${notesBrowseFilters.sort}`,
+      noClear: true,
+    });
+
   if (chips.length === 0) {
-    container.innerHTML = '';
+    container.innerHTML = "";
     return;
   }
-  
-  container.innerHTML = chips.map(chip => `
+
+  container.innerHTML = chips
+    .map(
+      (chip) => `
     <span class="notes-filter-chip" data-filter-key="${chip.key}">
       ${escapeHtml(chip.label)}
-      ${!chip.noClear ? `<button class="notes-filter-chip-remove" data-filter-key="${chip.key}" aria-label="Remove filter">×</button>` : ''}
+      ${!chip.noClear ? `<button class="notes-filter-chip-remove" data-filter-key="${chip.key}" aria-label="Remove filter">×</button>` : ""}
     </span>
-  `).join('');
-  
-  container.querySelectorAll('.notes-filter-chip-remove').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  `,
+    )
+    .join("");
+
+  container.querySelectorAll(".notes-filter-chip-remove").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const key = btn.dataset.filterKey;
       notesBrowseFilters[key] = null;
@@ -21087,19 +21958,19 @@ function renderNotesActiveFilters() {
  * Respects the current view mode (list / grouped / card).
  */
 async function applyNotesBrowseFilters() {
-  const container = document.querySelector('#notes-browse-list');
+  const container = document.querySelector("#notes-browse-list");
   if (!container || !window.notesManager) return;
-  
+
   renderNotesActiveFilters();
-  
-  if (notesViewMode === 'grouped') {
+
+  if (notesViewMode === "grouped") {
     await renderNotesDomainGrouped(container);
-  } else if (notesViewMode === 'card') {
+  } else if (notesViewMode === "card") {
     await renderNotesCardView(container);
   } else {
     await window.notesManager.updateBrowseList(container, {
       ...notesBrowseFilters,
-      onItemClick: (itemEl, item) => window.notesManager.openNote(item.id)
+      onItemClick: (itemEl, item) => window.notesManager.openNote(item.id),
     });
   }
 }
@@ -21108,103 +21979,124 @@ async function applyNotesBrowseFilters() {
  * Render notes grouped by domain in collapsible sections
  */
 async function renderNotesDomainGrouped(container) {
-  container.innerHTML = '<div style="padding: 16px; text-align: center; color: #808080; font-size: 11px;">Loading...</div>';
-  
+  container.innerHTML =
+    '<div style="padding: 16px; text-align: center; color: #808080; font-size: 11px;">Loading...</div>';
+
   try {
-    const params = new URLSearchParams({ limit: '500', sort: notesBrowseFilters.sort || 'recent' });
-    if (notesBrowseFilters.q) params.append('q', notesBrowseFilters.q);
-    if (notesBrowseFilters.type) params.append('type', notesBrowseFilters.type);
-    if (notesBrowseFilters.maturity) params.append('maturity', notesBrowseFilters.maturity);
-    if (notesBrowseFilters.connectionStatus) params.append('connection_status', notesBrowseFilters.connectionStatus);
-    if (notesBrowseFilters.tag) params.append('tag', notesBrowseFilters.tag);
+    const params = new URLSearchParams({
+      limit: "500",
+      sort: notesBrowseFilters.sort || "recent",
+    });
+    if (notesBrowseFilters.q) params.append("q", notesBrowseFilters.q);
+    if (notesBrowseFilters.type) params.append("type", notesBrowseFilters.type);
+    if (notesBrowseFilters.maturity)
+      params.append("maturity", notesBrowseFilters.maturity);
+    if (notesBrowseFilters.connectionStatus)
+      params.append("connection_status", notesBrowseFilters.connectionStatus);
+    if (notesBrowseFilters.tag) params.append("tag", notesBrowseFilters.tag);
     // If domain filter active in grouped mode, still show only that domain
-    if (notesBrowseFilters.domain) params.append('domain', notesBrowseFilters.domain);
-    
-    const response = await fetch(`http://127.0.0.1:11436/polly/graph/list?${params.toString()}`);
+    if (notesBrowseFilters.domain)
+      params.append("domain", notesBrowseFilters.domain);
+
+    const response = await fetch(
+      `http://127.0.0.1:11436/polly/graph/list?${params.toString()}`,
+    );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     const items = data.items || [];
-    
+
     if (items.length === 0) {
-      container.innerHTML = '<div style="padding: 24px; text-align: center; color: #808080; font-size: 13px;">No notes found</div>';
+      container.innerHTML =
+        '<div style="padding: 24px; text-align: center; color: #808080; font-size: 13px;">No notes found</div>';
       return;
     }
-    
+
     // Group by primary_domain
     const groups = {};
-    items.forEach(item => {
-      const domain = item.primary_domain || 'Uncategorized';
+    items.forEach((item) => {
+      const domain = item.primary_domain || "Uncategorized";
       if (!groups[domain]) groups[domain] = [];
       groups[domain].push(item);
     });
-    
+
     const domainOrder = Object.keys(groups).sort((a, b) => {
-      if (a === 'Uncategorized') return 1;
-      if (b === 'Uncategorized') return -1;
+      if (a === "Uncategorized") return 1;
+      if (b === "Uncategorized") return -1;
       return groups[b].length - groups[a].length;
     });
-    
-    let html = '';
-    domainOrder.forEach(domain => {
+
+    let html = "";
+    domainOrder.forEach((domain) => {
       const domainItems = groups[domain];
       const isOpen = !localStorage.getItem(`notes-domain-collapsed-${domain}`);
       html += `
         <div class="notes-domain-group" data-domain="${escapeHtml(domain)}">
           <div class="notes-domain-header">
-            <i data-lucide="${isOpen ? 'chevron-down' : 'chevron-right'}" class="notes-domain-chevron" style="width: 12px; height: 12px;"></i>
+            <i data-lucide="${isOpen ? "chevron-down" : "chevron-right"}" class="notes-domain-chevron" style="width: 12px; height: 12px;"></i>
             <span class="notes-domain-name">${escapeHtml(domain)}</span>
             <span class="notes-domain-count">${domainItems.length}</span>
           </div>
-          <div class="notes-domain-items" style="${isOpen ? '' : 'display:none;'}">
-            ${domainItems.map(item => {
-              const date = item.updated_at ? new Date(item.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-              return `
+          <div class="notes-domain-items" style="${isOpen ? "" : "display:none;"}">
+            ${domainItems
+              .map((item) => {
+                const date = item.updated_at
+                  ? new Date(item.updated_at).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })
+                  : "";
+                return `
                 <div class="browse-list-item" data-note-name="${escapeHtml(item.id)}" data-type="${escapeHtml(item.type)}">
                   <div class="browse-item-main">
                     <span class="browse-item-title">${escapeHtml(item.name)}</span>
                     <span class="browse-item-date">${date}</span>
                   </div>
-                  ${item.connection_count > 0 ? `<div class="browse-item-meta"><span class="browse-item-connections">${item.connection_count}⇄</span></div>` : ''}
+                  ${item.connection_count > 0 ? `<div class="browse-item-meta"><span class="browse-item-connections">${item.connection_count}⇄</span></div>` : ""}
                 </div>
               `;
-            }).join('')}
+              })
+              .join("")}
           </div>
         </div>
       `;
     });
-    
+
     container.innerHTML = `<div class="notes-grouped-list">${html}</div>`;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-    
+    if (typeof lucide !== "undefined") lucide.createIcons();
+
     // Domain header collapse toggle
-    container.querySelectorAll('.notes-domain-header').forEach(header => {
-      header.addEventListener('click', () => {
-        const group = header.closest('.notes-domain-group');
+    container.querySelectorAll(".notes-domain-header").forEach((header) => {
+      header.addEventListener("click", () => {
+        const group = header.closest(".notes-domain-group");
         const domain = group.dataset.domain;
-        const items = group.querySelector('.notes-domain-items');
-        const chevron = header.querySelector('.notes-domain-chevron');
-        const isVisible = items.style.display !== 'none';
-        items.style.display = isVisible ? 'none' : '';
-        if (chevron) chevron.setAttribute('data-lucide', isVisible ? 'chevron-right' : 'chevron-down');
+        const items = group.querySelector(".notes-domain-items");
+        const chevron = header.querySelector(".notes-domain-chevron");
+        const isVisible = items.style.display !== "none";
+        items.style.display = isVisible ? "none" : "";
+        if (chevron)
+          chevron.setAttribute(
+            "data-lucide",
+            isVisible ? "chevron-right" : "chevron-down",
+          );
         if (isVisible) {
-          localStorage.setItem(`notes-domain-collapsed-${domain}`, '1');
+          localStorage.setItem(`notes-domain-collapsed-${domain}`, "1");
         } else {
           localStorage.removeItem(`notes-domain-collapsed-${domain}`);
         }
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        if (typeof lucide !== "undefined") lucide.createIcons();
       });
     });
-    
+
     // Item click handlers
-    container.querySelectorAll('.browse-list-item').forEach(item => {
-      item.addEventListener('click', () => {
+    container.querySelectorAll(".browse-list-item").forEach((item) => {
+      item.addEventListener("click", () => {
         const noteName = item.dataset.noteName;
-        if (noteName && window.notesManager) window.notesManager.openNote(noteName);
+        if (noteName && window.notesManager)
+          window.notesManager.openNote(noteName);
       });
     });
-    
   } catch (error) {
-    console.error('[Notes] Domain grouped view failed:', error);
+    console.error("[Notes] Domain grouped view failed:", error);
     container.innerHTML = `<div style="padding: 16px; text-align: center; color: var(--text-error); font-size: 11px;">Failed to load notes</div>`;
   }
 }
@@ -21213,60 +22105,79 @@ async function renderNotesDomainGrouped(container) {
  * Render notes as cards (compact visual grid)
  */
 async function renderNotesCardView(container) {
-  container.innerHTML = '<div style="padding: 16px; text-align: center; color: #808080; font-size: 11px;">Loading...</div>';
-  
+  container.innerHTML =
+    '<div style="padding: 16px; text-align: center; color: #808080; font-size: 11px;">Loading...</div>';
+
   try {
-    const params = new URLSearchParams({ limit: '200', sort: notesBrowseFilters.sort || 'recent' });
-    if (notesBrowseFilters.q) params.append('q', notesBrowseFilters.q);
-    if (notesBrowseFilters.domain) params.append('domain', notesBrowseFilters.domain);
-    if (notesBrowseFilters.type) params.append('type', notesBrowseFilters.type);
-    if (notesBrowseFilters.maturity) params.append('maturity', notesBrowseFilters.maturity);
-    if (notesBrowseFilters.connectionStatus) params.append('connection_status', notesBrowseFilters.connectionStatus);
-    if (notesBrowseFilters.tag) params.append('tag', notesBrowseFilters.tag);
-    
-    const response = await fetch(`http://127.0.0.1:11436/polly/graph/list?${params.toString()}`);
+    const params = new URLSearchParams({
+      limit: "200",
+      sort: notesBrowseFilters.sort || "recent",
+    });
+    if (notesBrowseFilters.q) params.append("q", notesBrowseFilters.q);
+    if (notesBrowseFilters.domain)
+      params.append("domain", notesBrowseFilters.domain);
+    if (notesBrowseFilters.type) params.append("type", notesBrowseFilters.type);
+    if (notesBrowseFilters.maturity)
+      params.append("maturity", notesBrowseFilters.maturity);
+    if (notesBrowseFilters.connectionStatus)
+      params.append("connection_status", notesBrowseFilters.connectionStatus);
+    if (notesBrowseFilters.tag) params.append("tag", notesBrowseFilters.tag);
+
+    const response = await fetch(
+      `http://127.0.0.1:11436/polly/graph/list?${params.toString()}`,
+    );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     const items = data.items || [];
-    
+
     if (items.length === 0) {
-      container.innerHTML = '<div style="padding: 24px; text-align: center; color: #808080; font-size: 13px;">No notes found</div>';
+      container.innerHTML =
+        '<div style="padding: 24px; text-align: center; color: #808080; font-size: 13px;">No notes found</div>';
       return;
     }
-    
-    const cardsHtml = items.map(item => {
-      const date = item.updated_at ? new Date(item.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-      const authorityPct = Math.round((item.authority_score || 0) * 100);
-      const snippet = item.preview_snippet ? item.preview_snippet.slice(0, 80) : '';
-      const maturityIcons = { 10: '🌱', 20: '🌿', 30: '🌳' };
-      const matIcon = maturityIcons[item.maturity] || '';
-      return `
+
+    const cardsHtml = items
+      .map((item) => {
+        const date = item.updated_at
+          ? new Date(item.updated_at).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            })
+          : "";
+        const authorityPct = Math.round((item.authority_score || 0) * 100);
+        const snippet = item.preview_snippet
+          ? item.preview_snippet.slice(0, 80)
+          : "";
+        const maturityIcons = { 10: "🌱", 20: "🌿", 30: "🌳" };
+        const matIcon = maturityIcons[item.maturity] || "";
+        return `
         <div class="notes-card-item" data-note-name="${escapeHtml(item.id)}" title="${escapeHtml(item.name)}">
           <div class="notes-card-header">
             <span class="notes-card-title">${escapeHtml(item.name)}</span>
-            ${matIcon ? `<span class="notes-card-maturity" title="Maturity">${matIcon}</span>` : ''}
+            ${matIcon ? `<span class="notes-card-maturity" title="Maturity">${matIcon}</span>` : ""}
           </div>
-          ${snippet ? `<div class="notes-card-snippet">${escapeHtml(snippet)}</div>` : ''}
+          ${snippet ? `<div class="notes-card-snippet">${escapeHtml(snippet)}</div>` : ""}
           <div class="notes-card-meta">
-            ${item.primary_domain ? `<span class="notes-card-domain">${escapeHtml(item.primary_domain)}</span>` : ''}
-            ${item.connection_count > 0 ? `<span class="notes-card-conns">${item.connection_count}⇄</span>` : ''}
+            ${item.primary_domain ? `<span class="notes-card-domain">${escapeHtml(item.primary_domain)}</span>` : ""}
+            ${item.connection_count > 0 ? `<span class="notes-card-conns">${item.connection_count}⇄</span>` : ""}
             <span class="notes-card-date">${date}</span>
           </div>
         </div>
       `;
-    }).join('');
-    
+      })
+      .join("");
+
     container.innerHTML = `<div class="notes-card-grid">${cardsHtml}</div>`;
-    
-    container.querySelectorAll('.notes-card-item').forEach(card => {
-      card.addEventListener('click', () => {
+
+    container.querySelectorAll(".notes-card-item").forEach((card) => {
+      card.addEventListener("click", () => {
         const noteName = card.dataset.noteName;
-        if (noteName && window.notesManager) window.notesManager.openNote(noteName);
+        if (noteName && window.notesManager)
+          window.notesManager.openNote(noteName);
       });
     });
-    
   } catch (error) {
-    console.error('[Notes] Card view failed:', error);
+    console.error("[Notes] Card view failed:", error);
     container.innerHTML = `<div style="padding: 16px; text-align: center; color: var(--text-error); font-size: 11px;">Failed to load notes</div>`;
   }
 }
@@ -21275,91 +22186,106 @@ async function renderNotesCardView(container) {
  * Render the notes lower panel Filters tab
  */
 async function renderNotesFiltersPanel() {
-  const content = document.querySelector('.lower-panel[data-view="notes"] .lower-panel-content');
+  const content = document.querySelector(
+    '.lower-panel[data-view="notes"] .lower-panel-content',
+  );
   if (!content) return;
-  
+
   // Fetch domain list for the domain filter
   let domains = [];
   try {
-    const r = await fetch('http://127.0.0.1:11436/polly/graph/list?limit=1');
+    const r = await fetch("http://127.0.0.1:11436/polly/graph/list?limit=1");
     if (r.ok) {
       const d = await r.json();
       // domain_counts is a map of domain -> count returned by the API
       domains = Object.keys(d.domain_counts || {}).sort();
     }
-  } catch (e) { /* ignore */ }
-  
+  } catch (e) {
+    /* ignore */
+  }
+
   const f = notesBrowseFilters;
-  
+
   content.innerHTML = `
     <div class="notes-filters-panel">
       <div class="notes-filters-row">
         <label class="notes-filter-label">Sort</label>
         <select id="nf-sort" class="notes-filter-select">
-          <option value="recent" ${f.sort === 'recent' ? 'selected' : ''}>Recent</option>
-          <option value="authority" ${f.sort === 'authority' ? 'selected' : ''}>Authority</option>
-          <option value="alpha" ${f.sort === 'alpha' ? 'selected' : ''}>A → Z</option>
-          <option value="created" ${f.sort === 'created' ? 'selected' : ''}>Created</option>
+          <option value="recent" ${f.sort === "recent" ? "selected" : ""}>Recent</option>
+          <option value="authority" ${f.sort === "authority" ? "selected" : ""}>Authority</option>
+          <option value="alpha" ${f.sort === "alpha" ? "selected" : ""}>A → Z</option>
+          <option value="created" ${f.sort === "created" ? "selected" : ""}>Created</option>
         </select>
       </div>
       <div class="notes-filters-row">
         <label class="notes-filter-label">Domain</label>
         <select id="nf-domain" class="notes-filter-select">
           <option value="">All</option>
-          ${domains.map(d => `<option value="${escapeHtml(d)}" ${f.domain === d ? 'selected' : ''}>${escapeHtml(d)}</option>`).join('')}
+          ${domains.map((d) => `<option value="${escapeHtml(d)}" ${f.domain === d ? "selected" : ""}>${escapeHtml(d)}</option>`).join("")}
         </select>
       </div>
       <div class="notes-filters-row">
         <label class="notes-filter-label">Type</label>
         <select id="nf-type" class="notes-filter-select">
           <option value="">All</option>
-          <option value="note" ${f.type === 'note' ? 'selected' : ''}>Note</option>
-          <option value="conversation" ${f.type === 'conversation' ? 'selected' : ''}>Conversation</option>
-          <option value="book" ${f.type === 'book' ? 'selected' : ''}>Book</option>
-          <option value="capture" ${f.type === 'capture' ? 'selected' : ''}>Capture</option>
+          <option value="note" ${f.type === "note" ? "selected" : ""}>Note</option>
+          <option value="conversation" ${f.type === "conversation" ? "selected" : ""}>Conversation</option>
+          <option value="book" ${f.type === "book" ? "selected" : ""}>Book</option>
+          <option value="capture" ${f.type === "capture" ? "selected" : ""}>Capture</option>
         </select>
       </div>
       <div class="notes-filters-row">
         <label class="notes-filter-label">Maturity</label>
         <select id="nf-maturity" class="notes-filter-select">
           <option value="">All</option>
-          <option value="10" ${f.maturity == 10 ? 'selected' : ''}>🌱 Seedling</option>
-          <option value="20" ${f.maturity == 20 ? 'selected' : ''}>🌿 Growing</option>
-          <option value="30" ${f.maturity == 30 ? 'selected' : ''}>🌳 Evergreen</option>
+          <option value="10" ${f.maturity == 10 ? "selected" : ""}>🌱 Seedling</option>
+          <option value="20" ${f.maturity == 20 ? "selected" : ""}>🌿 Growing</option>
+          <option value="30" ${f.maturity == 30 ? "selected" : ""}>🌳 Evergreen</option>
         </select>
       </div>
       <div class="notes-filters-row">
         <label class="notes-filter-label">Status</label>
         <select id="nf-status" class="notes-filter-select">
           <option value="">All</option>
-          <option value="hub" ${f.connectionStatus === 'hub' ? 'selected' : ''}>Hub (highly connected)</option>
-          <option value="bridge" ${f.connectionStatus === 'bridge' ? 'selected' : ''}>Bridge (cross-domain)</option>
-          <option value="isolated" ${f.connectionStatus === 'isolated' ? 'selected' : ''}>Isolated (no connections)</option>
+          <option value="hub" ${f.connectionStatus === "hub" ? "selected" : ""}>Hub (highly connected)</option>
+          <option value="bridge" ${f.connectionStatus === "bridge" ? "selected" : ""}>Bridge (cross-domain)</option>
+          <option value="isolated" ${f.connectionStatus === "isolated" ? "selected" : ""}>Isolated (no connections)</option>
         </select>
       </div>
       <button id="nf-reset" class="notes-filter-reset-btn">Reset All Filters</button>
     </div>
   `;
-  
+
   // Wire up change handlers
   const wire = (id, key, transform) => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('change', () => {
-      notesBrowseFilters[key] = transform ? transform(el.value) : (el.value || null);
-      applyNotesBrowseFilters();
-    });
+    if (el)
+      el.addEventListener("change", () => {
+        notesBrowseFilters[key] = transform
+          ? transform(el.value)
+          : el.value || null;
+        applyNotesBrowseFilters();
+      });
   };
-  
-  wire('nf-sort', 'sort');
-  wire('nf-domain', 'domain');
-  wire('nf-type', 'type');
-  wire('nf-maturity', 'maturity', v => v ? parseInt(v) : null);
-  wire('nf-status', 'connectionStatus');
-  
-  document.getElementById('nf-reset')?.addEventListener('click', () => {
-    notesBrowseFilters = { domain: null, type: null, maturity: null, connectionStatus: null, sort: 'recent', tag: null, q: null };
-    const searchInput = document.getElementById('notes-browse-search');
-    if (searchInput) searchInput.value = '';
+
+  wire("nf-sort", "sort");
+  wire("nf-domain", "domain");
+  wire("nf-type", "type");
+  wire("nf-maturity", "maturity", (v) => (v ? parseInt(v) : null));
+  wire("nf-status", "connectionStatus");
+
+  document.getElementById("nf-reset")?.addEventListener("click", () => {
+    notesBrowseFilters = {
+      domain: null,
+      type: null,
+      maturity: null,
+      connectionStatus: null,
+      sort: "recent",
+      tag: null,
+      q: null,
+    };
+    const searchInput = document.getElementById("notes-browse-search");
+    if (searchInput) searchInput.value = "";
     renderNotesFiltersPanel();
     applyNotesBrowseFilters();
   });
@@ -21372,55 +22298,60 @@ async function renderNotesFiltersPanel() {
  */
 function initGraphPage() {
   console.log("[Graph] Initializing graph page");
-  
+
   // Import Cytoscape if not already loaded
-  if (typeof cytoscape === 'undefined') {
+  if (typeof cytoscape === "undefined") {
     console.error("[Graph] Cytoscape.js not loaded");
     return;
   }
-  
+
   // Register cose-bilkent layout plugin
-  if (typeof cytoscapeCoseBilkent !== 'undefined') {
+  if (typeof cytoscapeCoseBilkent !== "undefined") {
     cytoscape.use(cytoscapeCoseBilkent);
     console.log("[Graph] Registered cose-bilkent layout plugin");
   } else {
-    console.warn("[Graph] cose-bilkent plugin not loaded, falling back to default layouts");
+    console.warn(
+      "[Graph] cose-bilkent plugin not loaded, falling back to default layouts",
+    );
   }
-  
+
   // Initialize the graph canvas
   initGraphCanvas();
-  
+
   // Load graph browse list (reuse browse list component)
   loadGraphBrowseList();
-  
+
   // Setup lower panel for graph view
   setupLowerPanel("graph");
-  
+
   // Eagerly render filters panel (default tab) so it's ready on first open
   renderGraphFiltersPanel();
-  
+
   // Setup lower panel tab change event listener (remove previous to avoid leaks)
   if (graphTabChangeHandler) {
-    document.removeEventListener('lower-panel-tab-change', graphTabChangeHandler);
+    document.removeEventListener(
+      "lower-panel-tab-change",
+      graphTabChangeHandler,
+    );
   }
   graphTabChangeHandler = (e) => {
-    if (e.detail.view === 'graph') {
+    if (e.detail.view === "graph") {
       const tabId = e.detail.tabId;
       console.log(`[Graph] Lower panel tab changed to: ${tabId}`);
-      
+
       // Render content for the selected tab
       switch (tabId) {
-        case 'filters':
+        case "filters":
           renderGraphFiltersPanel();
           break;
-        case 'details':
+        case "details":
           renderGraphDetailsPanel();
           break;
       }
     }
   };
-  document.addEventListener('lower-panel-tab-change', graphTabChangeHandler);
-  
+  document.addEventListener("lower-panel-tab-change", graphTabChangeHandler);
+
   // Re-initialize icons
   if (typeof lucide !== "undefined") {
     refreshIcons();
@@ -21438,106 +22369,121 @@ let graphState = {
   centerNode: null,
   expandedNodes: new Set(),
   filters: {},
-  layout: 'cose',  // Use built-in cose layout (cose-bilkent requires additional deps)
+  layout: "cose", // Use built-in cose layout (cose-bilkent requires additional deps)
   sourceNode: null, // Node ID that was clicked to navigate away (for cross-highlighting on return)
   position: null,
-  zoom: null
+  zoom: null,
 };
 
 // Generation counter to detect stale async fetches in loadGraphBrowseList
 let _graphBrowseGeneration = 0;
 
 async function initGraphCanvas(skipFilterRestore = false) {
-  const container = document.getElementById('graph-canvas');
+  const container = document.getElementById("graph-canvas");
   if (!container) {
     console.error("[Graph] Canvas container not found");
     return;
   }
-  
 
-  
   // Clear any existing retry interval from previous initialization
   if (graphRetryInterval) {
     clearInterval(graphRetryInterval);
     graphRetryInterval = null;
   }
-  
+
   // Clean up previous Cytoscape instance if re-initializing
   if (cytoscapeInstance) {
     cytoscapeInstance.destroy();
     cytoscapeInstance = null;
   }
-  
+
   // Clear bad saved state (empty types array) to ensure graph loads
-  const savedState = sessionStorage.getItem('graph-state');
+  const savedState = sessionStorage.getItem("graph-state");
   if (savedState) {
     try {
       const parsed = JSON.parse(savedState);
-      if (parsed.filters && Array.isArray(parsed.filters.types) && parsed.filters.types.length === 0) {
-        sessionStorage.removeItem('graph-state');
+      if (
+        parsed.filters &&
+        Array.isArray(parsed.filters.types) &&
+        parsed.filters.types.length === 0
+      ) {
+        sessionStorage.removeItem("graph-state");
       }
     } catch (e) {
       // Ignore parse errors
     }
   }
-  
+
   // Restore previous graph state if it exists, but preserve current filters when applying filters
   const currentFilters = skipFilterRestore ? graphState.filters : null;
-  const savedStateAfterCleanup = sessionStorage.getItem('graph-state');
+  const savedStateAfterCleanup = sessionStorage.getItem("graph-state");
   if (savedStateAfterCleanup) {
     try {
       const savedState = JSON.parse(savedStateAfterCleanup);
       graphState = savedState;
       graphState.expandedNodes = new Set(graphState.expandedNodes || []);
-      
+
       // If we're applying filters, don't restore them from session storage
       if (skipFilterRestore && currentFilters) {
         graphState.filters = currentFilters;
       }
-      
+
       // Reset empty types array to undefined (means show all)
-      if (graphState.filters && Array.isArray(graphState.filters.types) && graphState.filters.types.length === 0) {
+      if (
+        graphState.filters &&
+        Array.isArray(graphState.filters.types) &&
+        graphState.filters.types.length === 0
+      ) {
         delete graphState.filters.types;
       }
-      console.log('[Graph] Restored state from session storage, filters:', graphState.filters);
+      console.log(
+        "[Graph] Restored state from session storage, filters:",
+        graphState.filters,
+      );
     } catch (e) {
       console.error("[Graph] Failed to restore graph state:", e);
     }
   }
-  
+
   // Fetch graph data from backend
   let graphData;
   try {
     // Build query parameters
     const params = new URLSearchParams({
-      limit: '100',
-      include_ghosts: 'true'
+      limit: "100",
+      include_ghosts: "true",
     });
-    
+
     if (graphState.centerNode) {
-      params.append('center_node', graphState.centerNode);
-      params.append('hops', '2');
+      params.append("center_node", graphState.centerNode);
+      params.append("hops", "2");
     }
-    
+
     // Add filter parameters if they exist
     if (graphState.filters) {
       if (graphState.filters.types && graphState.filters.types.length > 0) {
-        params.append('type', graphState.filters.types.join(','));
+        params.append("type", graphState.filters.types.join(","));
       }
       // If types array is empty, explicitly filter to impossible type to show nothing
-      else if (graphState.filters.types && graphState.filters.types.length === 0) {
-        params.append('type', '__none__');
+      else if (
+        graphState.filters.types &&
+        graphState.filters.types.length === 0
+      ) {
+        params.append("type", "__none__");
       }
       // Handle multi-select domain filter (domains array) or single domain
       if (graphState.filters.domains && graphState.filters.domains.length > 0) {
-        params.append('domain', graphState.filters.domains.join(','));
+        params.append("domain", graphState.filters.domains.join(","));
       } else if (graphState.filters.domain) {
-        params.append('domain', graphState.filters.domain);
+        params.append("domain", graphState.filters.domain);
       }
-      if (graphState.filters.authority_min) params.append('authority_min', graphState.filters.authority_min);
+      if (graphState.filters.authority_min)
+        params.append("authority_min", graphState.filters.authority_min);
     }
-    
-    const response = await fetch(`http://127.0.0.1:11436/polly/graph/nodes?${params.toString()}`);
+
+    const response = await fetch(
+      `http://127.0.0.1:11436/polly/graph/nodes?${params.toString()}`,
+    );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     graphData = await response.json();
   } catch (error) {
@@ -21549,10 +22495,10 @@ async function initGraphCanvas(skipFilterRestore = false) {
         <p>Failed to load graph data</p>
       </div>
     `;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (typeof lucide !== "undefined") lucide.createIcons();
     return;
   }
-  
+
   // Check if we have data
   if (!graphData.nodes || graphData.nodes.length === 0) {
     container.innerHTML = `
@@ -21562,29 +22508,33 @@ async function initGraphCanvas(skipFilterRestore = false) {
         <p style="font-size: 11px; opacity: 0.7;">Create notes with entities to see them in the graph</p>
       </div>
     `;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (typeof lucide !== "undefined") lucide.createIcons();
     return;
   }
-  
+
   // Build domain color palette from node data, then override with configured domain colors
-  const domains = [...new Set(graphData.nodes.map(n => n.domain).filter(Boolean))];
+  const domains = [
+    ...new Set(graphData.nodes.map((n) => n.domain).filter(Boolean)),
+  ];
   graphDomainColors = buildDomainPalette(domains);
   // Async override with configured colors (best-effort; graph renders immediately with auto palette)
-  fetch('http://127.0.0.1:11436/polly/domains/config')
-    .then(r => r.ok ? r.json() : null)
-    .then(data => {
+  fetch("http://127.0.0.1:11436/polly/domains/config")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
       if (data && data.domains) {
-        data.domains.forEach(d => { if (d.color) graphDomainColors[d.id] = d.color; });
+        data.domains.forEach((d) => {
+          if (d.color) graphDomainColors[d.id] = d.color;
+        });
       }
     })
     .catch(() => {});
-  
+
   // Clear container before initializing (in case it has "No data" message)
-  container.innerHTML = '';
-  
+  container.innerHTML = "";
+
   // Transform nodes for Cytoscape
   const elements = {
-    nodes: graphData.nodes.map(node => ({
+    nodes: graphData.nodes.map((node) => ({
       data: {
         id: node.id,
         label: node.name,
@@ -21593,44 +22543,43 @@ async function initGraphCanvas(skipFilterRestore = false) {
         domains: node.domain ? [node.domain] : [],
         authority: node.authority || 0.5,
         connectionCount: node.connection_count || 0,
-        isGhost: node.is_ghost || false
-      }
+        isGhost: node.is_ghost || false,
+      },
     })),
-    edges: graphData.edges.map(edge => ({
+    edges: graphData.edges.map((edge) => ({
       data: {
-        id: `${edge.source}-${edge.target}-${edge.type || 'references'}`,
+        id: `${edge.source}-${edge.target}-${edge.type || "references"}`,
         source: edge.source,
         target: edge.target,
         weight: edge.strength || 1,
-        relationshipType: edge.type || 'references',
-        edgeLabel: edge.label || '',
-        isGhost: edge.is_ghost || false
-      }
-    }))
+        relationshipType: edge.type || "references",
+        edgeLabel: edge.label || "",
+        isGhost: edge.is_ghost || false,
+      },
+    })),
   };
-  
+
   // Initialize Cytoscape
   cytoscapeInstance = cytoscape({
     container: container,
     elements: elements,
     style: buildGraphStyle(graphDomainColors),
-    layout: getLayoutConfig(graphState.layout || 'cose'),
+    layout: getLayoutConfig(graphState.layout || "cose"),
     minZoom: 0.1,
-    maxZoom: 3
+    maxZoom: 3,
     // Use default wheelSensitivity to avoid cross-platform issues
   });
-  
+
   // Restore position/zoom after layout completes, or highlight source node
-  cytoscapeInstance.one('layoutstop', () => {
-    
+  cytoscapeInstance.one("layoutstop", () => {
     // If we have saved position/zoom (returning from notes view), restore it
     if (graphState.position && graphState.zoom) {
       cytoscapeInstance.viewport({
         pan: graphState.position,
-        zoom: graphState.zoom
+        zoom: graphState.zoom,
       });
     }
-    
+
     // Cross-highlight: if returning from a note, highlight the source node
     // Only use sourceNode (explicitly set when navigating away) — never fall back
     // to currentNote, which can highlight the wrong node if user browsed elsewhere.
@@ -21640,10 +22589,13 @@ async function initGraphCanvas(skipFilterRestore = false) {
         node.select();
         // If no saved position, center on the source node
         if (!graphState.position) {
-          cytoscapeInstance.animate({
-            center: { eles: node },
-            zoom: 1.5
-          }, { duration: 400 });
+          cytoscapeInstance.animate(
+            {
+              center: { eles: node },
+              zoom: 1.5,
+            },
+            { duration: 400 },
+          );
         }
       }
       // Clear sourceNode after restoring — it was a one-time return action
@@ -21651,20 +22603,28 @@ async function initGraphCanvas(skipFilterRestore = false) {
       saveGraphState();
     }
   });
-  
+
   // Setup event handlers
   setupGraphEventHandlers(cytoscapeInstance, graphDomainColors);
-  
-  console.log("[Graph] Initialized with", graphData.nodes.length, "nodes and", graphData.edges.length, "edges");
-  
+
+  console.log(
+    "[Graph] Initialized with",
+    graphData.nodes.length,
+    "nodes and",
+    graphData.edges.length,
+    "edges",
+  );
+
   // If indices aren't ready yet (background build still running),
   // poll every 5 seconds and reload when they become available
   if (!graphData.indices_ready) {
-    console.log("[Graph] Indices not ready yet, will auto-refresh when available...");
-    
+    console.log(
+      "[Graph] Indices not ready yet, will auto-refresh when available...",
+    );
+
     // Show prominent loading overlay
-    const loadingOverlay = document.createElement('div');
-    loadingOverlay.id = 'graph-loading-overlay';
+    const loadingOverlay = document.createElement("div");
+    loadingOverlay.id = "graph-loading-overlay";
     loadingOverlay.style.cssText = `
       position: absolute;
       top: 20px;
@@ -21688,53 +22648,80 @@ async function initGraphCanvas(skipFilterRestore = false) {
       </div>
     `;
     container.appendChild(loadingOverlay);
-    
+
     graphRetryInterval = setInterval(async () => {
       try {
-        const retryParams = new URLSearchParams({ limit: '100', include_ghosts: 'true' });
+        const retryParams = new URLSearchParams({
+          limit: "100",
+          include_ghosts: "true",
+        });
         if (graphState.centerNode) {
-          retryParams.append('center_node', graphState.centerNode);
-          retryParams.append('hops', '2');
+          retryParams.append("center_node", graphState.centerNode);
+          retryParams.append("hops", "2");
         }
         if (graphState.filters) {
-          if (graphState.filters.type) retryParams.append('type', graphState.filters.type);
-          if (graphState.filters.domains && graphState.filters.domains.length > 0) {
-            retryParams.append('domain', graphState.filters.domains.join(','));
+          if (graphState.filters.type)
+            retryParams.append("type", graphState.filters.type);
+          if (
+            graphState.filters.domains &&
+            graphState.filters.domains.length > 0
+          ) {
+            retryParams.append("domain", graphState.filters.domains.join(","));
           } else if (graphState.filters.domain) {
-            retryParams.append('domain', graphState.filters.domain);
+            retryParams.append("domain", graphState.filters.domain);
           }
-          if (graphState.filters.authority_min) retryParams.append('authority_min', graphState.filters.authority_min);
+          if (graphState.filters.authority_min)
+            retryParams.append(
+              "authority_min",
+              graphState.filters.authority_min,
+            );
         }
-        const retryResp = await fetch(`http://127.0.0.1:11436/polly/graph/nodes?${retryParams.toString()}`);
+        const retryResp = await fetch(
+          `http://127.0.0.1:11436/polly/graph/nodes?${retryParams.toString()}`,
+        );
         if (!retryResp.ok) throw new Error(`HTTP ${retryResp.status}`);
         const retryData = await retryResp.json();
-        
+
         // Update status message
-        const statusEl = document.getElementById('graph-loading-status');
+        const statusEl = document.getElementById("graph-loading-status");
         if (statusEl) {
           const edgeCount = retryData.edges?.length || 0;
           statusEl.textContent = `Found ${retryData.nodes.length} notes, ${edgeCount} connections...`;
         }
-        
-        if (retryData.indices_ready && retryData.edges && retryData.edges.length > 0) {
+
+        if (
+          retryData.indices_ready &&
+          retryData.edges &&
+          retryData.edges.length > 0
+        ) {
           clearInterval(graphRetryInterval);
           graphRetryInterval = null;
-          console.log("[Graph] Indices ready! Reloading with", retryData.nodes.length, "nodes and", retryData.edges.length, "edges");
-          
+          console.log(
+            "[Graph] Indices ready! Reloading with",
+            retryData.nodes.length,
+            "nodes and",
+            retryData.edges.length,
+            "edges",
+          );
+
           // Remove loading overlay
-          const overlay = document.getElementById('graph-loading-overlay');
+          const overlay = document.getElementById("graph-loading-overlay");
           if (overlay) overlay.remove();
-          
+
           // Rebuild the graph with full data
           initGraphCanvas();
         } else {
-          console.log("[Graph] Still waiting for indices...", retryData.nodes?.length, "nodes so far");
+          console.log(
+            "[Graph] Still waiting for indices...",
+            retryData.nodes?.length,
+            "nodes so far",
+          );
         }
       } catch (e) {
         console.warn("[Graph] Retry fetch failed:", e);
       }
     }, 5000);
-    
+
     // Stop polling after 2 minutes to avoid infinite loops
     setTimeout(() => {
       if (graphRetryInterval) {
@@ -21750,25 +22737,25 @@ async function initGraphCanvas(skipFilterRestore = false) {
  */
 function getLayoutConfig(layoutName) {
   switch (layoutName) {
-    case 'concentric':
+    case "concentric":
       return {
-        name: 'concentric',
+        name: "concentric",
         animate: true,
         animationDuration: 500,
         fit: true,
         padding: 50,
-        concentric: (node) => node.data('authority') || 0.5,
+        concentric: (node) => node.data("authority") || 0.5,
         levelWidth: () => 2,
         minNodeSpacing: 80,
         startAngle: Math.PI / 4,
         sweep: Math.PI * 2,
         clockwise: true,
-        equidistant: false
+        equidistant: false,
       };
-      
-    case 'breadthfirst':
+
+    case "breadthfirst":
       return {
-        name: 'breadthfirst',
+        name: "breadthfirst",
         animate: true,
         animationDuration: 500,
         fit: true,
@@ -21778,49 +22765,50 @@ function getLayoutConfig(layoutName) {
         nodeDimensionsIncludeLabels: true,
         avoidOverlap: true,
         maximal: false,
-        grid: false
+        grid: false,
       };
-      
-    case 'cose-clustered':
+
+    case "cose-clustered":
       // Domain-clustered layout: force-directed with stronger pull for same-domain edges
-      const useCoseClustered = typeof cytoscapeCoseBilkent !== 'undefined';
-      console.log('[Graph] Using domain-clustered layout');
-      
+      const useCoseClustered = typeof cytoscapeCoseBilkent !== "undefined";
+      console.log("[Graph] Using domain-clustered layout");
+
       // Add stronger edge weights for same-domain connections
       if (cytoscapeInstance) {
-        cytoscapeInstance.edges().forEach(edge => {
-          const sourceDomain = edge.source().data('domain');
-          const targetDomain = edge.target().data('domain');
-          const isSameDomain = sourceDomain && targetDomain && sourceDomain === targetDomain;
-          edge.data('clusterWeight', isSameDomain ? 3 : 1); // Higher weight = closer together
+        cytoscapeInstance.edges().forEach((edge) => {
+          const sourceDomain = edge.source().data("domain");
+          const targetDomain = edge.target().data("domain");
+          const isSameDomain =
+            sourceDomain && targetDomain && sourceDomain === targetDomain;
+          edge.data("clusterWeight", isSameDomain ? 3 : 1); // Higher weight = closer together
         });
       }
-      
+
       if (useCoseClustered) {
         return {
-          name: 'cose-bilkent',
-          animate: 'end',
+          name: "cose-bilkent",
+          animate: "end",
           animationDuration: 600,
           fit: true,
           padding: 100,
-          nodeRepulsion: 8000,      // Stronger repulsion for clearer clusters
-          idealEdgeLength: 180,      // Moderate edge length
-          edgeElasticity: 0.3,       // Less flexible to maintain cluster structure
-          nestingFactor: 0.05,        // Very flat
-          gravity: 0.15,             // Weak gravity to allow cluster spread
-          gravityRange: 4.0,         // Wide gravity falloff
-          numIter: 3000,             // More iterations for stable clusters
+          nodeRepulsion: 8000, // Stronger repulsion for clearer clusters
+          idealEdgeLength: 180, // Moderate edge length
+          edgeElasticity: 0.3, // Less flexible to maintain cluster structure
+          nestingFactor: 0.05, // Very flat
+          gravity: 0.15, // Weak gravity to allow cluster spread
+          gravityRange: 4.0, // Wide gravity falloff
+          numIter: 3000, // More iterations for stable clusters
           tile: true,
           tilingPaddingVertical: 50,
           tilingPaddingHorizontal: 50,
           nodeDimensionsIncludeLabels: true,
           // Custom edge weight function for domain clustering
-          edgeWeight: (edge) => edge.data('clusterWeight') || 1,
-          edgeWeightRange: 5.0      // Allow wider range of edge lengths
+          edgeWeight: (edge) => edge.data("clusterWeight") || 1,
+          edgeWeightRange: 5.0, // Allow wider range of edge lengths
         };
       } else {
         return {
-          name: 'cose',
+          name: "cose",
           animate: true,
           animationDuration: 600,
           fit: true,
@@ -21831,41 +22819,44 @@ function getLayoutConfig(layoutName) {
           nestingFactor: 2,
           gravity: 0.1,
           numIter: 3000,
-          edgeWeight: (edge) => edge.data('clusterWeight') || 1,
-          edgeWeightRange: 5.0
+          edgeWeight: (edge) => edge.data("clusterWeight") || 1,
+          edgeWeightRange: 5.0,
         };
       }
-      
-    case 'cose':
+
+    case "cose":
     default:
       // Use cose-bilkent if available, fallback to cose
-      const useCoseBilkent = typeof cytoscapeCoseBilkent !== 'undefined';
-      console.log('[Graph] cytoscapeCoseBilkent available:', useCoseBilkent);
-      console.log('[Graph] Using layout:', useCoseBilkent ? 'cose-bilkent' : 'cose');
-      
+      const useCoseBilkent = typeof cytoscapeCoseBilkent !== "undefined";
+      console.log("[Graph] cytoscapeCoseBilkent available:", useCoseBilkent);
+      console.log(
+        "[Graph] Using layout:",
+        useCoseBilkent ? "cose-bilkent" : "cose",
+      );
+
       if (useCoseBilkent) {
         return {
-          name: 'cose-bilkent',
-          animate: 'end',          // Animate only at end (faster)
+          name: "cose-bilkent",
+          animate: "end", // Animate only at end (faster)
           animationDuration: 500,
           fit: true,
-          padding: 80,             // More breathing room (was 50)
-          nodeRepulsion: 6500,     // Tuned for spread
-          idealEdgeLength: 200,    // Longer edges (was 150)
-          edgeElasticity: 0.45,    // Edge flexibility
-          nestingFactor: 0.1,      // Low nesting (flat graph)
-          gravity: 0.25,           // WEAK center pull (was 40!)
-          gravityRange: 3.8,       // Gravity falloff distance
-          numIter: 2500,           // More iterations (was 1000)
-          tile: true,              // Separate disconnected components
+          padding: 80, // More breathing room (was 50)
+          nodeRepulsion: 6500, // Tuned for spread
+          idealEdgeLength: 200, // Longer edges (was 150)
+          edgeElasticity: 0.45, // Edge flexibility
+          nestingFactor: 0.1, // Low nesting (flat graph)
+          gravity: 0.25, // WEAK center pull (was 40!)
+          gravityRange: 3.8, // Gravity falloff distance
+          numIter: 2500, // More iterations (was 1000)
+          tile: true, // Separate disconnected components
           tilingPaddingVertical: 40,
           tilingPaddingHorizontal: 40,
-          nodeDimensionsIncludeLabels: true
+          nodeDimensionsIncludeLabels: true,
         };
       } else {
         // Fallback to default cose with improved params
         return {
-          name: 'cose',
+          name: "cose",
           animate: true,
           animationDuration: 500,
           fit: true,
@@ -21878,7 +22869,7 @@ function getLayoutConfig(layoutName) {
           numIter: 1000,
           initialTemp: 200,
           coolingFactor: 0.95,
-          minTemp: 1.0
+          minTemp: 1.0,
         };
       }
   }
@@ -21891,156 +22882,156 @@ function buildGraphStyle(domainColors) {
   return [
     // Base node style
     {
-      selector: 'node',
+      selector: "node",
       style: {
-        'label': 'data(label)',
-        'text-valign': 'center',
-        'text-halign': 'center',
-        'font-size': '9px',
-        'font-weight': '500',
-        'text-outline-width': 2,
-        'text-outline-color': '#1a1a1a',
-        'color': '#ffffff',
+        label: "data(label)",
+        "text-valign": "center",
+        "text-halign": "center",
+        "font-size": "9px",
+        "font-weight": "500",
+        "text-outline-width": 2,
+        "text-outline-color": "#1a1a1a",
+        color: "#ffffff",
         // Increased base size: 16px base + up to 32px based on authority (16-48px range)
-        'width': ele => 16 + (ele.data('authority') * 32),
-        'height': ele => 16 + (ele.data('authority') * 32),
-        'background-color': ele => {
-          const domain = ele.data('domain');
-          return domainColors[domain] || '#666666';
+        width: (ele) => 16 + ele.data("authority") * 32,
+        height: (ele) => 16 + ele.data("authority") * 32,
+        "background-color": (ele) => {
+          const domain = ele.data("domain");
+          return domainColors[domain] || "#666666";
         },
-        'border-width': 2,
-        'border-color': '#ffffff',
-        'border-opacity': 0.3,
+        "border-width": 2,
+        "border-color": "#ffffff",
+        "border-opacity": 0.3,
         // Label visibility controlled dynamically by zoom level
-        'text-opacity': 0
-      }
+        "text-opacity": 0,
+      },
     },
     // Node shapes by type
     {
       selector: 'node[type="note"]',
-      style: { 'shape': 'ellipse' }
+      style: { shape: "ellipse" },
     },
     {
       selector: 'node[type="conversation"]',
-      style: { 'shape': 'diamond' }
+      style: { shape: "diamond" },
     },
     {
       selector: 'node[type="book"]',
-      style: { 'shape': 'hexagon' }
+      style: { shape: "hexagon" },
     },
     {
       selector: 'node[type="capture"]',
-      style: { 'shape': 'triangle' }
+      style: { shape: "triangle" },
     },
     {
       selector: 'node[type="code"]',
-      style: { 'shape': 'rectangle' }
+      style: { shape: "rectangle" },
     },
     {
       selector: 'node[type="canvas"]',
-      style: { 'shape': 'round-rectangle' }
+      style: { shape: "round-rectangle" },
     },
     // Ghost nodes
     {
-      selector: 'node[?isGhost]',
+      selector: "node[?isGhost]",
       style: {
-        'opacity': 0.15,
-        'border-style': 'dotted'
-      }
+        opacity: 0.15,
+        "border-style": "dotted",
+      },
     },
     // Hover state
     {
-      selector: 'node:active',
+      selector: "node:active",
       style: {
-        'overlay-color': '#ffffff',
-        'overlay-padding': 6,
-        'overlay-opacity': 0.2
-      }
+        "overlay-color": "#ffffff",
+        "overlay-padding": 6,
+        "overlay-opacity": 0.2,
+      },
     },
     // Base edge style
     {
-      selector: 'edge',
+      selector: "edge",
       style: {
-        'width': ele => 1 + (ele.data('weight') * 2),
-        'line-color': '#555555',
-        'target-arrow-color': '#555555',
-        'target-arrow-shape': 'triangle',
-        'curve-style': 'bezier',
-        'opacity': 0.6
-      }
+        width: (ele) => 1 + ele.data("weight") * 2,
+        "line-color": "#555555",
+        "target-arrow-color": "#555555",
+        "target-arrow-shape": "triangle",
+        "curve-style": "bezier",
+        opacity: 0.6,
+      },
     },
     // Edge styles by relationship type
     {
       selector: 'edge[relationshipType="references"]',
       style: {
-        'line-color': '#888888',
-        'target-arrow-color': '#888888',
-        'line-style': 'solid'
-      }
+        "line-color": "#888888",
+        "target-arrow-color": "#888888",
+        "line-style": "solid",
+      },
     },
     {
       selector: 'edge[relationshipType="mention"]',
       style: {
-        'line-color': '#45B7D1',
-        'target-arrow-color': '#45B7D1',
-        'line-style': 'dashed'
-      }
+        "line-color": "#45B7D1",
+        "target-arrow-color": "#45B7D1",
+        "line-style": "dashed",
+      },
     },
     {
       selector: 'edge[relationshipType="shared_tag"]',
       style: {
-        'line-color': '#52B788',
-        'target-arrow-color': '#52B788',
-        'line-style': 'dotted'
-      }
+        "line-color": "#52B788",
+        "target-arrow-color": "#52B788",
+        "line-style": "dotted",
+      },
     },
     {
       selector: 'edge[relationshipType="relates_to"]',
       style: {
-        'line-style': 'dashed'
-      }
+        "line-style": "dashed",
+      },
     },
     {
       selector: 'edge[relationshipType="co_occurs_with"]',
       style: {
-        'line-style': 'dotted'
-      }
+        "line-style": "dotted",
+      },
     },
     // Edges connected to ghost nodes
     {
-      selector: 'edge[?isGhost]',
+      selector: "edge[?isGhost]",
       style: {
-        'opacity': 0.1,
-        'line-style': 'dotted'
-      }
+        opacity: 0.1,
+        "line-style": "dotted",
+      },
     },
     // Selected state
     {
-      selector: ':selected',
+      selector: ":selected",
       style: {
-        'border-width': 4,
-        'border-color': '#00aaff',
-        'border-opacity': 1
-      }
+        "border-width": 4,
+        "border-color": "#00aaff",
+        "border-opacity": 1,
+      },
     },
     // Details panel selection highlighting
     {
-      selector: '.graph-selected',
+      selector: ".graph-selected",
       style: {
-        'border-width': 4,
-        'border-color': '#00aaff',
-        'border-opacity': 1,
-        'text-opacity': 1
-      }
+        "border-width": 4,
+        "border-color": "#00aaff",
+        "border-opacity": 1,
+        "text-opacity": 1,
+      },
     },
     {
-      selector: '.graph-selected-neighbor',
+      selector: ".graph-selected-neighbor",
       style: {
-        'opacity': 1,
-        'border-opacity': 0.6,
-        'text-opacity': 1
-      }
-    }
+        opacity: 1,
+        "border-opacity": 0.6,
+        "text-opacity": 1,
+      },
+    },
   ];
 }
 
@@ -22049,8 +23040,16 @@ function buildGraphStyle(domainColors) {
  */
 function buildDomainPalette(domains) {
   const palette = [
-    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
-    '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788'
+    "#FF6B6B",
+    "#4ECDC4",
+    "#45B7D1",
+    "#FFA07A",
+    "#98D8C8",
+    "#F7DC6F",
+    "#BB8FCE",
+    "#85C1E2",
+    "#F8B739",
+    "#52B788",
   ];
   const colors = {};
   domains.forEach((domain, idx) => {
@@ -22064,55 +23063,56 @@ function buildDomainPalette(domains) {
  */
 function setupGraphEventHandlers(cy, domainColors) {
   // Node hover - show tooltip
-  cy.on('mouseover', 'node', (evt) => {
+  cy.on("mouseover", "node", (evt) => {
     const node = evt.target;
     const data = node.data();
-    
+
     showGraphTooltip(evt.originalEvent, {
       name: data.label,
       type: data.type,
       domain: data.domain,
       connections: data.connectionCount,
-      authority: data.authority
+      authority: data.authority,
     });
   });
-  
-  cy.on('mouseout', 'node', () => {
+
+  cy.on("mouseout", "node", () => {
     hideGraphTooltip();
   });
-  
+
   // Node click - show details in lower panel
-  cy.on('tap', 'node', (evt) => {
+  cy.on("tap", "node", (evt) => {
     const node = evt.target;
     const data = node.data();
-    
+
     // Hide tooltip
     hideGraphTooltip();
-    
+
     // Highlight selected node
-    cy.elements().removeClass('graph-selected graph-selected-neighbor');
-    node.addClass('graph-selected');
-    node.neighborhood().addClass('graph-selected-neighbor');
-    
+    cy.elements().removeClass("graph-selected graph-selected-neighbor");
+    node.addClass("graph-selected");
+    node.neighborhood().addClass("graph-selected-neighbor");
+
     // Get connected edges and neighbors for details
     const connectedEdges = node.connectedEdges();
-    const neighbors = node.neighborhood('node');
+    const neighbors = node.neighborhood("node");
     const connections = [];
-    connectedEdges.forEach(edge => {
+    connectedEdges.forEach((edge) => {
       const edgeData = edge.data();
-      const otherNode = edge.source().id() === data.id ? edge.target() : edge.source();
+      const otherNode =
+        edge.source().id() === data.id ? edge.target() : edge.source();
       const otherData = otherNode.data();
       connections.push({
         nodeId: otherData.id,
         nodeName: otherData.label,
         nodeType: otherData.type,
         nodeDomain: otherData.domain,
-        relationshipType: edgeData.relationshipType || 'references',
+        relationshipType: edgeData.relationshipType || "references",
         strength: edgeData.weight || 1,
-        direction: edge.source().id() === data.id ? 'outgoing' : 'incoming'
+        direction: edge.source().id() === data.id ? "outgoing" : "incoming",
       });
     });
-    
+
     // Show details in the lower panel
     renderGraphDetailsPanel({
       id: data.id,
@@ -22122,97 +23122,108 @@ function setupGraphEventHandlers(cy, domainColors) {
       authority: data.authority,
       connectionCount: data.connectionCount,
       isGhost: data.isGhost,
-      connections: connections
+      connections: connections,
     });
-    
+
     // Switch to details tab and expand the lower panel
     const panel = document.querySelector('.lower-panel[data-view="graph"]');
     if (panel) {
-      const isCollapsed = panel.dataset.collapsed === 'true';
+      const isCollapsed = panel.dataset.collapsed === "true";
       if (isCollapsed) {
-        panel.querySelector('.lower-panel-handle')?.click();
+        panel.querySelector(".lower-panel-handle")?.click();
       }
-      const detailsTab = panel.querySelector('.lower-panel-tab[data-tab="details"]');
-      if (detailsTab && !detailsTab.classList.contains('active')) {
+      const detailsTab = panel.querySelector(
+        '.lower-panel-tab[data-tab="details"]',
+      );
+      if (detailsTab && !detailsTab.classList.contains("active")) {
         detailsTab.click();
       }
     }
   });
-  
+
   // Node double-click - navigate to note
-  cy.on('dbltap', 'node', (evt) => {
+  cy.on("dbltap", "node", (evt) => {
     const node = evt.target;
     const data = node.data();
-    
+
     // Hide tooltip before navigating
     hideGraphTooltip();
-    
+
     // Track which node was clicked for cross-highlighting on return
     graphState.sourceNode = data.id;
-    
+
     // Save graph state (position, zoom, sourceNode)
     saveGraphState();
-    
+
     // Open the item based on type
-    if (data.type === 'note') {
+    if (data.type === "note") {
       // Open note (data.id is the note name)
       if (window.notesManager) {
         window.notesManager.openNote(data.id);
       }
-      showView('notes');
-      
+      showView("notes");
+
       // Show "Back to Graph" button
       showBackToGraphButton();
     }
   });
-  
+
   // Click on background - deselect and clear details
-  cy.on('tap', (evt) => {
+  cy.on("tap", (evt) => {
     if (evt.target === cy) {
-      cy.elements().removeClass('graph-selected graph-selected-neighbor');
+      cy.elements().removeClass("graph-selected graph-selected-neighbor");
       renderGraphDetailsPanel(null);
     }
   });
-  
+
   // Node right-click - context menu
-  cy.on('cxttap', 'node', (evt) => {
+  cy.on("cxttap", "node", (evt) => {
     const node = evt.target;
     const data = node.data();
-    
+
     showGraphContextMenu(evt.originalEvent, {
       nodeId: data.id,
       nodeName: data.label,
-      nodeType: data.type
+      nodeType: data.type,
     });
   });
-  
+
   // Pan/zoom - save state (debounced) and update label visibility
   let saveTimeout;
-  cy.on('viewport', () => {
+  cy.on("viewport", () => {
     updateGraphLabelVisibility(cy);
-    
+
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(() => {
       saveGraphState();
     }, 500);
   });
-  
+
   // Initial label visibility update
   updateGraphLabelVisibility(cy);
-  
+
   // Wire up graph control buttons
-  document.getElementById('graph-zoom-in')?.addEventListener('click', () => {
-    if (cytoscapeInstance) cytoscapeInstance.animate({ zoom: cytoscapeInstance.zoom() * 1.2, duration: 200 });
+  document.getElementById("graph-zoom-in")?.addEventListener("click", () => {
+    if (cytoscapeInstance)
+      cytoscapeInstance.animate({
+        zoom: cytoscapeInstance.zoom() * 1.2,
+        duration: 200,
+      });
   });
-  document.getElementById('graph-zoom-out')?.addEventListener('click', () => {
-    if (cytoscapeInstance) cytoscapeInstance.animate({ zoom: cytoscapeInstance.zoom() / 1.2, duration: 200 });
+  document.getElementById("graph-zoom-out")?.addEventListener("click", () => {
+    if (cytoscapeInstance)
+      cytoscapeInstance.animate({
+        zoom: cytoscapeInstance.zoom() / 1.2,
+        duration: 200,
+      });
   });
-  document.getElementById('graph-fit')?.addEventListener('click', () => {
-    if (cytoscapeInstance) cytoscapeInstance.animate({ fit: { padding: 50 }, duration: 300 });
+  document.getElementById("graph-fit")?.addEventListener("click", () => {
+    if (cytoscapeInstance)
+      cytoscapeInstance.animate({ fit: { padding: 50 }, duration: 300 });
   });
-  document.getElementById('graph-reset')?.addEventListener('click', () => {
+  document.getElementById("graph-reset")?.addEventListener("click", () => {
     if (cytoscapeInstance) {
-      const layoutConfig = getLayoutConfig(graphState.layout || 'cose');
+      const layoutConfig = getLayoutConfig(graphState.layout || "cose");
       const layout = cytoscapeInstance.layout(layoutConfig);
       layout.run();
     }
@@ -22227,13 +23238,13 @@ function setupGraphEventHandlers(cy, domainColors) {
  */
 function updateGraphLabelVisibility(cy) {
   if (!cy) return;
-  
+
   const zoom = cy.zoom();
-  
-  cy.nodes().forEach(node => {
-    const authority = node.data('authority') || 0.5;
+
+  cy.nodes().forEach((node) => {
+    const authority = node.data("authority") || 0.5;
     let opacity = 0;
-    
+
     if (zoom < 0.5) {
       // Low zoom: no labels
       opacity = 0;
@@ -22244,8 +23255,8 @@ function updateGraphLabelVisibility(cy) {
       // High zoom: all labels
       opacity = 1;
     }
-    
-    node.style('text-opacity', opacity);
+
+    node.style("text-opacity", opacity);
   });
 }
 
@@ -22254,14 +23265,17 @@ function updateGraphLabelVisibility(cy) {
  */
 function saveGraphState() {
   if (!cytoscapeInstance) return;
-  
+
   graphState.position = cytoscapeInstance.pan();
   graphState.zoom = cytoscapeInstance.zoom();
-  
-  sessionStorage.setItem('graph-state', JSON.stringify({
-    ...graphState,
-    expandedNodes: Array.from(graphState.expandedNodes)
-  }));
+
+  sessionStorage.setItem(
+    "graph-state",
+    JSON.stringify({
+      ...graphState,
+      expandedNodes: Array.from(graphState.expandedNodes),
+    }),
+  );
 }
 
 /**
@@ -22269,20 +23283,20 @@ function saveGraphState() {
  */
 async function loadGraphBrowseList() {
   const gen = ++_graphBrowseGeneration;
-  const container = document.getElementById('graph-browse-list');
+  const container = document.getElementById("graph-browse-list");
   if (!container) {
     console.error("[Graph] Browse list container not found");
     return;
   }
-  
+
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/graph/list');
+    const response = await fetch("http://127.0.0.1:11436/polly/graph/list");
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
 
     // Bail out if a newer call has started or the container was removed from DOM
     if (gen !== _graphBrowseGeneration || !container.isConnected) return;
-    
+
     if (!data.items || data.items.length === 0) {
       container.innerHTML = `
         <div style="text-align: center; padding: 20px; color: var(--text-secondary); font-size: 13px;">
@@ -22291,10 +23305,10 @@ async function loadGraphBrowseList() {
       `;
       return;
     }
-    
+
     // Render browse items
-    let html = '';
-    data.items.forEach(item => {
+    let html = "";
+    data.items.forEach((item) => {
       const icon = getTypeIcon(item.type);
       const date = new Date(item.modified_at).toLocaleDateString();
       html += `
@@ -22303,32 +23317,34 @@ async function loadGraphBrowseList() {
           <div class="browse-item-content">
             <div class="browse-item-title">${escapeHtml(item.name)}</div>
             <div class="browse-item-metadata">
-              <span class="browse-item-domain">${escapeHtml(item.domain || 'General')}</span>
+              <span class="browse-item-domain">${escapeHtml(item.domain || "General")}</span>
               <span class="browse-item-date">${date}</span>
             </div>
           </div>
         </div>
       `;
     });
-    
+
     container.innerHTML = html;
-    
+
     // Re-initialize icons
-    if (typeof lucide !== 'undefined') {
+    if (typeof lucide !== "undefined") {
       lucide.createIcons();
     }
-    
+
     // Setup click handlers
-    container.querySelectorAll('.browse-item').forEach(item => {
+    container.querySelectorAll(".browse-item").forEach((item) => {
       // Single click: highlight and center in graph
-      item.addEventListener('click', () => {
+      item.addEventListener("click", () => {
         const itemId = item.dataset.itemId;
         const itemType = item.dataset.itemType;
-        
+
         // Mark active item in list
-        container.querySelectorAll('.browse-item').forEach(el => el.classList.remove('active'));
-        item.classList.add('active');
-        
+        container
+          .querySelectorAll(".browse-item")
+          .forEach((el) => el.classList.remove("active"));
+        item.classList.add("active");
+
         // Highlight and center in graph if visible
         if (cytoscapeInstance) {
           // Deselect all first
@@ -22336,32 +23352,34 @@ async function loadGraphBrowseList() {
           // Use getElementById() instead of CSS selector to avoid escaping issues
           const node = cytoscapeInstance.getElementById(itemId);
           if (node && node.length > 0) {
-            cytoscapeInstance.animate({
-              center: { eles: node },
-              zoom: 1.5
-            }, {
-              duration: 300
-            });
+            cytoscapeInstance.animate(
+              {
+                center: { eles: node },
+                zoom: 1.5,
+              },
+              {
+                duration: 300,
+              },
+            );
             node.select();
           }
         }
       });
-      
+
       // Double click: open the note
-      item.addEventListener('dblclick', () => {
+      item.addEventListener("dblclick", () => {
         const itemId = item.dataset.itemId;
         const itemType = item.dataset.itemType;
-        
-        if (itemType === 'note' && window.notesManager) {
+
+        if (itemType === "note" && window.notesManager) {
           graphState.sourceNode = itemId;
           saveGraphState();
           window.notesManager.openNote(itemId);
-          showView('notes');
+          showView("notes");
           showBackToGraphButton();
         }
       });
     });
-    
   } catch (error) {
     console.error("[Graph] Failed to load browse list:", error);
     if (gen === _graphBrowseGeneration && container.isConnected) {
@@ -22379,14 +23397,14 @@ async function loadGraphBrowseList() {
  */
 function getTypeIcon(type) {
   const icons = {
-    'note': 'file-text',
-    'conversation': 'message-circle',
-    'book': 'book',
-    'capture': 'camera',
-    'code': 'code',
-    'canvas': 'layout'
+    note: "file-text",
+    conversation: "message-circle",
+    book: "book",
+    capture: "camera",
+    code: "code",
+    canvas: "layout",
   };
-  return icons[type] || 'file';
+  return icons[type] || "file";
 }
 
 /**
@@ -22395,8 +23413,8 @@ function getTypeIcon(type) {
 let tooltipElement = null;
 function showGraphTooltip(event, data) {
   if (!tooltipElement) {
-    tooltipElement = document.createElement('div');
-    tooltipElement.className = 'graph-node-tooltip';
+    tooltipElement = document.createElement("div");
+    tooltipElement.className = "graph-node-tooltip";
     tooltipElement.style.cssText = `
       position: fixed;
       background: rgba(0, 0, 0, 0.9);
@@ -22410,25 +23428,25 @@ function showGraphTooltip(event, data) {
     `;
     document.body.appendChild(tooltipElement);
   }
-  
+
   tooltipElement.innerHTML = `
     <div style="font-weight: 600; margin-bottom: 4px;">${escapeHtml(data.name)}</div>
     <div style="opacity: 0.8; font-size: 10px;">
       <div>Type: ${escapeHtml(data.type)}</div>
-      <div>Domain: ${escapeHtml(data.domain || 'None')}</div>
+      <div>Domain: ${escapeHtml(data.domain || "None")}</div>
       <div>Connections: ${data.connections}</div>
       <div>Authority: ${(data.authority * 100).toFixed(0)}%</div>
     </div>
   `;
-  
-  tooltipElement.style.left = (event.clientX + 10) + 'px';
-  tooltipElement.style.top = (event.clientY + 10) + 'px';
-  tooltipElement.style.display = 'block';
+
+  tooltipElement.style.left = event.clientX + 10 + "px";
+  tooltipElement.style.top = event.clientY + 10 + "px";
+  tooltipElement.style.display = "block";
 }
 
 function hideGraphTooltip() {
   if (tooltipElement) {
-    tooltipElement.style.display = 'none';
+    tooltipElement.style.display = "none";
   }
 }
 
@@ -22437,14 +23455,14 @@ function hideGraphTooltip() {
  */
 function showGraphContextMenu(event, data) {
   event.preventDefault();
-  
+
   // Remove any existing context menu
-  const existing = document.getElementById('graph-context-menu');
+  const existing = document.getElementById("graph-context-menu");
   if (existing) existing.remove();
-  
+
   // Create context menu
-  const menu = document.createElement('div');
-  menu.id = 'graph-context-menu';
+  const menu = document.createElement("div");
+  menu.id = "graph-context-menu";
   menu.style.cssText = `
     position: fixed;
     left: ${event.clientX}px;
@@ -22458,47 +23476,48 @@ function showGraphContextMenu(event, data) {
     padding: 4px 0;
     font-size: 13px;
   `;
-  
+
   const menuItems = [
     {
-      icon: 'external-link',
-      label: 'Open',
+      icon: "external-link",
+      label: "Open",
       action: () => {
         // Open the node based on type (data.nodeId is the note name)
-        if (data.nodeType === 'note' && window.notesManager) {
+        if (data.nodeType === "note" && window.notesManager) {
           graphState.sourceNode = data.nodeId;
           saveGraphState();
           window.notesManager.openNote(data.nodeId);
-          showView('notes');
+          showView("notes");
           showBackToGraphButton();
         }
-      }
+      },
     },
     {
-      icon: 'git-branch',
-      label: 'Explore From Here',
+      icon: "git-branch",
+      label: "Explore From Here",
       action: () => {
         exploreFromNode(data.nodeId);
-      }
+      },
     },
     { separator: true },
     {
-      icon: 'copy',
-      label: 'Copy Link',
+      icon: "copy",
+      label: "Copy Link",
       action: () => {
         // TODO: Implement copy link functionality
-        console.log('[Graph] Copy link:', data.nodeId);
-      }
-    }
+        console.log("[Graph] Copy link:", data.nodeId);
+      },
+    },
   ];
-  
-  menuItems.forEach(item => {
+
+  menuItems.forEach((item) => {
     if (item.separator) {
-      const sep = document.createElement('div');
-      sep.style.cssText = 'height: 1px; background: var(--border-primary); margin: 4px 0;';
+      const sep = document.createElement("div");
+      sep.style.cssText =
+        "height: 1px; background: var(--border-primary); margin: 4px 0;";
       menu.appendChild(sep);
     } else {
-      const menuItem = document.createElement('div');
+      const menuItem = document.createElement("div");
       menuItem.style.cssText = `
         padding: 8px 12px;
         cursor: pointer;
@@ -22512,32 +23531,32 @@ function showGraphContextMenu(event, data) {
         <i data-lucide="${item.icon}" style="width: 14px; height: 14px;"></i>
         <span>${item.label}</span>
       `;
-      menuItem.addEventListener('mouseenter', () => {
-        menuItem.style.background = 'var(--bg-hover)';
+      menuItem.addEventListener("mouseenter", () => {
+        menuItem.style.background = "var(--bg-hover)";
       });
-      menuItem.addEventListener('mouseleave', () => {
-        menuItem.style.background = 'transparent';
+      menuItem.addEventListener("mouseleave", () => {
+        menuItem.style.background = "transparent";
       });
-      menuItem.addEventListener('click', () => {
+      menuItem.addEventListener("click", () => {
         item.action();
         menu.remove();
       });
       menu.appendChild(menuItem);
     }
   });
-  
+
   document.body.appendChild(menu);
-  if (typeof lucide !== 'undefined') lucide.createIcons();
-  
+  if (typeof lucide !== "undefined") lucide.createIcons();
+
   // Close menu on click outside
   const closeMenu = (e) => {
     if (!menu.contains(e.target)) {
       menu.remove();
-      document.removeEventListener('click', closeMenu);
+      document.removeEventListener("click", closeMenu);
     }
   };
   setTimeout(() => {
-    document.addEventListener('click', closeMenu);
+    document.addEventListener("click", closeMenu);
   }, 10);
 }
 
@@ -22546,102 +23565,119 @@ function showGraphContextMenu(event, data) {
  */
 async function exploreFromNode(nodeId) {
   if (!cytoscapeInstance) {
-    console.error('[Graph] Cannot explore: cytoscape instance not initialized');
+    console.error("[Graph] Cannot explore: cytoscape instance not initialized");
     return;
   }
-  
-  console.log('[Graph] Exploring from node:', nodeId);
-  
+
+  console.log("[Graph] Exploring from node:", nodeId);
+
   try {
     // Fetch expanded neighborhood from backend
-    const response = await fetch(`http://127.0.0.1:11436/polly/graph/nodes?center_node=${encodeURIComponent(nodeId)}&hops=2&limit=50`);
+    const response = await fetch(
+      `http://127.0.0.1:11436/polly/graph/nodes?center_node=${encodeURIComponent(nodeId)}&hops=2&limit=50`,
+    );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    
+
     if (!data.nodes || data.nodes.length === 0) {
-      console.log('[Graph] No new nodes found in neighborhood');
+      console.log("[Graph] No new nodes found in neighborhood");
       return;
     }
-    
+
     // Extend domain colors for any new domains (preserves existing assignments)
     const existingDomains = new Set(Object.keys(graphDomainColors));
-    const newDomains = data.nodes.map(n => n.domain).filter(d => d && !existingDomains.has(d));
+    const newDomains = data.nodes
+      .map((n) => n.domain)
+      .filter((d) => d && !existingDomains.has(d));
     if (newDomains.length > 0) {
       const palette = [
-        '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
-        '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788'
+        "#FF6B6B",
+        "#4ECDC4",
+        "#45B7D1",
+        "#FFA07A",
+        "#98D8C8",
+        "#F7DC6F",
+        "#BB8FCE",
+        "#85C1E2",
+        "#F8B739",
+        "#52B788",
       ];
       const startIdx = existingDomains.size;
       newDomains.forEach((domain, idx) => {
         graphDomainColors[domain] = palette[(startIdx + idx) % palette.length];
       });
     }
-    
+
     // Track which nodes are new
-    const existingNodeIds = new Set(cytoscapeInstance.nodes().map(n => n.data('id')));
+    const existingNodeIds = new Set(
+      cytoscapeInstance.nodes().map((n) => n.data("id")),
+    );
     let newNodesCount = 0;
     let newEdgesCount = 0;
-    
+
     // Add new nodes
-    data.nodes.forEach(node => {
+    data.nodes.forEach((node) => {
       if (!existingNodeIds.has(node.id)) {
         cytoscapeInstance.add({
-          group: 'nodes',
+          group: "nodes",
           data: {
             id: node.id,
             label: node.name,
-            type: node.type || 'note',
+            type: node.type || "note",
             domain: node.domain,
             domains: node.domain ? [node.domain] : [],
             authority: node.authority || 0.5,
             connectionCount: node.connection_count || 0,
-            isGhost: node.is_ghost || false
-          }
+            isGhost: node.is_ghost || false,
+          },
         });
         newNodesCount++;
       }
     });
-    
+
     // Add new edges
-    const existingEdgeIds = new Set(cytoscapeInstance.edges().map(e => e.data('id')));
-    data.edges.forEach(edge => {
-      const edgeId = `${edge.source}-${edge.target}-${edge.type || 'references'}`;
+    const existingEdgeIds = new Set(
+      cytoscapeInstance.edges().map((e) => e.data("id")),
+    );
+    data.edges.forEach((edge) => {
+      const edgeId = `${edge.source}-${edge.target}-${edge.type || "references"}`;
       if (!existingEdgeIds.has(edgeId)) {
         cytoscapeInstance.add({
-          group: 'edges',
+          group: "edges",
           data: {
             id: edgeId,
             source: edge.source,
             target: edge.target,
             weight: edge.strength || 1,
-            relationshipType: edge.type || 'references',
-            edgeLabel: edge.label || '',
-            isGhost: edge.is_ghost || false
-          }
+            relationshipType: edge.type || "references",
+            edgeLabel: edge.label || "",
+            isGhost: edge.is_ghost || false,
+          },
         });
         newEdgesCount++;
       }
     });
-    
-    console.log(`[Graph] Added ${newNodesCount} new nodes and ${newEdgesCount} new edges`);
-    
+
+    console.log(
+      `[Graph] Added ${newNodesCount} new nodes and ${newEdgesCount} new edges`,
+    );
+
     // Re-apply current layout to incorporate new nodes
-    const currentLayout = graphState.layout || 'cose';
+    const currentLayout = graphState.layout || "cose";
     const layoutConfig = getLayoutConfig(currentLayout);
     const layout = cytoscapeInstance.layout(layoutConfig);
     layout.run();
-    
+
     // Update label visibility after layout
     setTimeout(() => {
       updateGraphLabelVisibility(cytoscapeInstance);
     }, 600);
-    
+
     // Mark this node as expanded
     graphState.expandedNodes.add(nodeId);
     saveGraphState();
-    
   } catch (error) {
-    console.error('[Graph] Failed to explore from node:', error);
+    console.error("[Graph] Failed to explore from node:", error);
   }
 }
 
@@ -22649,11 +23685,11 @@ async function exploreFromNode(nodeId) {
  * Show "Back to Graph" button
  */
 function showBackToGraphButton() {
-  let btn = document.getElementById('back-to-graph-btn');
+  let btn = document.getElementById("back-to-graph-btn");
   if (!btn) {
-    btn = document.createElement('button');
-    btn.id = 'back-to-graph-btn';
-    btn.className = 'back-to-graph-button';
+    btn = document.createElement("button");
+    btn.id = "back-to-graph-btn";
+    btn.className = "back-to-graph-button";
     btn.innerHTML = '<i data-lucide="arrow-left"></i> Back to Graph';
     btn.style.cssText = `
       position: fixed;
@@ -22669,12 +23705,12 @@ function showBackToGraphButton() {
       cursor: pointer;
       box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     `;
-    btn.addEventListener('click', () => {
-      showView('graph');
+    btn.addEventListener("click", () => {
+      showView("graph");
       btn.remove();
     });
     document.body.appendChild(btn);
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (typeof lucide !== "undefined") lucide.createIcons();
   }
 }
 
@@ -22682,42 +23718,54 @@ function showBackToGraphButton() {
  * Render graph filters panel
  */
 async function renderGraphFiltersPanel() {
-  const content = document.querySelector('.lower-panel[data-view="graph"] .lower-panel-content');
+  const content = document.querySelector(
+    '.lower-panel[data-view="graph"] .lower-panel-content',
+  );
   if (!content) return;
 
   // Fetch configured domains for the checkboxes
   let configuredDomains = [];
   try {
-    const domResp = await fetch('http://127.0.0.1:11436/polly/domains/config');
+    const domResp = await fetch("http://127.0.0.1:11436/polly/domains/config");
     if (domResp.ok) {
       const domData = await domResp.json();
       configuredDomains = domData.domains || [];
     }
   } catch (e) {
-    console.warn('[Graph] Could not fetch domain config, falling back to graphDomainColors:', e);
+    console.warn(
+      "[Graph] Could not fetch domain config, falling back to graphDomainColors:",
+      e,
+    );
   }
 
   // Fall back to raw node domain names if config unavailable
   if (configuredDomains.length === 0 && graphDomainColors) {
-    configuredDomains = Object.entries(graphDomainColors).map(([id, color]) => ({ id, name: id, color }));
+    configuredDomains = Object.entries(graphDomainColors).map(
+      ([id, color]) => ({ id, name: id, color }),
+    );
   }
 
   // Merge configured domain colors into graphDomainColors so node rendering stays consistent
-  configuredDomains.forEach(d => {
+  configuredDomains.forEach((d) => {
     if (d.color) graphDomainColors[d.id] = d.color;
   });
 
-  const domainCheckboxesHtml = configuredDomains.map(domain => {
-    const isSelected = !graphState.filters?.domains || graphState.filters.domains.length === 0 || graphState.filters.domains.includes(domain.id);
-    const color = graphDomainColors[domain.id] || '#888888';
-    return `
+  const domainCheckboxesHtml = configuredDomains
+    .map((domain) => {
+      const isSelected =
+        !graphState.filters?.domains ||
+        graphState.filters.domains.length === 0 ||
+        graphState.filters.domains.includes(domain.id);
+      const color = graphDomainColors[domain.id] || "#888888";
+      return `
       <label class="graph-domain-checkbox" style="display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 11px; transition: background 0.15s;" data-domain="${domain.id}">
-        <input type="checkbox" data-domain="${domain.id}" ${isSelected ? 'checked' : ''}>
+        <input type="checkbox" data-domain="${domain.id}" ${isSelected ? "checked" : ""}>
         <span class="domain-color-dot" style="width: 8px; height: 8px; border-radius: 50%; background: ${color}; flex-shrink: 0;"></span>
         <span style="color: var(--text-primary);">${domain.name || domain.id}</span>
       </label>
     `;
-  }).join('');
+    })
+    .join("");
 
   content.innerHTML = `
     <div style="padding: 16px;">
@@ -22859,113 +23907,131 @@ async function renderGraphFiltersPanel() {
       </div>
     </div>
   `;
-  
-  if (typeof lucide !== 'undefined') lucide.createIcons();
-  
+
+  if (typeof lucide !== "undefined") lucide.createIcons();
+
   // Restore saved layout selection
-  const layoutSelect = document.getElementById('graph-layout-select');
+  const layoutSelect = document.getElementById("graph-layout-select");
   if (layoutSelect && graphState.layout) {
     layoutSelect.value = graphState.layout;
   }
-  
+
   // Setup layout selector handler
   if (layoutSelect) {
-    layoutSelect.addEventListener('change', (e) => {
+    layoutSelect.addEventListener("change", (e) => {
       applyGraphLayout(e.target.value);
     });
   }
-  
+
   // Setup edge type toggle handlers
-  const edgeTypeCheckboxes = document.querySelectorAll('.edge-type-cb');
-  edgeTypeCheckboxes.forEach(checkbox => {
-    const edgeType = checkbox.getAttribute('data-edge-type');
-    
+  const edgeTypeCheckboxes = document.querySelectorAll(".edge-type-cb");
+  edgeTypeCheckboxes.forEach((checkbox) => {
+    const edgeType = checkbox.getAttribute("data-edge-type");
+
     // Restore saved state
     if (graphState.filters && graphState.filters.edgeTypes) {
       checkbox.checked = graphState.filters.edgeTypes.includes(edgeType);
     }
-    
+
     // Add hover effect to label
-    const label = checkbox.closest('label');
+    const label = checkbox.closest("label");
     if (label) {
-      label.addEventListener('mouseenter', () => {
-        label.style.background = 'var(--bg-tertiary)';
+      label.addEventListener("mouseenter", () => {
+        label.style.background = "var(--bg-tertiary)";
       });
-      label.addEventListener('mouseleave', () => {
-        label.style.background = 'transparent';
+      label.addEventListener("mouseleave", () => {
+        label.style.background = "transparent";
       });
     }
-    
+
     // Add change handler
-    checkbox.addEventListener('change', (e) => {
+    checkbox.addEventListener("change", (e) => {
       toggleEdgeType(edgeType, e.target.checked);
     });
   });
-  
+
   // Setup multi-select domain filter handler
-  const domainCheckboxes = document.querySelectorAll('#graph-domain-checkboxes input[type="checkbox"]');
-  const selectAllBtn = document.getElementById('graph-domain-select-all');
-  const hubSection = document.getElementById('graph-domain-hub-section');
-  
+  const domainCheckboxes = document.querySelectorAll(
+    '#graph-domain-checkboxes input[type="checkbox"]',
+  );
+  const selectAllBtn = document.getElementById("graph-domain-select-all");
+  const hubSection = document.getElementById("graph-domain-hub-section");
+
   const syncDomainFilterState = (applyFilter = true) => {
     const selectedDomains = Array.from(domainCheckboxes)
-      .filter(cb => cb.checked)
-      .map(cb => cb.dataset.domain);
-    
-    console.log('[Graph] Domain filter changed to:', selectedDomains.length > 0 ? selectedDomains : 'All');
+      .filter((cb) => cb.checked)
+      .map((cb) => cb.dataset.domain);
+
+    console.log(
+      "[Graph] Domain filter changed to:",
+      selectedDomains.length > 0 ? selectedDomains : "All",
+    );
     if (!graphState.filters) graphState.filters = {};
-    graphState.filters.domains = selectedDomains.length > 0 ? selectedDomains : null;
-    
+    graphState.filters.domains =
+      selectedDomains.length > 0 ? selectedDomains : null;
+
     // Also keep single domain for hub button backwards compatibility
-    graphState.filters.domain = selectedDomains.length === 1 ? selectedDomains[0] : null;
-    
+    graphState.filters.domain =
+      selectedDomains.length === 1 ? selectedDomains[0] : null;
+
     if (applyFilter) applyGraphFilters();
-    
+
     // Show/hide hub buttons based on single domain selection
     if (hubSection) {
       if (selectedDomains.length === 1) {
-        hubSection.style.display = 'flex';
+        hubSection.style.display = "flex";
         const domain = selectedDomains[0];
-        const viewBtn = document.getElementById('graph-view-hub-btn');
-        const refreshBtn = document.getElementById('graph-refresh-hub-btn');
-        if (viewBtn) viewBtn.querySelector('span').textContent = `View ${domain} Hub`;
-        if (refreshBtn) refreshBtn.querySelector('span').textContent = `Refresh ${domain} Hub`;
+        const viewBtn = document.getElementById("graph-view-hub-btn");
+        const refreshBtn = document.getElementById("graph-refresh-hub-btn");
+        if (viewBtn)
+          viewBtn.querySelector("span").textContent = `View ${domain} Hub`;
+        if (refreshBtn)
+          refreshBtn.querySelector("span").textContent =
+            `Refresh ${domain} Hub`;
       } else {
-        hubSection.style.display = 'none';
+        hubSection.style.display = "none";
       }
     }
   };
-  
-  domainCheckboxes.forEach(cb => {
+
+  domainCheckboxes.forEach((cb) => {
     // Add hover effect to label
-    const label = cb.closest('label');
+    const label = cb.closest("label");
     if (label) {
-      label.addEventListener('mouseenter', () => label.style.background = 'var(--bg-hover)');
-      label.addEventListener('mouseleave', () => label.style.background = 'transparent');
+      label.addEventListener(
+        "mouseenter",
+        () => (label.style.background = "var(--bg-hover)"),
+      );
+      label.addEventListener(
+        "mouseleave",
+        () => (label.style.background = "transparent"),
+      );
     }
-    
-    cb.addEventListener('change', () => syncDomainFilterState(true));
+
+    cb.addEventListener("change", () => syncDomainFilterState(true));
   });
-  
+
   // Select All button
   if (selectAllBtn) {
-    selectAllBtn.addEventListener('click', (e) => {
+    selectAllBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      const allChecked = Array.from(domainCheckboxes).every(cb => cb.checked);
-      domainCheckboxes.forEach(cb => cb.checked = !allChecked);
+      const allChecked = Array.from(domainCheckboxes).every((cb) => cb.checked);
+      domainCheckboxes.forEach((cb) => (cb.checked = !allChecked));
       syncDomainFilterState(true);
     });
   }
-  
+
   // Initial state: sync UI state only, don't re-fetch (graph already loaded)
   syncDomainFilterState(false);
-  
+
   // Setup domain hub button handlers
-  const viewHubBtn = document.getElementById('graph-view-hub-btn');
-  const refreshHubBtn = document.getElementById('graph-refresh-hub-btn');
-  
+  const viewHubBtn = document.getElementById("graph-view-hub-btn");
+  const refreshHubBtn = document.getElementById("graph-refresh-hub-btn");
+
   const getSelectedDomain = () => {
-    const checked = document.querySelector('#graph-domain-checkboxes input[type="checkbox"]:checked');
+    const checked = document.querySelector(
+      '#graph-domain-checkboxes input[type="checkbox"]:checked',
+    );
     return checked ? checked.dataset.domain : null;
   };
 
@@ -22974,16 +24040,16 @@ async function renderGraphFiltersPanel() {
   // switching to the notes view (which triggers init) and then polling
   // until the specific file appears in the loaded index.
   const openHubNote = async (hubPath) => {
-    const noteName = hubPath.split('/').pop().replace('.md', '');
+    const noteName = hubPath.split("/").pop().replace(".md", "");
     graphState.sourceNode = null;
     saveGraphState();
-    showView('notes');
+    showView("notes");
     showBackToGraphButton();
     // Poll up to 10 s for notesManager to finish init AND have the hub in its index
     for (let i = 0; i < 100; i++) {
       const nm = window.notesManager;
       if (nm && Array.isArray(nm.notes)) {
-        const noteByPath = nm.notes.find(n => n.path === hubPath);
+        const noteByPath = nm.notes.find((n) => n.path === hubPath);
         if (noteByPath) {
           await nm.openNote(noteByPath.name);
           return;
@@ -22993,24 +24059,30 @@ async function renderGraphFiltersPanel() {
           nm.loadNotesIndex?.();
         }
       }
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100));
     }
     // Final fallback: open by derived name (may still fail if not indexed)
-    console.warn('[Graph] Hub not found by path after 10s, trying by name:', noteName);
+    console.warn(
+      "[Graph] Hub not found by path after 10s, trying by name:",
+      noteName,
+    );
     await window.notesManager?.openNote(noteName);
   };
 
   const generateHub = async (domain, openAfter = false) => {
-    const btn = document.getElementById('graph-refresh-hub-btn');
+    const btn = document.getElementById("graph-refresh-hub-btn");
     if (btn) {
       btn.disabled = true;
-      btn.querySelector('span').textContent = 'Generating...';
+      btn.querySelector("span").textContent = "Generating...";
     }
     try {
-      const resp = await fetch(`http://127.0.0.1:11436/polly/domains/${domain}/hub/refresh`, { method: 'POST' });
+      const resp = await fetch(
+        `http://127.0.0.1:11436/polly/domains/${domain}/hub/refresh`,
+        { method: "POST" },
+      );
       const result = await resp.json();
       if (!result.success) {
-        console.error('[Graph] Hub generation failed:', result.error);
+        console.error("[Graph] Hub generation failed:", result.error);
         return false;
       }
       if (openAfter) {
@@ -23018,24 +24090,28 @@ async function renderGraphFiltersPanel() {
       }
       return true;
     } catch (err) {
-      console.error('[Graph] Hub generation error:', err);
+      console.error("[Graph] Hub generation error:", err);
       return false;
     } finally {
-      const currentBtn = document.getElementById('graph-refresh-hub-btn');
+      const currentBtn = document.getElementById("graph-refresh-hub-btn");
       if (currentBtn) {
         currentBtn.disabled = false;
         const d = getSelectedDomain();
-        currentBtn.querySelector('span').textContent = d ? `Refresh ${d} Hub` : 'Refresh Hub Note';
+        currentBtn.querySelector("span").textContent = d
+          ? `Refresh ${d} Hub`
+          : "Refresh Hub Note";
       }
     }
   };
 
   if (viewHubBtn) {
-    viewHubBtn.addEventListener('click', async () => {
+    viewHubBtn.addEventListener("click", async () => {
       const domain = getSelectedDomain();
       if (!domain) return;
       try {
-        const resp = await fetch(`http://127.0.0.1:11436/polly/domains/${domain}/hub/status`);
+        const resp = await fetch(
+          `http://127.0.0.1:11436/polly/domains/${domain}/hub/status`,
+        );
         const status = await resp.json();
         if (status.exists) {
           await openHubNote(status.path);
@@ -23043,24 +24119,24 @@ async function renderGraphFiltersPanel() {
           await generateHub(domain, true);
         }
       } catch (err) {
-        console.error('[Graph] Failed to open hub:', err);
+        console.error("[Graph] Failed to open hub:", err);
       }
     });
   }
 
   if (refreshHubBtn) {
-    refreshHubBtn.addEventListener('click', async () => {
+    refreshHubBtn.addEventListener("click", async () => {
       const domain = getSelectedDomain();
       if (!domain) return;
       await generateHub(domain, false);
     });
   }
-  
+
   // Setup content type filter handlers
-  const contentTypeCheckboxes = document.querySelectorAll('.content-type-cb');
-  contentTypeCheckboxes.forEach(checkbox => {
-    const contentType = checkbox.getAttribute('data-content-type');
-    
+  const contentTypeCheckboxes = document.querySelectorAll(".content-type-cb");
+  contentTypeCheckboxes.forEach((checkbox) => {
+    const contentType = checkbox.getAttribute("data-content-type");
+
     // Restore saved state
     if (graphState.filters && graphState.filters.types !== undefined) {
       // If types is explicitly set (array), check if this type is in it
@@ -23069,35 +24145,42 @@ async function renderGraphFiltersPanel() {
       // If types is undefined (no filter = show all), check all boxes by default
       checkbox.checked = true;
     }
-    
+
     // Add hover effect to label
-    const label = checkbox.closest('label');
+    const label = checkbox.closest("label");
     if (label) {
-      label.addEventListener('mouseenter', () => {
-        label.style.background = 'var(--bg-tertiary)';
+      label.addEventListener("mouseenter", () => {
+        label.style.background = "var(--bg-tertiary)";
       });
-      label.addEventListener('mouseleave', () => {
-        label.style.background = 'transparent';
+      label.addEventListener("mouseleave", () => {
+        label.style.background = "transparent";
       });
     }
-    
+
     // Add change handler
-    checkbox.addEventListener('change', () => {
+    checkbox.addEventListener("change", () => {
       // Collect all checked types
       const checkedTypes = [];
-      contentTypeCheckboxes.forEach(cb => {
+      contentTypeCheckboxes.forEach((cb) => {
         if (cb.checked) {
-          checkedTypes.push(cb.getAttribute('data-content-type'));
+          checkedTypes.push(cb.getAttribute("data-content-type"));
         }
       });
-      
-      console.log('[Graph] Content types filter changed to:', checkedTypes);
+
+      console.log("[Graph] Content types filter changed to:", checkedTypes);
       if (!graphState.filters) graphState.filters = {};
-      
+
       // If all types are checked, treat as "no filter" (show all including entities)
       // If some types are unchecked, filter to only those checked types
       // If no types are checked, show nothing
-      const allTypes = ['note', 'conversation', 'book', 'capture', 'code', 'canvas'];
+      const allTypes = [
+        "note",
+        "conversation",
+        "book",
+        "capture",
+        "code",
+        "canvas",
+      ];
       if (checkedTypes.length === allTypes.length) {
         // All checked = no filter (delete the key so it's not sent to API)
         delete graphState.filters.types;
@@ -23105,36 +24188,36 @@ async function renderGraphFiltersPanel() {
         // Some checked = filter to those types
         graphState.filters.types = checkedTypes;
       }
-      
+
       applyGraphFilters();
     });
   });
-  
+
   // Setup authority threshold slider handler (debounced)
-  const authoritySlider = document.getElementById('graph-authority-filter');
-  const authorityValue = document.getElementById('authority-value');
+  const authoritySlider = document.getElementById("graph-authority-filter");
+  const authorityValue = document.getElementById("authority-value");
   if (authoritySlider && authorityValue) {
     // Set initial value display
     authorityValue.textContent = parseFloat(authoritySlider.value).toFixed(1);
-    
+
     let authorityDebounce = null;
-    authoritySlider.addEventListener('input', (e) => {
+    authoritySlider.addEventListener("input", (e) => {
       const value = parseFloat(e.target.value);
       authorityValue.textContent = value.toFixed(1);
-      
+
       // Debounce the filter application
       clearTimeout(authorityDebounce);
       authorityDebounce = setTimeout(() => {
-        console.log('[Graph] Authority threshold changed to:', value);
+        console.log("[Graph] Authority threshold changed to:", value);
         if (!graphState.filters) graphState.filters = {};
         graphState.filters.authority_min = value;
         applyGraphFilters();
       }, 300);
     });
   }
-  
+
   // Setup ghost toggle handler
-  const ghostToggle = document.getElementById('graph-show-ghosts');
+  const ghostToggle = document.getElementById("graph-show-ghosts");
   if (ghostToggle) {
     // Restore saved state
     if (graphState.filters && graphState.filters.showGhosts !== undefined) {
@@ -23142,29 +24225,29 @@ async function renderGraphFiltersPanel() {
     } else {
       ghostToggle.checked = true; // Default to showing ghosts
     }
-    
-    ghostToggle.addEventListener('change', (e) => {
+
+    ghostToggle.addEventListener("change", (e) => {
       const showGhosts = e.target.checked;
-      console.log('[Graph] Ghost nodes toggle:', showGhosts);
-      
+      console.log("[Graph] Ghost nodes toggle:", showGhosts);
+
       if (!graphState.filters) graphState.filters = {};
       graphState.filters.showGhosts = showGhosts;
-      
+
       if (cytoscapeInstance) {
         // Hide/show ghost nodes
-        cytoscapeInstance.nodes().forEach(node => {
-          if (node.data('isGhost')) {
-            node.style('display', showGhosts ? 'element' : 'none');
+        cytoscapeInstance.nodes().forEach((node) => {
+          if (node.data("isGhost")) {
+            node.style("display", showGhosts ? "element" : "none");
           }
         });
         // Hide/show ghost edges
-        cytoscapeInstance.edges().forEach(edge => {
-          if (edge.data('isGhost')) {
-            edge.style('display', showGhosts ? 'element' : 'none');
+        cytoscapeInstance.edges().forEach((edge) => {
+          if (edge.data("isGhost")) {
+            edge.style("display", showGhosts ? "element" : "none");
           }
         });
       }
-      
+
       saveGraphState();
     });
   }
@@ -23175,17 +24258,19 @@ async function renderGraphFiltersPanel() {
  */
 function applyGraphLayout(layoutName) {
   if (!cytoscapeInstance) {
-    console.error('[Graph] Cannot apply layout: cytoscape instance not initialized');
+    console.error(
+      "[Graph] Cannot apply layout: cytoscape instance not initialized",
+    );
     return;
   }
-  
-  console.log('[Graph] Applying layout:', layoutName);
-  
+
+  console.log("[Graph] Applying layout:", layoutName);
+
   // Get layout config and apply it
   const layoutConfig = getLayoutConfig(layoutName);
   const layout = cytoscapeInstance.layout(layoutConfig);
   layout.run();
-  
+
   // Save the current layout preference
   graphState.layout = layoutName;
   saveGraphState();
@@ -23196,30 +24281,40 @@ function applyGraphLayout(layoutName) {
  */
 function toggleEdgeType(edgeType, visible) {
   if (!cytoscapeInstance) return;
-  
-  console.log(`[Graph] Toggling edge type ${edgeType} to ${visible ? 'visible' : 'hidden'}`);
-  
+
+  console.log(
+    `[Graph] Toggling edge type ${edgeType} to ${visible ? "visible" : "hidden"}`,
+  );
+
   // Initialize edgeTypes array if not exists
   if (!graphState.filters.edgeTypes) {
-    graphState.filters.edgeTypes = ['references', 'mention', 'shared_tag', 'relates_to', 'co_occurs_with'];
+    graphState.filters.edgeTypes = [
+      "references",
+      "mention",
+      "shared_tag",
+      "relates_to",
+      "co_occurs_with",
+    ];
   }
-  
+
   // Update state
   if (visible) {
     if (!graphState.filters.edgeTypes.includes(edgeType)) {
       graphState.filters.edgeTypes.push(edgeType);
     }
   } else {
-    graphState.filters.edgeTypes = graphState.filters.edgeTypes.filter(t => t !== edgeType);
+    graphState.filters.edgeTypes = graphState.filters.edgeTypes.filter(
+      (t) => t !== edgeType,
+    );
   }
-  
+
   // Apply style to all edges of this type
-  cytoscapeInstance.edges().forEach(edge => {
-    if (edge.data('relationshipType') === edgeType) {
-      edge.style('display', visible ? 'element' : 'none');
+  cytoscapeInstance.edges().forEach((edge) => {
+    if (edge.data("relationshipType") === edgeType) {
+      edge.style("display", visible ? "element" : "none");
     }
   });
-  
+
   saveGraphState();
 }
 
@@ -23228,9 +24323,11 @@ function toggleEdgeType(edgeType, visible) {
  * @param {Object|null} nodeData - Node data object or null to show empty state
  */
 function renderGraphDetailsPanel(nodeData) {
-  const content = document.querySelector('.lower-panel[data-view="graph"] .lower-panel-content');
+  const content = document.querySelector(
+    '.lower-panel[data-view="graph"] .lower-panel-content',
+  );
   if (!content) return;
-  
+
   if (!nodeData) {
     content.innerHTML = `
       <div class="lower-panel-empty">
@@ -23239,34 +24336,44 @@ function renderGraphDetailsPanel(nodeData) {
         <p style="font-size: 11px; color: var(--text-secondary); opacity: 0.6; margin-top: 4px;">Double-click to open the note</p>
       </div>
     `;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (typeof lucide !== "undefined") lucide.createIcons();
     return;
   }
-  
-  const domainColor = graphDomainColors[nodeData.domain] || 'var(--text-secondary)';
+
+  const domainColor =
+    graphDomainColors[nodeData.domain] || "var(--text-secondary)";
   const authorityPct = Math.round((nodeData.authority || 0) * 100);
-  const authorityColor = authorityPct >= 70 ? '#10b981' : authorityPct >= 40 ? '#f59e0b' : '#808080';
-  
+  const authorityColor =
+    authorityPct >= 70 ? "#10b981" : authorityPct >= 40 ? "#f59e0b" : "#808080";
+
   const typeIcons = {
-    note: 'file-text',
-    conversation: 'message-circle',
-    book: 'book-open',
-    capture: 'camera',
-    code: 'code',
-    canvas: 'layout'
+    note: "file-text",
+    conversation: "message-circle",
+    book: "book-open",
+    capture: "camera",
+    code: "code",
+    canvas: "layout",
   };
-  const typeIcon = typeIcons[nodeData.type] || 'circle';
-  
+  const typeIcon = typeIcons[nodeData.type] || "circle";
+
   // Build connections list HTML
-  let connectionsHtml = '';
+  let connectionsHtml = "";
   if (nodeData.connections && nodeData.connections.length > 0) {
-    const sorted = [...nodeData.connections].sort((a, b) => (b.strength || 0) - (a.strength || 0));
-    connectionsHtml = sorted.map(conn => {
-      const connIcon = typeIcons[conn.nodeType] || 'circle';
-      const dirIcon = conn.direction === 'outgoing' ? 'arrow-right' : 'arrow-left';
-      const connDomainColor = graphDomainColors[conn.nodeDomain] || 'var(--text-secondary)';
-      const relLabel = (conn.relationshipType || 'references').replace(/_/g, ' ');
-      return `
+    const sorted = [...nodeData.connections].sort(
+      (a, b) => (b.strength || 0) - (a.strength || 0),
+    );
+    connectionsHtml = sorted
+      .map((conn) => {
+        const connIcon = typeIcons[conn.nodeType] || "circle";
+        const dirIcon =
+          conn.direction === "outgoing" ? "arrow-right" : "arrow-left";
+        const connDomainColor =
+          graphDomainColors[conn.nodeDomain] || "var(--text-secondary)";
+        const relLabel = (conn.relationshipType || "references").replace(
+          /_/g,
+          " ",
+        );
+        return `
         <div class="graph-detail-connection" data-node-id="${escapeHtml(conn.nodeId)}">
           <i data-lucide="${dirIcon}" style="width: 10px; height: 10px; color: var(--text-secondary); flex-shrink: 0;"></i>
           <i data-lucide="${connIcon}" style="width: 12px; height: 12px; color: ${connDomainColor}; flex-shrink: 0;"></i>
@@ -23274,28 +24381,30 @@ function renderGraphDetailsPanel(nodeData) {
           <span class="graph-detail-conn-rel">${escapeHtml(relLabel)}</span>
         </div>
       `;
-    }).join('');
+      })
+      .join("");
   } else {
-    connectionsHtml = '<div style="font-size: 11px; color: var(--text-secondary); opacity: 0.6; padding: 8px 0;">No connections</div>';
+    connectionsHtml =
+      '<div style="font-size: 11px; color: var(--text-secondary); opacity: 0.6; padding: 8px 0;">No connections</div>';
   }
-  
+
   content.innerHTML = `
     <div class="graph-details-container">
       <div class="graph-details-header">
         <div class="graph-details-title-row">
           <i data-lucide="${typeIcon}" style="width: 16px; height: 16px; color: ${domainColor}; flex-shrink: 0;"></i>
           <span class="graph-details-title">${escapeHtml(nodeData.name)}</span>
-          ${nodeData.isGhost ? '<span class="graph-detail-badge ghost">Ghost</span>' : ''}
+          ${nodeData.isGhost ? '<span class="graph-detail-badge ghost">Ghost</span>' : ""}
         </div>
         <div class="graph-details-meta">
-          <span class="graph-detail-badge type">${escapeHtml(nodeData.type || 'unknown')}</span>
-          ${nodeData.domain ? `<span class="graph-detail-badge domain" style="border-color: ${domainColor}; color: ${domainColor};">${escapeHtml(nodeData.domain)}</span>` : ''}
+          <span class="graph-detail-badge type">${escapeHtml(nodeData.type || "unknown")}</span>
+          ${nodeData.domain ? `<span class="graph-detail-badge domain" style="border-color: ${domainColor}; color: ${domainColor};">${escapeHtml(nodeData.domain)}</span>` : ""}
           <span class="graph-detail-badge authority" style="color: ${authorityColor};">Authority: ${authorityPct}%</span>
           <span class="graph-detail-badge connections">${nodeData.connectionCount || 0} connections</span>
         </div>
       </div>
       <div class="graph-details-actions">
-        ${nodeData.type === 'note' ? `<button class="graph-detail-action-btn" data-action="open-note" data-node-id="${escapeHtml(nodeData.id)}" title="Open note"><i data-lucide="external-link" style="width: 12px; height: 12px;"></i> Open</button>` : ''}
+        ${nodeData.type === "note" ? `<button class="graph-detail-action-btn" data-action="open-note" data-node-id="${escapeHtml(nodeData.id)}" title="Open note"><i data-lucide="external-link" style="width: 12px; height: 12px;"></i> Open</button>` : ""}
         <button class="graph-detail-action-btn" data-action="explore" data-node-id="${escapeHtml(nodeData.id)}" title="Explore from here"><i data-lucide="git-branch" style="width: 12px; height: 12px;"></i> Explore</button>
       </div>
       <div class="graph-details-connections">
@@ -23306,29 +24415,29 @@ function renderGraphDetailsPanel(nodeData) {
       </div>
     </div>
   `;
-  
-  if (typeof lucide !== 'undefined') lucide.createIcons();
-  
+
+  if (typeof lucide !== "undefined") lucide.createIcons();
+
   // Wire up action buttons
-  content.querySelectorAll('.graph-detail-action-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  content.querySelectorAll(".graph-detail-action-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
       const action = btn.dataset.action;
       const nodeId = btn.dataset.nodeId;
-      if (action === 'open-note' && window.notesManager) {
+      if (action === "open-note" && window.notesManager) {
         graphState.sourceNode = nodeId;
         saveGraphState();
         window.notesManager.openNote(nodeId);
-        showView('notes');
+        showView("notes");
         showBackToGraphButton();
-      } else if (action === 'explore') {
+      } else if (action === "explore") {
         exploreFromNode(nodeId);
       }
     });
   });
-  
+
   // Wire up connection item clicks to select that node in the graph
-  content.querySelectorAll('.graph-detail-connection').forEach(item => {
-    item.addEventListener('click', () => {
+  content.querySelectorAll(".graph-detail-connection").forEach((item) => {
+    item.addEventListener("click", () => {
       const nodeId = item.dataset.nodeId;
       if (cytoscapeInstance) {
         const node = cytoscapeInstance.getElementById(nodeId);
@@ -23336,14 +24445,14 @@ function renderGraphDetailsPanel(nodeData) {
           // Animate to the connected node
           cytoscapeInstance.animate({
             center: { eles: node },
-            duration: 300
+            duration: 300,
           });
           // Simulate a tap on that node to show its details
-          node.emit('tap');
+          node.emit("tap");
         }
       }
     });
-    item.style.cursor = 'pointer';
+    item.style.cursor = "pointer";
   });
 }
 
@@ -23358,23 +24467,26 @@ async function loadGardenView() {
  * Load garden stats and display them in the dashboard
  */
 async function loadGardenStats() {
-  const container = document.getElementById('garden-stats-grid');
+  const container = document.getElementById("garden-stats-grid");
   if (!container) return;
-  
+
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/stats');
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/graph/garden/stats",
+    );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const stats = await response.json();
-    
+
     // Calculate health score (0-100)
     const healthScore = Math.round(
-      (stats.coverage_pct * 0.4) + // 40% weight on coverage
-      (Math.min(100, (stats.avg_connections_per_note / 5) * 100) * 0.3) + // 30% weight on connections
-      (Math.max(0, 100 - stats.isolated_notes) * 0.3) // 30% weight on non-isolated
+      stats.coverage_pct * 0.4 + // 40% weight on coverage
+        Math.min(100, (stats.avg_connections_per_note / 5) * 100) * 0.3 + // 30% weight on connections
+        Math.max(0, 100 - stats.isolated_notes) * 0.3, // 30% weight on non-isolated
     );
-    
-    const healthColor = healthScore >= 70 ? '#10b981' : healthScore >= 40 ? '#f59e0b' : '#ef4444';
-    
+
+    const healthColor =
+      healthScore >= 70 ? "#10b981" : healthScore >= 40 ? "#f59e0b" : "#ef4444";
+
     container.innerHTML = `
       <!-- Health Score Card -->
       <div class="garden-stat-card" style="grid-column: span 2; background: linear-gradient(135deg, ${healthColor}22 0%, ${healthColor}11 100%); border-color: ${healthColor}33;">
@@ -23414,24 +24526,23 @@ async function loadGardenStats() {
       </div>
       
       <!-- Isolated Notes -->
-      <div class="garden-stat-card ${stats.isolated_notes > 10 ? 'stat-warning' : ''}">
+      <div class="garden-stat-card ${stats.isolated_notes > 10 ? "stat-warning" : ""}">
         <div class="garden-stat-value">${stats.isolated_notes}</div>
         <div class="garden-stat-label">Isolated Notes</div>
       </div>
       
       <!-- Weak Links -->
-      <div class="garden-stat-card ${stats.weak_connection_count > 20 ? 'stat-warning' : ''}">
+      <div class="garden-stat-card ${stats.weak_connection_count > 20 ? "stat-warning" : ""}">
         <div class="garden-stat-value">${stats.weak_connection_count}</div>
         <div class="garden-stat-label">Weak Links</div>
       </div>
       
       <!-- Stale Entities -->
-      <div class="garden-stat-card ${stats.stale_entity_count > 5 ? 'stat-warning' : ''}">
+      <div class="garden-stat-card ${stats.stale_entity_count > 5 ? "stat-warning" : ""}">
         <div class="garden-stat-value">${stats.stale_entity_count}</div>
         <div class="garden-stat-label">Stale Entities</div>
       </div>
     `;
-    
   } catch (error) {
     console.error("[Garden] Failed to load stats:", error);
     container.innerHTML = `
@@ -23446,20 +24557,21 @@ async function loadGardenStats() {
  * Load garden suggestions and display them
  */
 async function loadGardenSuggestions() {
-  const container = document.getElementById('garden-suggestions-content');
+  const container = document.getElementById("garden-suggestions-content");
   if (!container) return;
-  
+
   try {
-    const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/suggestions?limit=10');
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/graph/garden/suggestions?limit=10",
+    );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    
+
     // Store suggestions in memory for later actions
     window.gardenSuggestions = data;
-    
+
     // Show connection suggestions by default
     renderConnectionSuggestions(data.connection_suggestions);
-    
   } catch (error) {
     console.error("[Garden] Failed to load suggestions:", error);
     container.innerHTML = `
@@ -23474,9 +24586,9 @@ async function loadGardenSuggestions() {
  * Render connection suggestions
  */
 function renderConnectionSuggestions(suggestions) {
-  const container = document.getElementById('garden-suggestions-content');
+  const container = document.getElementById("garden-suggestions-content");
   if (!container) return;
-  
+
   if (!suggestions || suggestions.length === 0) {
     container.innerHTML = `
       <div style="text-align: center; padding: 20px; color: var(--text-success);">
@@ -23485,13 +24597,18 @@ function renderConnectionSuggestions(suggestions) {
         <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">Your notes are well connected.</p>
       </div>
     `;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (typeof lucide !== "undefined") lucide.createIcons();
     return;
   }
-  
+
   let html = '<div class="garden-suggestions-list">';
   suggestions.forEach((sug, idx) => {
-    const confidenceColor = sug.confidence >= 0.8 ? '#10b981' : sug.confidence >= 0.6 ? '#f59e0b' : '#808080';
+    const confidenceColor =
+      sug.confidence >= 0.8
+        ? "#10b981"
+        : sug.confidence >= 0.6
+          ? "#f59e0b"
+          : "#808080";
     html += `
       <div class="garden-suggestion-item" data-suggestion-type="connection" data-suggestion-idx="${idx}">
         <div class="garden-suggestion-header">
@@ -23514,10 +24631,10 @@ function renderConnectionSuggestions(suggestions) {
       </div>
     `;
   });
-  html += '</div>';
+  html += "</div>";
   container.innerHTML = html;
-  
-  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  if (typeof lucide !== "undefined") lucide.createIcons();
   setupSuggestionHandlers();
 }
 
@@ -23525,9 +24642,9 @@ function renderConnectionSuggestions(suggestions) {
  * Render merge suggestions
  */
 function renderMergeSuggestions(suggestions) {
-  const container = document.getElementById('garden-suggestions-content');
+  const container = document.getElementById("garden-suggestions-content");
   if (!container) return;
-  
+
   if (!suggestions || suggestions.length === 0) {
     container.innerHTML = `
       <div style="text-align: center; padding: 20px; color: var(--text-success);">
@@ -23536,13 +24653,18 @@ function renderMergeSuggestions(suggestions) {
         <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">No duplicate entities found.</p>
       </div>
     `;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (typeof lucide !== "undefined") lucide.createIcons();
     return;
   }
-  
+
   let html = '<div class="garden-suggestions-list">';
   suggestions.forEach((sug, idx) => {
-    const confidenceColor = sug.confidence >= 0.8 ? '#10b981' : sug.confidence >= 0.6 ? '#f59e0b' : '#808080';
+    const confidenceColor =
+      sug.confidence >= 0.8
+        ? "#10b981"
+        : sug.confidence >= 0.6
+          ? "#f59e0b"
+          : "#808080";
     html += `
       <div class="garden-suggestion-item" data-suggestion-type="merge" data-suggestion-idx="${idx}">
         <div class="garden-suggestion-header">
@@ -23565,10 +24687,10 @@ function renderMergeSuggestions(suggestions) {
       </div>
     `;
   });
-  html += '</div>';
+  html += "</div>";
   container.innerHTML = html;
-  
-  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  if (typeof lucide !== "undefined") lucide.createIcons();
   setupSuggestionHandlers();
 }
 
@@ -23576,9 +24698,9 @@ function renderMergeSuggestions(suggestions) {
  * Render enrichment suggestions
  */
 function renderEnrichmentSuggestions(suggestions) {
-  const container = document.getElementById('garden-suggestions-content');
+  const container = document.getElementById("garden-suggestions-content");
   if (!container) return;
-  
+
   if (!suggestions || suggestions.length === 0) {
     container.innerHTML = `
       <div style="text-align: center; padding: 20px; color: var(--text-success);">
@@ -23587,10 +24709,10 @@ function renderEnrichmentSuggestions(suggestions) {
         <p style="font-size: 11px; margin-top: 4px; opacity: 0.7;">All notes are enriched.</p>
       </div>
     `;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (typeof lucide !== "undefined") lucide.createIcons();
     return;
   }
-  
+
   let html = '<div class="garden-suggestions-list">';
   suggestions.forEach((sug, idx) => {
     html += `
@@ -23615,10 +24737,10 @@ function renderEnrichmentSuggestions(suggestions) {
       </div>
     `;
   });
-  html += '</div>';
+  html += "</div>";
   container.innerHTML = html;
-  
-  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  if (typeof lucide !== "undefined") lucide.createIcons();
   setupSuggestionHandlers();
 }
 
@@ -23626,42 +24748,43 @@ function renderEnrichmentSuggestions(suggestions) {
  * Setup event handlers for suggestion actions
  */
 function setupSuggestionHandlers() {
-  document.querySelectorAll('.garden-suggestion-action').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
+  document.querySelectorAll(".garden-suggestion-action").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
       e.stopPropagation();
       const action = btn.dataset.action;
-      const item = btn.closest('.garden-suggestion-item');
+      const item = btn.closest(".garden-suggestion-item");
       const type = item.dataset.suggestionType;
       const idx = parseInt(item.dataset.suggestionIdx);
-      
-      if (action === 'dismiss') {
+
+      if (action === "dismiss") {
         item.remove();
         return;
       }
-      
+
       // Handle accept action
-      if (action === 'accept') {
+      if (action === "accept") {
         btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader-2" class="spinning" style="width: 12px; height: 12px;"></i>';
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-        
+        btn.innerHTML =
+          '<i data-lucide="loader-2" class="spinning" style="width: 12px; height: 12px;"></i>';
+        if (typeof lucide !== "undefined") lucide.createIcons();
+
         try {
-          if (type === 'connection') {
+          if (type === "connection") {
             await acceptConnectionSuggestion(idx);
-          } else if (type === 'merge') {
+          } else if (type === "merge") {
             await acceptMergeSuggestion(idx);
-          } else if (type === 'enrichment') {
+          } else if (type === "enrichment") {
             await acceptEnrichmentSuggestion(idx);
           }
-          
-          item.style.opacity = '0.5';
+
+          item.style.opacity = "0.5";
           setTimeout(() => item.remove(), 300);
-          
         } catch (error) {
           console.error(`[Garden] Failed to accept ${type} suggestion:`, error);
           btn.disabled = false;
-          btn.innerHTML = '<i data-lucide="check" style="width: 12px; height: 12px;"></i>';
-          if (typeof lucide !== 'undefined') lucide.createIcons();
+          btn.innerHTML =
+            '<i data-lucide="check" style="width: 12px; height: 12px;"></i>';
+          if (typeof lucide !== "undefined") lucide.createIcons();
           showToast(`Failed to apply suggestion: ${error.message}`, "error");
         }
       }
@@ -23675,20 +24798,23 @@ function setupSuggestionHandlers() {
 async function acceptConnectionSuggestion(idx) {
   const sug = window.gardenSuggestions.connection_suggestions[idx];
   if (!sug) return;
-  
-  const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/connection', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      action: 'add',
-      source: sug.source_note,
-      target: sug.target_note,
-      connection_type: 'relates_to'
-    })
-  });
-  
+
+  const response = await fetch(
+    "http://127.0.0.1:11436/polly/graph/garden/connection",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "add",
+        source: sug.source_note,
+        target: sug.target_note,
+        connection_type: "relates_to",
+      }),
+    },
+  );
+
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  
+
   // Refresh graph
   if (cytoscapeInstance) {
     await initGraphCanvas();
@@ -23701,18 +24827,21 @@ async function acceptConnectionSuggestion(idx) {
 async function acceptMergeSuggestion(idx) {
   const sug = window.gardenSuggestions.merge_candidates[idx];
   if (!sug) return;
-  
-  const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/merge', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      source_id: sug.entity_b_id,
-      target_id: sug.entity_a_id
-    })
-  });
-  
+
+  const response = await fetch(
+    "http://127.0.0.1:11436/polly/graph/garden/merge",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_id: sug.entity_b_id,
+        target_id: sug.entity_a_id,
+      }),
+    },
+  );
+
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  
+
   // Refresh stats and graph
   await loadGardenStats();
   if (cytoscapeInstance) {
@@ -23726,18 +24855,21 @@ async function acceptMergeSuggestion(idx) {
 async function acceptEnrichmentSuggestion(idx) {
   const sug = window.gardenSuggestions.enrichment_candidates[idx];
   if (!sug) return;
-  
-  const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/enrich', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      note_names: [sug.note_name],
-      force: false
-    })
-  });
-  
+
+  const response = await fetch(
+    "http://127.0.0.1:11436/polly/graph/garden/enrich",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        note_names: [sug.note_name],
+        force: false,
+      }),
+    },
+  );
+
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  
+
   // Refresh stats
   await loadGardenStats();
 }
@@ -23746,22 +24878,22 @@ async function acceptEnrichmentSuggestion(idx) {
  * Setup garden tab switching
  */
 function setupGardenTabs() {
-  const tabs = document.querySelectorAll('.garden-tab');
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
+  const tabs = document.querySelectorAll(".garden-tab");
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
       // Update active tab
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      
+      tabs.forEach((t) => t.classList.remove("active"));
+      tab.classList.add("active");
+
       // Render appropriate suggestions
       const tabType = tab.dataset.tab;
       const suggestions = window.gardenSuggestions;
-      
-      if (tabType === 'connections' && suggestions) {
+
+      if (tabType === "connections" && suggestions) {
         renderConnectionSuggestions(suggestions.connection_suggestions);
-      } else if (tabType === 'merges' && suggestions) {
+      } else if (tabType === "merges" && suggestions) {
         renderMergeSuggestions(suggestions.merge_candidates);
-      } else if (tabType === 'enrichment' && suggestions) {
+      } else if (tabType === "enrichment" && suggestions) {
         renderEnrichmentSuggestions(suggestions.enrichment_candidates);
       }
     });
@@ -23772,118 +24904,144 @@ function setupGardenTabs() {
  * Setup garden maintenance actions
  */
 function setupGardenMaintenance() {
-  const pruneWeakBtn = document.getElementById('garden-prune-weak-btn');
-  const pruneStaleBtn = document.getElementById('garden-prune-stale-btn');
-  const enrichAllBtn = document.getElementById('garden-enrich-all-btn');
-  
+  const pruneWeakBtn = document.getElementById("garden-prune-weak-btn");
+  const pruneStaleBtn = document.getElementById("garden-prune-stale-btn");
+  const enrichAllBtn = document.getElementById("garden-enrich-all-btn");
+
   if (pruneWeakBtn) {
-    pruneWeakBtn.addEventListener('click', async () => {
-      if (!(await ConfirmDialog.show({
-        title: 'Prune weak links',
-        message: 'Remove all connections with strength below 0.3? This cannot be undone.',
-        confirmLabel: 'Prune',
-        destructive: true,
-      }))) return;
-      
+    pruneWeakBtn.addEventListener("click", async () => {
+      if (
+        !(await ConfirmDialog.show({
+          title: "Prune weak links",
+          message:
+            "Remove all connections with strength below 0.3? This cannot be undone.",
+          confirmLabel: "Prune",
+          destructive: true,
+        }))
+      )
+        return;
+
       pruneWeakBtn.disabled = true;
-      pruneWeakBtn.innerHTML = '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Pruning...</span>';
-      if (typeof lucide !== 'undefined') lucide.createIcons();
-      
+      pruneWeakBtn.innerHTML =
+        '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Pruning...</span>';
+      if (typeof lucide !== "undefined") lucide.createIcons();
+
       try {
-        const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/prune?weak_threshold=0.3', {
-          method: 'DELETE'
-        });
+        const response = await fetch(
+          "http://127.0.0.1:11436/polly/graph/garden/prune?weak_threshold=0.3",
+          {
+            method: "DELETE",
+          },
+        );
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-        
+
         showToast(data.message, "success");
         await loadGardenStats();
         if (cytoscapeInstance) await initGraphCanvas();
-        
       } catch (error) {
-        console.error('[Garden] Prune weak failed:', error);
+        console.error("[Garden] Prune weak failed:", error);
         showToast(`Failed to prune weak links: ${error.message}`, "error");
       } finally {
         pruneWeakBtn.disabled = false;
-        pruneWeakBtn.innerHTML = '<i data-lucide="scissors" style="width: 14px; height: 14px;"></i><span>Prune Weak Links</span>';
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        pruneWeakBtn.innerHTML =
+          '<i data-lucide="scissors" style="width: 14px; height: 14px;"></i><span>Prune Weak Links</span>';
+        if (typeof lucide !== "undefined") lucide.createIcons();
       }
     });
   }
-  
+
   if (pruneStaleBtn) {
-    pruneStaleBtn.addEventListener('click', async () => {
-      if (!(await ConfirmDialog.show({
-        title: 'Remove stale entities',
-        message: 'Remove entities not seen in 180 days with fewer than 3 mentions? This cannot be undone.',
-        confirmLabel: 'Remove',
-        destructive: true,
-      }))) return;
-      
+    pruneStaleBtn.addEventListener("click", async () => {
+      if (
+        !(await ConfirmDialog.show({
+          title: "Remove stale entities",
+          message:
+            "Remove entities not seen in 180 days with fewer than 3 mentions? This cannot be undone.",
+          confirmLabel: "Remove",
+          destructive: true,
+        }))
+      )
+        return;
+
       pruneStaleBtn.disabled = true;
-      pruneStaleBtn.innerHTML = '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Pruning...</span>';
-      if (typeof lucide !== 'undefined') lucide.createIcons();
-      
+      pruneStaleBtn.innerHTML =
+        '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Pruning...</span>';
+      if (typeof lucide !== "undefined") lucide.createIcons();
+
       try {
-        const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/prune?stale_days=180', {
-          method: 'DELETE'
-        });
+        const response = await fetch(
+          "http://127.0.0.1:11436/polly/graph/garden/prune?stale_days=180",
+          {
+            method: "DELETE",
+          },
+        );
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-        
+
         showToast(data.message, "success");
         await loadGardenStats();
-        
       } catch (error) {
-        console.error('[Garden] Prune stale failed:', error);
+        console.error("[Garden] Prune stale failed:", error);
         showToast(`Failed to prune stale entities: ${error.message}`, "error");
       } finally {
         pruneStaleBtn.disabled = false;
-        pruneStaleBtn.innerHTML = '<i data-lucide="trash-2" style="width: 14px; height: 14px;"></i><span>Remove Stale Entities</span>';
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        pruneStaleBtn.innerHTML =
+          '<i data-lucide="trash-2" style="width: 14px; height: 14px;"></i><span>Remove Stale Entities</span>';
+        if (typeof lucide !== "undefined") lucide.createIcons();
       }
     });
   }
-  
+
   if (enrichAllBtn) {
-    enrichAllBtn.addEventListener('click', async () => {
+    enrichAllBtn.addEventListener("click", async () => {
       const suggestions = window.gardenSuggestions?.enrichment_candidates || [];
       if (suggestions.length === 0) {
-        showToast('No notes need enrichment!', "info");
+        showToast("No notes need enrichment!", "info");
         return;
       }
-      
-      if (!(await ConfirmDialog.show({
-        title: 'Enrich notes',
-        message: `Enrich ${suggestions.length} unenriched notes? This may take a while.`,
-        confirmLabel: 'Enrich',
-      }))) return;
-      
+
+      if (
+        !(await ConfirmDialog.show({
+          title: "Enrich notes",
+          message: `Enrich ${suggestions.length} unenriched notes? This may take a while.`,
+          confirmLabel: "Enrich",
+        }))
+      )
+        return;
+
       enrichAllBtn.disabled = true;
-      enrichAllBtn.innerHTML = '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Enriching...</span>';
-      if (typeof lucide !== 'undefined') lucide.createIcons();
-      
+      enrichAllBtn.innerHTML =
+        '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Enriching...</span>';
+      if (typeof lucide !== "undefined") lucide.createIcons();
+
       try {
-        const noteNames = suggestions.map(s => s.note_name);
-        const response = await fetch('http://127.0.0.1:11436/polly/graph/garden/enrich', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ note_names: noteNames, force: false })
-        });
+        const noteNames = suggestions.map((s) => s.note_name);
+        const response = await fetch(
+          "http://127.0.0.1:11436/polly/graph/garden/enrich",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ note_names: noteNames, force: false }),
+          },
+        );
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-        
-        showToast(`Enriched ${data.enriched_count} notes with ${data.entities_added} entities!`, "success");
+
+        showToast(
+          `Enriched ${data.enriched_count} notes with ${data.entities_added} entities!`,
+          "success",
+        );
         await loadGardenStats();
         await loadGardenSuggestions();
-        
       } catch (error) {
-        console.error('[Garden] Enrich all failed:', error);
+        console.error("[Garden] Enrich all failed:", error);
         showToast(`Failed to enrich notes: ${error.message}`, "error");
       } finally {
         enrichAllBtn.disabled = false;
-        enrichAllBtn.innerHTML = '<i data-lucide="sparkles" style="width: 14px; height: 14px;"></i><span>Enrich Unenriched Notes</span>';
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        enrichAllBtn.innerHTML =
+          '<i data-lucide="sparkles" style="width: 14px; height: 14px;"></i><span>Enrich Unenriched Notes</span>';
+        if (typeof lucide !== "undefined") lucide.createIcons();
       }
     });
   }
@@ -23904,32 +25062,32 @@ async function initGardenView() {
  * Setup entity browser controls in the garden view
  */
 function setupEntityBrowser() {
-  const loadBtn = document.getElementById('garden-load-entities-btn');
-  const deleteBtn = document.getElementById('garden-delete-selected-btn');
-  const searchInput = document.getElementById('garden-entity-search');
-  const typeFilter = document.getElementById('garden-entity-type-filter');
-  const sortSelect = document.getElementById('garden-entity-sort');
-  
+  const loadBtn = document.getElementById("garden-load-entities-btn");
+  const deleteBtn = document.getElementById("garden-delete-selected-btn");
+  const searchInput = document.getElementById("garden-entity-search");
+  const typeFilter = document.getElementById("garden-entity-type-filter");
+  const sortSelect = document.getElementById("garden-entity-sort");
+
   if (loadBtn) {
-    loadBtn.addEventListener('click', () => loadGardenEntities());
+    loadBtn.addEventListener("click", () => loadGardenEntities());
   }
-  
+
   if (deleteBtn) {
-    deleteBtn.addEventListener('click', () => deleteSelectedEntities());
+    deleteBtn.addEventListener("click", () => deleteSelectedEntities());
   }
-  
+
   // Debounced search
   if (searchInput) {
     const debouncedGardenSearch = debounce(() => loadGardenEntities(), 300);
-    searchInput.addEventListener('input', debouncedGardenSearch);
+    searchInput.addEventListener("input", debouncedGardenSearch);
   }
-  
+
   if (typeFilter) {
-    typeFilter.addEventListener('change', () => loadGardenEntities());
+    typeFilter.addEventListener("change", () => loadGardenEntities());
   }
-  
+
   if (sortSelect) {
-    sortSelect.addEventListener('change', () => loadGardenEntities());
+    sortSelect.addEventListener("change", () => loadGardenEntities());
   }
 }
 
@@ -23942,50 +25100,65 @@ let gardenSelectedEntities = new Set();
  * Load and render entities in the garden entity browser
  */
 async function loadGardenEntities() {
-  const listEl = document.getElementById('garden-entity-list');
+  const listEl = document.getElementById("garden-entity-list");
   if (!listEl) return;
-  
-  const searchInput = document.getElementById('garden-entity-search');
-  const typeFilter = document.getElementById('garden-entity-type-filter');
-  const sortSelect = document.getElementById('garden-entity-sort');
-  
-  const q = searchInput?.value?.trim() || '';
-  const type = typeFilter?.value || '';
-  const sort = sortSelect?.value || 'authority';
-  
-  listEl.innerHTML = SkeletonLoader.forView('graph');
-  
+
+  const searchInput = document.getElementById("garden-entity-search");
+  const typeFilter = document.getElementById("garden-entity-type-filter");
+  const sortSelect = document.getElementById("garden-entity-sort");
+
+  const q = searchInput?.value?.trim() || "";
+  const type = typeFilter?.value || "";
+  const sort = sortSelect?.value || "authority";
+
+  listEl.innerHTML = SkeletonLoader.forView("graph");
+
   try {
-    const params = new URLSearchParams({ limit: '50', sort });
-    if (q) params.append('q', q);
-    if (type) params.append('type', type);
-    
-    const response = await fetch(`http://127.0.0.1:11436/polly/graph/entities?${params.toString()}`);
+    const params = new URLSearchParams({ limit: "50", sort });
+    if (q) params.append("q", q);
+    if (type) params.append("type", type);
+
+    const response = await fetch(
+      `http://127.0.0.1:11436/polly/graph/entities?${params.toString()}`,
+    );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    
+
     gardenSelectedEntities.clear();
     updateDeleteSelectedBtn();
-    
+
     if (!data.entities || data.entities.length === 0) {
       listEl.innerHTML = "";
-      listEl.appendChild(EmptyState.render({
-        icon: "git-branch",
-        title: "No entities in the graph",
-        description: "Entities are extracted from your conversations and notes. Start chatting to build your knowledge graph.",
-        actionLabel: "Go to Chat",
-        onAction: () => showView("chat"),
-        size: "small",
-      }));
+      listEl.appendChild(
+        EmptyState.render({
+          icon: "git-branch",
+          title: "No entities in the graph",
+          description:
+            "Entities are extracted from your conversations and notes. Start chatting to build your knowledge graph.",
+          actionLabel: "Go to Chat",
+          onAction: () => showView("chat"),
+          size: "small",
+        }),
+      );
       return;
     }
-    
-    listEl.innerHTML = data.entities.map(entity => {
-      const authorityPct = Math.round((entity.authority_score || 0) * 100);
-      const authorityColor = authorityPct >= 70 ? '#10b981' : authorityPct >= 40 ? '#f59e0b' : '#808080';
-      const domainTags = (entity.domains || []).map(d => `<span class="garden-entity-domain">${escapeHtml(d)}</span>`).join('');
-      
-      return `
+
+    listEl.innerHTML = data.entities
+      .map((entity) => {
+        const authorityPct = Math.round((entity.authority_score || 0) * 100);
+        const authorityColor =
+          authorityPct >= 70
+            ? "#10b981"
+            : authorityPct >= 40
+              ? "#f59e0b"
+              : "#808080";
+        const domainTags = (entity.domains || [])
+          .map(
+            (d) => `<span class="garden-entity-domain">${escapeHtml(d)}</span>`,
+          )
+          .join("");
+
+        return `
         <div class="garden-entity-item" data-entity-id="${escapeHtml(entity.id)}">
           <label class="garden-entity-checkbox">
             <input type="checkbox" data-entity-id="${escapeHtml(entity.id)}" />
@@ -24004,45 +25177,52 @@ async function loadGardenEntities() {
           </button>
         </div>
       `;
-    }).join('');
-    
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-    
+      })
+      .join("");
+
+    if (typeof lucide !== "undefined") lucide.createIcons();
+
     // Wire up individual delete buttons
-    listEl.querySelectorAll('.garden-entity-delete-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
+    listEl.querySelectorAll(".garden-entity-delete-btn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const entityId = btn.dataset.entityId;
         const entityName = btn.dataset.entityName;
-        if (!(await ConfirmDialog.show({
-          title: 'Delete entity',
-          message: `Delete entity "${entityName}"? This will also remove all its relationships.`,
-          confirmLabel: 'Delete',
-          destructive: true,
-        }))) return;
-        
+        if (
+          !(await ConfirmDialog.show({
+            title: "Delete entity",
+            message: `Delete entity "${entityName}"? This will also remove all its relationships.`,
+            confirmLabel: "Delete",
+            destructive: true,
+          }))
+        )
+          return;
+
         try {
-          const resp = await fetch(`http://127.0.0.1:11436/polly/graph/entities/${encodeURIComponent(entityId)}`, { method: 'DELETE' });
+          const resp = await fetch(
+            `http://127.0.0.1:11436/polly/graph/entities/${encodeURIComponent(entityId)}`,
+            { method: "DELETE" },
+          );
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          
+
           // Remove from list
-          const item = btn.closest('.garden-entity-item');
+          const item = btn.closest(".garden-entity-item");
           if (item) item.remove();
           gardenSelectedEntities.delete(entityId);
           updateDeleteSelectedBtn();
-          
+
           // Refresh stats
           loadGardenStats();
         } catch (error) {
-          console.error('[Garden] Delete entity failed:', error);
+          console.error("[Garden] Delete entity failed:", error);
           showToast(`Failed to delete entity: ${error.message}`, "error");
         }
       });
     });
-    
+
     // Wire up checkboxes for bulk selection
-    listEl.querySelectorAll('.garden-entity-checkbox input').forEach(cb => {
-      cb.addEventListener('change', () => {
+    listEl.querySelectorAll(".garden-entity-checkbox input").forEach((cb) => {
+      cb.addEventListener("change", () => {
         const entityId = cb.dataset.entityId;
         if (cb.checked) {
           gardenSelectedEntities.add(entityId);
@@ -24052,9 +25232,8 @@ async function loadGardenEntities() {
         updateDeleteSelectedBtn();
       });
     });
-    
   } catch (error) {
-    console.error('[Garden] Failed to load entities:', error);
+    console.error("[Garden] Failed to load entities:", error);
     listEl.innerHTML = `<div style="text-align: center; padding: 16px; color: var(--text-error, #ef4444); font-size: 11px;">Failed to load entities</div>`;
   }
 }
@@ -24063,15 +25242,15 @@ async function loadGardenEntities() {
  * Update the "Delete Selected" button visibility and count
  */
 function updateDeleteSelectedBtn() {
-  const btn = document.getElementById('garden-delete-selected-btn');
-  const countEl = document.getElementById('garden-selected-count');
+  const btn = document.getElementById("garden-delete-selected-btn");
+  const countEl = document.getElementById("garden-selected-count");
   if (!btn) return;
-  
+
   if (gardenSelectedEntities.size > 0) {
-    btn.style.display = 'flex';
+    btn.style.display = "flex";
     if (countEl) countEl.textContent = gardenSelectedEntities.size;
   } else {
-    btn.style.display = 'none';
+    btn.style.display = "none";
   }
 }
 
@@ -24080,29 +25259,37 @@ function updateDeleteSelectedBtn() {
  */
 async function deleteSelectedEntities() {
   if (gardenSelectedEntities.size === 0) return;
-  
-  if (!(await ConfirmDialog.show({
-    title: 'Delete selected entities',
-    message: `Delete ${gardenSelectedEntities.size} selected entities? This cannot be undone.`,
-    confirmLabel: 'Delete',
-    destructive: true,
-  }))) return;
-  
-  const btn = document.getElementById('garden-delete-selected-btn');
+
+  if (
+    !(await ConfirmDialog.show({
+      title: "Delete selected entities",
+      message: `Delete ${gardenSelectedEntities.size} selected entities? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    }))
+  )
+    return;
+
+  const btn = document.getElementById("garden-delete-selected-btn");
   if (btn) {
     btn.disabled = true;
-    btn.querySelector('span').textContent = 'Deleting...';
+    btn.querySelector("span").textContent = "Deleting...";
   }
-  
+
   let deleted = 0;
   let failed = 0;
-  
+
   for (const entityId of gardenSelectedEntities) {
     try {
-      const resp = await fetch(`http://127.0.0.1:11436/polly/graph/entities/${encodeURIComponent(entityId)}`, { method: 'DELETE' });
+      const resp = await fetch(
+        `http://127.0.0.1:11436/polly/graph/entities/${encodeURIComponent(entityId)}`,
+        { method: "DELETE" },
+      );
       if (resp.ok) {
         deleted++;
-        const item = document.querySelector(`.garden-entity-item[data-entity-id="${entityId}"]`);
+        const item = document.querySelector(
+          `.garden-entity-item[data-entity-id="${entityId}"]`,
+        );
         if (item) item.remove();
       } else {
         failed++;
@@ -24111,17 +25298,18 @@ async function deleteSelectedEntities() {
       failed++;
     }
   }
-  
+
   gardenSelectedEntities.clear();
   updateDeleteSelectedBtn();
-  
+
   if (btn) {
     btn.disabled = false;
   }
-  
-  const msg = `Deleted ${deleted} entities` + (failed > 0 ? `, ${failed} failed` : '');
+
+  const msg =
+    `Deleted ${deleted} entities` + (failed > 0 ? `, ${failed} failed` : "");
   showToast(msg, failed > 0 ? "warning" : "success");
-  
+
   // Refresh stats
   loadGardenStats();
 }
@@ -24132,6 +25320,5 @@ async function deleteSelectedEntities() {
 async function loadGardenIsolatedNotes() {
   await initGardenView();
 }
-
 
 // ==================== End Graph Page ====================

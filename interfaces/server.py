@@ -1093,10 +1093,6 @@ def create_app(polly_instance=None) -> FastAPI:
                 if metadata:
                     response_data["metadata"] = metadata
                 
-                # Add persona actions (e.g., knowledge gap suggestions)
-                if hasattr(polly, '_last_persona_actions') and polly._last_persona_actions:
-                    response_data["persona_actions"] = polly._last_persona_actions
-                
                 return response_data
         except Exception as e:
             logger.error(f"Query failed: {e}", exc_info=True)
@@ -1130,10 +1126,6 @@ def create_app(polly_instance=None) -> FastAPI:
         metadata = polly.get_last_response_metadata()
         if metadata:
             yield f"data: {json.dumps({'metadata': metadata})}\n\n"
-        
-        # Send persona actions if present (e.g., knowledge gap suggestions)
-        if hasattr(polly, '_last_persona_actions') and polly._last_persona_actions:
-            yield f"data: {json.dumps({'persona_actions': polly._last_persona_actions})}\n\n"
         
         yield "data: [DONE]\n\n"
 

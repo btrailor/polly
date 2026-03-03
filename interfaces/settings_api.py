@@ -63,9 +63,6 @@ class UpdateMemoryRequest(BaseModel):
 
 class UpdateAIFeaturesRequest(BaseModel):
     """Request model for updating AI features settings."""
-    knowledge_suggestions_enabled: Optional[bool] = None
-    knowledge_suggestions_style: Optional[str] = None  # "subtle" | "inline" | "ask_first"
-    knowledge_suggestions_min_gap_score: Optional[float] = None
     autonomy_dashboard_enabled: Optional[bool] = None
     autonomy_dashboard_show_in_status_bar: Optional[bool] = None
     # Semantic cache (Spec 01) — sent as nested dict from frontend
@@ -75,9 +72,7 @@ class UpdateAIFeaturesRequest(BaseModel):
     # Spec 07: mental model compression format
     mm_format: Optional[str] = None  # "compact" | "full" | "ab_test"
     # Accept flat legacy fields from old frontend versions
-    kb_suggestions: Optional[bool] = None
     context_enrichment: Optional[bool] = None
-    gap_score_threshold: Optional[float] = None
     autonomy_dashboard: Optional[bool] = None
 
 
@@ -899,11 +894,10 @@ def create_settings_router() -> APIRouter:
 
     @router.get("/ai-features")
     async def get_ai_features():
-        """Get AI features configuration (knowledge suggestions, autonomy dashboard, context persistence, MM format)."""
+        """Get AI features configuration (autonomy dashboard, context persistence, MM format)."""
         try:
             config = get_config()
             ai_features = config.get('ai_features', {}) or {}
-            ks = ai_features.get('knowledge_suggestions', {}) or {}
             ad = ai_features.get('autonomy_dashboard', {}) or {}
             # Spec 03
             cb_rolling = (config._config.get('context_budget', {}) or {}).get('rolling', {}) or {}
@@ -914,11 +908,6 @@ def create_settings_router() -> APIRouter:
             return {
                 "success": True,
                 "ai_features": {
-                    "knowledge_suggestions": {
-                        "enabled": ks.get('enabled', True),
-                        "style": ks.get('style', 'inline'),
-                        "min_gap_score": ks.get('min_gap_score', 0.5),
-                    },
                     "autonomy_dashboard": {
                         "enabled": ad.get('enabled', True),
                         "show_in_status_bar": ad.get('show_in_status_bar', True),
@@ -947,31 +936,11 @@ def create_settings_router() -> APIRouter:
                 config._config['ai_features'] = {}
             af = config._config['ai_features']
 
-            if 'knowledge_suggestions' not in af:
-                af['knowledge_suggestions'] = {}
-            ks = af['knowledge_suggestions']
-
             if 'autonomy_dashboard' not in af:
                 af['autonomy_dashboard'] = {}
             ad = af['autonomy_dashboard']
 
             # Apply updates
-            if request.knowledge_suggestions_enabled is not None:
-                ks['enabled'] = request.knowledge_suggestions_enabled
-            if request.knowledge_suggestions_style is not None:
-                valid_styles = ['subtle', 'inline', 'ask_first']
-                if request.knowledge_suggestions_style not in valid_styles:
-                    raise HTTPException(
-                        400,
-                        f"Invalid style: {request.knowledge_suggestions_style}. "
-                        f"Must be one of: {valid_styles}"
-                    )
-                ks['style'] = request.knowledge_suggestions_style
-            if request.knowledge_suggestions_min_gap_score is not None:
-                score = request.knowledge_suggestions_min_gap_score
-                if not (0.0 <= score <= 1.0):
-                    raise HTTPException(400, "min_gap_score must be between 0.0 and 1.0")
-                ks['min_gap_score'] = score
             if request.autonomy_dashboard_enabled is not None:
                 ad['enabled'] = request.autonomy_dashboard_enabled
             if request.autonomy_dashboard_show_in_status_bar is not None:
@@ -979,11 +948,6 @@ def create_settings_router() -> APIRouter:
             # Accept flat autonomy_dashboard bool from frontend POST payload
             if request.autonomy_dashboard is not None:
                 ad['enabled'] = request.autonomy_dashboard
-            # Accept flat kb_suggestions / gap_score_threshold from frontend
-            if request.kb_suggestions is not None:
-                ks['enabled'] = request.kb_suggestions
-            if request.gap_score_threshold is not None:
-                ks['min_gap_score'] = request.gap_score_threshold
 
             # Semantic cache settings (Spec 01)
             if request.semantic_cache is not None:
@@ -1036,23 +1000,9 @@ def create_settings_router() -> APIRouter:
             # Save config to file
             config.save()
 
-            # Update the running KnowledgeWriter if available
-            try:
-                from core.knowledge_writer import get_knowledge_writer
-                kw = get_knowledge_writer()
-                if kw:
-                    kw.update_settings({
-                        'enabled': ks.get('enabled', True),
-                        'style': ks.get('style', 'inline'),
-                        'min_gap_score': ks.get('min_gap_score', 0.5),
-                    })
-            except Exception:
-                pass  # KnowledgeWriter may not be initialized yet
-
             return {
                 "success": True,
                 "ai_features": {
-                    "knowledge_suggestions": ks,
                     "autonomy_dashboard": ad,
                 },
                 "message": "AI features settings updated successfully."

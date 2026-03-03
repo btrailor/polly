@@ -39,13 +39,13 @@ Quick index for project tracking and development workflow.
 
 Comprehensive audit found 10 integration gaps across core systems. Remediation in 4 phases:
 
-| Phase | Change | Priority | Effort |
-|-------|--------|----------|--------|
-| Audit | [architecture-integration-audit/](changes/architecture-integration-audit/) | — | ✅ Complete |
-| A.1 | [unified-pattern-engine/](changes/unified-pattern-engine/) | P0 | ~2 weeks |
-| A.2 | [entity-model-unification/](changes/entity-model-unification/) | P0 | ~2 weeks |
-| B | [integration-contracts/](changes/integration-contracts/) | P1 | ~3 weeks |
-| C | [library-extraction/](changes/library-extraction/) | P2 | ~4 weeks |
+| Phase | Change                                                                     | Priority | Effort      |
+| ----- | -------------------------------------------------------------------------- | -------- | ----------- |
+| Audit | [architecture-integration-audit/](changes/architecture-integration-audit/) | —        | ✅ Complete |
+| A.1   | [unified-pattern-engine/](changes/unified-pattern-engine/)                 | P0       | ~2 weeks    |
+| A.2   | [entity-model-unification/](changes/entity-model-unification/)             | P0       | ~2 weeks    |
+| B     | [integration-contracts/](changes/integration-contracts/)                   | P1       | ~3 weeks    |
+| C     | [library-extraction/](changes/library-extraction/)                         | P2       | ~4 weeks    |
 
 A.1 and A.2 can run in parallel. B depends on both. C depends on B.
 

@@ -36,14 +36,6 @@ async def test_query():
         print(f"\n✓ Query succeeded!")
         print(f"  Response length: {len(full_response)} chars")
         print(f"  First 200 chars: {full_response[:200]}")
-        
-        # Check for persona actions
-        if hasattr(polly, '_last_persona_actions'):
-            print(f"\n  Persona actions: {len(polly._last_persona_actions)}")
-            for action in polly._last_persona_actions:
-                print(f"    - {action.get('type', 'unknown')}")
-        else:
-            print("\n  No persona actions")
             
     except Exception as e:
         print(f"\n✗ Query failed: {e}")

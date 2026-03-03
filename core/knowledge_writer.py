@@ -2,8 +2,7 @@
 Knowledge Writer — Chat-to-KB writing system.
 
 Orchestrates all knowledge-base writes from chat, including:
-- AI-suggested writes (gap detection after cloud synthesis)
-- Per-message saves (context menu on assistant messages)
+- Per-message saves (button on assistant messages)
 - Quick saves (no LLM call, structured formatting)
 - Scribe-assisted saves (LLM enrichment via Scribe persona)
 
@@ -23,22 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 # ========== Data Types ==========
-
-@dataclass
-class KnowledgeGap:
-    """Detected gap between local RAG knowledge and cloud response."""
-    query: str
-    gap_score: float            # 0.0-1.0, how much cloud added beyond RAG
-    novel_concepts: List[str]   # Concepts from cloud not found in RAG
-    suggested_title: str
-    suggested_domain: str       # e.g. "sigils", "scrolls"
-    suggested_tags: List[str]
-    cloud_content: str          # The raw cloud response content
-    cloud_provider: str         # Which provider answered (e.g. "anthropic")
-
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
 
 @dataclass
 class NoteCreateResult:
@@ -91,12 +74,11 @@ class KnowledgeWriter:
     Orchestrates all knowledge-base writes from chat.
 
     Responsibilities:
-    1. Detect knowledge gaps after synthesis (for AI suggestions)
-    2. Generate structured notes from raw content (for quick saves)
-    3. Coordinate with Scribe persona (for full pipeline saves)
-    4. Save notes via the active notes source (native or Obsidian)
-    5. Trigger RAG re-indexing after save
-    6. Track write metrics for progressive autonomy
+    1. Generate structured notes from raw content (for quick saves)
+    2. Coordinate with Scribe persona (for full pipeline saves)
+    3. Save notes via the active notes source (native or Obsidian)
+    4. Trigger RAG re-indexing after save
+    5. Track write metrics for progressive autonomy
     """
 
     def __init__(
@@ -115,126 +97,7 @@ class KnowledgeWriter:
         self.scribe = scribe_persona
         self.metrics_tracker = metrics_tracker
 
-        # Load AI features config
-        ai_features = {}
-        if hasattr(config, 'get'):
-            ai_features = config.get('ai_features', {}) or {}
-        elif isinstance(config, dict):
-            ai_features = config.get('ai_features', {}) or {}
-
-        ks = ai_features.get('knowledge_suggestions', {}) or {}
-        self.suggestions_enabled = ks.get('enabled', True)
-        self.suggestion_style = ks.get('style', 'inline')
-        self.min_gap_score = ks.get('min_gap_score', 0.5)
-
-        logger.info(
-            f"KnowledgeWriter initialized "
-            f"(suggestions={'on' if self.suggestions_enabled else 'off'}, "
-            f"style={self.suggestion_style}, "
-            f"min_gap={self.min_gap_score})"
-        )
-
-    # ------------------------------------------------------------------
-    # Gap Detection (called after synthesis)
-    # ------------------------------------------------------------------
-
-    async def detect_knowledge_gap(
-        self,
-        original_query: str,
-        local_results: list,
-        cloud_response: str,
-        rag_coverage: float,
-        cloud_provider: str = "unknown",
-    ) -> Optional[KnowledgeGap]:
-        """
-        Compare what RAG provided vs what cloud provided.
-        Returns a KnowledgeGap if cloud added substantial novel content.
-
-        A gap is detected when:
-        - Cloud was used (cloud_response is not empty)
-        - RAG coverage for the query was below threshold
-        - The cloud response contains concepts not found in local results
-        """
-        if not cloud_response or not cloud_response.strip():
-            return None
-
-        # If RAG coverage was high, the cloud likely didn't add much new
-        if rag_coverage >= 0.8:
-            return None
-
-        # Extract concepts from cloud response (lightweight, no LLM call)
-        cloud_concepts = self._extract_concepts(cloud_response)
-
-        # Extract concepts already present in local results
-        local_text = " ".join(
-            getattr(r, 'content', '') or str(r) for r in (local_results or [])
-        )
-        local_concepts = self._extract_concepts(local_text)
-
-        # Novel concepts = in cloud but not in local
-        novel = [c for c in cloud_concepts if c.lower() not in {lc.lower() for lc in local_concepts}]
-
-        if not novel:
-            return None
-
-        # Gap score: how much of the cloud response is truly novel
-        # Simple heuristic: ratio of novel concepts to total cloud concepts
-        gap_score = len(novel) / max(len(cloud_concepts), 1)
-        gap_score = min(gap_score, 1.0)
-
-        if gap_score < self.min_gap_score:
-            return None
-
-        # Auto-detect domain and generate title
-        suggested_domain = self._auto_detect_domain(original_query + " " + cloud_response)
-        suggested_title = self._generate_title(original_query, novel)
-        suggested_tags = self._generate_tags(novel, suggested_domain)
-
-        gap = KnowledgeGap(
-            query=original_query,
-            gap_score=gap_score,
-            novel_concepts=novel[:10],  # Cap at 10
-            suggested_title=suggested_title,
-            suggested_domain=suggested_domain,
-            suggested_tags=suggested_tags,
-            cloud_content=cloud_response,
-            cloud_provider=cloud_provider,
-        )
-
-        logger.info(
-            f"Knowledge gap detected: score={gap_score:.2f}, "
-            f"novel_concepts={len(novel)}, title='{suggested_title}'"
-        )
-        return gap
-
-    # ------------------------------------------------------------------
-    # Suggestion Generation
-    # ------------------------------------------------------------------
-
-    def create_suggestion(self, gap: KnowledgeGap) -> Optional[Dict[str, Any]]:
-        """
-        If suggestions are enabled, create a PersonaAction-compatible dict
-        of type 'suggest_kb_write' with pre-computed metadata.
-
-        Returns None if suggestions are disabled in config.
-        The frontend renders this based on the configured style.
-        """
-        if not self.suggestions_enabled:
-            return None
-
-        return {
-            "type": "suggest_kb_write",
-            "data": {
-                "style": self.suggestion_style,
-                "gap": gap.to_dict(),
-                "suggested_title": gap.suggested_title,
-                "suggested_domain": gap.suggested_domain,
-                "suggested_tags": gap.suggested_tags,
-                "novel_concepts": gap.novel_concepts,
-                "cloud_provider": gap.cloud_provider,
-                "gap_score": gap.gap_score,
-            }
-        }
+        logger.info("KnowledgeWriter initialized")
 
     # ------------------------------------------------------------------
     # Quick Save (no LLM call)
@@ -866,26 +729,6 @@ class KnowledgeWriter:
                 "message": f"Found {len(candidates)} related note{'s' if len(candidates) != 1 else ''}. Add links?",
             },
         }
-
-    # ------------------------------------------------------------------
-    # Settings Management
-    # ------------------------------------------------------------------
-
-    def update_settings(self, settings: Dict[str, Any]):
-        """Update knowledge suggestion settings at runtime."""
-        if 'enabled' in settings:
-            self.suggestions_enabled = settings['enabled']
-        if 'style' in settings:
-            self.suggestion_style = settings['style']
-        if 'min_gap_score' in settings:
-            self.min_gap_score = settings['min_gap_score']
-
-        logger.info(
-            f"KnowledgeWriter settings updated: "
-            f"enabled={self.suggestions_enabled}, "
-            f"style={self.suggestion_style}, "
-            f"min_gap={self.min_gap_score}"
-        )
 
     # ------------------------------------------------------------------
     # Metrics
