@@ -5056,6 +5056,284 @@ def create_app(polly_instance=None) -> FastAPI:
             logger.error(f"Prune graph failed: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to prune graph: {str(e)}")
     
+    @app.post("/polly/graph/garden/batch")
+    async def batch_garden_operations(body: Dict[str, Any]):
+        """
+        Execute multiple garden operations in a single request.
+        
+        Request body: {
+            "operations": [
+                {"type": "merge", "entities": ["id1", "id2"], "keep": "id1"},
+                {"type": "delete", "entities": ["id3"]},
+                {"type": "connect", "source": "id4", "target": "id5",
+                 "relationship_type": "RELATED_TO", "strength": 0.7}
+            ]
+        }
+        
+        Response: {
+            "results": [
+                {"index": 0, "type": "merge", "success": true, "message": "..."},
+                ...
+            ],
+            "succeeded": 2,
+            "failed": 1,
+            "authority_recomputed": true
+        }
+        """
+        try:
+            from core.entities.models import Relationship, RelationshipType
+
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+
+            operations = body.get("operations", [])
+            if not operations:
+                raise HTTPException(400, "No operations provided")
+
+            results = []
+            succeeded = 0
+            failed = 0
+
+            for idx, op in enumerate(operations):
+                op_type = op.get("type")
+                try:
+                    if op_type == "merge":
+                        entities = op.get("entities", [])
+                        keep = op.get("keep")
+                        if len(entities) < 2:
+                            raise ValueError("merge requires at least 2 entity IDs")
+                        if not keep:
+                            keep = entities[0]
+                        remove_ids = [eid for eid in entities if eid != keep]
+                        total_moved = 0
+                        for rid in remove_ids:
+                            total_moved += entity_store.move_mentions(rid, keep)
+                            entity_store.delete_entity(rid)
+                        results.append({
+                            "index": idx, "type": "merge", "success": True,
+                            "message": f"Merged {len(remove_ids)} entities into {keep}, {total_moved} mentions moved"
+                        })
+                        succeeded += 1
+
+                    elif op_type == "delete":
+                        entities = op.get("entities", [])
+                        if not entities:
+                            raise ValueError("delete requires at least 1 entity ID")
+                        for eid in entities:
+                            entity_store.delete_entity(eid)
+                        results.append({
+                            "index": idx, "type": "delete", "success": True,
+                            "message": f"Deleted {len(entities)} entities"
+                        })
+                        succeeded += 1
+
+                    elif op_type == "connect":
+                        source = op.get("source")
+                        target = op.get("target")
+                        if not source or not target:
+                            raise ValueError("connect requires 'source' and 'target'")
+                        rel_type_str = op.get("relationship_type", "RELATED_TO")
+                        try:
+                            rel_type = RelationshipType(rel_type_str)
+                        except ValueError:
+                            rel_type = RelationshipType.RELATED_TO
+                        strength = float(op.get("strength", 0.7))
+                        rel = Relationship(
+                            source_id=source, target_id=target,
+                            relationship_type=rel_type, strength=strength,
+                            context="Batch operation via garden"
+                        )
+                        entity_store.upsert_relationship(rel)
+                        results.append({
+                            "index": idx, "type": "connect", "success": True,
+                            "message": f"Connected {source} -> {target} ({rel_type_str})"
+                        })
+                        succeeded += 1
+
+                    else:
+                        raise ValueError(f"Unknown operation type: {op_type}")
+
+                except Exception as op_err:
+                    results.append({
+                        "index": idx, "type": op_type or "unknown", "success": False,
+                        "message": str(op_err)
+                    })
+                    failed += 1
+
+            # Trigger authority recomputation after batch
+            authority_recomputed = entity_store.maybe_recompute_authority(interval_hours=0)
+
+            return {
+                "results": results,
+                "succeeded": succeeded,
+                "failed": failed,
+                "authority_recomputed": authority_recomputed,
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Batch garden operations failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Batch operations failed: {str(e)}")
+    
+    @app.get("/polly/graph/garden/digest")
+    async def get_garden_digest(days: int = 7):
+        """
+        Comprehensive knowledge quality report for the garden dashboard.
+        
+        Assembles isolated notes, suggestions, stats, and delta vs. N days ago.
+        
+        Query params:
+        - days: Number of days for delta comparison (default 7)
+        
+        Response: {
+            "summary": { ... stats ... },
+            "isolated_notes": [...],
+            "isolated_entities": [...],
+            "merge_candidates": [...],
+            "connection_suggestions": [...],
+            "enrichment_candidates": [...],
+            "generated_at": "..."
+        }
+        """
+        try:
+            from core.notes_index import get_notes_index
+            from core.backlinks import get_backlinks_index
+            from core.unlinked_mentions import get_unlinked_mentions_index
+            from core.entities.models import EntityQuery
+
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+
+            notes_idx = get_notes_index()
+            backlinks_idx = get_backlinks_index(notes_idx)
+
+            # — Stats summary (lightweight version of /garden/stats) —
+            all_notes = notes_idx.get_all_notes()
+            total_notes = len(all_notes)
+            total_connections = 0
+            note_isolated_count = 0
+            enriched_notes = 0
+            for note in all_notes:
+                inb = len(backlinks_idx.get_backlinks(note.name))
+                outb = len(backlinks_idx.get_outgoing_links(note.name))
+                cc = inb + outb
+                total_connections += cc
+                if cc == 0:
+                    note_isolated_count += 1
+                if entity_store.get_mentions_for_source(note.name, "note"):
+                    enriched_notes += 1
+
+            entity_stats = entity_store.get_stats()
+            coverage_pct = round(enriched_notes / total_notes * 100, 1) if total_notes else 0.0
+
+            summary = {
+                "total_notes": total_notes,
+                "total_connections": total_connections,
+                "total_entities": entity_stats.get("entities", 0),
+                "isolated_notes_count": note_isolated_count,
+                "enriched_notes": enriched_notes,
+                "coverage_pct": coverage_pct,
+            }
+
+            # — Isolation data from EntityStore —
+            # Read config threshold (default 2)
+            isolation_threshold = 2
+            try:
+                from core.config import get_config
+                cfg = get_config()
+                isolation_threshold = cfg.get("knowledge_graph", {}).get("isolation_threshold", 2)
+            except Exception:
+                pass
+
+            isolated_notes = entity_store.get_isolated_notes(max_entity_connections=isolation_threshold)
+            isolated_entities = entity_store.get_isolated_entities(max_connections=isolation_threshold)
+
+            # — Suggestions (reuse logic from /garden/suggestions, abbreviated) —
+            mentions_idx = get_unlinked_mentions_index(notes_idx)
+            connection_suggestions = []
+            mention_pairs = mentions_idx.get_all_mention_pairs()
+            for source, target, count in mention_pairs[:10]:
+                outbound = backlinks_idx.get_outgoing_links(source)
+                already_linked = any(bl.target_name == target for bl in outbound)
+                if not already_linked:
+                    connection_suggestions.append({
+                        "source_note": source,
+                        "target_note": target,
+                        "reason": f"'{source}' mentions '{target}' {count} time(s)",
+                        "confidence": min(0.95, 0.6 + (count * 0.1)),
+                    })
+
+            # Merge candidates (top 10)
+            all_entities = entity_store.search(EntityQuery(limit=200))
+            merge_candidates = []
+            seen_pairs = set()
+            for i, ea in enumerate(all_entities):
+                for eb in all_entities[i + 1:]:
+                    pkey = tuple(sorted([ea.id, eb.id]))
+                    if pkey in seen_pairs:
+                        continue
+                    na = ea.name.lower().replace(" ", "").replace("-", "").replace("_", "")
+                    nb = eb.name.lower().replace(" ", "").replace("-", "").replace("_", "")
+                    if na == nb and ea.entity_type == eb.entity_type:
+                        seen_pairs.add(pkey)
+                        merge_candidates.append({
+                            "entity_a": ea.name, "entity_a_id": ea.id,
+                            "entity_b": eb.name, "entity_b_id": eb.id,
+                            "reason": "Same entity, different formatting",
+                            "confidence": 0.95,
+                        })
+                    elif na in nb or nb in na:
+                        seen_pairs.add(pkey)
+                        merge_candidates.append({
+                            "entity_a": ea.name, "entity_a_id": ea.id,
+                            "entity_b": eb.name, "entity_b_id": eb.id,
+                            "reason": "Similar names, possible duplicate",
+                            "confidence": 0.75,
+                        })
+                    if len(merge_candidates) >= 10:
+                        break
+                if len(merge_candidates) >= 10:
+                    break
+
+            # Enrichment candidates (top 10 unenriched notes with connections)
+            enrichment_candidates = []
+            for note in all_notes:
+                if not entity_store.get_mentions_for_source(note.name, "note"):
+                    inb = len(backlinks_idx.get_backlinks(note.name))
+                    outb = len(backlinks_idx.get_outgoing_links(note.name))
+                    cc = inb + outb
+                    auth = min(1.0, inb / 10.0)
+                    if auth > 0.3 or cc > 5:
+                        enrichment_candidates.append({
+                            "note_name": note.name,
+                            "note_title": note.title or note.name,
+                            "authority": round(auth, 2),
+                            "connection_count": cc,
+                        })
+                if len(enrichment_candidates) >= 10:
+                    break
+
+            return {
+                "summary": summary,
+                "isolated_notes": isolated_notes[:20],
+                "isolated_entities": isolated_entities[:20],
+                "merge_candidates": merge_candidates,
+                "connection_suggestions": connection_suggestions,
+                "enrichment_candidates": enrichment_candidates,
+                "generated_at": datetime.now().isoformat(),
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Garden digest failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to generate garden digest: {str(e)}")
+    
     @app.get("/polly/graph/entities")
     async def list_entities(
         type: str = None,

@@ -21585,6 +21585,22 @@ function renderGraphSidebar() {
     <div id="graph-sidebar-garden" class="graph-sidebar-panel hidden">
       <div id="graph-garden-content" style="padding: 16px; overflow-y: auto;">
         
+        <!-- Digest Panel (Phase 12b Wave 2) -->
+        <div class="garden-section" id="garden-digest-panel" style="margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <h3 style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin: 0;">
+              <i data-lucide="heart-pulse" style="width: 14px; height: 14px; margin-right: 6px;"></i>
+              Knowledge Health
+            </h3>
+            <button id="garden-digest-refresh-btn" style="background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 10px; display: flex; align-items: center; gap: 4px;" title="Refresh digest">
+              <i data-lucide="refresh-cw" style="width: 12px; height: 12px;"></i> Refresh
+            </button>
+          </div>
+          <div id="garden-digest-content">
+            <div style="text-align: center; padding: 12px; color: var(--text-secondary); font-size: 11px;">Loading digest...</div>
+          </div>
+        </div>
+
         <!-- Stats Dashboard -->
         <div class="garden-section" style="margin-bottom: 24px;">
           <h3 style="font-size: 13px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">
@@ -23310,15 +23326,24 @@ async function loadGraphBrowseList() {
     let html = "";
     data.items.forEach((item) => {
       const icon = getTypeIcon(item.type);
-      const date = new Date(item.modified_at).toLocaleDateString();
+      const date = new Date(
+        item.modified_at || item.updated_at,
+      ).toLocaleDateString();
+      const isIsolated =
+        item.connection_status === "isolated" ||
+        (item.connection_count != null && item.connection_count <= 2);
+      const isolatedBadge = isIsolated
+        ? '<span class="browse-item-isolated-badge" title="Isolated — few or no connections">⚠️ Isolated</span>'
+        : "";
       html += `
-        <div class="browse-item" data-item-id="${escapeHtml(item.id)}" data-item-type="${escapeHtml(item.type)}">
+        <div class="browse-item${isIsolated ? " browse-item--isolated" : ""}" data-item-id="${escapeHtml(item.id)}" data-item-type="${escapeHtml(item.type)}">
           <i data-lucide="${escapeHtml(icon)}" class="browse-item-icon"></i>
           <div class="browse-item-content">
-            <div class="browse-item-title">${escapeHtml(item.name)}</div>
+            <div class="browse-item-title">${escapeHtml(item.name)}${isolatedBadge}</div>
             <div class="browse-item-metadata">
-              <span class="browse-item-domain">${escapeHtml(item.domain || "General")}</span>
+              <span class="browse-item-domain">${escapeHtml(item.domain || item.primary_domain || "General")}</span>
               <span class="browse-item-date">${date}</span>
+              ${item.connection_count != null ? `<span class="browse-item-connections" title="${item.connection_count} connections">${item.connection_count} conn</span>` : ""}
             </div>
           </div>
         </div>
@@ -25051,11 +25076,198 @@ function setupGardenMaintenance() {
  * Initialize garden view with stats, suggestions, and maintenance tools
  */
 async function initGardenView() {
+  await loadGardenDigest();
   await loadGardenStats();
   await loadGardenSuggestions();
   setupGardenTabs();
   setupGardenMaintenance();
   setupEntityBrowser();
+}
+
+/**
+ * Load and render the knowledge health digest panel (Phase 12b Wave 2)
+ */
+async function loadGardenDigest() {
+  const container = document.getElementById("garden-digest-content");
+  if (!container) return;
+
+  // Wire refresh button
+  const refreshBtn = document.getElementById("garden-digest-refresh-btn");
+  if (refreshBtn) {
+    refreshBtn.onclick = () => loadGardenDigest();
+  }
+
+  try {
+    const response = await fetch(
+      "http://127.0.0.1:11436/polly/graph/garden/digest?days=7",
+    );
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const digest = await response.json();
+
+    let html = "";
+
+    // Summary stats row
+    const s = digest.summary || {};
+    html += `
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;">
+        <div style="text-align: center; padding: 8px; background: var(--bg-secondary, #1a1a1a); border-radius: 6px;">
+          <div style="font-size: 16px; font-weight: 700; color: var(--text-primary);">${s.total_notes || 0}</div>
+          <div style="font-size: 10px; color: var(--text-secondary);">Notes</div>
+        </div>
+        <div style="text-align: center; padding: 8px; background: var(--bg-secondary, #1a1a1a); border-radius: 6px;">
+          <div style="font-size: 16px; font-weight: 700; color: var(--text-primary);">${s.total_entities || 0}</div>
+          <div style="font-size: 10px; color: var(--text-secondary);">Entities</div>
+        </div>
+        <div style="text-align: center; padding: 8px; background: var(--bg-secondary, #1a1a1a); border-radius: 6px;">
+          <div style="font-size: 16px; font-weight: 700; color: ${(s.coverage_pct || 0) >= 70 ? "#10b981" : "#f59e0b"};">${s.coverage_pct || 0}%</div>
+          <div style="font-size: 10px; color: var(--text-secondary);">Coverage</div>
+        </div>
+      </div>
+    `;
+
+    // Isolated Notes section
+    const isoNotes = digest.isolated_notes || [];
+    html += _renderDigestSection(
+      "isolated-notes",
+      "Isolated Notes",
+      isoNotes.length,
+      isoNotes.length > 0 ? "#f59e0b" : "#10b981",
+      isoNotes
+        .map(
+          (n) =>
+            `<div class="garden-digest-item">
+            <span class="garden-digest-item-name">${escapeHtml(n.source_id)}</span>
+            <span class="garden-digest-item-meta">${n.entity_count} entities, max ${n.max_connection_count} conn</span>
+          </div>`,
+        )
+        .join("") ||
+        '<div style="padding: 8px; color: var(--text-secondary);">No isolated notes</div>',
+    );
+
+    // Isolated Entities section
+    const isoEntities = digest.isolated_entities || [];
+    html += _renderDigestSection(
+      "isolated-entities",
+      "Isolated Entities",
+      isoEntities.length,
+      isoEntities.length > 5 ? "#f59e0b" : "#10b981",
+      isoEntities
+        .map(
+          (e) =>
+            `<div class="garden-digest-item">
+            <span class="garden-digest-item-name">${escapeHtml(e.name)}</span>
+            <span class="garden-digest-item-meta">${e.entity_type} · ${e.connection_count} conn · ${Math.round((e.authority_score || 0) * 100)}% auth</span>
+          </div>`,
+        )
+        .join("") ||
+        '<div style="padding: 8px; color: var(--text-secondary);">No isolated entities</div>',
+    );
+
+    // Merge Candidates section
+    const merges = digest.merge_candidates || [];
+    html += _renderDigestSection(
+      "merge-candidates",
+      "Merge Candidates",
+      merges.length,
+      merges.length > 0 ? "#f59e0b" : "#10b981",
+      merges
+        .map(
+          (m) =>
+            `<div class="garden-digest-item">
+            <span class="garden-digest-item-name">${escapeHtml(m.entity_a)} ← ${escapeHtml(m.entity_b)}</span>
+            <span class="garden-digest-item-meta">${Math.round(m.confidence * 100)}%</span>
+          </div>`,
+        )
+        .join("") ||
+        '<div style="padding: 8px; color: var(--text-secondary);">No merge candidates</div>',
+    );
+
+    // Connection Suggestions section
+    const connSugs = digest.connection_suggestions || [];
+    html += _renderDigestSection(
+      "connection-sugs",
+      "Connection Suggestions",
+      connSugs.length,
+      connSugs.length > 0 ? "#3b82f6" : "#10b981",
+      connSugs
+        .map(
+          (c) =>
+            `<div class="garden-digest-item">
+            <span class="garden-digest-item-name">${escapeHtml(c.source_note)} → ${escapeHtml(c.target_note)}</span>
+            <span class="garden-digest-item-meta">${Math.round(c.confidence * 100)}%</span>
+          </div>`,
+        )
+        .join("") ||
+        '<div style="padding: 8px; color: var(--text-secondary);">No suggestions</div>',
+    );
+
+    // Enrichment Candidates section
+    const enrichCands = digest.enrichment_candidates || [];
+    html += _renderDigestSection(
+      "enrich-candidates",
+      "Enrichment Targets",
+      enrichCands.length,
+      enrichCands.length > 0 ? "#8b5cf6" : "#10b981",
+      enrichCands
+        .map(
+          (e) =>
+            `<div class="garden-digest-item">
+            <span class="garden-digest-item-name">${escapeHtml(e.note_title || e.note_name)}</span>
+            <span class="garden-digest-item-meta">${e.connection_count} conn</span>
+          </div>`,
+        )
+        .join("") ||
+        '<div style="padding: 8px; color: var(--text-secondary);">All notes enriched</div>',
+    );
+
+    container.innerHTML = html;
+
+    // Wire collapse/expand toggles
+    container
+      .querySelectorAll(".garden-digest-section-header")
+      .forEach((hdr) => {
+        hdr.addEventListener("click", () => {
+          const body = hdr.nextElementSibling;
+          if (body) body.classList.toggle("collapsed");
+          const chevron = hdr.querySelector("[data-lucide]");
+          if (chevron) {
+            const isCollapsed = body.classList.contains("collapsed");
+            chevron.setAttribute(
+              "data-lucide",
+              isCollapsed ? "chevron-right" : "chevron-down",
+            );
+            if (typeof lucide !== "undefined") lucide.createIcons();
+          }
+        });
+      });
+
+    if (typeof lucide !== "undefined") lucide.createIcons();
+  } catch (error) {
+    console.error("[Garden] Failed to load digest:", error);
+    container.innerHTML = `
+      <div style="text-align: center; padding: 12px; color: var(--text-error, #ef4444); font-size: 11px;">
+        Failed to load knowledge digest
+      </div>
+    `;
+  }
+}
+
+/**
+ * Helper to render a collapsible digest section
+ */
+function _renderDigestSection(id, title, count, countColor, bodyHtml) {
+  return `
+    <div class="garden-digest-section" id="digest-${id}">
+      <div class="garden-digest-section-header">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i>
+          ${title}
+        </div>
+        <span class="garden-digest-section-count" style="color: ${countColor}; background: ${countColor}22;">${count}</span>
+      </div>
+      <div class="garden-digest-section-body">${bodyHtml}</div>
+    </div>
+  `;
 }
 
 /**

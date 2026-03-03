@@ -647,3 +647,133 @@ class EntityStore:
             deleted = cur.rowcount > 0
             conn.commit()
         return deleted
+
+    # === Isolation Detection (Phase 12b Wave 2) ===
+
+    def get_isolated_entities(self, max_connections: int = 2) -> List[Dict[str, Any]]:
+        """Return entities with <= max_connections total relationships.
+
+        Includes: entity info, connection_count, last_mentioned_at.
+        Ordered by connection_count ASC, then authority ASC.
+        """
+        conn = self._conn()
+        cur = conn.execute(
+            """
+            SELECT e.id, e.name, e.entity_type, e.authority_score, e.mention_count,
+                   e.last_seen,
+                   COALESCE(rc.cnt, 0) AS connection_count
+            FROM entities e
+            LEFT JOIN (
+                SELECT entity_id, COUNT(*) AS cnt
+                FROM (
+                    SELECT source_id AS entity_id FROM relationships
+                    UNION ALL
+                    SELECT target_id AS entity_id FROM relationships
+                )
+                GROUP BY entity_id
+            ) rc ON rc.entity_id = e.id
+            WHERE COALESCE(rc.cnt, 0) <= ?
+            ORDER BY connection_count ASC, e.authority_score ASC
+            """,
+            (max_connections,),
+        )
+        results = []
+        for row in cur.fetchall():
+            results.append({
+                "id": row[0],
+                "name": row[1],
+                "entity_type": row[2],
+                "authority_score": row[3],
+                "mention_count": row[4],
+                "last_seen": row[5],
+                "connection_count": row[6],
+            })
+        return results
+
+    def get_isolated_notes(self, max_entity_connections: int = 2) -> List[Dict[str, Any]]:
+        """Return notes where ALL extracted entities have <= max_entity_connections.
+
+        A note is 'isolated' if none of its entities are well-connected.
+        Returns: note path (source_id), entity_count, max_connection_count.
+        """
+        conn = self._conn()
+        # For each note (source_type='note'), get its entities and their connection counts.
+        # A note is isolated if its max entity connection count <= threshold.
+        cur = conn.execute(
+            """
+            SELECT em.source_id,
+                   COUNT(DISTINCT em.entity_id) AS entity_count,
+                   MAX(COALESCE(rc.cnt, 0)) AS max_connection_count
+            FROM entity_mentions em
+            LEFT JOIN (
+                SELECT entity_id, COUNT(*) AS cnt
+                FROM (
+                    SELECT source_id AS entity_id FROM relationships
+                    UNION ALL
+                    SELECT target_id AS entity_id FROM relationships
+                )
+                GROUP BY entity_id
+            ) rc ON rc.entity_id = em.entity_id
+            WHERE em.source_type = 'note'
+            GROUP BY em.source_id
+            HAVING MAX(COALESCE(rc.cnt, 0)) <= ?
+            ORDER BY max_connection_count ASC, entity_count ASC
+            """,
+            (max_entity_connections,),
+        )
+        results = []
+        for row in cur.fetchall():
+            results.append({
+                "source_id": row[0],
+                "entity_count": row[1],
+                "max_connection_count": row[2],
+            })
+        return results
+
+    # === Authority Scheduling (Phase 12b Wave 2) ===
+
+    def _ensure_metadata_table(self) -> None:
+        """Create metadata key-value table if not exists."""
+        with self._conn() as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)"
+            )
+            conn.commit()
+
+    def _get_metadata(self, key: str) -> Optional[str]:
+        """Get a metadata value by key."""
+        self._ensure_metadata_table()
+        conn = self._conn()
+        cur = conn.execute("SELECT value FROM metadata WHERE key = ?", (key,))
+        row = cur.fetchone()
+        return row[0] if row else None
+
+    def _set_metadata(self, key: str, value: str) -> None:
+        """Set a metadata value."""
+        self._ensure_metadata_table()
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+            conn.commit()
+
+    def maybe_recompute_authority(self, interval_hours: int = 24) -> bool:
+        """Recompute authority for all entities if last recompute was > interval_hours ago.
+
+        Returns True if recomputation ran, False if skipped.
+        """
+        last_str = self._get_metadata("last_authority_recompute")
+        if last_str:
+            try:
+                last = datetime.fromisoformat(last_str)
+                if (datetime.now() - last) < timedelta(hours=interval_hours):
+                    logger.debug("Authority recompute skipped (still fresh)")
+                    return False
+            except (ValueError, TypeError):
+                pass  # Invalid timestamp, recompute anyway
+
+        logger.info("Running scheduled authority recomputation")
+        self.recompute_authority(None)
+        self._set_metadata("last_authority_recompute", datetime.now().isoformat())
+        return True

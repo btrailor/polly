@@ -6525,6 +6525,85 @@ body {
   border-left: 2px solid var(--accent);
 }
 
+/* Isolation badges (Phase 12b Wave 2) */
+.browse-item--isolated {
+  border-left: 2px solid #f59e0b;
+}
+.browse-item-isolated-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  color: #f59e0b;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.browse-item-connections {
+  opacity: 0.5;
+}
+
+/* Garden digest panel (Phase 12b Wave 2) */
+.garden-digest-section {
+  margin-bottom: 16px;
+  border: 1px solid var(--border-primary, #2a2a2a);
+  border-radius: var(--radius-md, 6px);
+  overflow: hidden;
+}
+.garden-digest-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-secondary, #1a1a1a);
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #e0e0e0);
+}
+.garden-digest-section-header:hover {
+  background: var(--bg-hover, #252525);
+}
+.garden-digest-section-count {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: var(--bg-tertiary, #333);
+  color: var(--text-secondary, #808080);
+}
+.garden-digest-section-body {
+  padding: 8px 12px;
+  font-size: 11px;
+}
+.garden-digest-section-body.collapsed {
+  display: none;
+}
+.garden-digest-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-primary, #1e1e1e);
+  color: var(--text-secondary, #808080);
+}
+.garden-digest-item:last-child {
+  border-bottom: none;
+}
+.garden-digest-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary, #e0e0e0);
+  font-weight: 500;
+}
+.garden-digest-item-meta {
+  font-size: 10px;
+  color: var(--text-secondary, #808080);
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
 /* Back to Graph button */
 .back-to-graph-button:hover {
   background: var(--bg-hover) !important;
