@@ -165,6 +165,13 @@ class Polly:
                 logger.info("BM25 index loaded from disk — hybrid search ready immediately")
             else:
                 logger.info("Hybrid search enabled — BM25 index will be built on next index run")
+
+            # Wire entity_store into HybridSearcher for authority-boosted RRF (Phase 12b)
+            if self.rag.hybrid_searcher and getattr(self, "entity_store", None):
+                authority_weight = self.config.get("knowledge_graph.authority_weight", 0.3)
+                self.rag.hybrid_searcher.entity_store = self.entity_store
+                self.rag.hybrid_searcher.authority_weight = authority_weight
+                logger.info(f"Authority scoring wired into hybrid search (weight={authority_weight})")
         
         logger.info("RAG system initialized")
 
@@ -340,6 +347,26 @@ class Polly:
             self.entity_context = EntityContextBuilder(
                 self.entity_store, pattern_engine=self.pattern_engine
             )
+
+            # Graph-aware retriever (Phase 12b) — ContextContributor at priority 45
+            try:
+                from core.entities import GraphRetriever
+                kg_config = {
+                    "knowledge_graph": {
+                        "graph_traversal": {
+                            "enabled": self.config.get("knowledge_graph.graph_traversal.enabled", True),
+                            "max_hops": self.config.get("knowledge_graph.graph_traversal.max_hops", 2),
+                            "min_strength": self.config.get("knowledge_graph.graph_traversal.min_strength", 0.3),
+                            "contributor_priority": self.config.get("knowledge_graph.graph_traversal.contributor_priority", 45),
+                        }
+                    }
+                }
+                self.graph_retriever = GraphRetriever(self.entity_store, self.entity_extractor, kg_config)
+                logger.info("GraphRetriever initialized (Phase 12b)")
+            except Exception as gr_e:
+                self.graph_retriever = None
+                logger.debug(f"GraphRetriever init skipped: {gr_e}")
+
             try:
                 from core.entities.migration import migrate_from_json
                 mig_stats = migrate_from_json(graph_path, self.entity_store)
@@ -1324,6 +1351,10 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         # Memory retriever (priority 50) — NEW
         if self.memory_retriever and hasattr(self.memory_retriever, "build_context"):
             contributor_specs.append(("memory", self.memory_retriever, 50))
+
+        # Graph retriever (priority 45) — Phase 12b: graph-aware retrieval
+        if getattr(self, "graph_retriever", None) and hasattr(self.graph_retriever, "build_context"):
+            contributor_specs.append(("graph_traversal", self.graph_retriever, 45))
 
         # Entity context (priority 40)
         if self.entity_context and hasattr(self.entity_context, "build_context"):

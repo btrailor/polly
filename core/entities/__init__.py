@@ -24,6 +24,7 @@ from .models import (
 from .store import EntityStore
 from .extractor import EntityExtractor
 from .context import EntityContextBuilder
+from .retriever import GraphRetriever
 
 __all__ = [
     "EntityStore",
@@ -34,5 +35,6 @@ __all__ = [
     "EntityQuery",
     "EntityExtractor",
     "EntityContextBuilder",
+    "GraphRetriever",
     "entity_id",
 ]

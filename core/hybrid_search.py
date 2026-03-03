@@ -3,7 +3,7 @@ Hybrid Search Implementation for Polly RAG
 Combines semantic search (vector embeddings) with keyword search (BM25)
 """
 
-from typing import List, Dict, Set, Tuple, Optional
+from typing import Any, List, Dict, Set, Tuple, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +30,7 @@ class ScoredResult:
     semantic_score: float = 0.0
     keyword_score: float = 0.0
     title_boost: float = 0.0
+    authority_score: float = 0.0
     final_score: float = 0.0
     rank_semantic: int = 999999
     rank_keyword: int = 999999
@@ -307,12 +308,20 @@ class PersistentBM25Index(BM25Index):
 class HybridSearcher:
     """Combines semantic and keyword search with Reciprocal Rank Fusion"""
     
-    def __init__(self, k_rrf: int = 60, index_path: Optional[str] = None):
+    def __init__(
+        self,
+        k_rrf: int = 60,
+        index_path: Optional[str] = None,
+        entity_store: Optional[Any] = None,
+        authority_weight: float = 0.3,
+    ):
         """
         Args:
             k_rrf: Parameter for Reciprocal Rank Fusion (typically 60)
             index_path: Optional path for BM25 index persistence (Spec 08).
                         If provided, uses PersistentBM25Index; otherwise BM25Index.
+            entity_store: Optional EntityStore for authority-weighted scoring (Phase 12b).
+            authority_weight: Weight of authority signal in RRF (0.0 to disable).
         """
         self.k_rrf = k_rrf
         if index_path:
@@ -320,6 +329,8 @@ class HybridSearcher:
         else:
             self.bm25_index = BM25Index()
         self.query_enhancer = QueryEnhancer()
+        self.entity_store = entity_store
+        self.authority_weight = authority_weight
     
     def index_for_keyword_search(self, documents: List[Dict]):
         """Build BM25 index from documents"""
@@ -368,6 +379,35 @@ class HybridSearcher:
         
         return boost
     
+    def _compute_authority_scores(self, doc_ids: List[str], doc_metadata: Dict[str, Dict]) -> Dict[str, float]:
+        """
+        Compute authority scores for documents by looking up entities in their source paths.
+        Returns {doc_id: max_authority_score} for documents with entity matches.
+        Phase 12b: Authority scoring integration.
+        """
+        if not self.entity_store or self.authority_weight <= 0:
+            return {}
+
+        authority_map: Dict[str, float] = {}
+        try:
+            for doc_id in doc_ids:
+                meta = doc_metadata.get(doc_id, {})
+                filepath = meta.get('filepath', '') or meta.get('source', '')
+                if not filepath:
+                    continue
+                # Query entity_mentions for this source document
+                mentions = self.entity_store.get_mentions_for_source(filepath, 'note')
+                if not mentions:
+                    # Also try with just the filename
+                    filename = filepath.rsplit('/', 1)[-1] if '/' in filepath else filepath
+                    mentions = self.entity_store.get_mentions_for_source(filename, 'note')
+                if mentions:
+                    max_auth = max(m.get('authority_score', 0.0) for m in mentions)
+                    authority_map[doc_id] = max_auth
+        except Exception as e:
+            logger.debug(f"Authority score lookup failed (non-fatal): {e}")
+        return authority_map
+
     def reciprocal_rank_fusion(
         self,
         semantic_results: List[Tuple[str, float]],
@@ -380,6 +420,9 @@ class HybridSearcher:
         
         RRF formula: score(d) = Σ 1 / (k + rank(d))
         where rank(d) is the rank of document d in a result list
+        
+        Phase 12b adds authority scoring as a weighted additive bonus:
+          final = (rrf_score * k_rrf * title_boost) + (authority_weight * authority_score)
         
         Args:
             semantic_results: List of (doc_id, score) from vector search
@@ -407,6 +450,10 @@ class HybridSearcher:
             scored[doc_id].keyword_score = score
             scored[doc_id].rank_keyword = rank
         
+        # Phase 12b: Compute authority scores for all candidate documents
+        all_doc_ids = list(scored.keys())
+        authority_scores = self._compute_authority_scores(all_doc_ids, doc_metadata)
+        
         # Compute RRF scores and title boosts
         for doc_id, result in scored.items():
             # RRF score
@@ -425,16 +472,20 @@ class HybridSearcher:
             title_boost = self.compute_title_boost(filepath, query_terms)
             result.title_boost = title_boost
             
+            # Phase 12b: Authority bonus
+            result.authority_score = authority_scores.get(doc_id, 0.0)
+            authority_bonus = self.authority_weight * result.authority_score
+            
             # Final score: If no keyword results, use semantic score directly to preserve quality
             # Otherwise use RRF fusion
             if not keyword_results:
                 # Pure semantic search - use semantic scores directly
-                result.final_score = result.semantic_score * title_boost
+                result.final_score = result.semantic_score * title_boost + authority_bonus
             else:
                 # Hybrid mode - normalize RRF to be comparable to semantic scores
                 # Max RRF score is ~1/k_rrf for rank=1, normalize to 0-1 range
                 # by multiplying by k_rrf to get scores similar to semantic
-                result.final_score = (rrf_score * self.k_rrf) * title_boost
+                result.final_score = (rrf_score * self.k_rrf) * title_boost + authority_bonus
         
         # Sort by final score
         sorted_results = sorted(
@@ -452,6 +503,7 @@ class HybridSearcher:
                     'semantic_score': r.semantic_score,
                     'keyword_score': r.keyword_score,
                     'title_boost': r.title_boost,
+                    'authority_score': r.authority_score,
                     'rank_semantic': r.rank_semantic,
                     'rank_keyword': r.rank_keyword
                 }

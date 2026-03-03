@@ -18,7 +18,7 @@ Persona Endpoints (Phase 11c):
 - POST /persona/deactivate - Deactivate current persona
 """
 
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, status
+from fastapi import FastAPI, HTTPException, Query, Request, BackgroundTasks, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -5200,6 +5200,66 @@ def create_app(polly_instance=None) -> FastAPI:
             logger.error(f"Delete entity failed: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to delete entity: {str(e)}")
     
+    @app.get("/polly/graph/path")
+    async def find_entity_path(
+        from_entity: str = Query(..., alias="from", description="Source entity ID"),
+        to_entity: str = Query(..., alias="to", description="Target entity ID"),
+        max_hops: int = Query(4, ge=1, le=8, description="Maximum traversal hops"),
+    ):
+        """Find the shortest path between two entities in the knowledge graph.
+
+        Returns the sequence of entities and relationships connecting them,
+        or 404 if no path exists within *max_hops*.
+        """
+        try:
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+
+            # Validate both entities exist
+            src = entity_store.get_entity(from_entity)
+            if not src:
+                raise HTTPException(404, f"Source entity not found: {from_entity}")
+            dst = entity_store.get_entity(to_entity)
+            if not dst:
+                raise HTTPException(404, f"Target entity not found: {to_entity}")
+
+            path = entity_store.find_path(from_entity, to_entity, max_hops=max_hops)
+            if path is None:
+                raise HTTPException(
+                    404,
+                    f"No path found between '{src.name}' and '{dst.name}' within {max_hops} hops",
+                )
+
+            # Build response: list of {entity, relationship} steps
+            steps = []
+            for entity, rel in path:
+                step: dict = {
+                    "entity": {
+                        "id": entity.id,
+                        "name": entity.name,
+                        "entity_type": entity.entity_type.value if entity.entity_type else "unknown",
+                        "authority_score": round(entity.authority_score, 3) if entity.authority_score else 0,
+                    }
+                }
+                if rel:
+                    step["relationship"] = rel.to_dict()
+                steps.append(step)
+
+            return {
+                "from": {"id": src.id, "name": src.name},
+                "to": {"id": dst.id, "name": dst.name},
+                "hops": len(steps),
+                "path": steps,
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Find path failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to find path: {str(e)}")
+
     @app.get("/polly/graph/state")
     async def get_graph_state():
         """

@@ -449,6 +449,37 @@ graph:
   # Auto-link based on co-occurrence
   auto_link_threshold: 0.7
 
+# Knowledge Graph Advanced (Phase 12b)
+knowledge_graph:
+  # Wave 1: Graph-aware retrieval
+  authority_weight: 0.3 # Weight of authority signal in RRF (0.0 to disable)
+  graph_traversal:
+    enabled: true
+    max_hops: 2
+    min_strength: 0.3
+    contributor_priority: 45 # Priority in ContextContributor ordering
+
+  # Wave 2: Quality controls
+  authority_recompute_interval_hours: 24
+  isolation_threshold: 2 # Notes with <= N entity connections flagged as isolated
+
+  # Wave 3: Intelligence (not yet implemented)
+  community_detection:
+    enabled: true
+    algorithm: label_propagation
+    min_community_size: 3
+  centrality:
+    enabled: true
+    pagerank_damping: 0.85
+    pagerank_iterations: 100
+    betweenness_sample_size: 100
+  edge_confidence:
+    weights:
+      co_occurrence: 0.35
+      semantic_similarity: 0.25
+      temporal_proximity: 0.15
+      structural_proximity: 0.25
+
 # Learning tracker (Phase 22 - Teaching Mode)
 learning:
   storage_path: "~/.polly/learning.json"
