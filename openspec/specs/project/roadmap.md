@@ -7,14 +7,14 @@
 
 ## Tiers Overview
 
-| Tier  | Name                    | Progress       | Notes                                                                     |
-| ----- | ----------------------- | -------------- | ------------------------------------------------------------------------- |
-| **0** | Foundation & UI         | ✅ 100%        | Phases 0.5, 1, 3, 4, 5                                                    |
-| **1** | Core Intelligence       | ~92%           | 15+ phases done; 23.5 ✅; 12a ✅ ~95%; 12b ✅; 16c frontend remaining     |
-| **2** | Packaging & Permissions | 📋 Not started | Phase 9, signing, UI polish                                               |
-| **3** | Knowledge Platform      | 📋 Not started | Knowledge graph advanced, capture, maturity lifecycle, canvas, publishing |
-| **4** | Polish & Autonomy       | 📋 Not started | Phase 18 onboarding, Phase 19 data autonomy, analytics                    |
-| **5** | Distributed & Mobile    | 📋 Not started | DRM, mobile companion, advanced communication                             |
+| Tier  | Name                    | Progress       | Notes                                                                        |
+| ----- | ----------------------- | -------------- | ---------------------------------------------------------------------------- |
+| **0** | Foundation & UI         | ✅ 100%        | Phases 0.5, 1, 3, 4, 5                                                       |
+| **1** | Core Intelligence       | ~92%           | 15+ phases done; 23.5 ✅; 12a ✅ ~95%; 12b ✅; 16c ✅; 22 frontend remaining |
+| **2** | Packaging & Permissions | 📋 Not started | Phase 9, signing, UI polish                                                  |
+| **3** | Knowledge Platform      | 📋 Not started | Knowledge graph advanced, capture, maturity lifecycle, canvas, publishing    |
+| **4** | Polish & Autonomy       | 📋 Not started | Phase 18 onboarding, Phase 19 data autonomy, analytics                       |
+| **5** | Distributed & Mobile    | 📋 Not started | DRM, mobile companion, advanced communication                                |
 
 Tier docs: [docs/planning/tiers/](../../../docs/planning/tiers/).
 
@@ -44,7 +44,7 @@ Tier docs: [docs/planning/tiers/](../../../docs/planning/tiers/).
 | 13a      | Pattern Learning Core          | ✅                        |                                                                                                                                                                                                                                                               |
 | 14       | Mental Models                  | ✅                        |                                                                                                                                                                                                                                                               |
 | 16       | Native Notes Frontend          | ✅                        |                                                                                                                                                                                                                                                               |
-| 16c      | AI Note Creation               | 🔄                        | Backend done, frontend pending                                                                                                                                                                                                                                |
+| 16c      | AI Note Creation               | ✅                        | Full stack: backend (knowledge_writer, save-quick/save-scribe/save-message APIs) + frontend (AI Note modal, Quick Save, Generate with Scribe)                                                                                                                 |
 | 16e      | TOC & Templates                | ✅                        |                                                                                                                                                                                                                                                               |
 | 21       | Knowledge Base Deduplication   | ✅                        | Being absorbed into Knowledge Quality Pipeline                                                                                                                                                                                                                |
 | 22       | Teaching Mode                  | 🔄 ~75%                   | Backend done; frontend includes Learning page center area redesign + meta-pedagogy. [changes/learning-and-administrator-profiles/](../changes/learning-and-administrator-profiles/)                                                                           |

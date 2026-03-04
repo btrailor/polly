@@ -257,9 +257,20 @@ Respond with ONLY a JSON object (no markdown code blocks):
         # Long queries are rarely simple factual lookups
         is_long_query = word_count >= 12
         
-        # Count question words (including duplicates for multi-part questions)
+        # Count question words at clause boundaries only.
+        # Naive str.count() double-counts relative pronouns ("thinkers who engage"),
+        # subordinate conjunctions ("know how it works"), etc. — all of which are
+        # NOT separate questions. We restrict to positions that plausibly start a
+        # new interrogative clause: start-of-string, after punctuation, or after
+        # coordinating conjunctions (and/or/but).
+        import re as _re
         question_words = ['what', 'how', 'why', 'when', 'where', 'who', 'which']
-        question_count = sum(query_lower.count(qw) for qw in question_words)
+        _qw_pattern = _re.compile(
+            r'(?:^|[.?!;]\s*|\b(?:and|or|but)\s+)'
+            r'(' + '|'.join(question_words) + r')\b',
+            _re.IGNORECASE,
+        )
+        question_count = len(_qw_pattern.findall(query_lower))
         
         # Check for multiple distinct questions (e.g., "what X and what Y")
         has_multiple_questions = (

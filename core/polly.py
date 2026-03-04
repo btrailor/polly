@@ -2138,6 +2138,8 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
         Yields:
             Response text (chunks if streaming)
         """
+        import time as _time
+        _pipeline_start = _time.monotonic()
         logger.info(f"[POLLY QUERY] Starting query: {query[:100]}")
         
         # ------------------------------------------------------------------
@@ -2210,8 +2212,12 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             return
 
         # 1. Detect domains (list of domain ids)
+        logger.info(f"[PIPELINE TIMING] Step 1 (domains) at +{_time.monotonic() - _pipeline_start:.2f}s")
         detected_domains = self.domains.detect_domains(query, context)
         domain_names = [d for d in detected_domains if (d or "").strip().lower() not in ("", "unknown")]
+
+        # Store detected domains for metadata (used by get_last_response_metadata)
+        self._last_detected_domains = domain_names
 
         # Notify persona-aware systems (integration-contracts)
         self._notify_persona_context(persona, persona_mode)
@@ -2224,6 +2230,7 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
 
 
         # 2. Get RAG context
+        logger.info(f"[PIPELINE TIMING] Step 2 (RAG search) at +{_time.monotonic() - _pipeline_start:.2f}s")
         # Increase n_results for integration-heavy queries
         n_results = self.config.get("rag.n_results", 5)
         query_lower = query.lower()
@@ -2616,6 +2623,7 @@ Be direct, practical, and aligned with {self.user_name}'s polymathic approach.
             logger.info(f"Debug info written to {debug_file}")
 
         # 2.5. Classify retrieval quality using three-tier system (DIRECT/ADJACENT/ABSENT)
+        logger.info(f"[PIPELINE TIMING] Step 2.5 (retrieval classifier) at +{_time.monotonic() - _pipeline_start:.2f}s")
         # This determines how strongly the LLM should rely on RAG results
         retrieval_classifier = RetrievalClassifier(
             direct_threshold=self.config.get("rag.retrieval_classifier.direct_threshold", 0.72),
@@ -2845,6 +2853,7 @@ If you suggest an exercise, copy the description directly from the context above
         
         if wave3_enabled:
             logger.info("Wave 3 pipeline is enabled, attempting decomposition...")
+            print(f"[Wave 3] Checking decomposition for: {query[:80]}...", flush=True)
             try:
                 # Decompose query if complex
                 decomposition_result = await self.query_decomposer.decompose(
@@ -2856,20 +2865,25 @@ If you suggest an exercise, copy the description directly from the context above
                 )
                 
                 logger.info(f"Wave 3: Decomposition complete, is_complex={decomposition_result.is_complex}")
+                print(f"[Wave 3] is_complex={decomposition_result.is_complex}, sub_queries={len(decomposition_result.sub_queries)}", flush=True)
                 
                 # If query was decomposed (is_complex=True), use Wave 3 pipeline
                 if decomposition_result.is_complex:
                     logger.info(f"Wave 3: Query decomposed into {len(decomposition_result.sub_queries)} sub-queries")
                     logger.info(f"Wave 3: Reasoning: {decomposition_result.reasoning}")
+                    print(f"[Wave 3] DECOMPOSED into {len(decomposition_result.sub_queries)} sub-queries — will use split_router (bypasses standard cloud routing)", flush=True)
                     
                     # Route sub-queries through split router (handles parallel execution)
+                    # Pass retrieval_tier so split_router can make tier-aware
+                    # local vs cloud decisions per sub-query.
                     routing_result = await self.split_router.route(
                         decomposition=decomposition_result,
                         context={
                             'rag_results': filtered_search_results,
                             'system_prompt': augmented_system,
                             'messages': messages,
-                            'domains': domain_names
+                            'domains': domain_names,
+                            'retrieval_tier': retrieval_tier.tier,
                         }
                     )
                     
@@ -2930,6 +2944,7 @@ If you suggest an exercise, copy the description directly from the context above
                     return
                 else:
                     logger.info(f"Wave 3: Query is simple, using standard routing")
+                    print("[Wave 3] Query is SIMPLE — falling through to standard routing", flush=True)
                     # Fall through to standard routing below
                     
             except Exception as e:
@@ -2938,6 +2953,7 @@ If you suggest an exercise, copy the description directly from the context above
                 # Fall through to standard routing
 
         # 8. Generate response - use hybrid routing (local vs cloud based on RAG context)
+        logger.info(f"[PIPELINE TIMING] Step 8 (LLM generation) at +{_time.monotonic() - _pipeline_start:.2f}s")
         full_response = ""
         response_metadata = {}  # Store provider, model, cost info
         
@@ -2951,17 +2967,22 @@ If you suggest an exercise, copy the description directly from the context above
                     provider_override=provider_override,
                     retrieval_tier=retrieval_tier.tier,
                 )
+                print(f"[Routing Decision] use_local={use_local}, retrieval_tier={retrieval_tier.tier.value}, provider_override={provider_override}", flush=True)
                 
                 if use_local:
                     # Use local Ollama model (good RAG context, cost-effective)
                     logger.info("Router v2 Hybrid: Using LOCAL model (strong RAG context)")
                     
                     # Use self.llm (from router_v1 hybrid init) for local Ollama
+                    _first_chunk_logged = False
                     async for chunk in self.llm.chat(
                         messages=messages,
                         system_prompt=augmented_system,
                         stream=stream
                     ):
+                        if not _first_chunk_logged:
+                            logger.info(f"[PIPELINE TIMING] First token (LOCAL) at +{_time.monotonic() - _pipeline_start:.2f}s")
+                            _first_chunk_logged = True
                         full_response += chunk
                         yield chunk
                     
@@ -2982,6 +3003,7 @@ If you suggest an exercise, copy the description directly from the context above
                 else:
                     # Use cloud providers via router_v2 (weak RAG or complex query)
                     logger.info("Router v2 Hybrid: Using CLOUD model (weak RAG or complex query)")
+                    print("[Model Routing] Using CLOUD provider via router_v2", flush=True)
                     
                     # Include system prompt in messages so all providers (including LiteLLM) receive it
                     messages_with_system = [{"role": "system", "content": augmented_system}] + messages
@@ -3044,13 +3066,19 @@ If you suggest an exercise, copy the description directly from the context above
                             selected_provider = self.router_v2.providers[provider_override]
                             logger.info(f"Router v2: Overriding to provider '{provider_override}'")
                         
+                        print(f"[Cloud Routing] Provider: {getattr(selected_provider, 'name', 'unknown')}, Model: {selected_model}, Reason: {routing_decision.reason}", flush=True)
+                        
                         if stream:
                             collected_chunks = []
+                            _first_cloud_chunk = False
                             async for chunk in selected_provider.stream(
                                 messages=messages_with_system,
                                 model=selected_model,
                                 max_tokens=4096,
                             ):
+                                if not _first_cloud_chunk:
+                                    logger.info(f"[PIPELINE TIMING] First token (CLOUD/{selected_provider.name}) at +{_time.monotonic() - _pipeline_start:.2f}s")
+                                    _first_cloud_chunk = True
                                 full_response += chunk
                                 collected_chunks.append(chunk)
                                 yield chunk
@@ -3113,6 +3141,7 @@ If you suggest an exercise, copy the description directly from the context above
             except Exception as e:
                 logger.error(f"Router v2 failed: {e}", exc_info=True)
                 # Fall back to router v1
+                print(f"[Routing Fallback] Router v2 FAILED: {e} — falling back to router v1 (local Ollama)", flush=True)
                 logger.warning("Falling back to router v1")
                 async for chunk in self.llm.chat(
                     messages=messages,
@@ -3131,11 +3160,12 @@ If you suggest an exercise, copy the description directly from the context above
                     'tokens_in': len(augmented_system.split()) + sum(len(m.get('content', '').split()) for m in messages),
                     'tokens_out': len(full_response.split()),
                     'estimated': True,
-                    'routing_reason': 'Router v2 failed, fell back to router v1 local model'
+                    'routing_reason': f'Router v2 failed ({e}), fell back to router v1 local model'
                 }
                 self._last_response_metadata = response_metadata
         else:
             # Router V1 path - legacy routing
+            print(f"[Routing Decision] Using Router V1 (legacy). This should not happen when routing_v2.enabled=true.", flush=True)
             async for chunk in self.llm.chat(
                 messages=messages,
                 system_prompt=augmented_system,
@@ -3364,7 +3394,7 @@ If you suggest an exercise, copy the description directly from the context above
         Get metadata from the last response (router v2 only).
         
         Returns:
-            Dict with provider, model, cost, tokens if router_v2 was used,
+            Dict with provider, model, cost, tokens, domains if router_v2 was used,
             None otherwise.
         
         Example response:
@@ -3374,10 +3404,17 @@ If you suggest an exercise, copy the description directly from the context above
                 'cost': 0.0023,
                 'tokens_in': 150,
                 'tokens_out': 200,
-                'estimated': False
+                'estimated': False,
+                'domains': ['scrolls', 'grids']
             }
         """
-        return getattr(self, '_last_response_metadata', None)
+        metadata = getattr(self, '_last_response_metadata', None)
+        if metadata is not None:
+            # Attach detected domains so the frontend can use them for categorization
+            domains = getattr(self, '_last_detected_domains', None)
+            if domains:
+                metadata['domains'] = domains
+        return metadata
 
     # ==================== Phase 13A Day 16: Pattern Enhancement APIs ====================
     

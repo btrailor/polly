@@ -1379,15 +1379,20 @@ async function addMessageToConversation(role, content) {
     }
 
     // Check if needs auto-titling (after 3 messages)
+    // Run asynchronously so it doesn't block the chat flow
     if (
       currentConversation.message_count >= 3 &&
       !currentConversation.auto_titled
     ) {
-      const needsTitle = await window.polly.conversationNeedsTitle(
-        currentConversationId,
-      );
-      if (needsTitle) {
-        await generateConversationTitle();
+      // Check title case-insensitively on client side first (fast path)
+      const currentTitle = (currentConversation.title || "")
+        .trim()
+        .toLowerCase();
+      if (!currentTitle || currentTitle === "new conversation") {
+        // Fire and forget — don't await, so the message returns immediately
+        generateConversationTitle().catch((err) =>
+          console.warn("[AutoTitle] Background title generation failed:", err),
+        );
       }
     }
 
@@ -1456,33 +1461,216 @@ function clearPreservedUIState() {
 }
 
 /**
- * Generate title for current conversation using LLM
+ * Generate title for current conversation using dedicated lightweight endpoint.
+ * Includes retry logic with exponential backoff and heuristic fallback.
  */
 async function generateConversationTitle() {
+  const conversationId = currentConversationId;
+  const maxRetries = 3;
+  const baseDelay = 2000; // 2s, 4s, 8s backoff
+
+  // Get messages for context
+  const messages = (currentConversation.messages || [])
+    .slice(0, 6)
+    .map((m) => ({
+      role: m.role,
+      content: (m.content || "").substring(0, 300),
+    }));
+
+  if (messages.length === 0) return;
+
+  // Show shimmer on conversation list item while generating
+  const convItem = document.querySelector(
+    `.conversation-item[data-id="${conversationId}"] .conversation-title`,
+  );
+  if (convItem) {
+    convItem.classList.add("title-generating");
+  }
+
+  let title = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:11436/polly/generate-title",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages }),
+        },
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.title && data.title.toLowerCase() !== "new conversation") {
+          title = data.title;
+          break;
+        }
+      }
+    } catch (err) {
+      console.warn(`[AutoTitle] Attempt ${attempt + 1} failed:`, err.message);
+    }
+
+    // Wait before retry (exponential backoff), skip wait on last attempt
+    if (attempt < maxRetries - 1) {
+      await new Promise((r) => setTimeout(r, baseDelay * Math.pow(2, attempt)));
+    }
+  }
+
+  // Final fallback: extract from first user message
+  if (!title) {
+    const firstUserMsg = messages.find((m) => m.role === "user");
+    if (firstUserMsg && firstUserMsg.content) {
+      let fallback = firstUserMsg.content.trim();
+      // Strip question prefixes
+      fallback = fallback.replace(
+        /^(can you |could you |please |help me |i need |i want |how do i |how to |what is |what are |tell me about |explain )/i,
+        "",
+      );
+      // Take first sentence/clause
+      const delimiters = [".", "?", "!", "\n"];
+      for (const d of delimiters) {
+        if (fallback.includes(d)) {
+          fallback = fallback.split(d)[0];
+          break;
+        }
+      }
+      fallback = fallback.trim();
+      if (fallback.length > 50) {
+        fallback = fallback.substring(0, 47).trimEnd() + "...";
+      }
+      if (fallback.length >= 3) {
+        title = fallback.charAt(0).toUpperCase() + fallback.slice(1);
+      }
+    }
+  }
+
+  if (!title) return;
+
   try {
-    // Get first few messages for context
-    const messages = currentConversation.messages.slice(0, 4);
-    const context = messages.map((m) => `${m.role}: ${m.content}`).join("\n");
+    // Update in database
+    await window.polly.conversationSetTitle(conversationId, title);
 
-    // Use the query endpoint to generate a title
-    const prompt = `Based on this conversation, generate a short, descriptive title (max 50 characters):\n\n${context}\n\nTitle:`;
-    const result = await window.polly.query(prompt, { mode: "auto" });
-
-    if (result.success) {
-      let title = result.result.response.trim();
-      // Clean up the title
-      title = title.replace(/^["']|["']$/g, ""); // Remove quotes
-      title = title.substring(0, 60); // Limit length
-
-      // Update in database
-      await window.polly.conversationSetTitle(currentConversationId, title);
+    // Update local state
+    if (currentConversationId === conversationId) {
       currentConversation.title = title;
       currentConversation.auto_titled = true;
-
-      console.log("Generated title:", title);
     }
+    const convIdx = conversations.findIndex((c) => c.id === conversationId);
+    if (convIdx !== -1) {
+      conversations[convIdx].title = title;
+      conversations[convIdx].auto_titled = true;
+    }
+
+    // Re-render conversation list to show new title
+    if (typeof renderConversationList === "function") renderConversationList();
+    if (typeof renderChatTabs === "function") renderChatTabs();
+
+    console.log("[AutoTitle] Generated title:", title);
   } catch (error) {
-    console.error("Failed to generate title:", error);
+    console.error("[AutoTitle] Failed to save title:", error);
+  } finally {
+    // Remove shimmer regardless of outcome
+    if (convItem) {
+      convItem.classList.remove("title-generating");
+    }
+  }
+}
+
+/**
+ * Bulk rename all untitled conversations.
+ * Rate-limited to 1 request per second.
+ */
+async function bulkRenameUntitledConversations() {
+  const untitled = conversations.filter(
+    (c) =>
+      !c.auto_titled &&
+      (!c.title || c.title.toLowerCase().trim() === "new conversation"),
+  );
+
+  if (untitled.length === 0) {
+    if (typeof showToast === "function") {
+      showToast("All conversations are already named!", "info");
+    }
+    return;
+  }
+
+  let renamed = 0;
+  let failed = 0;
+  const total = untitled.length;
+
+  if (typeof showToast === "function") {
+    showToast(`Naming ${total} conversation${total > 1 ? "s" : ""}...`, "info");
+  }
+
+  for (const conv of untitled) {
+    try {
+      const messages = await window.polly.messageList(conv.id);
+      if (!messages || messages.length < 2) {
+        failed++;
+        continue;
+      }
+
+      const msgPayload = messages.slice(0, 6).map((m) => ({
+        role: m.role,
+        content: (m.content || "").substring(0, 300),
+      }));
+
+      const response = await fetch(
+        "http://127.0.0.1:11436/polly/generate-title",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: msgPayload }),
+        },
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.title && data.title.toLowerCase() !== "new conversation") {
+          await window.polly.conversationSetTitle(conv.id, data.title);
+          const idx = conversations.findIndex((c) => c.id === conv.id);
+          if (idx !== -1) {
+            conversations[idx].title = data.title;
+            conversations[idx].auto_titled = true;
+          }
+          renamed++;
+        }
+      }
+    } catch (err) {
+      console.warn(`[BulkRename] Failed for ${conv.id}:`, err.message);
+      failed++;
+    }
+
+    // Rate limit: 1 request per second
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+
+  if (typeof renderConversationList === "function") renderConversationList();
+  if (typeof renderChatTabs === "function") renderChatTabs();
+
+  if (typeof showToast === "function") {
+    showToast(
+      `Named ${renamed} conversation${renamed !== 1 ? "s" : ""}${failed > 0 ? ` (${failed} skipped)` : ""}`,
+      renamed > 0 ? "success" : "info",
+    );
+  }
+}
+
+/**
+ * Show/hide the "Name All Untitled" button based on whether untitled conversations exist.
+ */
+function updateNameAllButtonVisibility() {
+  const btn = document.getElementById("btn-name-all-untitled");
+  if (!btn) return;
+  const untitledCount = (conversations || []).filter(
+    (c) =>
+      !c.auto_titled &&
+      (!c.title || c.title.toLowerCase().trim() === "new conversation"),
+  ).length;
+  btn.style.display = untitledCount > 0 ? "flex" : "none";
+  if (untitledCount > 0) {
+    btn.querySelector("span").textContent = `Name ${untitledCount} Untitled`;
   }
 }
 
@@ -1806,6 +1994,9 @@ function renderConversationList(searchQuery = "") {
 
   // Re-initialize icons
   refreshIcons();
+
+  // Update "Name All Untitled" button visibility
+  updateNameAllButtonVisibility();
 }
 
 /**
@@ -6037,6 +6228,22 @@ function reattachChatEventListeners() {
     });
   }
 
+  // Bulk rename untitled conversations button
+  const nameAllBtn = document.getElementById("btn-name-all-untitled");
+  if (nameAllBtn) {
+    nameAllBtn.addEventListener("click", async () => {
+      nameAllBtn.disabled = true;
+      nameAllBtn.querySelector("span").textContent = "Naming...";
+      try {
+        await bulkRenameUntitledConversations();
+      } finally {
+        nameAllBtn.disabled = false;
+        nameAllBtn.querySelector("span").textContent = "Name All Untitled";
+        updateNameAllButtonVisibility();
+      }
+    });
+  }
+
   // Send button and Enter key: ONLY attach to sidebar elements (query-input, btn-send).
   // chat-input and chat-send are in the main chat panel and get listeners from setupEventListeners.
   // Attaching here would duplicate listeners and cause multiple sends per action.
@@ -6791,7 +6998,7 @@ function updateSetupProgress(data) {
 /**
  * Auto-categorize conversation based on content
  */
-async function autoCategorizeConversation(conversationId) {
+async function autoCategorizeConversation(conversationId, metadata) {
   if (!conversationId || !categories || categories.length === 0) return;
 
   const conv = conversations.find((c) => c.id === conversationId);
@@ -6800,165 +7007,97 @@ async function autoCategorizeConversation(conversationId) {
   // Don't re-categorize if already categorized (not uncategorized)
   if (conv.category_id && conv.category_id !== "uncategorized") return;
 
-  // Get conversation messages to analyze
-  const fullConv = await window.polly.conversationGet(conversationId);
-  if (!fullConv || !fullConv.messages || fullConv.messages.length === 0) return;
+  let bestCategory = null;
 
-  // Combine all messages to analyze content
-  const allText = fullConv.messages
-    .map((m) => m.content)
-    .join(" ")
-    .toLowerCase();
-
-  // Define keywords for each category
-  const categoryKeywords = {
-    sigils: [
-      "auth",
-      "login",
-      "password",
-      "security",
-      "encrypt",
-      "decrypt",
-      "token",
-      "jwt",
-      "oauth",
-      "permission",
-      "access",
-      "certificate",
-      "key",
-      "signature",
-      "identity",
-      "credential",
-    ],
-    signals: [
-      "message",
-      "notification",
-      "event",
-      "webhook",
-      "socket",
-      "broadcast",
-      "publish",
-      "subscribe",
-      "channel",
-      "stream",
-      "real-time",
-      "websocket",
-      "email",
-      "sms",
-      "alert",
-    ],
-    scrolls: [
-      "document",
-      "file",
-      "storage",
-      "upload",
-      "download",
-      "pdf",
-      "markdown",
-      "content",
-      "blob",
-      "s3",
-      "bucket",
-      "attachment",
-      "media",
-      "image",
-    ],
-    glyphs: [
-      "ui",
-      "component",
-      "button",
-      "form",
-      "layout",
-      "css",
-      "style",
-      "design",
-      "render",
-      "display",
-      "view",
-      "template",
-      "theme",
-      "color",
-      "font",
-      "icon",
-    ],
-    grids: [
-      "database",
-      "table",
-      "query",
-      "sql",
-      "schema",
-      "model",
-      "data",
-      "index",
-      "collection",
-      "record",
-      "crud",
-      "orm",
-      "migration",
-      "postgres",
-      "mongo",
-      "array",
-      "list",
-      "map",
-    ],
-  };
-
-  // Count matches for each category
-  const scores = {};
-  for (const [catId, keywords] of Object.entries(categoryKeywords)) {
-    scores[catId] = keywords.reduce((score, keyword) => {
-      // Count occurrences of the keyword
-      const regex = new RegExp(`\\b${keyword}`, "gi");
-      const matches = allText.match(regex);
-      return score + (matches ? matches.length : 0);
-    }, 0);
-  }
-
-  // Find category with highest score
-  let bestCategory = "uncategorized";
-  let highestScore = 0;
-
-  for (const [catId, score] of Object.entries(scores)) {
-    if (score > highestScore) {
-      highestScore = score;
-      bestCategory = catId;
+  // ---- Strategy 1: Use backend-detected domains from response metadata ----
+  if (metadata && metadata.domains && metadata.domains.length > 0) {
+    // Backend domain detection is authoritative — use the top domain
+    const topDomain = metadata.domains[0].toLowerCase();
+    // Verify it matches a known category
+    if (categories.find((c) => c.id === topDomain)) {
+      bestCategory = topDomain;
+      console.log(
+        `Auto-categorizing conversation ${conversationId} as ${bestCategory} (from backend domain detection)`,
+      );
     }
   }
 
-  // Only categorize if we have a reasonable confidence (at least 3 keyword matches)
-  if (highestScore >= 3) {
-    console.log(
-      `Auto-categorizing conversation ${conversationId} as ${bestCategory} (score: ${highestScore})`,
-    );
-
+  // ---- Strategy 2: Ask backend to detect domains from conversation text ----
+  // Uses the user's configured domain keywords (not hardcoded).
+  if (!bestCategory) {
     try {
-      await window.polly.conversationUpdate(conversationId, {
-        category_id: bestCategory,
-      });
+      const fullConv = await window.polly.conversationGet(conversationId);
+      if (!fullConv || !fullConv.messages || fullConv.messages.length === 0)
+        return;
 
-      // Update local state
-      const index = conversations.findIndex((c) => c.id === conversationId);
-      if (index !== -1) {
-        const cat = categories.find((c) => c.id === bestCategory);
-        conversations[index].category_id = bestCategory;
-        if (cat) {
-          conversations[index].category_name = cat.name;
+      // Send conversation text to backend for domain detection
+      const allText = fullConv.messages
+        .map((m) => m.content)
+        .join("\n")
+        .substring(0, 3000); // Limit to first 3k chars
+
+      const response = await fetch(
+        "http://127.0.0.1:11436/polly/detect-domains",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: allText }),
+        },
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.domains && data.domains.length > 0) {
+          const topDomain = data.domains[0];
+          // Verify it matches a known category and has meaningful score
+          if (
+            topDomain.score >= 0.1 &&
+            categories.find((c) => c.id === topDomain.id)
+          ) {
+            bestCategory = topDomain.id;
+            console.log(
+              `Auto-categorizing conversation ${conversationId} as ${bestCategory} (backend detect-domains, score: ${topDomain.score})`,
+            );
+          }
         }
       }
-
-      if (currentConversationId === conversationId) {
-        currentConversation.category_id = bestCategory;
-        const cat = categories.find((c) => c.id === bestCategory);
-        if (cat) {
-          currentConversation.category_name = cat.name;
-        }
-      }
-
-      // Refresh the conversation list to show new category
-      renderConversationList();
-    } catch (error) {
-      console.error("Failed to auto-categorize:", error);
+    } catch (err) {
+      console.warn(
+        "[AutoCategorize] Backend domain detection failed:",
+        err.message,
+      );
     }
+  }
+
+  if (!bestCategory) return;
+
+  try {
+    await window.polly.conversationUpdate(conversationId, {
+      category_id: bestCategory,
+    });
+
+    // Update local state
+    const index = conversations.findIndex((c) => c.id === conversationId);
+    if (index !== -1) {
+      const cat = categories.find((c) => c.id === bestCategory);
+      conversations[index].category_id = bestCategory;
+      if (cat) {
+        conversations[index].category_name = cat.name;
+      }
+    }
+
+    if (currentConversationId === conversationId) {
+      currentConversation.category_id = bestCategory;
+      const cat = categories.find((c) => c.id === bestCategory);
+      if (cat) {
+        currentConversation.category_name = cat.name;
+      }
+    }
+
+    // Refresh the conversation list to show new category
+    renderConversationList();
+  } catch (error) {
+    console.error("Failed to auto-categorize:", error);
   }
 }
 
@@ -11267,6 +11406,14 @@ async function _sendQueryStreaming(apiQuery, queryOptions, loadingId) {
         if (event.chunk !== undefined) {
           textBuffer += event.chunk;
           scheduleRender();
+        } else if (event.heartbeat) {
+          // Backend is still processing — reset the timeout
+          _clearStreamTimeout();
+          _streamTimeoutHandle = setTimeout(() => {
+            if (_streamAbortController) {
+              _streamAbortController.abort("timeout");
+            }
+          }, STREAM_TIMEOUT_MS);
         } else if (event.metadata) {
           metadata = event.metadata;
           console.log("[Streaming] metadata:", metadata);
@@ -11296,23 +11443,46 @@ async function _sendQueryStreaming(apiQuery, queryOptions, loadingId) {
     reader.releaseLock();
   }
 
+  // Capture abort reason before clearing controller
+  const abortReason = signal.reason;
+
   _clearStreamTimeout();
   _hideStopButton();
   _streamAbortController = null;
 
   if (aborted) {
-    // User stopped — keep partial, add indicator
-    _renderStreamContent(contentEl, textBuffer, cursor, /* final= */ true);
-    // Append stopped badge
-    const stopBadge = document.createElement("span");
-    stopBadge.className = "stream-stopped-indicator";
-    stopBadge.textContent = "(stopped)";
-    contentEl.appendChild(stopBadge);
-    // Save partial to DB
-    if (textBuffer) {
+    // Distinguish user-stopped from timeout
+    const wasTimeout = abortReason === "timeout";
+
+    if (!textBuffer) {
+      // No response received at all — show helpful error instead of empty bubble
+      if (wasTimeout) {
+        // Remove the empty assistant bubble
+        const msgEl = contentEl?.closest(".message");
+        if (msgEl) msgEl.remove();
+        _showStreamError(
+          "Response timed out — the server may be busy or the model is taking too long. Try again or switch to a faster model.",
+        );
+      } else {
+        // User clicked stop before any text came
+        _renderStreamContent(contentEl, textBuffer, cursor, /* final= */ true);
+        const stopBadge = document.createElement("span");
+        stopBadge.className = "stream-stopped-indicator";
+        stopBadge.textContent = "(stopped)";
+        contentEl.appendChild(stopBadge);
+      }
+    } else {
+      // Partial response received — keep it with indicator
+      _renderStreamContent(contentEl, textBuffer, cursor, /* final= */ true);
+      const stopBadge = document.createElement("span");
+      stopBadge.className = "stream-stopped-indicator";
+      stopBadge.textContent = wasTimeout
+        ? "(timed out — partial response)"
+        : "(stopped)";
+      contentEl.appendChild(stopBadge);
       await addMessageToConversation(
         "assistant",
-        textBuffer + " (stopped)",
+        textBuffer + (wasTimeout ? " (timed out)" : " (stopped)"),
       ).catch(() => {});
     }
     // Re-enable
@@ -11342,9 +11512,12 @@ async function _sendQueryStreaming(apiQuery, queryOptions, loadingId) {
   if (typeof lucide !== "undefined") refreshIcons();
 
   // Auto-categorize (non-blocking) — run when browser is idle, within 1s
-  requestIdleCallback(() => autoCategorizeConversation(currentConversationId), {
-    timeout: 1000,
-  });
+  // Pass metadata so backend-detected domains are used (authoritative)
+  const _catMetadata = metadata;
+  requestIdleCallback(
+    () => autoCategorizeConversation(currentConversationId, _catMetadata),
+    { timeout: 1000 },
+  );
 
   // Refresh autonomy metrics after each completed query (routing decision just recorded)
   if (window.loadAutonomyData) {
@@ -11395,7 +11568,7 @@ async function _sendQueryFallbackIPC(apiQuery, queryOptions, loadingId) {
       await addMessageToConversation("assistant", result.result.response);
 
       requestIdleCallback(
-        () => autoCategorizeConversation(currentConversationId),
+        () => autoCategorizeConversation(currentConversationId, metadata),
         { timeout: 1000 },
       );
       if (window.loadAutonomyData)

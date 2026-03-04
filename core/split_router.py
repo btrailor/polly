@@ -6,18 +6,32 @@ This is where Polly's intelligent routing strategy executes.
 
 Architecture:
     DecompositionResult → Split Router → [Local RAG, Cloud Models] → Sub-Responses
-    
-Routing Strategy:
-    - RAG_ANSWERABLE → Local Ollama + RAG context (if available)
-    - REASONING/ANALYSIS → Cloud provider (complex reasoning)
-    - CODE_GEN → Cloud provider (code quality)
-    - FACTUAL → Local if RAG has answer, else cloud
-    - CREATIVE → Cloud provider (creative quality)
+
+Routing Strategy (tier-aware):
+    The main query pipeline classifies retrieval quality into three tiers
+    (DIRECT / ADJACENT / ABSENT) via RetrievalClassifier.  The split router
+    receives this tier through context and uses it to make per-sub-query
+    local vs cloud decisions:
+
+    DIRECT tier (strong RAG grounding):
+      - RAG_ANSWERABLE / FACTUAL → Local Ollama (if coverage ≥ threshold)
+      - REASONING / ANALYSIS / CODE_GEN / CREATIVE → Cloud
+
+    ADJACENT tier (tangential RAG matches):
+      - All sub-queries → Cloud (RAG passed as background context only)
+
+    ABSENT tier (no relevant KB content):
+      - All sub-queries → Cloud (no RAG search performed)
+
+    This ensures the same retrieval-tier intelligence that drives the
+    standard routing path (polly.py _should_use_local_model) is respected
+    when queries are decomposed through Wave 3.
 
 Integration points:
     - QueryDecomposer: Receives decomposition results
-    - IntelligentRouterV2: Routes each sub-query
-    - RAG: Local knowledge retrieval
+    - RetrievalClassifier: Three-tier classification informs routing
+    - IntelligentRouterV2: Routes cloud sub-queries
+    - RAG: Local knowledge retrieval (DIRECT tier only)
     - AutonomyMetrics: Track local vs cloud routing
     - Synthesis: Combines results
 """
@@ -30,6 +44,7 @@ import hashlib
 import logging
 
 from core.query_decomposition import DecompositionResult, SubQuery, SubQueryType
+from core.hardened.classifier import RetrievalTier
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +157,17 @@ class SplitRouter:
         self._rag_cache_max: int = routing_config.get('rag_cache_size', 128)
 
         logger.info(f"SplitRouter initialized (prefer_local={self.prefer_local})")
-    
+
+    @staticmethod
+    def _cloud_model_for_type(sq_type: SubQueryType) -> str:
+        """Choose cloud model tier based on sub-query type."""
+        if sq_type in (SubQueryType.REASONING, SubQueryType.ANALYSIS):
+            return 'auto:thorough'
+        elif sq_type == SubQueryType.CODE_GEN:
+            return 'auto:balanced'
+        else:
+            return 'auto:balanced'
+
     async def route(
         self,
         decomposition: DecompositionResult,
@@ -313,12 +338,71 @@ class SplitRouter:
         """
         Decide how to route a sub-query.
 
+        This respects the three-tier retrieval classification from the main
+        query pipeline.  The retrieval tier (DIRECT / ADJACENT / ABSENT) tells
+        us how strongly the knowledge base can ground an answer:
+
+        - DIRECT  → strong RAG grounding — local is ideal for RAG-answerable subs.
+        - ADJACENT → tangential matches — prefer cloud; RAG provides background only.
+        - ABSENT   → no relevant KB content — cloud for all sub-queries.
+
+        When retrieval_tier is not passed in context, falls back to the
+        coverage-based heuristic (legacy behaviour).
+
         Returns:
             Dict with 'type' (local/cloud), 'provider', 'model', 'rag_context'
         """
-        # Only search RAG for types that can be answered locally.
-        # CODE_GEN, CREATIVE, REASONING, ANALYSIS always go to cloud regardless
-        # of RAG coverage, so avoid the embedding+vector search cost for them.
+        # Extract retrieval tier from context (set by polly.py query pipeline)
+        retrieval_tier: Optional[RetrievalTier] = context.get('retrieval_tier')
+
+        # ----- Sub-query types that ALWAYS go to cloud regardless of tier -----
+        CLOUD_ONLY_TYPES = {
+            SubQueryType.CODE_GEN,
+            SubQueryType.CREATIVE,
+            SubQueryType.REASONING,
+            SubQueryType.ANALYSIS,
+        }
+        if sub_query.type in CLOUD_ONLY_TYPES:
+            model = self._cloud_model_for_type(sub_query.type)
+            logger.info(
+                f"[Wave3 Route] sub='{sub_query.query[:50]}' → CLOUD "
+                f"(type={sub_query.type.value} always routes to cloud)"
+            )
+            print(
+                f"[Wave3 Route] CLOUD: type={sub_query.type.value} "
+                f"(always cloud), model={model}",
+                flush=True,
+            )
+            return {
+                'type': 'cloud',
+                'provider': 'cloud',
+                'model': model,
+                'rag_context': None,
+                'rag_coverage': 0.0,
+            }
+
+        # ----- Tier-based early decisions (before RAG search) -----
+        # ABSENT: no KB content at all — send to cloud, skip RAG search cost
+        if retrieval_tier == RetrievalTier.ABSENT:
+            model = self._cloud_model_for_type(sub_query.type)
+            logger.info(
+                f"[Wave3 Route] sub='{sub_query.query[:50]}' → CLOUD "
+                f"(retrieval_tier=ABSENT, no KB grounding)"
+            )
+            print(
+                f"[Wave3 Route] CLOUD: tier=ABSENT, no KB content, "
+                f"type={sub_query.type.value}",
+                flush=True,
+            )
+            return {
+                'type': 'cloud',
+                'provider': 'cloud',
+                'model': model,
+                'rag_context': None,
+                'rag_coverage': 0.0,
+            }
+
+        # ----- RAG search (only for local-candidate types) -----
         LOCAL_CANDIDATE_TYPES = {SubQueryType.RAG_ANSWERABLE, SubQueryType.FACTUAL}
         should_search_rag = sub_query.type in LOCAL_CANDIDATE_TYPES
 
@@ -349,51 +433,74 @@ class SplitRouter:
             if rag_results:
                 rag_coverage = min(len(rag_results) / 5.0, 1.0)
                 rag_context = self._format_rag_context(rag_results)
-        
-        # Routing decision logic
-        if sub_query.type == SubQueryType.RAG_ANSWERABLE and rag_coverage >= self.local_threshold:
-            # High RAG coverage - route locally
+
+        # ----- Tier-informed routing decision -----
+
+        if retrieval_tier == RetrievalTier.ADJACENT:
+            # ADJACENT: RAG found tangential content.  The main pipeline already
+            # determined these results are *related but not directly on-topic*.
+            # Cloud models handle this better — they can use the tangential context
+            # as background while drawing on broader training knowledge.
+            model = self._cloud_model_for_type(sub_query.type)
+            logger.info(
+                f"[Wave3 Route] sub='{sub_query.query[:50]}' → CLOUD "
+                f"(retrieval_tier=ADJACENT, tangential RAG — cloud handles better)"
+            )
+            print(
+                f"[Wave3 Route] CLOUD: tier=ADJACENT, "
+                f"type={sub_query.type.value}, rag_coverage={rag_coverage:.2f}",
+                flush=True,
+            )
             return {
-                'type': 'local',
-                'provider': 'ollama',
-                'model': 'auto:fast',  # Fast local model
-                'rag_context': rag_context,
-                'rag_coverage': rag_coverage
+                'type': 'cloud',
+                'provider': 'cloud',
+                'model': model,
+                'rag_context': rag_context if rag_coverage > 0.3 else None,
+                'rag_coverage': rag_coverage,
             }
-        
-        elif sub_query.type == SubQueryType.FACTUAL and rag_coverage >= self.local_threshold:
-            # Factual with good RAG coverage - route locally
+
+        # ----- DIRECT tier (or no tier provided — legacy fallback) -----
+        # For DIRECT tier: strong RAG grounding exists.  Route locally if coverage
+        # meets the threshold; otherwise fall through to cloud.
+
+        if sub_query.type in LOCAL_CANDIDATE_TYPES and rag_coverage >= self.local_threshold:
+            logger.info(
+                f"[Wave3 Route] sub='{sub_query.query[:50]}' → LOCAL "
+                f"(tier={retrieval_tier.value if retrieval_tier else 'none'}, "
+                f"type={sub_query.type.value}, rag_coverage={rag_coverage:.2f})"
+            )
+            print(
+                f"[Wave3 Route] LOCAL: tier={retrieval_tier.value if retrieval_tier else 'none'}, "
+                f"type={sub_query.type.value}, rag_coverage={rag_coverage:.2f}",
+                flush=True,
+            )
             return {
                 'type': 'local',
                 'provider': 'ollama',
                 'model': 'auto:fast',
                 'rag_context': rag_context,
-                'rag_coverage': rag_coverage
+                'rag_coverage': rag_coverage,
             }
-        
-        else:
-            # Route to cloud for:
-            # - REASONING (complex reasoning)
-            # - CODE_GEN (code quality)
-            # - CREATIVE (creative quality)
-            # - ANALYSIS (analysis quality)
-            # - Low RAG coverage
-            
-            # Choose tier based on sub-query type
-            if sub_query.type in [SubQueryType.REASONING, SubQueryType.ANALYSIS]:
-                model = 'auto:thorough'  # Need quality for reasoning
-            elif sub_query.type == SubQueryType.CODE_GEN:
-                model = 'auto:balanced'  # Balanced for code
-            else:
-                model = 'auto:balanced'  # Default
-            
-            return {
-                'type': 'cloud',
-                'provider': 'cloud',
-                'model': model,
-                'rag_context': rag_context if rag_coverage > 0.3 else None,  # Include RAG if somewhat relevant
-                'rag_coverage': rag_coverage
-            }
+
+        # Default: insufficient local coverage — route to cloud
+        model = self._cloud_model_for_type(sub_query.type)
+        logger.info(
+            f"[Wave3 Route] sub='{sub_query.query[:50]}' → CLOUD "
+            f"(tier={retrieval_tier.value if retrieval_tier else 'none'}, "
+            f"low rag_coverage={rag_coverage:.2f})"
+        )
+        print(
+            f"[Wave3 Route] CLOUD: tier={retrieval_tier.value if retrieval_tier else 'none'}, "
+            f"type={sub_query.type.value}, rag_coverage={rag_coverage:.2f} < threshold={self.local_threshold}",
+            flush=True,
+        )
+        return {
+            'type': 'cloud',
+            'provider': 'cloud',
+            'model': model,
+            'rag_context': rag_context if rag_coverage > 0.3 else None,
+            'rag_coverage': rag_coverage,
+        }
     
     def _format_rag_context(self, rag_results: List) -> str:
         """Format RAG results into context string."""

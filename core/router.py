@@ -411,29 +411,38 @@ class UnifiedLLM:
         max_tokens: int,
         stream: bool
     ) -> AsyncIterator[str]:
-        """Call Ollama API."""
-        response = await self._client.post(
-            f"{self.router.ollama_host}/api/chat",
-            json={
-                'model': model.name,
-                'messages': messages,
-                'stream': stream,
-                'options': {
-                    'temperature': temperature,
-                    'num_predict': max_tokens
-                }
+        """Call Ollama API.
+        
+        When stream=True, uses httpx streaming request so tokens are yielded
+        incrementally as Ollama generates them — rather than buffering the
+        entire response before returning (which caused timeout issues).
+        """
+        url = f"{self.router.ollama_host}/api/chat"
+        payload = {
+            'model': model.name,
+            'messages': messages,
+            'stream': stream,
+            'options': {
+                'temperature': temperature,
+                'num_predict': max_tokens
             }
-        )
+        }
 
         if stream:
-            async for line in response.aiter_lines():
-                if line:
-                    data = json.loads(line)
-                    if 'error' in data:
-                        raise RuntimeError(f"Ollama error: {data['error']}")
-                    if 'message' in data and 'content' in data['message']:
-                        yield data['message']['content']
+            # Use client.stream() for true incremental streaming.
+            # client.post() buffers the ENTIRE response body before returning,
+            # which defeats streaming and causes timeouts on slow models.
+            async with self._client.stream('POST', url, json=payload) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if line:
+                        data = json.loads(line)
+                        if 'error' in data:
+                            raise RuntimeError(f"Ollama error: {data['error']}")
+                        if 'message' in data and 'content' in data['message']:
+                            yield data['message']['content']
         else:
+            response = await self._client.post(url, json=payload)
             data = response.json()
             if 'error' in data:
                 raise RuntimeError(f"Ollama error: {data['error']}")

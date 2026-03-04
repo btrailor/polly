@@ -25,7 +25,7 @@ Source of truth for native notes, TOC, and templates (Phases 16, 16e). Detail: [
 
 ## AI Note Creation (Phase 16c)
 
-- **Status:** Backend ready (personas, router, templates); frontend pending. Intent detection, Q&A UI, preview modal, save to `_Drafts/`.
+- **Status:** ✅ Complete — full stack (backend + frontend). AI Note button in notes toolbar opens modal with prompt textarea, domain selector, Quick Save (direct write via `save-quick` API) and Generate with Scribe (`save-message` API with scribe mode). Preview modal integration for Scribe-generated notes.
 
 ## Knowledge Writing from Chat (Core Framework Refinement)
 

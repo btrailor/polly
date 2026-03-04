@@ -1098,28 +1098,219 @@ def create_app(polly_instance=None) -> FastAPI:
             logger.error(f"Query failed: {e}", exc_info=True)
             raise HTTPException(500, f"Query processing error: {str(e)}")
 
+    @app.post("/polly/generate-title")
+    async def generate_conversation_title(request: Request):
+        """
+        Lightweight title generation for conversations.
+        
+        Accepts { "messages": [{"role": "user", "content": "..."}] }
+        Returns { "title": "Generated Title" }
+        
+        Uses a focused LLM prompt without RAG/persona routing overhead.
+        Falls back to heuristic title extraction on failure.
+        """
+        try:
+            body = await request.json()
+            messages = body.get("messages", [])
+            
+            if not messages:
+                raise HTTPException(400, "No messages provided")
+            
+            # Build context from messages (first 4-6, truncated)
+            context_parts = []
+            for msg in messages[:6]:
+                role = msg.get("role", "user")
+                content = (msg.get("content", "") or "")[:300]
+                context_parts.append(f"{role}: {content}")
+            context = "\n".join(context_parts)
+            
+            # Heuristic fallback: extract topic from first user message
+            first_user_msg = next(
+                (m.get("content", "") for m in messages if m.get("role") == "user"),
+                ""
+            ).strip()
+            heuristic_title = _extract_heuristic_title(first_user_msg)
+            
+            try:
+                polly = get_polly()
+                
+                prompt = (
+                    "Generate a concise title (3-6 words) for this conversation. "
+                    "The title should name the TOPIC, not describe the action. "
+                    "Return ONLY the title text, no quotes, no explanation, no punctuation at the end.\n\n"
+                    "GOOD examples: Django Model Configuration, Quantum Computing Basics, Project Timeline Planning\n"
+                    "BAD examples: How to set up Django, Can you explain quantum, Discussion about planning\n\n"
+                    f"Conversation:\n{context}\n\n"
+                    "Title:"
+                )
+                
+                from core.router import RoutingMode, ModelTier
+                
+                response_text = ""
+                async for chunk in polly.query(
+                    prompt,
+                    mode=RoutingMode.AUTO,
+                    tier=ModelTier.FAST,
+                    stream=False,
+                    persona="none",
+                ):
+                    response_text += chunk
+                
+                if response_text.strip():
+                    title = response_text.strip()
+                    # Clean up: remove quotes, limit length, strip trailing punctuation
+                    title = title.strip('"\'').strip()
+                    title = title.rstrip('.')
+                    # Take only first line if multi-line
+                    title = title.split('\n')[0].strip()
+                    if len(title) > 60:
+                        title = title[:57].rsplit(' ', 1)[0] + "..."
+                    if len(title) < 3:
+                        title = heuristic_title
+                    return {"title": title}
+                else:
+                    return {"title": heuristic_title}
+                    
+            except Exception as llm_err:
+                logger.warning(f"LLM title generation failed, using heuristic: {llm_err}")
+                return {"title": heuristic_title}
+                
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Title generation failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Title generation failed: {str(e)}")
+
+    @app.post("/polly/detect-domains")
+    async def detect_domains_for_text(request: Request):
+        """
+        Lightweight domain detection from text content.
+        
+        Accepts { "text": "..." }
+        Returns { "domains": [{"id": "scrolls", "score": 0.8}, ...] }
+        
+        Uses the backend DomainEngine with the user's configured domains/keywords.
+        No LLM call — pure keyword/pattern matching.
+        """
+        try:
+            body = await request.json()
+            text = body.get("text", "")
+            
+            if not text:
+                return {"domains": []}
+            
+            polly = get_polly()
+            scores = polly.domains.detect_domains_with_scores(text)
+            
+            return {
+                "domains": [
+                    {"id": domain_id, "score": round(score, 3)}
+                    for domain_id, score in scores
+                    if score > 0 and domain_id != "unknown"
+                ]
+            }
+        except Exception as e:
+            logger.error(f"Domain detection failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Domain detection failed: {str(e)}")
+
+    def _extract_heuristic_title(text: str) -> str:
+        """Extract a reasonable title from user message text without LLM."""
+        if not text:
+            return "New conversation"
+        
+        import re
+        
+        # Strip common question prefixes
+        prefixes = [
+            r'^(can you |could you |please |help me |i need |i want |i\'d like |'
+            r'how do i |how to |what is |what are |tell me about |explain )',
+        ]
+        cleaned = text.strip()
+        for pattern in prefixes:
+            cleaned = re.sub(pattern, '', cleaned, count=1, flags=re.IGNORECASE)
+        
+        # Take first sentence or clause
+        for delimiter in ['.', '?', '!', '\n', ' - ', ': ']:
+            if delimiter in cleaned:
+                cleaned = cleaned.split(delimiter)[0]
+                break
+        
+        cleaned = cleaned.strip()
+        
+        # Truncate at word boundary
+        if len(cleaned) > 50:
+            truncated = cleaned[:47]
+            last_space = truncated.rfind(' ')
+            if last_space > 20:
+                cleaned = truncated[:last_space] + "..."
+            else:
+                cleaned = truncated + "..."
+        
+        # Capitalize first letter
+        if cleaned:
+            cleaned = cleaned[0].upper() + cleaned[1:]
+        
+        return cleaned or "New conversation"
+
     async def stream_polly_response(polly, query, context, mode, tier, confidence=None, provider_override=None, page=None, persona=None, persona_mode=None, mental_models_override=None):
-        """Stream Polly response."""
+        """Stream Polly response with heartbeat and per-chunk timeout.
+        
+        Uses a longer timeout for the first chunk to account for preprocessing
+        (domain detection, RAG search, context building, etc.) that runs before
+        the LLM starts generating tokens.
+        """
+        import time as _time
+        
+        # Send initial heartbeat so the client knows we're processing
+        yield f"data: {json.dumps({'heartbeat': 'processing'})}\n\n"
+        
+        chunks_sent = 0
+        FIRST_CHUNK_TIMEOUT = 180  # seconds — preprocessing + model load + first token
+        CHUNK_TIMEOUT = 90         # seconds — max wait between subsequent chunks
         
         try:
-            async for chunk in polly.query(
-            query, 
-            context=context, 
-            mode=mode, 
-            tier=tier, 
-            stream=True,
-            confidence=confidence,
-            provider_override=provider_override,
-            page=page,
-            persona=persona,
-            persona_mode=persona_mode,
+            query_gen = polly.query(
+                query, 
+                context=context, 
+                mode=mode, 
+                tier=tier, 
+                stream=True,
+                confidence=confidence,
+                provider_override=provider_override,
+                page=page,
+                persona=persona,
+                persona_mode=persona_mode,
                 mental_models_override=mental_models_override
-            ):
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            )
+            
+            while True:
+                try:
+                    timeout = FIRST_CHUNK_TIMEOUT if chunks_sent == 0 else CHUNK_TIMEOUT
+                    chunk = await asyncio.wait_for(
+                        query_gen.__anext__(), timeout=timeout
+                    )
+                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                    chunks_sent += 1
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    timeout_used = FIRST_CHUNK_TIMEOUT if chunks_sent == 0 else CHUNK_TIMEOUT
+                    logger.error(f"Chunk timeout ({timeout_used}s) while streaming query: {query[:100]}... (chunks_sent={chunks_sent})")
+                    if chunks_sent == 0:
+                        yield f"data: {json.dumps({'error': 'Response generation timed out. The model may be overloaded or unavailable. Try again or switch to a different model.'})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'chunk': '\\n\\n*(Response timed out after partial generation)*'})}\n\n"
+                    return
             
         except Exception as e:
             logger.error(f"Error during streaming: {e}", exc_info=True)
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            return
+        
+        # If no chunks were sent, log it as a potential issue
+        if chunks_sent == 0:
+            logger.warning(f"Stream completed with no chunks for query: {query[:100]}...")
+            yield f"data: {json.dumps({'error': 'No response generated. The model may be unavailable or the query could not be processed.'})}\n\n"
             return
         
         # Send metadata as final message if router_v2 was used

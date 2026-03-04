@@ -8,13 +8,13 @@
 
 ## Quick Summary
 
-|                      |                                                                                                                                                                                                                                              |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Overall**          | ~90% Tier 1 complete, production-ready                                                                                                                                                                                                       |
-| **Completed**        | 16.75 major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c, 16e, 21, 22, 23) + Core Framework Waves 1–3 + Knowledge Graph Navigation + Knowledge Graph Refinement + Knowledge Graph Advanced (12b) + Scalable Memory Layers |
-| **Current priority** | Phase 24 (Agent Swarms) or Phase 12b (Knowledge Graph Advanced)                                                                                                                                                                              |
-| **Next recommended** | Wave 5: LlamaIndex Knowledge Graph (#24) or Phase 24 Agent Swarms                                                                                                                                                                            |
-| **Spec integration** | Feb 2026 — Knowledge management, DRM, BAD Canvas, knowledge quality specs integrated into OpenSpec                                                                                                                                           |
+|                      |                                                                                                                                                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Overall**          | ~92% Tier 1 complete, production-ready                                                                                                                                                                                                                        |
+| **Completed**        | 17+ major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c ✅, 16e, 21, 22, 23) + Core Framework Waves 1–5 + Knowledge Graph Navigation + Knowledge Graph Refinement + Knowledge Graph Advanced (12b) + Scalable Memory Layers + Nexus (24a–e) |
+| **Current priority** | Phase 24 (Agent Swarms) or Phase 12b (Knowledge Graph Advanced)                                                                                                                                                                                               |
+| **Next recommended** | Wave 5: LlamaIndex Knowledge Graph (#24) or Phase 24 Agent Swarms                                                                                                                                                                                             |
+| **Spec integration** | Feb 2026 — Knowledge management, DRM, BAD Canvas, knowledge quality specs integrated into OpenSpec                                                                                                                                                            |
 
 ---
 
@@ -117,19 +117,19 @@
 
 ## In Progress / Pending
 
-| Phase              | Status                          | Notes                                                                                                                                                                                                                                                                                                                                                  |
-| ------------------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Core Framework** | ✅ ~97%                         | Waves 1–5 complete; Wave 4: #20 ✅, #21 ✅, #22 ✅ ~95%, #23 ✅ ~85%, #24 ✅, #25 ✅; Wave 5 ✅ (LlamaIndex KG); Phase 24a ✅ (Nexus Foundation); Phase 24b ✅ (Multi-Agent Workflows); Phase 24c ✅ (Execution Contexts); Phase 24d ✅ (Workflows UI); Phase 24e ✅ (Advanced Nexus — PromptAgent, template builder, agent builder, pattern learning) |
-| **12a**            | ✅ ~95%                         | Knowledge Graph Basic — implemented via knowledge-graph-navigation + knowledge-graph-refinement. Spec updates pending.                                                                                                                                                                                                                                 |
-| **16c**            | Backend ready, frontend pending | AI Note Creation; ~4 weeks remaining                                                                                                                                                                                                                                                                                                                   |
-| **12b**            | ✅ Complete                     | Knowledge Graph Advanced — 3 waves complete (March 2026)                                                                                                                                                                                                                                                                                               |
+| Phase              | Status      | Notes                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Core Framework** | ✅ ~97%     | Waves 1–5 complete; Wave 4: #20 ✅, #21 ✅, #22 ✅ ~95%, #23 ✅ ~85%, #24 ✅, #25 ✅; Wave 5 ✅ (LlamaIndex KG); Phase 24a ✅ (Nexus Foundation); Phase 24b ✅ (Multi-Agent Workflows); Phase 24c ✅ (Execution Contexts); Phase 24d ✅ (Workflows UI); Phase 24e ✅ (Advanced Nexus — PromptAgent, template builder, agent builder, pattern learning) |
+| **12a**            | ✅ ~95%     | Knowledge Graph Basic — implemented via knowledge-graph-navigation + knowledge-graph-refinement. Spec updates pending.                                                                                                                                                                                                                                 |
+| **16c**            | ✅ Complete | AI Note Creation — full stack (backend + frontend modal with Quick Save and Generate with Scribe)                                                                                                                                                                                                                                                      |
+| **12b**            | ✅ Complete | Knowledge Graph Advanced — 3 waves complete (March 2026)                                                                                                                                                                                                                                                                                               |
 
 ---
 
 ## Completed Phases (Summary)
 
 **Tier 0 (100%):** 0.5 (UI), 1 (Config), 3 (Server), 4 (Electron), 5 (Secrets)  
-**Tier 1 (~90%):** 1.5 (Domains), 2a (RAG), 2b (Compression), 11 (Multi-Model + Personas), 11c (Compression UI), 12a (Knowledge Graph ✅ ~95%), 13a (Patterns), 14 (Mental Models), 16 (Notes), 16c (Scribe/AI notes), 16e (TOC/Templates), 21 (Dedup), 22 (Teaching Mode ✅), 23 (Curriculum)
+**Tier 1 (~92%):** 1.5 (Domains), 2a (RAG), 2b (Compression), 11 (Multi-Model + Personas), 11c (Compression UI), 12a (Knowledge Graph ✅ ~95%), 12b (Knowledge Graph Advanced ✅), 13a (Patterns), 14 (Mental Models), 16 (Notes), 16c (AI Note Creation ✅), 16e (TOC/Templates), 21 (Dedup), 22 (Teaching Mode ✅), 23 (Curriculum)
 
 Detailed phase notes and file references remain in [docs/status/CURRENT.md](../../../docs/status/CURRENT.md) (reference). New work should update this status and [roadmap.md](roadmap.md) and, when applicable, [openspec/changes/](../changes/).
 
