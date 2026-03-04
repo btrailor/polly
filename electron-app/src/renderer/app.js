@@ -22381,6 +22381,10 @@ let cytoscapeInstance = null;
 let graphRetryInterval = null;
 let graphTabChangeHandler = null;
 let graphDomainColors = {}; // Module-level domain color assignments (persists across explore calls)
+let graphCommunityColors = {}; // Community ID → color mapping
+let graphColorMode = "domain"; // "domain" | "community"
+let graphPathHighlight = null; // {source, target, steps} when path is highlighted
+let graphSelectedForPath = []; // Array of up to 2 node IDs for path selection
 let graphState = {
   centerNode: null,
   expandedNodes: new Set(),
@@ -23074,6 +23078,281 @@ function buildDomainPalette(domains) {
   return colors;
 }
 
+// ── Phase 12b Wave 3: Community coloring (Task 19) ──────────────
+
+async function loadCommunityColors() {
+  try {
+    const resp = await fetch(
+      "http://127.0.0.1:11436/polly/graph/communities?recompute=true",
+    );
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const palette = [
+      "#FF6B6B",
+      "#4ECDC4",
+      "#45B7D1",
+      "#FFA07A",
+      "#98D8C8",
+      "#F7DC6F",
+      "#BB8FCE",
+      "#85C1E2",
+      "#F8B739",
+      "#52B788",
+      "#E76F51",
+      "#2A9D8F",
+      "#E9C46A",
+      "#264653",
+      "#F4A261",
+    ];
+    graphCommunityColors = {};
+    (data.communities || []).forEach((c, idx) => {
+      const color = palette[idx % palette.length];
+      c.members.forEach((m) => {
+        graphCommunityColors[m.id] = color;
+      });
+    });
+    // Update legend
+    const legend = document.getElementById("community-legend");
+    if (legend) {
+      legend.style.display = "block";
+      legend.innerHTML =
+        (data.communities || [])
+          .map((c, idx) => {
+            const color = palette[idx % palette.length];
+            const topNames = c.top_entities
+              .slice(0, 2)
+              .map((e) => e.name)
+              .join(", ");
+            return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">
+          <span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;"></span>
+          <span>Cluster ${c.id} (${c.size}) — ${topNames}</span>
+        </div>`;
+          })
+          .join("") +
+        `<div style="padding:2px 0;color:var(--text-tertiary);">${data.unclustered_count} unclustered</div>`;
+    }
+  } catch (e) {
+    console.warn("[Graph] Failed to load communities:", e);
+  }
+}
+
+function applyGraphColorMode() {
+  if (!cytoscapeInstance) return;
+  cytoscapeInstance.nodes().forEach((node) => {
+    const domain = node.data("domain");
+    const nodeId = node.data("id");
+    let color;
+    if (graphColorMode === "community") {
+      color = graphCommunityColors[nodeId] || "#444444"; // unclustered = gray
+    } else {
+      color = graphDomainColors[domain] || "#666666";
+    }
+    node.style("background-color", color);
+  });
+  // Toggle legend
+  const legend = document.getElementById("community-legend");
+  if (legend)
+    legend.style.display = graphColorMode === "community" ? "block" : "none";
+}
+
+// ── Phase 12b Wave 3: Path highlighting (Task 20) ──────────────
+
+async function highlightPathBetweenNodes(cy, sourceId, targetId) {
+  try {
+    const resp = await fetch(
+      `http://127.0.0.1:11436/polly/graph/path?from=${encodeURIComponent(sourceId)}&to=${encodeURIComponent(targetId)}&max_hops=6`,
+    );
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      showToast(
+        err.detail || `No path found between these entities within 6 hops`,
+        "warning",
+      );
+      cy.elements().removeClass("graph-path-endpoint");
+      return;
+    }
+    const data = await resp.json();
+    graphPathHighlight = data;
+
+    // Clear previous highlights
+    cy.elements().removeClass(
+      "graph-path-node graph-path-edge graph-path-endpoint",
+    );
+
+    // Highlight path nodes and edges
+    const pathNodeIds = [sourceId, ...data.path.map((s) => s.entity.id)];
+    pathNodeIds.forEach((nid) => {
+      const node = cy.getElementById(nid);
+      if (node && node.length > 0) node.addClass("graph-path-node");
+    });
+
+    // Highlight edges between consecutive path nodes
+    for (let i = 0; i < pathNodeIds.length - 1; i++) {
+      const a = pathNodeIds[i];
+      const b = pathNodeIds[i + 1];
+      cy.edges().forEach((edge) => {
+        const src = edge.data("source");
+        const tgt = edge.data("target");
+        if ((src === a && tgt === b) || (src === b && tgt === a)) {
+          edge.addClass("graph-path-edge");
+        }
+      });
+    }
+
+    showToast(
+      `Path found: ${data.hops} hop${data.hops !== 1 ? "s" : ""} between ${data.from.name} → ${data.to.name}`,
+      "success",
+    );
+  } catch (e) {
+    console.error("[Graph] Path highlight failed:", e);
+    showToast("Failed to find path", "error");
+    cy.elements().removeClass("graph-path-endpoint");
+  }
+}
+
+// ── Phase 12b Wave 3: Edge explain modal (Task 21) ─────────────
+
+async function showEdgeExplainModal(sourceId, targetId) {
+  // Remove existing modal
+  const existing = document.getElementById("edge-explain-modal");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "edge-explain-modal";
+  overlay.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6); z-index: 10000;
+    display: flex; align-items: center; justify-content: center;
+  `;
+  overlay.innerHTML = `
+    <div class="edge-explain-content" style="
+      background: var(--bg-primary, #1a1a1a); border: 1px solid var(--border-primary, #333);
+      border-radius: 12px; padding: 24px; max-width: 500px; width: 90%;
+      max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    ">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h3 style="margin:0;font-size:16px;color:var(--text-primary,#e0e0e0);">Why this connection?</h3>
+        <button id="edge-explain-close" style="background:none;border:none;color:var(--text-secondary,#888);font-size:20px;cursor:pointer;">&times;</button>
+      </div>
+      <div id="edge-explain-body" style="color:var(--text-secondary,#aaa);font-size:13px;">
+        <div style="text-align:center;padding:20px;">Loading...</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // Close handlers
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  document
+    .getElementById("edge-explain-close")
+    .addEventListener("click", () => overlay.remove());
+  const escHandler = (e) => {
+    if (e.key === "Escape") {
+      overlay.remove();
+      document.removeEventListener("keydown", escHandler);
+    }
+  };
+  document.addEventListener("keydown", escHandler);
+
+  // Fetch data
+  try {
+    const resp = await fetch(
+      `http://127.0.0.1:11436/polly/graph/edge/explain?source=${encodeURIComponent(sourceId)}&target=${encodeURIComponent(targetId)}`,
+    );
+    if (!resp.ok) {
+      document.getElementById("edge-explain-body").innerHTML =
+        `<div style="color:#ff6b6b;">No explanation available for this edge.</div>`;
+      return;
+    }
+    const data = await resp.json();
+    const c = data.confidence;
+
+    const factorBar = (label, value, color) => `
+      <div style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;">
+          <span>${label}</span><span>${(value * 100).toFixed(0)}%</span>
+        </div>
+        <div style="height:6px;background:#2a2a2a;border-radius:3px;overflow:hidden;">
+          <div style="width:${(value * 100).toFixed(0)}%;height:100%;background:${color};border-radius:3px;"></div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById("edge-explain-body").innerHTML = `
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-weight:600;color:var(--text-primary,#e0e0e0);">${escapeHtml(data.source.name)} → ${escapeHtml(data.target.name)}</span>
+        </div>
+        <div style="font-size:20px;font-weight:700;color:#4ECDC4;margin:8px 0;">
+          ${(c.composite * 100).toFixed(0)}% confidence
+        </div>
+        <div style="height:8px;background:#2a2a2a;border-radius:4px;overflow:hidden;margin-bottom:16px;">
+          <div style="width:${(c.composite * 100).toFixed(0)}%;height:100%;background:linear-gradient(90deg,#4ECDC4,#45B7D1);border-radius:4px;"></div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <h4 style="font-size:12px;font-weight:600;color:var(--text-primary,#e0e0e0);margin-bottom:8px;">Factor Breakdown</h4>
+        ${factorBar("Co-occurrence", c.co_occurrence, "#4ECDC4")}
+        ${factorBar("Semantic similarity", c.semantic_similarity, "#45B7D1")}
+        ${factorBar("Temporal proximity", c.temporal_proximity, "#F7DC6F")}
+        ${factorBar("Structural proximity", c.structural_proximity, "#BB8FCE")}
+      </div>
+
+      ${
+        data.evidence.shared_document_count > 0
+          ? `
+        <div style="margin-bottom:12px;">
+          <h4 style="font-size:12px;font-weight:600;color:var(--text-primary,#e0e0e0);margin-bottom:8px;">
+            Evidence (${data.evidence.shared_document_count} shared document${data.evidence.shared_document_count !== 1 ? "s" : ""})
+          </h4>
+          <div style="max-height:120px;overflow-y:auto;">
+            ${data.evidence.co_occurrences
+              .slice(0, 5)
+              .map(
+                (co) => `
+              <div style="padding:6px 8px;background:var(--bg-secondary,#222);border-radius:4px;margin-bottom:4px;font-size:11px;">
+                <div style="color:var(--text-tertiary,#666);margin-bottom:2px;">${escapeHtml(co.source_id)}</div>
+                ${co.source_context ? `<div style="color:var(--text-secondary,#aaa);">"${escapeHtml(co.source_context.substring(0, 100))}"</div>` : ""}
+              </div>
+            `,
+              )
+              .join("")}
+          </div>
+        </div>
+      `
+          : ""
+      }
+
+      ${
+        data.evidence.relationships.length > 0
+          ? `
+        <div>
+          <h4 style="font-size:12px;font-weight:600;color:var(--text-primary,#e0e0e0);margin-bottom:8px;">Direct Relationships</h4>
+          ${data.evidence.relationships
+            .map(
+              (r) => `
+            <div style="padding:4px 8px;font-size:11px;color:var(--text-secondary,#aaa);">
+              ${escapeHtml(r.relationship_type)} (strength: ${(r.strength * 100).toFixed(0)}%)
+              ${r.context ? ` — ${escapeHtml(r.context.substring(0, 80))}` : ""}
+            </div>
+          `,
+            )
+            .join("")}
+        </div>
+      `
+          : ""
+      }
+    `;
+  } catch (e) {
+    console.error("[Graph] Edge explain failed:", e);
+    document.getElementById("edge-explain-body").innerHTML =
+      `<div style="color:#ff6b6b;">Failed to load explanation.</div>`;
+  }
+}
+
 /**
  * Setup graph event handlers
  */
@@ -23184,10 +23463,62 @@ function setupGraphEventHandlers(cy, domainColors) {
     }
   });
 
+  // ── Phase 12b Wave 3: Edge hover tooltip (Task 21) ──
+  cy.on("mouseover", "edge", (evt) => {
+    const edge = evt.target;
+    const data = edge.data();
+    const srcNode = edge.source().data();
+    const tgtNode = edge.target().data();
+    showGraphTooltip(evt.originalEvent, {
+      name: `${srcNode.label} → ${tgtNode.label}`,
+      type: data.relationshipType || "connection",
+      domain: "",
+      connections: 0,
+      authority: data.weight || 0,
+      isEdge: true,
+    });
+  });
+
+  cy.on("mouseout", "edge", () => {
+    hideGraphTooltip();
+  });
+
+  // Edge click → "Why this connection?" modal (Task 21)
+  cy.on("tap", "edge", (evt) => {
+    const edge = evt.target;
+    const data = edge.data();
+    hideGraphTooltip();
+    showEdgeExplainModal(data.source, data.target);
+  });
+
+  // ── Phase 12b Wave 3: Path highlighting on shift-click (Task 20) ──
+  cy.on("tap", "node", (evt) => {
+    if (!evt.originalEvent.shiftKey) return;
+
+    const node = evt.target;
+    const nodeId = node.data("id");
+
+    graphSelectedForPath.push(nodeId);
+    node.addClass("graph-path-endpoint");
+
+    if (graphSelectedForPath.length === 2) {
+      highlightPathBetweenNodes(
+        cy,
+        graphSelectedForPath[0],
+        graphSelectedForPath[1],
+      );
+      graphSelectedForPath = [];
+    }
+  });
+
   // Click on background - deselect and clear details
   cy.on("tap", (evt) => {
     if (evt.target === cy) {
-      cy.elements().removeClass("graph-selected graph-selected-neighbor");
+      cy.elements().removeClass(
+        "graph-selected graph-selected-neighbor graph-path-node graph-path-edge graph-path-endpoint",
+      );
+      graphSelectedForPath = [];
+      graphPathHighlight = null;
       renderGraphDetailsPanel(null);
     }
   });
@@ -23810,6 +24141,19 @@ async function renderGraphFiltersPanel() {
           "Force + Domain Clusters" groups same-domain nodes together
         </p>
       </div>
+
+      <!-- Color Mode Toggle (Phase 12b Wave 3) -->
+      <div class="filter-section" style="margin-bottom: 20px;">
+        <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+          <i data-lucide="palette" style="width: 12px; height: 12px; margin-right: 4px;"></i>
+          Color By
+        </label>
+        <select id="graph-color-mode" style="width: 100%; padding: 6px 8px; font-size: 12px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 4px; color: var(--text-primary);">
+          <option value="domain">Domain</option>
+          <option value="community">Community Cluster</option>
+        </select>
+        <div id="community-legend" style="display: none; margin-top: 8px; font-size: 10px; color: var(--text-secondary); max-height: 120px; overflow-y: auto;"></div>
+      </div>
       
       <!-- Edge Type Legend & Toggles -->
       <div class="filter-section edge-type-toggles" style="margin-bottom: 20px;">
@@ -23945,6 +24289,19 @@ async function renderGraphFiltersPanel() {
   if (layoutSelect) {
     layoutSelect.addEventListener("change", (e) => {
       applyGraphLayout(e.target.value);
+    });
+  }
+
+  // Setup color mode selector (Phase 12b Wave 3)
+  const colorModeSelect = document.getElementById("graph-color-mode");
+  if (colorModeSelect) {
+    colorModeSelect.value = graphColorMode;
+    colorModeSelect.addEventListener("change", async (e) => {
+      graphColorMode = e.target.value;
+      if (graphColorMode === "community") {
+        await loadCommunityColors();
+      }
+      applyGraphColorMode();
     });
   }
 

@@ -5530,6 +5530,142 @@ def create_app(polly_instance=None) -> FastAPI:
             logger.error(f"Find path failed: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to find path: {str(e)}")
 
+    # ── Phase 12b Wave 3: Intelligence Endpoints ───────────────────
+
+    @app.get("/polly/graph/edge/explain")
+    async def explain_edge(
+        source: str = Query(..., description="Source entity ID"),
+        target: str = Query(..., description="Target entity ID"),
+    ):
+        """Explain why two entities are connected with multi-factor confidence."""
+        try:
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+
+            src_ent = entity_store.get_entity(source)
+            if not src_ent:
+                raise HTTPException(404, f"Source entity not found: {source}")
+            tgt_ent = entity_store.get_entity(target)
+            if not tgt_ent:
+                raise HTTPException(404, f"Target entity not found: {target}")
+
+            # Get edge evidence from store
+            evidence = entity_store.get_edge_evidence(source, target)
+
+            # Get confidence scores
+            from core.entities.intelligence import EdgeConfidenceScorer
+            kg_config = polly.config.get("knowledge_graph", {})
+            ec_config = kg_config.get("edge_confidence", {}) if isinstance(kg_config, dict) else {}
+            weights = ec_config.get("weights") if isinstance(ec_config, dict) else None
+            scorer = EdgeConfidenceScorer(entity_store, weights=weights)
+            confidence = scorer.score(source, target)
+
+            return {
+                "source": {"id": src_ent.id, "name": src_ent.name},
+                "target": {"id": tgt_ent.id, "name": tgt_ent.name},
+                "confidence": confidence.to_dict(),
+                "evidence": {
+                    "relationships": evidence["relationships"],
+                    "shared_documents": evidence["shared_documents"],
+                    "shared_document_count": evidence["shared_document_count"],
+                    "co_occurrences": evidence["co_occurrences"][:10],
+                },
+                "explanations": {
+                    "co_occurrence": f"Appear together in {evidence['shared_document_count']} document(s)",
+                    "semantic_similarity": "Based on description and domain overlap",
+                    "temporal_proximity": "Based on how close in time they were first mentioned",
+                    "structural_proximity": "Based on shortest path distance in the graph",
+                },
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Explain edge failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to explain edge: {str(e)}")
+
+    @app.get("/polly/graph/communities")
+    async def get_communities(
+        recompute: bool = Query(False, description="Force recompute communities"),
+    ):
+        """Get community clusters from the knowledge graph."""
+        try:
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+
+            if recompute:
+                from core.entities.intelligence import CommunityDetector
+                kg_config = polly.config.get("knowledge_graph", {})
+                cd_config = kg_config.get("community_detection", {}) if isinstance(kg_config, dict) else {}
+                min_size = cd_config.get("min_community_size", 3) if isinstance(cd_config, dict) else 3
+                detector = CommunityDetector()
+                detector.detect(entity_store, min_community_size=min_size)
+
+            # Read communities from DB
+            conn = entity_store._conn()
+            cur = conn.execute(
+                """
+                SELECT community_id, id, name, entity_type, authority_score,
+                       pagerank_score, domains
+                FROM entities
+                WHERE community_id IS NOT NULL
+                ORDER BY community_id, authority_score DESC
+                """
+            )
+
+            communities_map: Dict[int, list] = {}
+            for row in cur.fetchall():
+                cid = row[0]
+                if cid not in communities_map:
+                    communities_map[cid] = []
+                communities_map[cid].append({
+                    "id": row[1],
+                    "name": row[2],
+                    "type": row[3],
+                    "authority_score": round(row[4] or 0, 3),
+                    "pagerank_score": round(row[5] or 0, 3),
+                    "domains": json.loads(row[6]) if row[6] else [],
+                })
+
+            # Build response with aggregated stats
+            communities_list = []
+            for cid in sorted(communities_map.keys()):
+                members = communities_map[cid]
+                # Aggregate domains across members
+                domain_counts: Dict[str, int] = {}
+                for m in members:
+                    for d in m.get("domains", []):
+                        domain_counts[d] = domain_counts.get(d, 0) + 1
+                communities_list.append({
+                    "id": cid,
+                    "members": members,
+                    "size": len(members),
+                    "domains": domain_counts,
+                    "top_entities": members[:3],  # Already sorted by authority DESC
+                })
+
+            # Count unclustered
+            cur = conn.execute(
+                "SELECT COUNT(*) FROM entities WHERE community_id IS NULL"
+            )
+            unclustered = cur.fetchone()[0]
+
+            return {
+                "communities": communities_list,
+                "community_count": len(communities_list),
+                "unclustered_count": unclustered,
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Get communities failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to get communities: {str(e)}")
+
     @app.get("/polly/graph/state")
     async def get_graph_state():
         """

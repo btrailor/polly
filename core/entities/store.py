@@ -85,6 +85,9 @@ def _entity_from_row(row: tuple, cols: List[str]) -> Entity:
         d["entity_type"] = EntityType(d["entity_type"])
     except ValueError:
         d["entity_type"] = EntityType.CONCEPT
+    # Strip columns not in the Entity dataclass (e.g. intelligence columns)
+    valid_fields = Entity.__dataclass_fields__
+    d = {k: v for k, v in d.items() if k in valid_fields}
     return Entity(**d)
 
 
@@ -123,6 +126,16 @@ class EntityStore:
                 stmt = stmt.strip()
                 if stmt:
                     conn.execute(stmt)
+            # Phase 12b Wave 3: schema migration for intelligence columns
+            for col, typedef in [
+                ("community_id", "INTEGER DEFAULT NULL"),
+                ("pagerank_score", "REAL DEFAULT 0.0"),
+                ("betweenness_score", "REAL DEFAULT 0.0"),
+            ]:
+                try:
+                    conn.execute(f"ALTER TABLE entities ADD COLUMN {col} {typedef}")
+                except sqlite3.OperationalError:
+                    pass  # Column already exists — safe to ignore
         logger.debug(f"EntityStore initialized at {self.db_path}")
 
     # === CRUD ===
@@ -474,11 +487,13 @@ class EntityStore:
         cur = conn.execute("SELECT MAX(cnt) FROM (SELECT COUNT(*) AS cnt FROM relationships GROUP BY source_id)")
         max_rel = (cur.fetchone()[0] or 0) or 1
 
-        cur = conn.execute("SELECT id, mention_count, source_count, last_seen FROM entities")
+        cur = conn.execute("SELECT id, mention_count, source_count, last_seen, pagerank_score, betweenness_score FROM entities")
         now = datetime.now()
         updates = []
         for row in cur.fetchall():
-            eid, mentions, sources, last_seen = row
+            eid, mentions, sources, last_seen = row[0], row[1], row[2], row[3]
+            pagerank = row[4] if len(row) > 4 else 0.0
+            betweenness = row[5] if len(row) > 5 else 0.0
             cur2 = conn.execute(
                 "SELECT COUNT(*) FROM relationships WHERE source_id = ? OR target_id = ?",
                 (eid, eid),
@@ -490,12 +505,22 @@ class EntityStore:
                 ls = now
             days_ago = (now - ls).days
             recency = max(0.0, 1.0 - days_ago / 90.0)
-            authority = (
-                0.4 * math.log(mentions + 1) / math.log(max_mentions + 1)
-                + 0.3 * math.log(sources + 1) / math.log(max_sources + 1)
-                + 0.2 * (rel_count / max_rel)
-                + 0.1 * recency
-            )
+            # Phase 12b Wave 3 — upgraded formula when centrality scores are populated
+            if (pagerank or 0.0) > 0 or (betweenness or 0.0) > 0:
+                authority = (
+                    0.4 * (pagerank or 0.0)
+                    + 0.3 * math.log(mentions + 1) / math.log(max_mentions + 1)
+                    + 0.2 * (betweenness or 0.0)
+                    + 0.1 * recency
+                )
+            else:
+                # Fallback: old formula (pre-intelligence)
+                authority = (
+                    0.4 * math.log(mentions + 1) / math.log(max_mentions + 1)
+                    + 0.3 * math.log(sources + 1) / math.log(max_sources + 1)
+                    + 0.2 * (rel_count / max_rel)
+                    + 0.1 * recency
+                )
             updates.append((min(1.0, authority), eid))
         for score, eid in updates:
             conn.execute("UPDATE entities SET authority_score = ? WHERE id = ?", (score, eid))
@@ -647,6 +672,87 @@ class EntityStore:
             deleted = cur.rowcount > 0
             conn.commit()
         return deleted
+
+    # === Edge Evidence (Phase 12b Wave 3) ===
+
+    def get_edge_evidence(self, source_id: str, target_id: str) -> Dict[str, Any]:
+        """Return evidence for why two entities are connected.
+
+        Returns relationship records, shared mentions (notes both appear in),
+        and co-occurrence context snippets from entity_mentions.
+        """
+        conn = self._conn()
+
+        # 1. Direct relationship(s)
+        cur = conn.execute(
+            """
+            SELECT source_id, target_id, relationship_type, strength,
+                   context, bidirectional, mention_count, created, last_seen
+            FROM relationships
+            WHERE (source_id = ? AND target_id = ?)
+               OR (source_id = ? AND target_id = ?)
+            """,
+            (source_id, target_id, target_id, source_id),
+        )
+        relationships = []
+        for row in cur.fetchall():
+            relationships.append({
+                "source_id": row[0],
+                "target_id": row[1],
+                "relationship_type": row[2],
+                "strength": row[3],
+                "context": row[4],
+                "bidirectional": bool(row[5]),
+                "mention_count": row[6],
+                "created": row[7],
+                "last_seen": row[8],
+            })
+
+        # 2. Shared documents (notes where both entities are mentioned)
+        cur = conn.execute(
+            """
+            SELECT a.source_type, a.source_id
+            FROM entity_mentions a
+            INNER JOIN entity_mentions b
+              ON a.source_type = b.source_type AND a.source_id = b.source_id
+            WHERE a.entity_id = ? AND b.entity_id = ?
+            GROUP BY a.source_type, a.source_id
+            """,
+            (source_id, target_id),
+        )
+        shared_documents = [
+            {"source_type": row[0], "source_id": row[1]}
+            for row in cur.fetchall()
+        ]
+
+        # 3. Co-occurrence context snippets
+        cur = conn.execute(
+            """
+            SELECT a.source_id, a.context AS ctx_a, b.context AS ctx_b
+            FROM entity_mentions a
+            INNER JOIN entity_mentions b
+              ON a.source_type = b.source_type AND a.source_id = b.source_id
+            WHERE a.entity_id = ? AND b.entity_id = ?
+            LIMIT 20
+            """,
+            (source_id, target_id),
+        )
+        co_occurrences = []
+        for row in cur.fetchall():
+            co_occurrences.append({
+                "source_id": row[0],
+                "source_context": row[1],
+                "target_context": row[2],
+            })
+
+        return {
+            "source_id": source_id,
+            "target_id": target_id,
+            "relationships": relationships,
+            "shared_documents": shared_documents,
+            "shared_document_count": len(shared_documents),
+            "co_occurrences": co_occurrences,
+        }
 
     # === Isolation Detection (Phase 12b Wave 2) ===
 

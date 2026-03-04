@@ -6604,6 +6604,26 @@ body {
   margin-left: 8px;
 }
 
+/* Phase 12b Wave 3: Path highlighting */
+.graph-path-node {
+  border-width: 4px !important;
+  border-color: #f7dc6f !important;
+  border-opacity: 1 !important;
+  z-index: 999 !important;
+}
+.graph-path-edge {
+  line-color: #f7dc6f !important;
+  target-arrow-color: #f7dc6f !important;
+  width: 4 !important;
+  opacity: 1 !important;
+  z-index: 999 !important;
+}
+.graph-path-endpoint {
+  border-width: 5px !important;
+  border-color: #ff6b6b !important;
+  border-opacity: 1 !important;
+}
+
 /* Back to Graph button */
 .back-to-graph-button:hover {
   background: var(--bg-hover) !important;

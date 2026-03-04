@@ -25,6 +25,12 @@ from .store import EntityStore
 from .extractor import EntityExtractor
 from .context import EntityContextBuilder
 from .retriever import GraphRetriever
+from .intelligence import (
+    CommunityDetector,
+    CentralityComputer,
+    EdgeConfidence,
+    EdgeConfidenceScorer,
+)
 
 __all__ = [
     "EntityStore",
@@ -36,5 +42,9 @@ __all__ = [
     "EntityExtractor",
     "EntityContextBuilder",
     "GraphRetriever",
+    "CommunityDetector",
+    "CentralityComputer",
+    "EdgeConfidence",
+    "EdgeConfidenceScorer",
     "entity_id",
 ]
