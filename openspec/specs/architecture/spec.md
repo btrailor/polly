@@ -6,13 +6,13 @@ Source of truth for Polly's system architecture. **Current Architecture** descri
 
 ## Implementation Status
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Current architecture (stack, query flow, storage) | ✅ Implemented | This spec |
-| Integration contracts (ContextContributor, _gather_context) | ✅ Implemented | `core/protocols/`, `core/polly.py` |
-| Hardened knowledge infrastructure | ✅ Implemented | `core/hardened/`, `config/retry.yaml`, `config/validation.yaml`, `migrations/` |
+| Feature                                                                   | Status         | Notes                                                                                           |
+| ------------------------------------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------- |
+| Current architecture (stack, query flow, storage)                         | ✅ Implemented | This spec                                                                                       |
+| Integration contracts (ContextContributor, \_gather_context)              | ✅ Implemented | `core/protocols/`, `core/polly.py`                                                              |
+| Hardened knowledge infrastructure                                         | ✅ Implemented | `core/hardened/`, `config/retry.yaml`, `config/validation.yaml`, `migrations/`                  |
 | Scalable memory layers (tiered memory, budget allocator, rolling context) | ✅ Implemented | `core/memory/tiers.py`, `core/context/`, `core/memory/retriever.py`, `core/memory/extractor.py` |
-| Planned subsystems (Agent Swarms, DRM, Canvas, etc.) | 💭 Vision | See Planned Architecture below |
+| Planned subsystems (Agent Swarms, DRM, Canvas, etc.)                      | 💭 Vision      | See Planned Architecture below                                                                  |
 
 ---
 
@@ -45,6 +45,10 @@ User → Electron (app.js) → REST (server.py) → Polly.query()
          │                                             │       MentalModelManager            EntityContextBuilder           PatternEngine  MemoryRetriever
          │                                             │       (priority 60)                 (priority 40)                   (priority 20) (priority 50)
          │                                             │       core/mental_models.py         core/entities/context.py         core/patterns/ core/memory/retriever.py
+         │                                             │              │                             │                             │            │
+         │                                             │              │                      GraphRetriever                        │            │
+         │                                             │              │                      (priority 45)                         │            │
+         │                                             │              │                      core/entities/retriever.py             │            │
          │                                             │              │                             │                             │            │
          │                                             │              └─────────────────────────────┼─────────────────────────────┘            │
          │                                             │                                            │                                         │
@@ -129,14 +133,14 @@ Reference: `core/polly.py` — `query()` (≈1207), `_gather_context()` (≈738)
 
 ## Data Stores (Current)
 
-| Store | Purpose | Location | Notes |
-|-------|---------|----------|--------|
-| SQLite (conversations) | Chat history, compression state | Electron app | Per-app |
-| SQLite (entities.db) | Entity graph (EntityStore) | `~/.polly/entities.db` | core/entities/store.py |
-| SQLite (usage.db) | Autonomy metrics, budget tracking | `~/.polly/usage.db` | core/autonomy_metrics.py, core/budget_manager.py |
-| ChromaDB | RAG embeddings (notes, code, etc.) | `~/.polly/chroma/` | core/rag.py; optional code-library collection |
-| File system | Notes, patterns (JSON), mental models, curricula, templates, domain_config | `~/.polly/`, vault/ | core/domains.py, core/patterns/storage/, core/mental_models.py |
-| Mem0 (optional) | Adaptive memory (knowledge, patterns, persona) | ChromaDB or configurable | core/memory/mem0_adapter.py; opt-in via config |
+| Store                  | Purpose                                                                    | Location                 | Notes                                                          |
+| ---------------------- | -------------------------------------------------------------------------- | ------------------------ | -------------------------------------------------------------- |
+| SQLite (conversations) | Chat history, compression state                                            | Electron app             | Per-app                                                        |
+| SQLite (entities.db)   | Entity graph (EntityStore)                                                 | `~/.polly/entities.db`   | core/entities/store.py                                         |
+| SQLite (usage.db)      | Autonomy metrics, budget tracking                                          | `~/.polly/usage.db`      | core/autonomy_metrics.py, core/budget_manager.py               |
+| ChromaDB               | RAG embeddings (notes, code, etc.)                                         | `~/.polly/chroma/`       | core/rag.py; optional code-library collection                  |
+| File system            | Notes, patterns (JSON), mental models, curricula, templates, domain_config | `~/.polly/`, vault/      | core/domains.py, core/patterns/storage/, core/mental_models.py |
+| Mem0 (optional)        | Adaptive memory (knowledge, patterns, persona)                             | ChromaDB or configurable | core/memory/mem0_adapter.py; opt-in via config                 |
 
 | SQLite (hardened.db) | Hardened infrastructure: validation, retry, failure, performance | `~/.polly/hardened.db` | core/hardened/, migrations/ |
 
@@ -150,15 +154,15 @@ Defense-in-depth layer that sits within the query hot path. All protections are 
 
 **Subsystems:**
 
-| Subsystem | Location | Purpose |
-|-----------|----------|---------|
-| Observable Failure Modes | `core/hardened/failure.py` | Explicit failure taxonomy, FailureFactory, FailureLogger |
-| Retry Manager + Circuit Breaker | `core/hardened/retry_manager.py` | Unified retry with exponential backoff, jitter, operation-specific policies |
-| Dual-Phenomenology Validation | `core/hardened/validator.py` | Independent provenance (source trust) + content (quality) checks |
-| Three-Tier Retrieval Classification | `core/hardened/classifier.py` | DIRECT / ADJACENT / ABSENT tier assignment |
-| Performance Metrics | `core/hardened/performance.py` | p50/p90/p95/p99 percentile tracking per operation |
-| Performance Dashboard | `core/hardened/dashboard.py` | Report generation, degradation detection |
-| Database + Migrations | `core/hardened/db.py`, `core/hardened/migration.py` | Schema evolution for `hardened.db` |
+| Subsystem                           | Location                                            | Purpose                                                                     |
+| ----------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------- |
+| Observable Failure Modes            | `core/hardened/failure.py`                          | Explicit failure taxonomy, FailureFactory, FailureLogger                    |
+| Retry Manager + Circuit Breaker     | `core/hardened/retry_manager.py`                    | Unified retry with exponential backoff, jitter, operation-specific policies |
+| Dual-Phenomenology Validation       | `core/hardened/validator.py`                        | Independent provenance (source trust) + content (quality) checks            |
+| Three-Tier Retrieval Classification | `core/hardened/classifier.py`                       | DIRECT / ADJACENT / ABSENT tier assignment                                  |
+| Performance Metrics                 | `core/hardened/performance.py`                      | p50/p90/p95/p99 percentile tracking per operation                           |
+| Performance Dashboard               | `core/hardened/dashboard.py`                        | Report generation, degradation detection                                    |
+| Database + Migrations               | `core/hardened/db.py`, `core/hardened/migration.py` | Schema evolution for `hardened.db`                                          |
 
 **Query hot path integration:**
 
@@ -191,7 +195,7 @@ Change folder: [changes/hardened-knowledge-infrastructure/](../../changes/harden
 
 Cross-system behavior is formalized via `core/protocols/`:
 
-- **ContextContributor** — `build_context(query, domains, persona, mode, **kwargs) -> str`; `context_priority: int`. Implemented by: MentalModelManager (60), EntityContextBuilder (40), PatternEngine (20), CompressionManager (10). Polly calls `_gather_context()` which collects and merges by priority.
+- **ContextContributor** — `build_context(query, domains, persona, mode, **kwargs) -> str`; `context_priority: int`. Implemented by: MentalModelManager (60), MemoryRetriever (50), GraphRetriever (45), EntityContextBuilder (40), PatternEngine (20), CompressionManager (10). Polly calls `_gather_context()` which collects and merges by priority.
 - **PersonaAware** — `set_active_persona(persona_name, mode)`. Implemented by: PatternEngine, EntityContextBuilder, MentalModelManager. Polly calls `_notify_persona_context()` after domain detection.
 - **PatternConsumer** — Router (via Polly) records ROUTING_OUTCOME patterns via `_record_routing_outcome()`; pattern-informed routing uses PatternEngine search.
 - **Conversation sync** — Electron sends last N messages to `POST /polly/conversation/sync` so Python's conversation buffer matches the active thread (compression/learning).
@@ -228,20 +232,20 @@ Spec: [drm](../drm/spec.md). Phases 36–36e in roadmap.
 
 ### Other Planned Subsystems
 
-| Subsystem | Location (planned) | Spec |
-|-----------|--------------------|------|
-| Knowledge Quality Pipeline | `core/knowledge_quality/` | [knowledge-graph](../knowledge-graph/spec.md) |
-| Capture System | `core/capture/` | [capture](../capture/spec.md) |
-| BAD Canvas | `core/canvas/` | [canvas](../canvas/spec.md) |
-| Publishing Pipeline | `core/publishing/` | [publishing](../publishing/spec.md) |
-| Library / BookLore | `core/library/`, `integrations/library.py` | [library](../library/spec.md) |
-| Code Library | `core/code_library/` | [code-library](../code-library/spec.md) |
-| Design Engine | `core/design/` | [design](../design/spec.md), [personas](../personas/spec.md) |
-| Meta-Pedagogy | `core/pedagogy/` | [teaching](../teaching/spec.md), [onboarding](../onboarding/spec.md) |
-| Constitutional Epistemology | `core/constitutional/` | [ethics](../ethics/spec.md) |
-| Development Philosophy | `core/philosophy/` | [dev-philosophy](../dev-philosophy/spec.md) |
-| Slash Commands | `core/commands/` | [code-library](../code-library/spec.md) |
-| Distributed Reasoning Mesh | `core/drm/` | [drm](../drm/spec.md) |
+| Subsystem                   | Location (planned)                         | Spec                                                                 |
+| --------------------------- | ------------------------------------------ | -------------------------------------------------------------------- |
+| Knowledge Quality Pipeline  | `core/knowledge_quality/`                  | [knowledge-graph](../knowledge-graph/spec.md)                        |
+| Capture System              | `core/capture/`                            | [capture](../capture/spec.md)                                        |
+| BAD Canvas                  | `core/canvas/`                             | [canvas](../canvas/spec.md)                                          |
+| Publishing Pipeline         | `core/publishing/`                         | [publishing](../publishing/spec.md)                                  |
+| Library / BookLore          | `core/library/`, `integrations/library.py` | [library](../library/spec.md)                                        |
+| Code Library                | `core/code_library/`                       | [code-library](../code-library/spec.md)                              |
+| Design Engine               | `core/design/`                             | [design](../design/spec.md), [personas](../personas/spec.md)         |
+| Meta-Pedagogy               | `core/pedagogy/`                           | [teaching](../teaching/spec.md), [onboarding](../onboarding/spec.md) |
+| Constitutional Epistemology | `core/constitutional/`                     | [ethics](../ethics/spec.md)                                          |
+| Development Philosophy      | `core/philosophy/`                         | [dev-philosophy](../dev-philosophy/spec.md)                          |
+| Slash Commands              | `core/commands/`                           | [code-library](../code-library/spec.md)                              |
+| Distributed Reasoning Mesh  | `core/drm/`                                | [drm](../drm/spec.md)                                                |
 
 ---
 

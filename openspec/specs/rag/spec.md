@@ -4,20 +4,20 @@ Source of truth for retrieval-augmented generation and hybrid local/cloud routin
 
 ## Implementation Status
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Hybrid search (ChromaDB + BM25) | ✅ Implemented | `core/rag.py` |
-| RAG context compression (LLMLingua) | ✅ Implemented | `core/compression/llmlingua_strategy.py` |
-| Pattern-aware retrieval (chunk boosting) | ✅ Implemented | PatternEngine + RAG integration |
-| Incremental indexing (index_single_document) | ✅ Implemented | core-framework-refinement |
-| Dual-phenomenology validation (provenance + content) | ✅ Implemented | `core/hardened/validator.py` |
-| Three-tier retrieval classification (DIRECT/ADJACENT/ABSENT) | ✅ Implemented | `core/hardened/classifier.py` |
-| Retry manager for RAG retrieval | ✅ Implemented | `core/hardened/retry_manager.py` |
-| Multi-collection unified retrieval | 📐 Designed | Spec-only; library collection planned |
-| Entity-graph retrieval | 📐 Partial | Entity context in _gather_context; KG retrieval planned |
-| Authority scoring in RRF | 💭 Vision | knowledge-graph spec |
-| DRM node routing | 💭 Vision | drm spec |
-| Agent swarm context | 💭 Vision | agent-swarms spec |
+| Feature                                                      | Status         | Notes                                                                                              |
+| ------------------------------------------------------------ | -------------- | -------------------------------------------------------------------------------------------------- |
+| Hybrid search (ChromaDB + BM25)                              | ✅ Implemented | `core/rag.py`                                                                                      |
+| RAG context compression (LLMLingua)                          | ✅ Implemented | `core/compression/llmlingua_strategy.py`                                                           |
+| Pattern-aware retrieval (chunk boosting)                     | ✅ Implemented | PatternEngine + RAG integration                                                                    |
+| Incremental indexing (index_single_document)                 | ✅ Implemented | core-framework-refinement                                                                          |
+| Dual-phenomenology validation (provenance + content)         | ✅ Implemented | `core/hardened/validator.py`                                                                       |
+| Three-tier retrieval classification (DIRECT/ADJACENT/ABSENT) | ✅ Implemented | `core/hardened/classifier.py`                                                                      |
+| Retry manager for RAG retrieval                              | ✅ Implemented | `core/hardened/retry_manager.py`                                                                   |
+| Multi-collection unified retrieval                           | 📐 Designed    | Spec-only; library collection planned                                                              |
+| Entity-graph retrieval                                       | ✅ Implemented | Phase 12b Wave 1: `core/entities/retriever.py` (GraphRetriever as ContextContributor, priority 45) |
+| Authority scoring in RRF                                     | ✅ Implemented | Phase 12b Wave 1: `core/hybrid_search.py` — authority as 3rd RRF signal, weight 0.3                |
+| DRM node routing                                             | 💭 Vision      | drm spec                                                                                           |
+| Agent swarm context                                          | 💭 Vision      | agent-swarms spec                                                                                  |
 
 ## RAG
 
@@ -50,13 +50,12 @@ Config: `config/validation.yaml` → `classification.direct_threshold`, `classif
 Implementation: `core/hardened/validator.py`, `core/hardened/classifier.py`. Change folder: [changes/hardened-knowledge-infrastructure/](../../changes/hardened-knowledge-infrastructure/).
 
 ### Planned: Multi-Collection Unified Retrieval
+
 ChromaDB organized into separate collections (`notes`, `code`, `library`) with configurable source-type weighting. Smart routing determines which collections to search per query. Library results weighted below personal notes by default (0.3) to prevent drowning user-generated content. See [library spec](../library/spec.md).
 
-### Planned: Entity Graph Retrieval
-Third retrieval strategy alongside semantic and keyword. Entity-graph traversal enables precise queries: "Find all discussions where X and Y discussed Z" → graph intersection query. Connection depth limits (2–3 hops). Spans all source types — notes, books, captures, code. See [knowledge-graph spec](../knowledge-graph/spec.md).
+### Implemented: Entity Graph Retrieval (Phase 12b)
 
-### Planned: Authority Scoring in RRF
-Authority score (from knowledge graph connection metrics) added as a weight in Reciprocal Rank Fusion. High-authority notes boosted in search results. High inbound connections = authoritative hub → retrieval priority. Book content authority derived from user engagement (annotations, note references).
+Third retrieval strategy alongside semantic and keyword. `GraphRetriever` (priority 45 ContextContributor) extracts entities from query, fuzzy-matches against EntityStore, traverses 2-hop relationships, and scores results by `1/(hop_distance+1) * authority * strength`. Authority score (from knowledge graph connection metrics + PageRank + betweenness centrality) added as a weighted additive term in Reciprocal Rank Fusion (`authority_weight: 0.3`). High-authority notes rank higher. Community detection and edge confidence scoring provide additional graph intelligence. See [knowledge-graph spec](../knowledge-graph/spec.md).
 
 ## Routing
 
@@ -64,10 +63,13 @@ Authority score (from knowledge graph connection metrics) added as a weight in R
 - **Hybrid local/cloud:** When RAG context is strong, route to local Ollama; otherwise cloud. Saves ~40–70% on API cost. Settings UI: threshold sliders, presets (Aggressive Local, Balanced, Conservative Cloud).
 
 ### Planned: DRM Node Routing
+
 DRM adds a node-routing tier above existing model/provider routing. Before selecting a model, the system selects which node should handle the task. Query → DRM Router (which node?) → Node Router (which model?). See [drm spec](../drm/spec.md).
 
 ### Planned: Agent Swarm Context
+
 When an Agent Swarm is active, RAG behavior adapts:
+
 - **Swarm-scoped retrieval:** Searches filtered by the active workflow's domain context and agent needs.
 - **Cross-agent context sharing:** If Agent A retrieved relevant chunks, the Nexus passes them to Agent B instead of re-querying.
 - **Agent memory:** Shared workflow context (what each agent produced, what decisions were made) available to subsequent agents in the pipeline.

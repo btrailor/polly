@@ -10,32 +10,32 @@
 
 | #   | Task                                                                            | Wave | Est.  | Status | Depends    |
 | --- | ------------------------------------------------------------------------------- | ---- | ----- | ------ | ---------- |
-| 1   | Add `get_isolated_entities()` and `get_isolated_notes()` to EntityStore         | 2    | 0.5d  | ⬜     | —          |
-| 2   | Add `get_edge_evidence()` to EntityStore                                        | 3    | 0.5d  | ⬜     | —          |
-| 3   | Schema migration: `community_id`, `pagerank_score`, `betweenness_score` columns | 3    | 0.25d | ⬜     | —          |
+| 1   | Add `get_isolated_entities()` and `get_isolated_notes()` to EntityStore         | 2    | 0.5d  | ✅     | —          |
+| 2   | Add `get_edge_evidence()` to EntityStore                                        | 3    | 0.5d  | ✅     | —          |
+| 3   | Schema migration: `community_id`, `pagerank_score`, `betweenness_score` columns | 3    | 0.25d | ✅     | —          |
 | 4   | Authority scoring as 3rd RRF signal in HybridSearcher                           | 1    | 1d    | ✅     | —          |
 | 5   | GraphRetriever (ContextContributor for graph traversal)                         | 1    | 1.5d  | ✅     | —          |
 | 6   | Wire GraphRetriever + authority into polly.py                                   | 1    | 0.5d  | ✅     | 4, 5       |
 | 7   | Path-finding API endpoint                                                       | 1    | 0.25d | ✅     | —          |
-| 8   | Garden maintenance digest endpoint                                              | 2    | 1d    | ⬜     | 1          |
-| 9   | Batch operations endpoint                                                       | 2    | 0.5d  | ⬜     | —          |
-| 10  | Authority recomputation scheduling                                              | 2    | 0.5d  | ⬜     | —          |
-| 11  | Community detection (label propagation)                                         | 3    | 1d    | ⬜     | 3          |
-| 12  | PageRank + betweenness centrality                                               | 3    | 1d    | ⬜     | 3          |
-| 13  | Upgrade authority formula to use PageRank                                       | 3    | 0.5d  | ⬜     | 12         |
-| 14  | Edge confidence scoring (multi-factor)                                          | 3    | 1d    | ⬜     | 2          |
-| 15  | "Why this connection?" API endpoint                                             | 3    | 0.5d  | ⬜     | 14         |
-| 16  | Communities API endpoint                                                        | 3    | 0.25d | ⬜     | 11         |
-| 17  | Frontend: isolation badges in browse list                                       | 2    | 0.5d  | ⬜     | 1, 8       |
-| 18  | Frontend: garden digest panel                                                   | 2    | 0.5d  | ⬜     | 8          |
-| 19  | Frontend: community cluster coloring toggle                                     | 3    | 0.5d  | ⬜     | 11, 16     |
-| 20  | Frontend: path highlighting between nodes                                       | 3    | 0.5d  | ⬜     | 7          |
-| 21  | Frontend: edge confidence tooltip + "Why?" modal                                | 3    | 0.5d  | ⬜     | 15         |
+| 8   | Garden maintenance digest endpoint                                              | 2    | 1d    | ✅     | 1          |
+| 9   | Batch operations endpoint                                                       | 2    | 0.5d  | ✅     | —          |
+| 10  | Authority recomputation scheduling                                              | 2    | 0.5d  | ✅     | —          |
+| 11  | Community detection (label propagation)                                         | 3    | 1d    | ✅     | 3          |
+| 12  | PageRank + betweenness centrality                                               | 3    | 1d    | ✅     | 3          |
+| 13  | Upgrade authority formula to use PageRank                                       | 3    | 0.5d  | ✅     | 12         |
+| 14  | Edge confidence scoring (multi-factor)                                          | 3    | 1d    | ✅     | 2          |
+| 15  | "Why this connection?" API endpoint                                             | 3    | 0.5d  | ✅     | 14         |
+| 16  | Communities API endpoint                                                        | 3    | 0.25d | ✅     | 11         |
+| 17  | Frontend: isolation badges in browse list                                       | 2    | 0.5d  | ✅     | 1, 8       |
+| 18  | Frontend: garden digest panel                                                   | 2    | 0.5d  | ✅     | 8          |
+| 19  | Frontend: community cluster coloring toggle                                     | 3    | 0.5d  | ✅     | 11, 16     |
+| 20  | Frontend: path highlighting between nodes                                       | 3    | 0.5d  | ✅     | 7          |
+| 21  | Frontend: edge confidence tooltip + "Why?" modal                                | 3    | 0.5d  | ✅     | 15         |
 | 22  | Config entries (`knowledge_graph` section)                                      | 1    | 0.25d | ✅     | —          |
 | 23  | Tests: GraphRetriever + authority RRF                                           | 1    | 1d    | ✅     | 4, 5, 6    |
-| 24  | Tests: intelligence module (community, centrality, confidence)                  | 3    | 1d    | ⬜     | 11, 12, 14 |
-| 25  | Tests: quality controls (isolation, digest, batch)                              | 2    | 0.5d  | ⬜     | 1, 8, 9    |
-| 26  | Update specs (knowledge-graph, rag, architecture)                               | —    | 0.5d  | ⬜     | All        |
+| 24  | Tests: intelligence module (community, centrality, confidence)                  | 3    | 1d    | ✅     | 11, 12, 14 |
+| 25  | Tests: quality controls (isolation, digest, batch)                              | 2    | 0.5d  | ✅     | 1, 8, 9    |
+| 26  | Update specs (knowledge-graph, rag, architecture)                               | —    | 0.5d  | ✅     | All        |
 
 ---
 
