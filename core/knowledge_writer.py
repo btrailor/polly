@@ -200,6 +200,7 @@ class KnowledgeWriter:
         title: str,
         conversation_history: Optional[list] = None,
         domain: Optional[str] = None,
+        template_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Route through Scribe's Enrich mode for wiki-linking
@@ -207,6 +208,13 @@ class KnowledgeWriter:
 
         Returns the enriched note data for PreviewModal display.
         The actual save happens when the user confirms in PreviewModal.
+        
+        Args:
+            content: Raw content to enrich
+            title: Suggested note title
+            conversation_history: Optional conversation context
+            domain: Target domain slug
+            template_id: Optional template filename to use for structuring
         """
         if not self.scribe:
             logger.warning("Scribe persona not available, falling back to quick save")
@@ -221,6 +229,33 @@ class KnowledgeWriter:
         if not domain:
             domain = self._auto_detect_domain(content)
 
+        # Generate smart title if the provided one looks like a query
+        if title and re.match(r'^(what|how|why|when|where|who|can you|could you|please|help me|i need)', title, re.IGNORECASE):
+            try:
+                title = await self.generate_smart_title(content, domain)
+            except Exception as e:
+                logger.warning(f"Smart title generation failed: {e}")
+
+        # Load template if specified
+        template = None
+        template_content = None
+        template_hints = None
+        if template_id and template_id != "blank":
+            try:
+                from core.templates import TemplateManager
+                vault_path_str = self.config.get("obsidian.vault_path", "")
+                if vault_path_str:
+                    templates_folder = self.config.get("templates.folder", ".polly/templates")
+                    templates_dir = Path(vault_path_str) / templates_folder
+                    tm = TemplateManager(str(templates_dir))
+                    template = tm.load_template(template_id)
+                    if template:
+                        template_content = template.markdown_content
+                        template_hints = template.get_ai_hints()
+                        logger.info(f"Loaded template '{template.name}' for Scribe enrichment")
+            except Exception as e:
+                logger.warning(f"Failed to load template '{template_id}': {e}")
+
         try:
             # Call Scribe's standalone enrich method
             enriched = await self.scribe.enrich_standalone(
@@ -228,6 +263,9 @@ class KnowledgeWriter:
                 title=title,
                 domain=domain,
                 conversation_history=conversation_history or [],
+                template_content=template_content,
+                template_hints=template_hints,
+                template_name=template.name if template else None,
             )
             return enriched
         except Exception as e:
@@ -872,6 +910,107 @@ class KnowledgeWriter:
             return truncated
 
         return first_line or "Knowledge Note"
+
+    async def generate_smart_title(self, content: str, domain: str = "") -> str:
+        """
+        Generate an intelligent note title using LLM, with heuristic fallback.
+        
+        The LLM generates a concise, topic-focused title (3-7 words).
+        Falls back to heuristic extraction if LLM is unavailable.
+        
+        Args:
+            content: The note content to title
+            domain: Optional domain hint
+            
+        Returns:
+            A concise, topic-focused title string
+        """
+        # Try LLM-based title generation
+        try:
+            from core.router import get_router
+            router = get_router()
+            if router:
+                # Use first 500 chars for context
+                content_preview = content[:500].strip()
+                prompt = f"""Generate a concise knowledge base note title (3-7 words) for this content.
+The title should name the TOPIC, not describe the action.
+
+BAD: "How to set up Django models"
+GOOD: "Django Model Configuration"
+
+BAD: "Can you explain quantum computing"
+GOOD: "Quantum Computing Fundamentals"
+
+BAD: "Discussion about machine learning"
+GOOD: "Machine Learning Core Concepts"
+
+Content: {content_preview}
+
+Title:"""
+                messages = [
+                    {"role": "system", "content": "You generate concise note titles. Return ONLY the title, no quotes, no explanation."},
+                    {"role": "user", "content": prompt}
+                ]
+                response = await router.complete_with_fallback(
+                    messages=messages,
+                    task_type="factual",
+                    max_tokens=30,
+                    temperature=0.3,
+                )
+                if response and response.content:
+                    title = response.content.strip().strip('"').strip("'").strip()
+                    # Validate: reject if too long, is a question, or starts with filler
+                    if (
+                        len(title) <= 60
+                        and not title.endswith('?')
+                        and not re.match(r'^(can you|i need|help me|how to|what is|discussion about|conversation)', title, re.IGNORECASE)
+                    ):
+                        return title[0].upper() + title[1:] if title else "Knowledge Note"
+        except Exception as e:
+            logger.warning(f"LLM title generation failed, using heuristic: {e}")
+
+        # Heuristic fallback: extract topic from content
+        return self._heuristic_title(content)
+
+    def _heuristic_title(self, content: str) -> str:
+        """
+        Extract a topic-focused title using heuristics (no LLM).
+        Strips question phrasing, filler words, and extracts key noun phrases.
+        """
+        # Try first heading
+        heading_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+        if heading_match:
+            heading = heading_match.group(1).strip()
+            # Clean question phrasing from heading too
+            heading = re.sub(
+                r'^\s*(what|how|why|when|where|who|can you|could you|please|help me|i need)\s+',
+                '', heading, flags=re.IGNORECASE
+            ).strip().rstrip('?')
+            if heading:
+                return heading[:60]
+
+        # Extract first meaningful line
+        first_line = content.strip().split('\n')[0].strip()
+        first_line = re.sub(r'^[#\-*>\s]+', '', first_line)
+
+        # Strip question phrasing
+        cleaned = re.sub(
+            r'^\s*(what|how|why|when|where|who|can you|could you|please|help me|i need|tell me about|explain|describe)\s+',
+            '', first_line, flags=re.IGNORECASE
+        ).strip().rstrip('?')
+
+        # Capitalize first letter
+        if cleaned:
+            cleaned = cleaned[0].upper() + cleaned[1:]
+
+        if len(cleaned) > 60:
+            truncated = cleaned[:57]
+            last_space = truncated.rfind(' ')
+            if last_space > 30:
+                return truncated[:last_space]
+            return truncated
+
+        return cleaned or "Knowledge Note"
 
     def _generate_tags(self, concepts: List[str], domain: str) -> List[str]:
         """Generate tags from concepts and domain."""

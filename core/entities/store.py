@@ -13,7 +13,7 @@ import sqlite3
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .models import Entity, EntityQuery, EntityType, Relationship, RelationshipType
 
@@ -67,6 +67,14 @@ CREATE TABLE IF NOT EXISTS entity_mentions (
 );
 CREATE INDEX IF NOT EXISTS idx_mentions_entity ON entity_mentions(entity_id);
 CREATE INDEX IF NOT EXISTS idx_mentions_source ON entity_mentions(source_type, source_id);
+
+CREATE TABLE IF NOT EXISTS dismissed_suggestions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    suggestion_type TEXT NOT NULL,
+    suggestion_key TEXT NOT NULL,
+    dismissed_at TEXT NOT NULL,
+    UNIQUE(suggestion_type, suggestion_key)
+);
 """
 
 
@@ -654,6 +662,83 @@ class EntityStore:
             
             conn.commit()
         logger.info(f"Pruned {count} stale entities (>{days_threshold} days, <3 mentions)")
+        return count
+
+    def cleanup_garbage_entities(self) -> Dict[str, Any]:
+        """Remove garbage entities that fail quality validation.
+        
+        Applies the same rules as entity extraction validation:
+        - Names shorter than 3 chars (unless whitelisted)
+        - Programming keywords and common stopwords
+        - Pure numbers
+        
+        Returns dict with removed_count and removed_names.
+        """
+        from .extractor import is_valid_entity_name
+        
+        conn = self._conn()
+        cur = conn.execute("SELECT id, name FROM entities")
+        garbage_ids = []
+        garbage_names = []
+        for row in cur.fetchall():
+            entity_id_val, name = row[0], row[1]
+            if not is_valid_entity_name(name):
+                garbage_ids.append(entity_id_val)
+                garbage_names.append(name)
+        
+        for eid in garbage_ids:
+            self.delete_entity(eid)
+        
+        logger.info(f"Cleaned up {len(garbage_ids)} garbage entities: {garbage_names[:20]}")
+        return {
+            "removed_count": len(garbage_ids),
+            "removed_names": garbage_names[:50],
+        }
+
+    # === Suggestion Dismissal Persistence ===
+
+    def dismiss_suggestion(self, suggestion_type: str, suggestion_key: str) -> bool:
+        """Record a dismissed suggestion so it won't reappear."""
+        try:
+            with self._conn() as conn:
+                conn.execute(
+                    "INSERT OR IGNORE INTO dismissed_suggestions (suggestion_type, suggestion_key, dismissed_at) VALUES (?, ?, ?)",
+                    (suggestion_type, suggestion_key, datetime.now().isoformat()),
+                )
+                conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to dismiss suggestion: {e}")
+            return False
+
+    def is_suggestion_dismissed(self, suggestion_type: str, suggestion_key: str) -> bool:
+        """Check if a suggestion has been dismissed."""
+        conn = self._conn()
+        cur = conn.execute(
+            "SELECT 1 FROM dismissed_suggestions WHERE suggestion_type = ? AND suggestion_key = ?",
+            (suggestion_type, suggestion_key),
+        )
+        return cur.fetchone() is not None
+
+    def get_dismissed_suggestion_keys(self, suggestion_type: str) -> Set[str]:
+        """Get all dismissed suggestion keys of a given type."""
+        conn = self._conn()
+        cur = conn.execute(
+            "SELECT suggestion_key FROM dismissed_suggestions WHERE suggestion_type = ?",
+            (suggestion_type,),
+        )
+        return {row[0] for row in cur.fetchall()}
+
+    def clear_expired_dismissals(self, max_age_days: int = 90) -> int:
+        """Clear dismissals older than max_age_days."""
+        cutoff = (datetime.now() - timedelta(days=max_age_days)).isoformat()
+        with self._conn() as conn:
+            cur = conn.execute(
+                "DELETE FROM dismissed_suggestions WHERE dismissed_at < ?",
+                (cutoff,),
+            )
+            count = cur.rowcount
+            conn.commit()
         return count
 
     def remove_relationship(self, source_id: str, target_id: str, relationship_type: Optional[RelationshipType] = None) -> bool:

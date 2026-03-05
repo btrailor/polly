@@ -119,6 +119,7 @@ class ScribeSaveRequest(BaseModel):
     title: str
     domain: Optional[str] = None
     conversation_history: Optional[List[Dict[str, Any]]] = None
+    template_id: Optional[str] = None  # Template filename (e.g., 'meeting-notes.md')
 
 
 class MessageSaveRequest(BaseModel):
@@ -1060,6 +1061,7 @@ def create_settings_router() -> APIRouter:
                 title=request.title,
                 domain=request.domain,
                 conversation_history=request.conversation_history,
+                template_id=request.template_id,
             )
             return result
 
@@ -1068,6 +1070,72 @@ def create_settings_router() -> APIRouter:
         except Exception as e:
             logger.error(f"Scribe save failed: {e}", exc_info=True)
             raise HTTPException(500, f"Scribe save failed: {str(e)}")
+
+    @router.post("/knowledge/generate-title")
+    async def generate_title(request: Dict[str, Any]):
+        """
+        Generate an intelligent note title from content using LLM.
+        Falls back to heuristic extraction if LLM is unavailable.
+        
+        Request: { "content": "...", "domain": "scrolls" }
+        Response: { "title": "Generated Title" }
+        """
+        try:
+            from core.knowledge_writer import get_knowledge_writer
+            kw = get_knowledge_writer()
+            if not kw:
+                raise HTTPException(503, "KnowledgeWriter not initialized")
+
+            content = request.get("content", "")
+            domain = request.get("domain", "")
+            if not content:
+                raise HTTPException(400, "Content is required")
+
+            title = await kw.generate_smart_title(content, domain)
+            return {"title": title}
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Title generation failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Title generation failed: {str(e)}")
+
+    @router.get("/knowledge/templates")
+    async def list_note_templates():
+        """
+        List available note templates for the template picker.
+        
+        Response: { "templates": [...], "count": N }
+        """
+        try:
+            from core.templates import TemplateManager
+            from core.polly import get_polly
+
+            polly = get_polly()
+            if not polly:
+                return {"templates": [], "count": 0}
+
+            vault_path_str = polly.config.get("obsidian.vault_path")
+            if not vault_path_str:
+                return {"templates": [], "count": 0}
+
+            templates_folder = polly.config.get("templates.folder", ".polly/templates")
+            templates_dir = Path(vault_path_str) / templates_folder
+
+            if not templates_dir.exists():
+                return {"templates": [], "count": 0}
+
+            manager = TemplateManager(str(templates_dir))
+            templates_metadata = manager.get_gallery_metadata()
+
+            return {
+                "templates": templates_metadata,
+                "count": len(templates_metadata),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to list templates: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to list templates: {str(e)}")
 
     @router.get("/autonomy/snapshot")
     async def get_autonomy_snapshot(days: int = 30):

@@ -205,8 +205,15 @@ class NotesIndex:
         if not note_info.title:
             note_info.title = self._extract_first_heading(content) or note_info.name
         
-        # Always infer domain from folder structure (ignore frontmatter domain)
-        note_info.domain = self._infer_domain_from_path(md_file, root_path)
+        # Domain resolution priority:
+        # 1. Frontmatter 'domain' field (user-specified, highest priority)
+        # 2. Folder structure mapped to configured domain IDs
+        # 3. Raw folder name as fallback
+        frontmatter_domain = frontmatter.get('domain', '') if frontmatter else ''
+        if frontmatter_domain and isinstance(frontmatter_domain, str) and frontmatter_domain.strip():
+            note_info.domain = frontmatter_domain.strip().lower()
+        else:
+            note_info.domain = self._infer_domain_from_path(md_file, root_path)
         
         return note_info
     

@@ -3710,9 +3710,30 @@ def create_app(polly_instance=None) -> FastAPI:
             
             logger.info(f"Created note: {note_path}")
             
-            # Re-index to include new note
+            # Re-index to include new note in browse list
             notes_idx = get_notes_index()
             notes_idx.build_index(notes_path, recursive=True)
+            
+            # Incremental RAG indexing (so note is searchable immediately)
+            rag_indexed = False
+            try:
+                from core.knowledge_writer import get_knowledge_writer
+                kw = get_knowledge_writer()
+                if kw:
+                    rag_indexed = await kw._incremental_rag_index(str(note_path))
+                    if rag_indexed:
+                        logger.info(f"RAG indexed new note: {note_path}")
+                else:
+                    # Fallback: try RAG directly
+                    polly = get_polly()
+                    if polly and hasattr(polly, 'rag') and polly.rag and hasattr(polly.rag, 'index_single_document'):
+                        import asyncio
+                        rag_indexed = await asyncio.to_thread(
+                            polly.rag.index_single_document,
+                            str(note_path), 'notes', str(notes_path)
+                        )
+            except Exception as e:
+                logger.warning(f"RAG indexing failed for new note (non-critical): {e}")
             
             # Get the newly created note's info
             created_note = notes_idx.find_note_by_name(filename)
@@ -3735,7 +3756,8 @@ def create_app(polly_instance=None) -> FastAPI:
             
             return {
                 "success": True,
-                "note": created_note_info
+                "note": created_note_info,
+                "rag_indexed": rag_indexed,
             }
             
         except HTTPException:
@@ -3743,6 +3765,175 @@ def create_app(polly_instance=None) -> FastAPI:
         except Exception as e:
             logger.error(f"Create note failed: {e}")
             raise HTTPException(500, f"Failed to create note: {str(e)}")
+    
+    @app.delete("/polly/notes/delete")
+    async def delete_note(request: Dict[str, Any]):
+        """
+        Soft-delete a note by moving it to .polly/trash/.
+        Removes from RAG index and notes index.
+        Returns undo_token for potential restore.
+        """
+        try:
+            import shutil
+            import uuid
+            
+            note_name = request.get("name", "")
+            if not note_name:
+                raise HTTPException(400, "Note name is required")
+            
+            from core.notes_source_manager import NotesSourceManager
+            manager = NotesSourceManager()
+            notes_path = Path(manager.get_notes_path()).expanduser().resolve()
+            if not notes_path.exists():
+                raise HTTPException(500, "Notes path not configured")
+            
+            # Find the note file
+            from core.notes_index import get_notes_index
+            notes_idx = get_notes_index()
+            note_info = notes_idx.find_note_by_name(note_name)
+            
+            if not note_info:
+                raise HTTPException(404, f"Note not found: {note_name}")
+            
+            note_path = Path(note_info.path).resolve()
+            if not note_path.exists():
+                raise HTTPException(404, f"Note file not found: {note_path}")
+            
+            # Create trash directory
+            trash_dir = notes_path / ".polly" / "trash"
+            trash_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate unique undo token and trash filename
+            undo_token = str(uuid.uuid4())[:8]
+            # Store original relative path in a sidecar for restore
+            rel_path = note_path.relative_to(notes_path)
+            trash_name = f"{undo_token}_{note_path.name}"
+            trash_path = trash_dir / trash_name
+            
+            # Write sidecar with original path info
+            sidecar_path = trash_dir / f"{trash_name}.meta"
+            import json
+            sidecar_data = {
+                "original_path": str(rel_path),
+                "original_name": note_name,
+                "deleted_at": datetime.now().isoformat(),
+                "undo_token": undo_token
+            }
+            with open(sidecar_path, 'w') as sf:
+                json.dump(sidecar_data, sf)
+            
+            # Move file to trash
+            shutil.move(str(note_path), str(trash_path))
+            logger.info(f"Note moved to trash: {note_name} -> {trash_path}")
+            
+            # Remove from RAG index
+            try:
+                polly = get_polly()
+                if polly.rag:
+                    polly.rag.remove_document(note_name)
+                    logger.info(f"Removed {note_name} from RAG index")
+            except Exception as e:
+                logger.warning(f"Failed to remove from RAG: {e}")
+            
+            # Remove from notes index
+            try:
+                notes_idx.remove_note(note_path)
+            except Exception as e:
+                logger.warning(f"Failed to remove from notes index: {e}")
+            
+            return {
+                "success": True,
+                "undo_token": undo_token,
+                "note_name": note_name,
+                "message": f"Note '{note_name}' deleted. Undo available for 30 days."
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Delete note failed: {e}")
+            raise HTTPException(500, f"Failed to delete note: {str(e)}")
+    
+    @app.post("/polly/notes/restore")
+    async def restore_note(request: Dict[str, Any]):
+        """
+        Restore a soft-deleted note from .polly/trash/ using its undo_token.
+        """
+        try:
+            import shutil
+            import json
+            
+            undo_token = request.get("undo_token", "")
+            if not undo_token:
+                raise HTTPException(400, "undo_token is required")
+            
+            from core.notes_source_manager import NotesSourceManager
+            manager = NotesSourceManager()
+            notes_path = Path(manager.get_notes_path()).expanduser().resolve()
+            trash_dir = notes_path / ".polly" / "trash"
+            
+            if not trash_dir.exists():
+                raise HTTPException(404, "Trash directory not found")
+            
+            # Find the sidecar file matching the undo token
+            sidecar = None
+            for meta_file in trash_dir.glob("*.meta"):
+                with open(meta_file, 'r') as f:
+                    data = json.load(f)
+                if data.get("undo_token") == undo_token:
+                    sidecar = data
+                    sidecar["meta_path"] = meta_file
+                    break
+            
+            if not sidecar:
+                raise HTTPException(404, f"No deleted note found for token: {undo_token}")
+            
+            # Find the trash file
+            original_name = sidecar["original_name"]
+            meta_path = sidecar["meta_path"]
+            trash_file = meta_path.with_suffix("")  # Remove .meta extension
+            
+            if not trash_file.exists():
+                raise HTTPException(404, f"Trash file not found")
+            
+            # Restore to original location
+            original_path = notes_path / sidecar["original_path"]
+            original_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(trash_file), str(original_path))
+            
+            # Clean up sidecar
+            meta_path.unlink(missing_ok=True)
+            
+            logger.info(f"Note restored: {original_name} -> {original_path}")
+            
+            # Re-index into RAG
+            try:
+                polly = get_polly()
+                if polly.rag:
+                    polly.rag.index_document(str(original_path))
+                    logger.info(f"Re-indexed {original_name} into RAG")
+            except Exception as e:
+                logger.warning(f"Failed to re-index into RAG: {e}")
+            
+            # Re-index into notes
+            try:
+                from core.notes_index import get_notes_index
+                notes_idx = get_notes_index()
+                notes_idx.build_index(notes_path)
+            except Exception as e:
+                logger.warning(f"Failed to re-index notes: {e}")
+            
+            return {
+                "success": True,
+                "note_name": original_name,
+                "message": f"Note '{original_name}' restored."
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Restore note failed: {e}")
+            raise HTTPException(500, f"Failed to restore note: {str(e)}")
     
     @app.post("/polly/notes/create-folder")
     async def create_notes_folder(request: Dict[str, Any]):
@@ -3848,10 +4039,12 @@ def create_app(polly_instance=None) -> FastAPI:
             
             # Re-index the note
             from core.notes_index import get_notes_index
+            from core.notes_source_manager import NotesSourceManager
             notes_idx = get_notes_index()
+            notes_root = NotesSourceManager().get_notes_path()
             note_obj = None
             try:
-                notes_idx.index_single_file(note_path)
+                notes_idx.update_note(note_path, notes_root)
                 # Get the indexed note for entity extraction
                 note_name = note_path.stem
                 note_obj = notes_idx.find_note_by_name(note_name)
@@ -3895,17 +4088,26 @@ def create_app(polly_instance=None) -> FastAPI:
                 
                 asyncio.create_task(track_edit_patterns_background())
             
-            # Return note metadata so UI can update modified time
+            # Return note metadata so UI can update modified time, title, tags, etc.
             stat = note_path.stat()
             try:
                 from datetime import timezone
                 modified_iso = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
             except Exception:
                 modified_iso = datetime.fromtimestamp(stat.st_mtime).isoformat()
+            
+            # Build response with updated metadata from re-indexed note
+            note_response = {"modified": modified_iso}
+            if note_obj:
+                note_response["title"] = note_obj.title or note_path.stem
+                note_response["name"] = note_obj.name
+                note_response["domain"] = note_obj.domain or ""
+                note_response["tags"] = note_obj.tags or []
+            
             return {
                 "success": True,
                 "message": "Note saved successfully",
-                "note": {"modified": modified_iso}
+                "note": note_response
             }
             
         except HTTPException:
@@ -3984,10 +4186,11 @@ def create_app(polly_instance=None) -> FastAPI:
         type: str = None,          # comma-separated: "note,conversation"
         domain: str = None,        # matches primary or secondary
         maturity: int = None,      # 10, 20, 30
-        sort: str = "recent",      # authority, recent, alpha, created
+        sort: str = "recent",      # authority, recent, alpha, created, oldest, most_connected
         connection_status: str = None,  # hub, bridge, isolated, all
         q: str = None,             # text search
-        tag: str = None,           # filter by tag
+        tag: str = None,           # filter by tag; "untagged" to find notes with no tags
+        date_range: str = None,    # week, month, 3months — filters by updated_at
         limit: int = 100,
         offset: int = 0
     ):
@@ -4130,12 +4333,41 @@ def create_app(polly_instance=None) -> FastAPI:
                     inbound_total = len(inbound) + len(mention_inbound) * 0.5
                     authority_score = min(1.0, inbound_total / 10.0)
                 
+                # Resolve domain: skip system folders, map to configured domain names
+                raw_domain = note.domain or ""
+                # Exclude system folders from appearing as domains
+                system_folders = {"00-system", ".polly", "templates", "_templates", ".obsidian"}
+                if raw_domain.lower() in system_folders:
+                    resolved_domain = ""
+                else:
+                    resolved_domain = raw_domain
+                
+                # Generate preview snippet from file content (first ~120 chars of body)
+                preview_snippet = ""
+                try:
+                    with open(note.path, 'r', encoding='utf-8') as nf:
+                        raw_content = nf.read(500)  # Read first 500 chars max
+                    # Strip frontmatter
+                    if raw_content.startswith('---'):
+                        parts = raw_content.split('---', 2)
+                        body = parts[2].strip() if len(parts) >= 3 else ""
+                    else:
+                        body = raw_content.strip()
+                    # Strip markdown headings and take first ~120 chars
+                    import re as _re
+                    body = _re.sub(r'^#+\s+.*$', '', body, flags=_re.MULTILINE).strip()
+                    preview_snippet = body[:120].replace('\n', ' ').strip()
+                    if len(body) > 120:
+                        preview_snippet += "..."
+                except Exception:
+                    pass
+                
                 # Build item
                 item = {
                     "id": note.name,
                     "name": note.title or note.name,
                     "type": "note",
-                    "primary_domain": note.domain or "",
+                    "primary_domain": resolved_domain,
                     "secondary_domains": secondary_domains,
                     "authority_score": authority_score,
                     "connection_count": connection_count,
@@ -4147,7 +4379,7 @@ def create_app(polly_instance=None) -> FastAPI:
                     "updated_at": note.modified.isoformat() if note.modified else "",
                     "created_at": note.created.isoformat() if note.created else "",
                     "path": str(note.path),
-                    "preview_snippet": ""  # TODO: Read first 100 chars of content
+                    "preview_snippet": preview_snippet
                 }
                 
                 # Apply filters
@@ -4157,7 +4389,7 @@ def create_app(polly_instance=None) -> FastAPI:
                 
                 # Domain filter (matches primary or secondary)
                 if domain:
-                    if note.domain != domain and domain not in secondary_domains:
+                    if resolved_domain != domain and domain not in secondary_domains:
                         continue
                 
                 # Maturity filter
@@ -4172,20 +4404,35 @@ def create_app(polly_instance=None) -> FastAPI:
                 # Text search filter
                 if q:
                     q_lower = q.lower()
-                    if q_lower not in (note.title or "").lower() and q_lower not in note.name.lower():
+                    if q_lower not in (note.title or "").lower() and q_lower not in note.name.lower() and q_lower not in preview_snippet.lower():
                         continue
                 
-                # Tag filter
+                # Tag filter — "untagged" is a special value meaning no tags
                 if tag:
-                    note_tags = [t.lower() for t in (note.tags or [])]
-                    if tag.lower().lstrip('#') not in note_tags:
+                    if tag.lower() == "untagged":
+                        if note.tags and len(note.tags) > 0:
+                            continue
+                    else:
+                        note_tags = [t.lower() for t in (note.tags or [])]
+                        if tag.lower().lstrip('#') not in note_tags:
+                            continue
+                
+                # Date range filter
+                if date_range and note.modified:
+                    from datetime import timedelta
+                    now = datetime.now()
+                    if date_range == "week" and note.modified < now - timedelta(days=7):
+                        continue
+                    elif date_range == "month" and note.modified < now - timedelta(days=30):
+                        continue
+                    elif date_range == "3months" and note.modified < now - timedelta(days=90):
                         continue
                 
                 items.append(item)
                 
-                # Count domains
-                if note.domain:
-                    domain_counts[note.domain] = domain_counts.get(note.domain, 0) + 1
+                # Count domains (use resolved domain, skip empty/system)
+                if resolved_domain:
+                    domain_counts[resolved_domain] = domain_counts.get(resolved_domain, 0) + 1
             
             # Sort items
             if sort == "authority":
@@ -4196,15 +4443,32 @@ def create_app(polly_instance=None) -> FastAPI:
                 items.sort(key=lambda x: x["name"].lower())
             elif sort == "created":
                 items.sort(key=lambda x: x["created_at"], reverse=True)
+            elif sort == "oldest":
+                items.sort(key=lambda x: x["created_at"])
+            elif sort == "most_connected":
+                items.sort(key=lambda x: x["connection_count"], reverse=True)
             
             # Apply pagination
             total_count = len(items)
             items = items[offset:offset + limit]
             
+            # Get configured domains for frontend grouping
+            configured_domains = []
+            try:
+                from core.domain_config import load_domains
+                domain_cfg = load_domains()
+                configured_domains = [
+                    {"id": d.id, "name": d.name, "color": d.color, "icon": d.icon, "order": d.order}
+                    for d in sorted(domain_cfg.domains, key=lambda d: d.order)
+                ]
+            except Exception:
+                pass
+            
             return {
                 "items": items,
                 "total_count": total_count,
                 "domain_counts": domain_counts,
+                "configured_domains": configured_domains,
                 "indices_ready": indices_ready
             }
             
@@ -4602,6 +4866,34 @@ def create_app(polly_instance=None) -> FastAPI:
                 total_count = len(filtered_notes)
                 filtered_notes = filtered_notes[offset:offset + limit]
                 
+                # Build note -> community_id mapping via entity mentions
+                note_community_map = {}
+                try:
+                    polly = get_polly()
+                    if polly.entity_store:
+                        es_conn = polly.entity_store._conn()
+                        # Get entity -> community_id mapping
+                        cur = es_conn.execute(
+                            "SELECT id, community_id FROM entities WHERE community_id IS NOT NULL"
+                        )
+                        entity_communities = {row[0]: row[1] for row in cur.fetchall()}
+                        # Map notes to communities via entity mentions
+                        if entity_communities:
+                            cur = es_conn.execute(
+                                "SELECT DISTINCT entity_id, source_id FROM entity_mentions WHERE source_type = 'note'"
+                            )
+                            from collections import Counter as _Counter
+                            note_comm_votes = {}
+                            for eid, source_id in cur.fetchall():
+                                if eid in entity_communities:
+                                    if source_id not in note_comm_votes:
+                                        note_comm_votes[source_id] = _Counter()
+                                    note_comm_votes[source_id][entity_communities[eid]] += 1
+                            for note_name, votes in note_comm_votes.items():
+                                note_community_map[note_name] = votes.most_common(1)[0][0]
+                except Exception as e:
+                    logger.debug(f"Community mapping for notes failed: {e}")
+
                 # Build nodes
                 visible_note_names = set()
                 for note in filtered_notes:
@@ -4617,7 +4909,8 @@ def create_app(polly_instance=None) -> FastAPI:
                         "domain": note.domain or "",
                         "authority": authority,
                         "connection_count": 0,  # Updated after edges are built
-                        "is_ghost": False
+                        "is_ghost": False,
+                        "community_id": note_community_map.get(note.name),
                     })
                     visible_note_names.add(note.name)
                 
@@ -5247,6 +5540,136 @@ def create_app(polly_instance=None) -> FastAPI:
             logger.error(f"Prune graph failed: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to prune graph: {str(e)}")
     
+    @app.post("/polly/graph/garden/cleanup")
+    async def cleanup_garbage_entities():
+        """
+        Remove garbage entities that fail quality validation (short names,
+        programming keywords, common stopwords). Re-runs community detection
+        after cleanup.
+        
+        Response: {
+            "removed_count": 23,
+            "removed_names": ["Ini", "Dom", "Set", ...],
+            "message": "Cleaned up 23 garbage entities"
+        }
+        """
+        try:
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+            
+            result = entity_store.cleanup_garbage_entities()
+            
+            # Re-run community detection after cleanup
+            if result["removed_count"] > 0:
+                try:
+                    from core.entities.intelligence import CommunityDetector
+                    detector = CommunityDetector()
+                    detector.detect(entity_store, min_community_size=3)
+                except Exception as e:
+                    logger.warning(f"Community re-detection after cleanup failed: {e}")
+            
+            return {
+                "removed_count": result["removed_count"],
+                "removed_names": result["removed_names"],
+                "message": f"Cleaned up {result['removed_count']} garbage entities",
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Entity cleanup failed: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to clean up entities: {str(e)}")
+
+    @app.post("/polly/graph/garden/suggestion/dismiss")
+    async def dismiss_suggestion(body: Dict[str, Any]):
+        """
+        Persist a suggestion dismissal so it won't reappear.
+        
+        Request body: {
+            "suggestion_type": "connection|merge|enrichment",
+            "suggestion_key": "unique_key_for_this_suggestion"
+        }
+        """
+        try:
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+            
+            suggestion_type = body.get("suggestion_type")
+            suggestion_key = body.get("suggestion_key")
+            if not suggestion_type or not suggestion_key:
+                raise HTTPException(400, "suggestion_type and suggestion_key required")
+            
+            success = entity_store.dismiss_suggestion(suggestion_type, suggestion_key)
+            return {"success": success, "message": "Suggestion dismissed"}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Dismiss suggestion failed: {e}", exc_info=True)
+            raise HTTPException(500, str(e))
+
+    @app.get("/polly/graph/garden/prune/preview")
+    async def preview_prune(
+        weak_threshold: float = 0.3,
+        stale_days: int = 90,
+    ):
+        """
+        Preview what prune operations would do without executing them.
+        Returns counts so the frontend can show them before confirming.
+        """
+        try:
+            polly = get_polly()
+            entity_store = polly.entity_store
+            if not entity_store:
+                raise HTTPException(503, "Entity store not initialized")
+            
+            conn = entity_store._conn()
+            
+            # Count weak relationships
+            cur = conn.execute(
+                "SELECT COUNT(*) FROM relationships WHERE strength < ?",
+                (weak_threshold,),
+            )
+            weak_count = cur.fetchone()[0]
+            
+            # Count stale entities
+            cutoff = (datetime.now() - timedelta(days=stale_days)).isoformat()
+            cur = conn.execute(
+                "SELECT COUNT(*) FROM entities WHERE last_seen < ? AND mention_count < 3",
+                (cutoff,),
+            )
+            stale_count = cur.fetchone()[0]
+            
+            # Count unenriched notes
+            from core.notes_index import get_notes_index
+            notes_idx = get_notes_index()
+            all_notes = notes_idx.get_all_notes()
+            unenriched = 0
+            for note in all_notes:
+                if not entity_store.get_mentions_for_source(note.name, "note"):
+                    unenriched += 1
+            
+            # Count garbage entities
+            from core.entities.extractor import is_valid_entity_name
+            cur = conn.execute("SELECT name FROM entities")
+            garbage_count = sum(1 for row in cur.fetchall() if not is_valid_entity_name(row[0]))
+            
+            return {
+                "weak_relationships": weak_count,
+                "weak_threshold": weak_threshold,
+                "stale_entities": stale_count,
+                "stale_days": stale_days,
+                "unenriched_notes": unenriched,
+                "garbage_entities": garbage_count,
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Prune preview failed: {e}", exc_info=True)
+            raise HTTPException(500, str(e))
+
     @app.post("/polly/graph/garden/batch")
     async def batch_garden_operations(body: Dict[str, Any]):
         """
@@ -5444,11 +5867,37 @@ def create_app(polly_instance=None) -> FastAPI:
             isolated_notes = entity_store.get_isolated_notes(max_entity_connections=isolation_threshold)
             isolated_entities = entity_store.get_isolated_entities(max_connections=isolation_threshold)
 
+            # Also include notes with NO entity records at all (truly unprocessed)
+            entity_noted_sources = set()
+            for iso in isolated_notes:
+                entity_noted_sources.add(iso["source_id"])
+            # Check all notes for entity mentions
+            for note in all_notes:
+                if note.name not in entity_noted_sources:
+                    mentions = entity_store.get_mentions_for_source(note.name, "note")
+                    if not mentions:
+                        isolated_notes.append({
+                            "source_id": note.name,
+                            "entity_count": 0,
+                            "max_connection_count": 0,
+                            "note_title": note.title or note.name,
+                            "domain": note.domain or "",
+                            "unprocessed": True,
+                        })
+
+            # Load dismissed suggestions to filter them out
+            dismissed_connections = entity_store.get_dismissed_suggestion_keys("connection")
+            dismissed_merges = entity_store.get_dismissed_suggestion_keys("merge")
+            dismissed_enrichments = entity_store.get_dismissed_suggestion_keys("enrichment")
+
             # — Suggestions (reuse logic from /garden/suggestions, abbreviated) —
             mentions_idx = get_unlinked_mentions_index(notes_idx)
             connection_suggestions = []
             mention_pairs = mentions_idx.get_all_mention_pairs()
-            for source, target, count in mention_pairs[:10]:
+            for source, target, count in mention_pairs[:20]:
+                suggestion_key = f"{source}:{target}"
+                if suggestion_key in dismissed_connections:
+                    continue
                 outbound = backlinks_idx.get_outgoing_links(source)
                 already_linked = any(bl.target_name == target for bl in outbound)
                 if not already_linked:
@@ -5459,17 +5908,29 @@ def create_app(polly_instance=None) -> FastAPI:
                         "confidence": min(0.95, 0.6 + (count * 0.1)),
                     })
 
-            # Merge candidates (top 10)
+            # Merge candidates (top 10, improved quality filtering)
+            from core.entities.extractor import is_valid_entity_name
             all_entities = entity_store.search(EntityQuery(limit=200))
             merge_candidates = []
             seen_pairs = set()
             for i, ea in enumerate(all_entities):
+                # Skip garbage entities
+                if not is_valid_entity_name(ea.name):
+                    continue
                 for eb in all_entities[i + 1:]:
+                    if not is_valid_entity_name(eb.name):
+                        continue
                     pkey = tuple(sorted([ea.id, eb.id]))
                     if pkey in seen_pairs:
                         continue
+                    merge_key = f"{ea.id}:{eb.id}"
+                    if merge_key in dismissed_merges:
+                        continue
                     na = ea.name.lower().replace(" ", "").replace("-", "").replace("_", "")
                     nb = eb.name.lower().replace(" ", "").replace("-", "").replace("_", "")
+                    # Skip if either name is too short for reliable comparison
+                    if len(na) < 3 or len(nb) < 3:
+                        continue
                     if na == nb and ea.entity_type == eb.entity_type:
                         seen_pairs.add(pkey)
                         merge_candidates.append({
@@ -5478,35 +5939,42 @@ def create_app(polly_instance=None) -> FastAPI:
                             "reason": "Same entity, different formatting",
                             "confidence": 0.95,
                         })
-                    elif na in nb or nb in na:
-                        seen_pairs.add(pkey)
-                        merge_candidates.append({
-                            "entity_a": ea.name, "entity_a_id": ea.id,
-                            "entity_b": eb.name, "entity_b_id": eb.id,
-                            "reason": "Similar names, possible duplicate",
-                            "confidence": 0.75,
-                        })
+                    elif len(na) >= 4 and len(nb) >= 4 and (na in nb or nb in na):
+                        # Only suggest substring matches for longer names to avoid
+                        # garbage matches like "Set" in "Massachusetts"
+                        shorter = na if len(na) <= len(nb) else nb
+                        longer = nb if len(na) <= len(nb) else na
+                        # Require the shorter to be at least 60% of the longer
+                        if len(shorter) / len(longer) >= 0.6:
+                            seen_pairs.add(pkey)
+                            merge_candidates.append({
+                                "entity_a": ea.name, "entity_a_id": ea.id,
+                                "entity_b": eb.name, "entity_b_id": eb.id,
+                                "reason": "Similar names, possible duplicate",
+                                "confidence": round(0.6 + 0.2 * (len(shorter) / len(longer)), 2),
+                            })
                     if len(merge_candidates) >= 10:
                         break
                 if len(merge_candidates) >= 10:
                     break
 
-            # Enrichment candidates (top 10 unenriched notes with connections)
+            # Enrichment candidates (unenriched notes, sorted by connection count)
             enrichment_candidates = []
             for note in all_notes:
+                if note.name in dismissed_enrichments:
+                    continue
                 if not entity_store.get_mentions_for_source(note.name, "note"):
                     inb = len(backlinks_idx.get_backlinks(note.name))
                     outb = len(backlinks_idx.get_outgoing_links(note.name))
                     cc = inb + outb
                     auth = min(1.0, inb / 10.0)
-                    if auth > 0.3 or cc > 5:
-                        enrichment_candidates.append({
-                            "note_name": note.name,
-                            "note_title": note.title or note.name,
-                            "authority": round(auth, 2),
-                            "connection_count": cc,
-                        })
-                if len(enrichment_candidates) >= 10:
+                    enrichment_candidates.append({
+                        "note_name": note.name,
+                        "note_title": note.title or note.name,
+                        "authority": round(auth, 2),
+                        "connection_count": cc,
+                    })
+                if len(enrichment_candidates) >= 15:
                     break
 
             return {
@@ -6294,6 +6762,31 @@ def create_app(polly_instance=None) -> FastAPI:
             old_path.rename(new_path)
             logger.info(f"Renamed note from {old_name} to {new_name}")
             
+            # Update frontmatter title field to match the new name
+            try:
+                content = new_path.read_text(encoding='utf-8')
+                if content.startswith('---'):
+                    parts = content.split('---', 2)
+                    if len(parts) >= 3:
+                        import yaml
+                        fm = yaml.safe_load(parts[1])
+                        if isinstance(fm, dict) and 'title' in fm:
+                            fm['title'] = new_name
+                            new_fm = yaml.dump(fm, default_flow_style=False, allow_unicode=True).strip()
+                            updated_content = f"---\n{new_fm}\n---{parts[2]}"
+                            new_path.write_text(updated_content, encoding='utf-8')
+                            logger.debug(f"Updated frontmatter title to '{new_name}'")
+                else:
+                    # No frontmatter — check if first heading matches old name and update it
+                    heading_re = re.compile(r'^(#+\s+)(.+)$', re.MULTILINE)
+                    m = heading_re.search(content)
+                    if m and m.group(2).strip().lower() == old_name.lower():
+                        updated_content = content[:m.start()] + m.group(1) + new_name + content[m.end():]
+                        new_path.write_text(updated_content, encoding='utf-8')
+                        logger.debug(f"Updated first heading to '{new_name}'")
+            except Exception as fm_err:
+                logger.warning(f"Failed to update frontmatter/heading title: {fm_err}")
+            
             # Update indexes
             try:
                 notes_idx.remove_note(old_path)
@@ -6302,13 +6795,16 @@ def create_app(polly_instance=None) -> FastAPI:
             except Exception as idx_error:
                 logger.warning(f"Failed to update indexes after rename: {idx_error}")
             
-            # Derive a title from the new name
-            new_title = new_name.replace('-', ' ').replace('_', ' ').title()
+            # Get title from re-indexed note if available, else derive from name
+            updated_note = notes_idx.find_note_by_name(new_name)
+            new_title = (updated_note.title if updated_note and updated_note.title else
+                         new_name.replace('-', ' ').replace('_', ' ').title())
             
             return {
                 "success": True,
                 "note": {
                     "new_name": new_name,
+                    "new_path": str(new_path),
                     "title": new_title,
                     "references_updated": updated_count
                 }

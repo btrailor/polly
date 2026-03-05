@@ -574,6 +574,9 @@ Preview ready! Review and save your note."""
         title: str,
         domain: str = "scrolls",
         conversation_history: Optional[List[Dict]] = None,
+        template_content: Optional[str] = None,
+        template_hints: Optional[Dict] = None,
+        template_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Standalone enrich entry point for KnowledgeWriter.
@@ -586,11 +589,14 @@ Preview ready! Review and save your note."""
             title: Suggested note title
             domain: Target domain slug
             conversation_history: Optional conversation for additional context
+            template_content: Optional template markdown structure to follow
+            template_hints: Optional AI hints from template (tone, focus, linking_priority)
+            template_name: Optional template display name
         
         Returns:
             Dict with 'content', 'metadata' suitable for PreviewModal
         """
-        logger.info(f"Scribe standalone enrich: title='{title}', domain='{domain}'")
+        logger.info(f"Scribe standalone enrich: title='{title}', domain='{domain}', template='{template_name or 'none'}'")
         
         # Build a lightweight analysis from the raw content
         analysis = {
@@ -605,8 +611,38 @@ Preview ready! Review and save your note."""
         if self.skill_manager:
             linking_skill = self.skill_manager.load_skill("wiki-linking")
         
-        # Build a simplified enrich prompt (no template required)
-        enrich_prompt = f"""You are Polly's Scribe. Your task is to take the raw content below and transform it into a well-structured knowledge base note.
+        # Build enrich prompt — template-aware if template provided
+        if template_content and template_name:
+            # Template-guided enrichment
+            hints_str = ""
+            if template_hints:
+                hints_str = f"\n**AI Hints:**\n- Tone: {template_hints.get('tone', 'professional')}\n- Focus: {template_hints.get('focus', 'comprehensive')}\n- Link Priority: {', '.join(template_hints.get('linking_priority', []))}"
+            
+            enrich_prompt = f"""You are Polly's Scribe. Your task is to take the raw content below and transform it into a well-structured knowledge base note using the specified template.
+
+**Title:** {title}
+**Domain:** {domain}
+**Template:** {template_name}
+
+**Template Structure:**
+{template_content}
+{hints_str}
+
+**Raw Content:**
+{content}
+
+**Instructions:**
+1. Follow the template's structure — use its headings and sections as your outline
+2. Fill in template variables ({{{{variable_name}}}}) with relevant information from the content
+3. Add [[wiki-links]] to any concepts, tools, or topics that might exist in the user's knowledge base
+4. If a template section doesn't apply to the content, include it with a brief placeholder or remove it
+5. Keep the original information intact — enrich, don't rewrite
+6. Output ONLY the markdown content (no JSON wrapper, no frontmatter)
+
+Generate the enriched note:"""
+        else:
+            # Original freeform enrichment
+            enrich_prompt = f"""You are Polly's Scribe. Your task is to take the raw content below and transform it into a well-structured knowledge base note.
 
 **Title:** {title}
 **Domain:** {domain}
@@ -696,7 +732,7 @@ created_by: scribe_standalone
             "folder": "",
             "filename": f"{title.replace(' ', '-').lower()}.md",
             "tags": [],
-            "template_used": "none (standalone enrich)",
+            "template_used": template_name or "none (standalone enrich)",
             "inserted_links": inserted_links,
         }
         
