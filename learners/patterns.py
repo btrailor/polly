@@ -1816,10 +1816,10 @@ class PatternLearner:
                 if self._is_valid_concept(concept):
                     concepts.add(concept)
         
-        # Also extract technical terms that appear in text (case-insensitive match)
+        # Also extract technical terms that appear in text (word-boundary match)
         text_lower = text_no_code.lower()
         for term in TECHNICAL_TERMS:
-            if term in text_lower:
+            if re.search(r'\b' + re.escape(term) + r'\b', text_lower):
                 concepts.add(term)
         
         # Convert to list
@@ -1947,10 +1947,10 @@ class PatternLearner:
                 if self._is_valid_concept(concept):
                     concepts.add(concept)
         
-        # Extract technical terms from whitelist
+        # Extract technical terms from whitelist (word-boundary match)
         text_lower = text_no_code.lower()
         for term in TECHNICAL_TERMS:
-            if term in text_lower:
+            if re.search(r'\b' + re.escape(term) + r'\b', text_lower):
                 concepts.add(term)
         
         # Extract CamelCase patterns

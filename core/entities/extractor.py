@@ -10,12 +10,99 @@ from __future__ import annotations
 import re
 import logging
 from datetime import datetime
+from functools import lru_cache
 from typing import List, Optional, Set, Tuple
 
 from .models import Entity, EntityType, Relationship, RelationshipType, entity_id
 from .store import EntityStore
 
 logger = logging.getLogger(__name__)
+
+
+# ── Word-boundary matching ────────────────────────────────────────────
+
+@lru_cache(maxsize=1024)
+def _word_boundary_pattern(term: str) -> re.Pattern:
+    """Compile a word-boundary regex for a term (cached)."""
+    return re.compile(r'\b' + re.escape(term) + r'\b', re.IGNORECASE)
+
+
+def _term_in_text(term: str, text_lower: str) -> bool:
+    """Check if term appears as a whole word in text (not as a substring)."""
+    return _word_boundary_pattern(term).search(text_lower) is not None
+
+# ── Entity Validation ────────────────────────────────────────────────
+
+# Programming keywords and common short words that produce garbage entities
+GARBAGE_STOPWORDS = frozenset({
+    # Python keywords / builtins
+    "set", "get", "int", "str", "list", "dict", "map", "for", "if", "in",
+    "not", "and", "or", "is", "as", "from", "import", "class", "def",
+    "return", "yield", "with", "try", "except", "raise", "pass", "break",
+    "continue", "while", "else", "elif", "none", "true", "false", "self",
+    "type", "len", "print", "range", "open", "file", "input", "output",
+    "key", "val", "var", "arg", "obj", "new", "old", "run", "end",
+    "log", "err", "msg", "tmp", "src", "dst", "idx", "num", "max", "min",
+    # Common short English words
+    "the", "this", "that", "then", "them", "they", "was", "were", "has",
+    "had", "are", "can", "may", "but", "also", "each", "all", "any",
+    "some", "one", "two", "use", "used", "just", "will", "very",
+    # Config / code fragments that get false-positive matched
+    "ini", "dom", "cfg", "env", "bin", "lib", "app", "mod", "pkg",
+    "todo", "note", "test", "spec", "doc", "api", "url", "http",
+    # Generic programming terms too ambiguous as standalone entities
+    "process", "start", "stop", "build", "update", "install",
+    "merge", "push", "pull", "fetch", "checkout", "commit",
+    "run", "format", "lint", "compile", "deploy", "migrate",
+    "table", "row", "column", "index", "view", "schema", "query",
+    "model", "state", "struct", "constant", "variable", "function",
+    "request", "response", "body", "header", "session", "cookie",
+    "tag", "release", "issue", "bug", "error", "warning",
+    "uri", "spa", "ssr", "csr", "ssg", "pwa",
+    "rest", "pipe", "redirect", "alias", "environment",
+    "container", "graph", "endpoint", "route", "middleware",
+    "express", "apt",
+    "stack", "queue", "performance", "rds",
+    "quic", "optimize", "benchmark", "profiling",
+    "exploit", "method",
+})
+
+# Known-good short entities (2-3 chars) that should NOT be filtered
+SHORT_ENTITY_WHITELIST = frozenset({
+    "ai", "ml", "js", "ts", "go", "c", "r", "sql", "css", "git",
+    "aws", "gcp", "api", "cli", "gui", "ide", "oop", "llm", "nlp",
+    "rag", "vue", "lua", "svn", "npm", "pip", "jwt", "ssh", "tcp",
+})
+
+MIN_ENTITY_NAME_LENGTH = 3
+
+
+def is_valid_entity_name(name: str) -> bool:
+    """Check if an entity name passes quality validation.
+    
+    Rejects:
+    - Names shorter than MIN_ENTITY_NAME_LENGTH (unless whitelisted)
+    - Programming keywords and common stopwords
+    - Pure numbers or single characters
+    """
+    if not name or not name.strip():
+        return False
+    clean = name.strip().lower()
+    # Whitelist check (known-good short names)
+    if clean in SHORT_ENTITY_WHITELIST:
+        return True
+    # Minimum length
+    if len(clean) < MIN_ENTITY_NAME_LENGTH:
+        return False
+    # Pure numbers
+    if clean.replace(".", "").replace("-", "").isdigit():
+        return False
+    # Stopword check (normalized)
+    normalized = clean.replace(" ", "").replace("-", "").replace("_", "")
+    if normalized in GARBAGE_STOPWORDS or clean in GARBAGE_STOPWORDS:
+        return False
+    return True
+
 
 # Optional: use full technical term list from learners if available
 try:
@@ -85,10 +172,10 @@ class EntityExtractor:
             for e in spacy_entities:
                 if not any(ex.id == e.id for ex in entities):
                     entities.append(e)
-        # 3) Technical terms in text
+        # 3) Technical terms in text (word-boundary match to avoid substring false positives)
         text_lower = text.lower()
         for term in TECHNICAL_TERMS:
-            if term in text_lower and len(term) >= 3:
+            if len(term) >= 3 and _term_in_text(term, text_lower):
                 eid = entity_id(term.title(), EntityType.TOOL.value)
                 if not any(ex.id == eid for ex in entities):
                     entities.append(Entity(
@@ -117,11 +204,14 @@ class EntityExtractor:
                         last_seen=datetime.now(),
                         created=datetime.now(),
                     ))
-        # 5) Dedupe by id and upsert
+        # 5) Validate, dedupe by id, and upsert
         seen: Set[str] = set()
         stored: List[Entity] = []
         for e in entities:
             if e.id in seen:
+                continue
+            # Validate entity name quality
+            if not is_valid_entity_name(e.name):
                 continue
             seen.add(e.id)
             e.domains = list(set(e.domains + domains))
@@ -150,7 +240,7 @@ class EntityExtractor:
         text_lower = text.lower()
         for entity_type, keywords in ENTITY_KEYWORDS.items():
             for keyword in keywords:
-                if keyword in text_lower:
+                if _term_in_text(keyword, text_lower):
                     name = keyword.title()
                     eid = entity_id(name, entity_type.value)
                     out.append(Entity(
@@ -197,7 +287,7 @@ class EntityExtractor:
             phrase = chunk.text.lower().strip()
             if " " not in phrase or len(phrase) < 5:
                 continue
-            if phrase in TECHNICAL_TERMS or any(t in phrase for t in TECHNICAL_TERMS):
+            if phrase in TECHNICAL_TERMS or any(_term_in_text(t, phrase) for t in TECHNICAL_TERMS):
                 name = phrase.title()
                 eid = entity_id(name, EntityType.CONCEPT.value)
                 out.append(Entity(
@@ -252,7 +342,7 @@ class EntityExtractor:
 
             text_lower = text.lower()
             for term in TECHNICAL_TERMS:
-                if term in text_lower and len(term) >= 3:
+                if len(term) >= 3 and _term_in_text(term, text_lower):
                     eid = entity_id(term.title(), EntityType.TOOL.value)
                     if not any(ex.id == eid for ex in text_entities):
                         text_entities.append(Entity(
@@ -323,7 +413,7 @@ class EntityExtractor:
                     phrase = chunk.text.lower().strip()
                     if " " not in phrase or len(phrase) < 5:
                         continue
-                    if phrase in TECHNICAL_TERMS or any(t in phrase for t in TECHNICAL_TERMS):
+                    if phrase in TECHNICAL_TERMS or any(_term_in_text(t, phrase) for t in TECHNICAL_TERMS):
                         name = phrase.title()
                         eid = entity_id(name, EntityType.CONCEPT.value)
                         if not any(ex.id == eid for ex in text_entities):
@@ -338,13 +428,16 @@ class EntityExtractor:
                                 created=datetime.now(),
                             ))
 
-        # --- Merge all per-text entities, deduplicate, store ---
+        # --- Merge all per-text entities, deduplicate, validate, store ---
         global_seen: Set[str] = set()
         stored: List[Entity] = []
 
         for (text, source_type), text_entities in zip(items, per_text_entities):
             for e in text_entities:
                 if e.id in global_seen:
+                    continue
+                # Validate entity name quality
+                if not is_valid_entity_name(e.name):
                     continue
                 global_seen.add(e.id)
                 e.domains = list(set(e.domains + domains))
@@ -379,7 +472,7 @@ class EntityExtractor:
             entities.extend(self._extract_spacy(text, domains))
         text_lower = text.lower()
         for term in TECHNICAL_TERMS:
-            if term in text_lower and len(term) >= 3:
+            if len(term) >= 3 and _term_in_text(term, text_lower):
                 eid = entity_id(term.title(), EntityType.TOOL.value)
                 if not any(e.id == eid for e in entities):
                     entities.append(Entity(
