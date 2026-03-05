@@ -256,11 +256,6 @@
 
           <div class="ribbon-spacer"></div>
 
-          <!-- Status Indicator -->
-          <div class="ribbon-status" id="ribbon-status" title="Server Status">
-            <div class="status-dot" id="status-dot"></div>
-          </div>
-
           <button
             class="ribbon-item"
             data-view="settings"
@@ -6052,13 +6047,17 @@
       <!-- Status Bar -->
       <div class="status-bar" id="status-bar">
         <div class="status-left">
-          <span class="status-item" id="server-status">
-            <i data-lucide="server"></i>
-            <span>Server: Checking...</span>
+          <span
+            class="status-item status-item-clickable"
+            id="sb-server-status"
+            title="Polly Server status – click to toggle"
+          >
+            <span class="sb-dot" id="sb-server-dot"></span>
+            <span id="sb-server-text">Server: Checking…</span>
           </span>
-          <span class="status-item" id="connection-status">
-            <i data-lucide="wifi"></i>
-            <span>Connected</span>
+          <span class="status-item" id="sb-ollama-status" title="Ollama status">
+            <span class="sb-dot" id="sb-ollama-dot"></span>
+            <span id="sb-ollama-text">Ollama: Checking…</span>
           </span>
         </div>
         <div class="status-right">
@@ -6071,15 +6070,18 @@
             <i data-lucide="bot"></i>
             <span id="autonomy-status-pct">0%</span>
           </span>
-          <span class="status-item" id="cursor-info" style="display: none"
-            >Ln 1, Col 1</span
+          <span
+            class="status-item"
+            id="sb-knowledge-status"
+            title="Knowledge base stats"
           >
-          <span class="status-item" id="encoding" style="display: none"
-            >UTF-8</span
-          >
-          <span class="status-item" id="line-endings" style="display: none"
-            >LF</span
-          >
+            <i data-lucide="database"></i>
+            <span id="sb-knowledge-text">–</span>
+          </span>
+          <span class="status-item" id="sb-active-view" title="Current view">
+            <i data-lucide="layout-dashboard"></i>
+            <span id="sb-view-text">Dashboard</span>
+          </span>
         </div>
       </div>
     </div>
@@ -7965,6 +7967,22 @@
               <option value="glyphs">Glyphs</option>
               <option value="grids">Grids</option>
             </select>
+          </div>
+          <div class="form-group">
+            <label>Template</label>
+            <div
+              id="ai-note-template-picker"
+              style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px"
+            >
+              <button
+                class="btn btn-sm ai-note-template-btn active"
+                data-template="blank"
+                style="font-size: 12px; padding: 4px 10px; border-radius: 4px"
+              >
+                Blank
+              </button>
+              <!-- Template buttons loaded dynamically -->
+            </div>
           </div>
         </div>
         <div class="modal-footer">

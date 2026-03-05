@@ -231,6 +231,7 @@ let notesBrowseFilters = {
   sort: "recent",
   tag: null,
   q: null,
+  dateRange: null, // 'week' | 'month' | '3months' | null (all time)
 };
 
 // UI State Management (for smooth reloads)
@@ -2193,8 +2194,19 @@ function escapeHtml(str) {
 }
 
 /**
- * Open the new-agent dialog (modal).
+ * Render a domain icon — handles both Lucide icon names (ASCII like "zap", "radio")
+ * and Unicode emoji characters (like ⚡, 📡). Lucide names are rendered as <i> tags,
+ * emojis are rendered as plain text in a span.
  */
+function renderDomainIcon(icon, size = 14) {
+  if (!icon) return "";
+  // ASCII-only = Lucide icon name (e.g. "zap", "folder-tree", "radio")
+  if (/^[a-z0-9-]+$/.test(icon)) {
+    return `<i data-lucide="${escapeHtml(icon)}" style="width: ${size}px; height: ${size}px;"></i>`;
+  }
+  // Otherwise it's an emoji character — render as text
+  return `<span style="font-size: ${size}px; line-height: 1;">${icon}</span>`;
+}
 function openNewAgentDialog() {
   const modal = document.getElementById("new-agent-modal");
   if (!modal) return;
@@ -3610,6 +3622,14 @@ function setupEventListeners() {
     });
   }
 
+  // Status bar server indicator click → toggle server
+  const sbServerStatus = document.getElementById("sb-server-status");
+  if (sbServerStatus) {
+    sbServerStatus.addEventListener("click", () => {
+      toggleServer();
+    });
+  }
+
   // AI Features → Autonomy Dashboard toggle
   const autonomyToggle = document.getElementById("ai-feat-autonomy-enabled");
   if (autonomyToggle) {
@@ -3801,6 +3821,9 @@ function setupEventListeners() {
 function showView(view) {
   currentView = view;
   currentPage = view; // Track page changes for conversation context
+
+  // Update status bar active-view label
+  updateStatusBarView(view);
 
   // Cancel any pending persona auto-advance (user navigated away)
   cancelPersonaAutoAdvance();
@@ -5674,17 +5697,17 @@ function _collectTemplateForm() {
       ?.value || "first";
 
   if (!name) {
-    alert("Template name is required.");
+    showToast("Template name is required.", "warning");
     return null;
   }
   if (!id) {
-    alert("Template ID is required.");
+    showToast("Template ID is required.", "warning");
     return null;
   }
 
   const rows = document.querySelectorAll("#swarms-step-rows .swarms-step-row");
   if (rows.length === 0) {
-    alert("Add at least one step.");
+    showToast("Add at least one step.", "warning");
     return null;
   }
 
@@ -5695,11 +5718,11 @@ function _collectTemplateForm() {
     const intervene =
       row.querySelector(".swarms-step-intervene")?.checked || false;
     if (!stepId) {
-      alert("Every step needs a Step ID.");
+      showToast("Every step needs a Step ID.", "warning");
       return null;
     }
     if (!cap) {
-      alert(`Step '${stepId}' needs a capability.`);
+      showToast(`Step '${stepId}' needs a capability.`, "warning");
       return null;
     }
     steps.push({
@@ -5711,7 +5734,7 @@ function _collectTemplateForm() {
   }
 
   if (outputStep && !steps.find((s) => s.id === outputStep)) {
-    alert("Output step must be one of the defined step IDs.");
+    showToast("Output step must be one of the defined step IDs.", "warning");
     return null;
   }
 
@@ -5741,7 +5764,7 @@ async function saveNewTemplate() {
     loadSwarmsTemplates(swarmsCurrentDomain);
     showToast("Template saved", "success");
   } catch (e) {
-    alert(`Failed to save template: ${e.message || e}`);
+    showToast(`Failed to save template: ${e.message || e}`, "error");
   }
 }
 
@@ -5784,15 +5807,15 @@ async function saveNewAgent() {
     .value.trim();
 
   if (!name) {
-    alert("Agent name is required.");
+    showToast("Agent name is required.", "warning");
     return;
   }
   if (!capability) {
-    alert("Capability name is required.");
+    showToast("Capability name is required.", "warning");
     return;
   }
   if (!system_prompt) {
-    alert("System prompt is required.");
+    showToast("System prompt is required.", "warning");
     return;
   }
 
@@ -5812,7 +5835,7 @@ async function saveNewAgent() {
     await loadSwarmsCapabilities();
     showToast("Agent created", "success");
   } catch (e) {
-    alert(`Failed to create agent: ${e.message || e}`);
+    showToast(`Failed to create agent: ${e.message || e}`, "error");
   }
 }
 
@@ -5821,15 +5844,59 @@ async function saveNewAgent() {
 // ---------------------------------------------------------------------------
 
 let _aiNoteListenersInited = false;
+let _selectedTemplateId = "blank";
 
 function openAiNoteModal() {
   const modal = document.getElementById("ai-note-modal");
   if (!modal) return;
   document.getElementById("ai-note-prompt").value = "";
   document.getElementById("ai-note-domain").value = "scrolls";
+  _selectedTemplateId = "blank";
   modal.style.display = "flex";
   document.getElementById("ai-note-prompt").focus();
   _initAiNoteListeners();
+  _loadTemplateButtons();
+}
+
+async function _loadTemplateButtons() {
+  const picker = document.getElementById("ai-note-template-picker");
+  if (!picker) return;
+  // Keep the Blank button, remove dynamically added ones
+  const existing = picker.querySelectorAll(
+    ".ai-note-template-btn:not([data-template='blank'])",
+  );
+  existing.forEach((b) => b.remove());
+
+  try {
+    const res = await safeFetch(`${API_URL}/api/settings/knowledge/templates`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.templates || !data.templates.length) return;
+
+    for (const t of data.templates) {
+      const btn = document.createElement("button");
+      btn.className = "btn btn-sm ai-note-template-btn";
+      btn.dataset.template = t.filename;
+      btn.textContent = t.name;
+      btn.style.cssText =
+        "font-size: 12px; padding: 4px 10px; border-radius: 4px;";
+      btn.title = t.description || "";
+      picker.appendChild(btn);
+    }
+
+    // Wire click handlers for all template buttons
+    picker.querySelectorAll(".ai-note-template-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        picker
+          .querySelectorAll(".ai-note-template-btn")
+          .forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        _selectedTemplateId = btn.dataset.template;
+      });
+    });
+  } catch (e) {
+    console.warn("[AI Note] Failed to load templates:", e);
+  }
 }
 
 function _closeAiNoteModal() {
@@ -5844,7 +5911,35 @@ async function saveAiNoteQuick() {
     return;
   }
   const domain = document.getElementById("ai-note-domain").value;
-  const title = prompt.split(/\n/)[0].substring(0, 80) || "Quick Note";
+
+  // Generate smart title instead of truncating first line
+  let title = "Quick Note";
+  try {
+    const titleRes = await safeFetch(
+      `${API_URL}/api/settings/knowledge/generate-title`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: prompt, domain }),
+      },
+    );
+    if (titleRes.ok) {
+      const titleData = await titleRes.json();
+      if (titleData.title) title = titleData.title;
+    }
+  } catch (e) {
+    // Fallback: use first line, stripped of question phrasing
+    title =
+      prompt
+        .split(/\n/)[0]
+        .replace(
+          /^(what|how|why|when|where|who|can you|could you|please|help me|i need)\s+/i,
+          "",
+        )
+        .replace(/\?$/, "")
+        .substring(0, 60) || "Quick Note";
+  }
+
   try {
     const res = await safeFetch(
       `${API_URL}/api/settings/knowledge/save-quick`,
@@ -5870,6 +5965,7 @@ async function saveAiNoteScribe() {
     return;
   }
   const domain = document.getElementById("ai-note-domain").value;
+  const templateId = _selectedTemplateId || "blank";
   const btn = document.getElementById("ai-note-scribe-btn");
   if (btn) {
     btn.disabled = true;
@@ -5877,15 +5973,15 @@ async function saveAiNoteScribe() {
   }
   try {
     const res = await safeFetch(
-      `${API_URL}/api/settings/knowledge/save-message`,
+      `${API_URL}/api/settings/knowledge/save-scribe`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message_content: prompt,
-          message_role: "user",
-          save_mode: "scribe",
+          content: prompt,
+          title: prompt.split(/\n/)[0].substring(0, 80) || "Note",
           domain,
+          template_id: templateId !== "blank" ? templateId : null,
         }),
       },
     );
@@ -5893,7 +5989,13 @@ async function saveAiNoteScribe() {
     const data = await res.json();
     _closeAiNoteModal();
     if (window.PreviewModal) {
-      window.PreviewModal.show(data, saveNoteToKnowledgeBase);
+      window.PreviewModal.show(data, async (noteData) => {
+        await saveNoteToKnowledgeBase(noteData);
+        // Refresh notes index immediately after Scribe save
+        if (window.notesManager) {
+          setTimeout(() => window.notesManager.loadNotesIndex(), 500);
+        }
+      });
     } else {
       showToast("Note generated", "success");
       if (window.notesManager) window.notesManager.loadNotesIndex();
@@ -11875,19 +11977,9 @@ async function checkOllamaStatus() {
 function updateServerStatus(running) {
   isServerRunning = running;
 
-  const dot = document.getElementById("status-dot");
   const indicator = document.getElementById("server-indicator");
   const statusText = document.getElementById("server-status-text");
   const btn = document.getElementById("btn-toggle-server");
-
-  // Update status dot in ribbon (always exists)
-  if (dot) {
-    if (running) {
-      dot.className = "status-dot online";
-    } else {
-      dot.className = "status-dot offline";
-    }
-  }
 
   // Update server indicator on dashboard (may not exist)
   if (indicator) {
@@ -11907,6 +11999,18 @@ function updateServerStatus(running) {
   if (btn) {
     btn.textContent = running ? "Stop" : "Start";
   }
+
+  // Update status bar server indicator
+  const sbDot = document.getElementById("sb-server-dot");
+  const sbText = document.getElementById("sb-server-text");
+  if (sbDot) {
+    sbDot.className = running
+      ? "sb-dot sb-dot-online"
+      : "sb-dot sb-dot-offline";
+  }
+  if (sbText) {
+    sbText.textContent = running ? "Server: Running" : "Server: Stopped";
+  }
 }
 
 /**
@@ -11924,6 +12028,18 @@ function updateOllamaStatus(running) {
   } else {
     indicator?.classList.remove("running");
     if (statusText) statusText.textContent = "Not running";
+  }
+
+  // Update status bar Ollama indicator
+  const sbDot = document.getElementById("sb-ollama-dot");
+  const sbText = document.getElementById("sb-ollama-text");
+  if (sbDot) {
+    sbDot.className = running
+      ? "sb-dot sb-dot-online"
+      : "sb-dot sb-dot-offline";
+  }
+  if (sbText) {
+    sbText.textContent = running ? "Ollama: Running" : "Ollama: Stopped";
   }
 }
 
@@ -12007,6 +12123,9 @@ const loadDashboardData = withErrorBoundary(async function () {
         top_category: "None", // TODO: Backend should provide this
       },
     };
+
+    // Update status bar knowledge count
+    updateStatusBarKnowledge(window.pollyStats.rag_stats);
 
     const statObsidian = document.getElementById("stat-obsidian");
     const statCodebase = document.getElementById("stat-codebase");
@@ -12309,6 +12428,85 @@ function updateAutonomyStatusBar(snap) {
   indicator.style.display = "";
   if (pctSpan)
     pctSpan.textContent = Math.round(snap.local_routing_pct) + "% local";
+}
+
+/**
+ * View-name map for the status bar (view id → display label).
+ */
+const VIEW_LABELS = {
+  dashboard: "Dashboard",
+  code: "Code",
+  knowledge: "Knowledge",
+  notes: "Notes",
+  graph: "Graph",
+  learning: "Learning",
+  search: "Search",
+  patterns: "Patterns",
+  domains: "Domains",
+  calendar: "Calendar",
+  mail: "Mail",
+  projects: "Projects",
+  swarms: "Workflows",
+  settings: "Settings",
+  chat: "Chat",
+  setup: "Setup",
+};
+
+/** Lucide icon names per view */
+const VIEW_ICONS = {
+  dashboard: "layout-dashboard",
+  code: "code-2",
+  knowledge: "network",
+  notes: "book-open",
+  graph: "git-graph",
+  learning: "graduation-cap",
+  search: "search",
+  patterns: "sparkles",
+  domains: "folder-tree",
+  calendar: "calendar",
+  mail: "mail",
+  projects: "kanban",
+  swarms: "workflow",
+  settings: "settings",
+  chat: "message-square",
+  setup: "loader",
+};
+
+/**
+ * Update the status-bar "active view" chip.
+ */
+function updateStatusBarView(view) {
+  const textEl = document.getElementById("sb-view-text");
+  if (textEl) textEl.textContent = VIEW_LABELS[view] || view;
+
+  // Re-render the Lucide icon
+  const container = document.getElementById("sb-active-view");
+  if (container) {
+    const iconEl = container.querySelector("i[data-lucide], svg");
+    if (iconEl) {
+      // Replace with a new <i> so Lucide re-renders it
+      const newIcon = document.createElement("i");
+      newIcon.setAttribute(
+        "data-lucide",
+        VIEW_ICONS[view] || "layout-dashboard",
+      );
+      iconEl.replaceWith(newIcon);
+      if (typeof lucide !== "undefined")
+        lucide.createIcons({ nodes: [container] });
+    }
+  }
+}
+
+/**
+ * Update the status-bar knowledge-base chip after dashboard data loads.
+ */
+function updateStatusBarKnowledge(stats) {
+  const textEl = document.getElementById("sb-knowledge-text");
+  if (!textEl || !stats) return;
+  const notes = stats.notes?.count || stats.obsidian?.count || 0;
+  const code = stats.codebase?.count || 0;
+  const total = notes + code;
+  textEl.textContent = total > 0 ? `${total.toLocaleString()} docs` : "–";
 }
 
 // ==================== Link Suggestion Modal (Task #22) ====================
@@ -12754,6 +12952,9 @@ const loadKnowledgeData = withErrorBoundary(async function () {
         top_category: "None",
       },
     };
+
+    // Update status bar knowledge count
+    updateStatusBarKnowledge(window.pollyStats.rag_stats);
 
     // Update knowledge view stats (using notes data)
     const notesCount = notesStats.count;
@@ -16971,7 +17172,7 @@ function renderDomainsList() {
       <div class="domain-card-header">
         <div class="domain-card-title">
           <span class="domain-drag-handle" role="button" tabindex="0" aria-label="Drag to reorder ${domain.name}">⋮⋮</span>
-          <span class="domain-icon"><i data-lucide="${domain.icon}" style="width: 20px; height: 20px;"></i></span>
+          <span class="domain-icon">${renderDomainIcon(domain.icon, 20)}</span>
           <span class="domain-name">${domain.name}</span>
         </div>
         <div class="domain-card-actions">
@@ -17305,7 +17506,7 @@ function showDomainsError(message) {
  */
 function updateIconPreview() {
   const preview = document.getElementById("domain-icon-preview");
-  preview.innerHTML = `<i data-lucide="${selectedIcon}" style="width: 20px; height: 20px;"></i>`;
+  preview.innerHTML = renderDomainIcon(selectedIcon, 20);
   if (typeof lucide !== "undefined") {
     lucide.createIcons();
   }
@@ -21818,6 +22019,10 @@ function renderGraphSidebar() {
               <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
               <span>Remove Stale Entities</span>
             </button>
+            <button id="garden-cleanup-garbage-btn" class="garden-action-btn">
+              <i data-lucide="eraser" style="width: 14px; height: 14px;"></i>
+              <span>Clean Up Garbage</span>
+            </button>
             <button id="garden-enrich-all-btn" class="garden-action-btn">
               <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
               <span>Enrich Unenriched Notes</span>
@@ -22089,24 +22294,27 @@ function renderNotesActiveFilters() {
       key: "domain",
       label: `Domain: ${notesBrowseFilters.domain}`,
     });
-  if (notesBrowseFilters.type)
-    chips.push({ key: "type", label: `Type: ${notesBrowseFilters.type}` });
-  if (notesBrowseFilters.maturity) {
-    const matLabels = { 10: "Seedling", 20: "Growing", 30: "Evergreen" };
+  if (notesBrowseFilters.tag)
     chips.push({
-      key: "maturity",
+      key: "tag",
       label:
-        matLabels[notesBrowseFilters.maturity] ||
-        `Maturity: ${notesBrowseFilters.maturity}`,
+        notesBrowseFilters.tag === "untagged"
+          ? "Untagged"
+          : `#${notesBrowseFilters.tag}`,
+    });
+  if (notesBrowseFilters.dateRange) {
+    const dateLabels = {
+      week: "Last 7 days",
+      month: "Last 30 days",
+      "3months": "Last 90 days",
+    };
+    chips.push({
+      key: "dateRange",
+      label:
+        dateLabels[notesBrowseFilters.dateRange] ||
+        notesBrowseFilters.dateRange,
     });
   }
-  if (notesBrowseFilters.connectionStatus)
-    chips.push({
-      key: "connectionStatus",
-      label: `Status: ${notesBrowseFilters.connectionStatus}`,
-    });
-  if (notesBrowseFilters.tag)
-    chips.push({ key: "tag", label: `#${notesBrowseFilters.tag}` });
   if (notesBrowseFilters.sort && notesBrowseFilters.sort !== "recent")
     chips.push({
       key: "sort",
@@ -22165,7 +22373,8 @@ async function applyNotesBrowseFilters() {
 }
 
 /**
- * Render notes grouped by domain in collapsible sections
+ * Render notes grouped by domain in collapsible sections.
+ * Uses configured domains as the group structure (not raw filesystem folders).
  */
 async function renderNotesDomainGrouped(container) {
   container.innerHTML =
@@ -22183,7 +22392,8 @@ async function renderNotesDomainGrouped(container) {
     if (notesBrowseFilters.connectionStatus)
       params.append("connection_status", notesBrowseFilters.connectionStatus);
     if (notesBrowseFilters.tag) params.append("tag", notesBrowseFilters.tag);
-    // If domain filter active in grouped mode, still show only that domain
+    if (notesBrowseFilters.dateRange)
+      params.append("date_range", notesBrowseFilters.dateRange);
     if (notesBrowseFilters.domain)
       params.append("domain", notesBrowseFilters.domain);
 
@@ -22193,6 +22403,7 @@ async function renderNotesDomainGrouped(container) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     const items = data.items || [];
+    const configuredDomains = data.configured_domains || [];
 
     if (items.length === 0) {
       container.innerHTML =
@@ -22200,29 +22411,54 @@ async function renderNotesDomainGrouped(container) {
       return;
     }
 
-    // Group by primary_domain
+    // Build domain lookup: id -> config
+    const domainMap = {};
+    configuredDomains.forEach((d) => {
+      domainMap[d.id] = d;
+    });
+
+    // Group items by primary_domain
     const groups = {};
     items.forEach((item) => {
-      const domain = item.primary_domain || "Uncategorized";
+      const domain = item.primary_domain || "uncategorized";
       if (!groups[domain]) groups[domain] = [];
       groups[domain].push(item);
     });
 
-    const domainOrder = Object.keys(groups).sort((a, b) => {
-      if (a === "Uncategorized") return 1;
-      if (b === "Uncategorized") return -1;
-      return groups[b].length - groups[a].length;
+    // Build ordered domain list: configured domains first (by config order), then uncategorized
+    const orderedDomains = [];
+    configuredDomains.forEach((d) => {
+      if (groups[d.id]) orderedDomains.push(d.id);
     });
+    // Add any remaining domains that aren't in config (shouldn't happen often)
+    Object.keys(groups).forEach((d) => {
+      if (d !== "uncategorized" && !orderedDomains.includes(d))
+        orderedDomains.push(d);
+    });
+    // Always put uncategorized last
+    if (groups["uncategorized"]) orderedDomains.push("uncategorized");
 
     let html = "";
-    domainOrder.forEach((domain) => {
-      const domainItems = groups[domain];
-      const isOpen = !localStorage.getItem(`notes-domain-collapsed-${domain}`);
+    orderedDomains.forEach((domainId) => {
+      const domainItems = groups[domainId];
+      if (!domainItems || domainItems.length === 0) return;
+      const cfg = domainMap[domainId];
+      const displayName = cfg
+        ? cfg.name
+        : domainId === "uncategorized"
+          ? "Uncategorized"
+          : domainId;
+      const domainColor = cfg ? cfg.color : "#808080";
+      const domainIcon = cfg ? cfg.icon : "📄";
+      const isOpen = !localStorage.getItem(
+        `notes-domain-collapsed-${domainId}`,
+      );
       html += `
-        <div class="notes-domain-group" data-domain="${escapeHtml(domain)}">
+        <div class="notes-domain-group" data-domain="${escapeHtml(domainId)}">
           <div class="notes-domain-header">
             <i data-lucide="${isOpen ? "chevron-down" : "chevron-right"}" class="notes-domain-chevron" style="width: 12px; height: 12px;"></i>
-            <span class="notes-domain-name">${escapeHtml(domain)}</span>
+            <span class="notes-domain-color-dot" style="background: ${domainColor}; width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px;"></span>
+            <span class="notes-domain-name">${renderDomainIcon(domainIcon)} ${escapeHtml(displayName)}</span>
             <span class="notes-domain-count">${domainItems.length}</span>
           </div>
           <div class="notes-domain-items" style="${isOpen ? "" : "display:none;"}">
@@ -22234,13 +22470,20 @@ async function renderNotesDomainGrouped(container) {
                       day: "numeric",
                     })
                   : "";
+                const tagsHtml = (item.tags || [])
+                  .slice(0, 3)
+                  .map(
+                    (t) =>
+                      `<span class="browse-item-tag">#${escapeHtml(t)}</span>`,
+                  )
+                  .join("");
                 return `
                 <div class="browse-list-item" data-note-name="${escapeHtml(item.id)}" data-type="${escapeHtml(item.type)}">
                   <div class="browse-item-main">
                     <span class="browse-item-title">${escapeHtml(item.name)}</span>
                     <span class="browse-item-date">${date}</span>
                   </div>
-                  ${item.connection_count > 0 ? `<div class="browse-item-meta"><span class="browse-item-connections">${item.connection_count}⇄</span></div>` : ""}
+                  ${tagsHtml || item.connection_count > 0 ? `<div class="browse-item-meta">${tagsHtml}${item.connection_count > 0 ? `<span class="browse-item-connections">${item.connection_count}⇄</span>` : ""}</div>` : ""}
                 </div>
               `;
               })
@@ -22257,7 +22500,7 @@ async function renderNotesDomainGrouped(container) {
     container.querySelectorAll(".notes-domain-header").forEach((header) => {
       header.addEventListener("click", () => {
         const group = header.closest(".notes-domain-group");
-        const domain = group.dataset.domain;
+        const domainId = group.dataset.domain;
         const items = group.querySelector(".notes-domain-items");
         const chevron = header.querySelector(".notes-domain-chevron");
         const isVisible = items.style.display !== "none";
@@ -22268,20 +22511,33 @@ async function renderNotesDomainGrouped(container) {
             isVisible ? "chevron-right" : "chevron-down",
           );
         if (isVisible) {
-          localStorage.setItem(`notes-domain-collapsed-${domain}`, "1");
+          localStorage.setItem(`notes-domain-collapsed-${domainId}`, "1");
         } else {
-          localStorage.removeItem(`notes-domain-collapsed-${domain}`);
+          localStorage.removeItem(`notes-domain-collapsed-${domainId}`);
         }
         if (typeof lucide !== "undefined") lucide.createIcons();
       });
     });
 
-    // Item click handlers
+    // Item click handlers + keyboard nav
     container.querySelectorAll(".browse-list-item").forEach((item) => {
+      item.setAttribute("tabindex", "0");
       item.addEventListener("click", () => {
         const noteName = item.dataset.noteName;
         if (noteName && window.notesManager)
           window.notesManager.openNote(noteName);
+      });
+      item.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") item.click();
+        else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          const next = item.nextElementSibling;
+          if (next) next.focus();
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          const prev = item.previousElementSibling;
+          if (prev) prev.focus();
+        }
       });
     });
   } catch (error) {
@@ -22291,7 +22547,7 @@ async function renderNotesDomainGrouped(container) {
 }
 
 /**
- * Render notes as cards (compact visual grid)
+ * Render notes as cards with content preview, tags, connections, domain badge
  */
 async function renderNotesCardView(container) {
   container.innerHTML =
@@ -22311,6 +22567,8 @@ async function renderNotesCardView(container) {
     if (notesBrowseFilters.connectionStatus)
       params.append("connection_status", notesBrowseFilters.connectionStatus);
     if (notesBrowseFilters.tag) params.append("tag", notesBrowseFilters.tag);
+    if (notesBrowseFilters.dateRange)
+      params.append("date_range", notesBrowseFilters.dateRange);
 
     const response = await fetch(
       `http://127.0.0.1:11436/polly/graph/list?${params.toString()}`,
@@ -22318,12 +22576,19 @@ async function renderNotesCardView(container) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     const items = data.items || [];
+    const configuredDomains = data.configured_domains || [];
 
     if (items.length === 0) {
       container.innerHTML =
         '<div style="padding: 24px; text-align: center; color: #808080; font-size: 13px;">No notes found</div>';
       return;
     }
+
+    // Build domain color lookup
+    const domainColorMap = {};
+    configuredDomains.forEach((d) => {
+      domainColorMap[d.id] = d.color;
+    });
 
     const cardsHtml = items
       .map((item) => {
@@ -22333,22 +22598,31 @@ async function renderNotesCardView(container) {
               day: "numeric",
             })
           : "";
-        const authorityPct = Math.round((item.authority_score || 0) * 100);
         const snippet = item.preview_snippet
-          ? item.preview_snippet.slice(0, 80)
+          ? escapeHtml(item.preview_snippet.slice(0, 150))
           : "";
-        const maturityIcons = { 10: "🌱", 20: "🌿", 30: "🌳" };
-        const matIcon = maturityIcons[item.maturity] || "";
+        const domainColor = domainColorMap[item.primary_domain] || "#808080";
+        const domainName = item.primary_domain || "";
+        const tagsHtml = (item.tags || [])
+          .slice(0, 4)
+          .map((t) => `<span class="notes-card-tag">#${escapeHtml(t)}</span>`)
+          .join("");
+        const connLabel =
+          item.connection_count > 0
+            ? `<span class="notes-card-conns">${item.connection_count} connections</span>`
+            : "";
         return `
-        <div class="notes-card-item" data-note-name="${escapeHtml(item.id)}" title="${escapeHtml(item.name)}">
+        <div class="notes-card-item" data-note-name="${escapeHtml(item.id)}" tabindex="0">
           <div class="notes-card-header">
             <span class="notes-card-title">${escapeHtml(item.name)}</span>
-            ${matIcon ? `<span class="notes-card-maturity" title="Maturity">${matIcon}</span>` : ""}
           </div>
-          ${snippet ? `<div class="notes-card-snippet">${escapeHtml(snippet)}</div>` : ""}
-          <div class="notes-card-meta">
-            ${item.primary_domain ? `<span class="notes-card-domain">${escapeHtml(item.primary_domain)}</span>` : ""}
-            ${item.connection_count > 0 ? `<span class="notes-card-conns">${item.connection_count}⇄</span>` : ""}
+          <div class="notes-card-info">
+            ${domainName ? `<span class="notes-card-domain-badge" style="border-color: ${domainColor}; color: ${domainColor};">${escapeHtml(domainName)}</span>` : ""}
+            ${connLabel}
+          </div>
+          ${snippet ? `<div class="notes-card-snippet">${snippet}</div>` : ""}
+          <div class="notes-card-footer">
+            <div class="notes-card-tags">${tagsHtml}</div>
             <span class="notes-card-date">${date}</span>
           </div>
         </div>
@@ -22364,6 +22638,15 @@ async function renderNotesCardView(container) {
         if (noteName && window.notesManager)
           window.notesManager.openNote(noteName);
       });
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") card.click();
+        else if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          const noteName = card.dataset.noteName;
+          if (noteName && window.notesManager)
+            window.notesManager.confirmDeleteNote(noteName, card);
+        }
+      });
     });
   } catch (error) {
     console.error("[Notes] Card view failed:", error);
@@ -22372,7 +22655,9 @@ async function renderNotesCardView(container) {
 }
 
 /**
- * Render the notes lower panel Filters tab
+ * Render the notes lower panel Filters tab.
+ * Uses configured domains & live tags. Removed irrelevant options (conversation/book types,
+ * authority sort, connection status). Added tag filter, date range, quick filter pills.
  */
 async function renderNotesFiltersPanel() {
   const content = document.querySelector(
@@ -22380,14 +22665,23 @@ async function renderNotesFiltersPanel() {
   );
   if (!content) return;
 
-  // Fetch domain list for the domain filter
-  let domains = [];
+  // Fetch configured domains and available tags in parallel
+  let configuredDomains = [];
+  let availableTags = [];
   try {
-    const r = await fetch("http://127.0.0.1:11436/polly/graph/list?limit=1");
-    if (r.ok) {
-      const d = await r.json();
-      // domain_counts is a map of domain -> count returned by the API
-      domains = Object.keys(d.domain_counts || {}).sort();
+    const [domainRes, tagsRes] = await Promise.all([
+      fetch("http://127.0.0.1:11436/polly/domains/config").catch(() => null),
+      fetch("http://127.0.0.1:11436/polly/notes/tags").catch(() => null),
+    ]);
+    if (domainRes && domainRes.ok) {
+      const dc = await domainRes.json();
+      configuredDomains = (dc.domains || []).sort((a, b) => a.order - b.order);
+    }
+    if (tagsRes && tagsRes.ok) {
+      const td = await tagsRes.json();
+      availableTags = (td.tags || [])
+        .map((t) => (typeof t === "string" ? t : t.name || t.tag || ""))
+        .filter(Boolean);
     }
   } catch (e) {
     /* ignore */
@@ -22397,48 +22691,44 @@ async function renderNotesFiltersPanel() {
 
   content.innerHTML = `
     <div class="notes-filters-panel">
+      <div class="notes-quick-filters">
+        <button class="notes-quick-filter-btn ${!f.domain && !f.tag && !f.dateRange ? "active" : ""}" data-qf="all">All</button>
+        <button class="notes-quick-filter-btn ${f.dateRange === "week" ? "active" : ""}" data-qf="week">Last 7 days</button>
+        <button class="notes-quick-filter-btn ${f.dateRange === "month" ? "active" : ""}" data-qf="month">Last 30 days</button>
+        <button class="notes-quick-filter-btn ${f.tag === "untagged" ? "active" : ""}" data-qf="untagged">Untagged</button>
+      </div>
       <div class="notes-filters-row">
         <label class="notes-filter-label">Sort</label>
         <select id="nf-sort" class="notes-filter-select">
           <option value="recent" ${f.sort === "recent" ? "selected" : ""}>Recent</option>
-          <option value="authority" ${f.sort === "authority" ? "selected" : ""}>Authority</option>
           <option value="alpha" ${f.sort === "alpha" ? "selected" : ""}>A → Z</option>
-          <option value="created" ${f.sort === "created" ? "selected" : ""}>Created</option>
+          <option value="most_connected" ${f.sort === "most_connected" ? "selected" : ""}>Most Connected</option>
+          <option value="created" ${f.sort === "created" ? "selected" : ""}>Newest Created</option>
+          <option value="oldest" ${f.sort === "oldest" ? "selected" : ""}>Oldest Created</option>
         </select>
       </div>
       <div class="notes-filters-row">
         <label class="notes-filter-label">Domain</label>
         <select id="nf-domain" class="notes-filter-select">
-          <option value="">All</option>
-          ${domains.map((d) => `<option value="${escapeHtml(d)}" ${f.domain === d ? "selected" : ""}>${escapeHtml(d)}</option>`).join("")}
+          <option value="">All Domains</option>
+          ${configuredDomains.map((d) => `<option value="${escapeHtml(d.id)}" ${f.domain === d.id ? "selected" : ""}>${d.icon && !/^[a-z0-9-]+$/.test(d.icon) ? d.icon + " " : ""}${escapeHtml(d.name)}</option>`).join("")}
         </select>
       </div>
       <div class="notes-filters-row">
-        <label class="notes-filter-label">Type</label>
-        <select id="nf-type" class="notes-filter-select">
-          <option value="">All</option>
-          <option value="note" ${f.type === "note" ? "selected" : ""}>Note</option>
-          <option value="conversation" ${f.type === "conversation" ? "selected" : ""}>Conversation</option>
-          <option value="book" ${f.type === "book" ? "selected" : ""}>Book</option>
-          <option value="capture" ${f.type === "capture" ? "selected" : ""}>Capture</option>
+        <label class="notes-filter-label">Tag</label>
+        <select id="nf-tag" class="notes-filter-select">
+          <option value="">All Tags</option>
+          <option value="untagged" ${f.tag === "untagged" ? "selected" : ""}>Untagged</option>
+          ${availableTags.map((t) => `<option value="${escapeHtml(t)}" ${f.tag === t ? "selected" : ""}>#${escapeHtml(t)}</option>`).join("")}
         </select>
       </div>
       <div class="notes-filters-row">
-        <label class="notes-filter-label">Maturity</label>
-        <select id="nf-maturity" class="notes-filter-select">
-          <option value="">All</option>
-          <option value="10" ${f.maturity == 10 ? "selected" : ""}>🌱 Seedling</option>
-          <option value="20" ${f.maturity == 20 ? "selected" : ""}>🌿 Growing</option>
-          <option value="30" ${f.maturity == 30 ? "selected" : ""}>🌳 Evergreen</option>
-        </select>
-      </div>
-      <div class="notes-filters-row">
-        <label class="notes-filter-label">Status</label>
-        <select id="nf-status" class="notes-filter-select">
-          <option value="">All</option>
-          <option value="hub" ${f.connectionStatus === "hub" ? "selected" : ""}>Hub (highly connected)</option>
-          <option value="bridge" ${f.connectionStatus === "bridge" ? "selected" : ""}>Bridge (cross-domain)</option>
-          <option value="isolated" ${f.connectionStatus === "isolated" ? "selected" : ""}>Isolated (no connections)</option>
+        <label class="notes-filter-label">Date Range</label>
+        <select id="nf-date-range" class="notes-filter-select">
+          <option value="" ${!f.dateRange ? "selected" : ""}>All Time</option>
+          <option value="week" ${f.dateRange === "week" ? "selected" : ""}>Last 7 Days</option>
+          <option value="month" ${f.dateRange === "month" ? "selected" : ""}>Last 30 Days</option>
+          <option value="3months" ${f.dateRange === "3months" ? "selected" : ""}>Last 90 Days</option>
         </select>
       </div>
       <button id="nf-reset" class="notes-filter-reset-btn">Reset All Filters</button>
@@ -22459,9 +22749,31 @@ async function renderNotesFiltersPanel() {
 
   wire("nf-sort", "sort");
   wire("nf-domain", "domain");
-  wire("nf-type", "type");
-  wire("nf-maturity", "maturity", (v) => (v ? parseInt(v) : null));
-  wire("nf-status", "connectionStatus");
+  wire("nf-tag", "tag");
+  wire("nf-date-range", "dateRange");
+
+  // Quick filter buttons
+  content.querySelectorAll(".notes-quick-filter-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const qf = btn.dataset.qf;
+      if (qf === "all") {
+        notesBrowseFilters.domain = null;
+        notesBrowseFilters.tag = null;
+        notesBrowseFilters.dateRange = null;
+      } else if (qf === "week") {
+        notesBrowseFilters.dateRange =
+          notesBrowseFilters.dateRange === "week" ? null : "week";
+      } else if (qf === "month") {
+        notesBrowseFilters.dateRange =
+          notesBrowseFilters.dateRange === "month" ? null : "month";
+      } else if (qf === "untagged") {
+        notesBrowseFilters.tag =
+          notesBrowseFilters.tag === "untagged" ? null : "untagged";
+      }
+      renderNotesFiltersPanel();
+      applyNotesBrowseFilters();
+    });
+  });
 
   document.getElementById("nf-reset")?.addEventListener("click", () => {
     notesBrowseFilters = {
@@ -22472,6 +22784,7 @@ async function renderNotesFiltersPanel() {
       sort: "recent",
       tag: null,
       q: null,
+      dateRange: null,
     };
     const searchInput = document.getElementById("notes-browse-search");
     if (searchInput) searchInput.value = "";
@@ -22737,6 +23050,7 @@ async function initGraphCanvas(skipFilterRestore = false) {
         authority: node.authority || 0.5,
         connectionCount: node.connection_count || 0,
         isGhost: node.is_ghost || false,
+        communityId: node.community_id != null ? node.community_id : null,
       },
     })),
     edges: graphData.edges.map((edge) => ({
@@ -23311,12 +23625,37 @@ async function loadCommunityColors() {
 
 function applyGraphColorMode() {
   if (!cytoscapeInstance) return;
+  const communityPalette = [
+    "#FF6B6B",
+    "#4ECDC4",
+    "#45B7D1",
+    "#FFA07A",
+    "#98D8C8",
+    "#F7DC6F",
+    "#BB8FCE",
+    "#85C1E2",
+    "#F8B739",
+    "#52B788",
+    "#E76F51",
+    "#2A9D8F",
+    "#E9C46A",
+    "#264653",
+    "#F4A261",
+  ];
   cytoscapeInstance.nodes().forEach((node) => {
     const domain = node.data("domain");
     const nodeId = node.data("id");
     let color;
     if (graphColorMode === "community") {
-      color = graphCommunityColors[nodeId] || "#444444"; // unclustered = gray
+      // Try entity-based community color first, then node data community_id
+      color = graphCommunityColors[nodeId];
+      if (!color) {
+        const communityId = node.data("communityId");
+        if (communityId != null) {
+          color = communityPalette[communityId % communityPalette.length];
+        }
+      }
+      color = color || "#444444"; // unclustered = gray
     } else {
       color = graphDomainColors[domain] || "#666666";
     }
@@ -23625,14 +23964,7 @@ function setupGraphEventHandlers(cy, domainColors) {
 
     // Open the item based on type
     if (data.type === "note") {
-      // Open note (data.id is the note name)
-      if (window.notesManager) {
-        window.notesManager.openNote(data.id);
-      }
-      showView("notes");
-
-      // Show "Back to Graph" button
-      showBackToGraphButton();
+      navigateToNote(data.id);
     }
   });
 
@@ -23781,6 +24113,51 @@ function updateGraphLabelVisibility(cy) {
 }
 
 /**
+ * Navigate from graph (or other views) to the notes view and open a specific note.
+ * Queues the note as "pending" so the notes manager opens it after init() completes,
+ * avoiding the race condition where openNote() runs before the editor is ready.
+ */
+function navigateToNote(noteName) {
+  if (window.notesManager) {
+    window.notesManager.pendingNoteToOpen = noteName;
+  }
+  showView("notes");
+  showBackToGraphButton();
+}
+
+/**
+ * Show a "Back to Graph" floating button in the notes view
+ * so the user can return to the graph and keep their position.
+ */
+function showBackToGraphButton() {
+  // Don't add multiple buttons
+  if (document.getElementById("back-to-graph-btn")) return;
+
+  const btn = document.createElement("button");
+  btn.id = "back-to-graph-btn";
+  btn.className = "back-to-graph-btn";
+  btn.title = "Return to Graph";
+  btn.innerHTML = '<i data-lucide="arrow-left"></i><span>Back to Graph</span>';
+
+  btn.addEventListener("click", () => {
+    btn.remove();
+    showView("graph");
+  });
+
+  // Insert into the notes toolbar area
+  const toolbar = document.querySelector("#view-notes .notes-toolbar");
+  if (toolbar) {
+    toolbar.prepend(btn);
+  } else {
+    // Fallback: append to the notes view container
+    const notesView = document.getElementById("view-notes");
+    if (notesView) notesView.prepend(btn);
+  }
+
+  if (typeof lucide !== "undefined") lucide.createIcons();
+}
+
+/**
  * Save graph state to sessionStorage
  */
 function saveGraphState() {
@@ -23900,12 +24277,10 @@ async function loadGraphBrowseList() {
         const itemId = item.dataset.itemId;
         const itemType = item.dataset.itemType;
 
-        if (itemType === "note" && window.notesManager) {
+        if (itemType === "note") {
           graphState.sourceNode = itemId;
           saveGraphState();
-          window.notesManager.openNote(itemId);
-          showView("notes");
-          showBackToGraphButton();
+          navigateToNote(itemId);
         }
       });
     });
@@ -24012,12 +24387,10 @@ function showGraphContextMenu(event, data) {
       label: "Open",
       action: () => {
         // Open the node based on type (data.nodeId is the note name)
-        if (data.nodeType === "note" && window.notesManager) {
+        if (data.nodeType === "note") {
           graphState.sourceNode = data.nodeId;
           saveGraphState();
-          window.notesManager.openNote(data.nodeId);
-          showView("notes");
-          showBackToGraphButton();
+          navigateToNote(data.nodeId);
         }
       },
     },
@@ -24101,7 +24474,7 @@ async function exploreFromNode(nodeId) {
   console.log("[Graph] Exploring from node:", nodeId);
 
   try {
-    // Fetch expanded neighborhood from backend
+    // Fetch neighborhood from backend (2-hop subgraph)
     const response = await fetch(
       `http://127.0.0.1:11436/polly/graph/nodes?center_node=${encodeURIComponent(nodeId)}&hops=2&limit=50`,
     );
@@ -24109,42 +24482,45 @@ async function exploreFromNode(nodeId) {
     const data = await response.json();
 
     if (!data.nodes || data.nodes.length === 0) {
-      console.log("[Graph] No new nodes found in neighborhood");
+      showToast("No connections found for this node", "info");
       return;
     }
 
-    // Extend domain colors for any new domains (preserves existing assignments)
-    const existingDomains = new Set(Object.keys(graphDomainColors));
-    const newDomains = data.nodes
-      .map((n) => n.domain)
-      .filter((d) => d && !existingDomains.has(d));
-    if (newDomains.length > 0) {
-      const palette = [
-        "#FF6B6B",
-        "#4ECDC4",
-        "#45B7D1",
-        "#FFA07A",
-        "#98D8C8",
-        "#F7DC6F",
-        "#BB8FCE",
-        "#85C1E2",
-        "#F8B739",
-        "#52B788",
-      ];
-      const startIdx = existingDomains.size;
-      newDomains.forEach((domain, idx) => {
-        graphDomainColors[domain] = palette[(startIdx + idx) % palette.length];
-      });
-    }
+    // Save current graph state for "Back to full graph"
+    const savedPositions = {};
+    cytoscapeInstance.nodes().forEach((n) => {
+      savedPositions[n.data("id")] = { ...n.position() };
+    });
+    const savedVisibility = {};
+    cytoscapeInstance.elements().forEach((el) => {
+      savedVisibility[el.data("id")] = el.style("display");
+    });
+    graphState._savedExploreState = {
+      positions: savedPositions,
+      visibility: savedVisibility,
+    };
 
-    // Track which nodes are new
+    // Build set of neighborhood node IDs
+    const neighborhoodIds = new Set(data.nodes.map((n) => n.id));
+
+    // Hide all nodes NOT in the neighborhood; show those that are
+    cytoscapeInstance.nodes().forEach((node) => {
+      if (neighborhoodIds.has(node.data("id"))) {
+        node.style("display", "element");
+        node.style("opacity", 1);
+        // Highlight the center node
+        if (node.data("id") === nodeId) {
+          node.addClass("explore-center");
+        }
+      } else {
+        node.style("display", "none");
+      }
+    });
+
+    // Add any nodes from the response that aren't in the graph yet
     const existingNodeIds = new Set(
       cytoscapeInstance.nodes().map((n) => n.data("id")),
     );
-    let newNodesCount = 0;
-    let newEdgesCount = 0;
-
-    // Add new nodes
     data.nodes.forEach((node) => {
       if (!existingNodeIds.has(node.id)) {
         cytoscapeInstance.add({
@@ -24160,17 +24536,31 @@ async function exploreFromNode(nodeId) {
             isGhost: node.is_ghost || false,
           },
         });
-        newNodesCount++;
       }
     });
 
-    // Add new edges
+    // Show only edges between visible neighborhood nodes; hide others
+    cytoscapeInstance.edges().forEach((edge) => {
+      const src = edge.data("source");
+      const tgt = edge.data("target");
+      if (neighborhoodIds.has(src) && neighborhoodIds.has(tgt)) {
+        edge.style("display", "element");
+      } else {
+        edge.style("display", "none");
+      }
+    });
+
+    // Add any new edges from the response
     const existingEdgeIds = new Set(
       cytoscapeInstance.edges().map((e) => e.data("id")),
     );
-    data.edges.forEach((edge) => {
+    (data.edges || []).forEach((edge) => {
       const edgeId = `${edge.source}-${edge.target}-${edge.type || "references"}`;
-      if (!existingEdgeIds.has(edgeId)) {
+      if (
+        !existingEdgeIds.has(edgeId) &&
+        neighborhoodIds.has(edge.source) &&
+        neighborhoodIds.has(edge.target)
+      ) {
         cytoscapeInstance.add({
           group: "edges",
           data: {
@@ -24183,64 +24573,115 @@ async function exploreFromNode(nodeId) {
             isGhost: edge.is_ghost || false,
           },
         });
-        newEdgesCount++;
       }
     });
 
-    console.log(
-      `[Graph] Added ${newNodesCount} new nodes and ${newEdgesCount} new edges`,
-    );
-
-    // Re-apply current layout to incorporate new nodes
-    const currentLayout = graphState.layout || "cose";
-    const layoutConfig = getLayoutConfig(currentLayout);
-    const layout = cytoscapeInstance.layout(layoutConfig);
-    layout.run();
+    // Apply concentric layout centered on the explored node
+    const visibleNodes = cytoscapeInstance
+      .nodes()
+      .filter((n) => n.style("display") !== "none");
+    const centerNode = cytoscapeInstance.getElementById(nodeId);
+    const layoutConfig = {
+      name: "concentric",
+      fit: true,
+      padding: 40,
+      animate: true,
+      animationDuration: 400,
+      concentric: (node) => (node.data("id") === nodeId ? 10 : 5),
+      levelWidth: () => 2,
+    };
+    visibleNodes.layout(layoutConfig).run();
 
     // Update label visibility after layout
     setTimeout(() => {
       updateGraphLabelVisibility(cytoscapeInstance);
-    }, 600);
+    }, 500);
 
-    // Mark this node as expanded
-    graphState.expandedNodes.add(nodeId);
+    // Show "Back to full graph" button
+    _showExploreBackButton();
+
+    graphState.exploringNode = nodeId;
     saveGraphState();
+
+    console.log(
+      `[Graph] Exploring ${nodeId}: showing ${data.nodes.length} nodes`,
+    );
   } catch (error) {
     console.error("[Graph] Failed to explore from node:", error);
+    showToast("Failed to explore node", "error");
   }
 }
 
 /**
- * Show "Back to Graph" button
+ * Show "Back to full graph" button during explore mode
  */
-function showBackToGraphButton() {
-  let btn = document.getElementById("back-to-graph-btn");
-  if (!btn) {
-    btn = document.createElement("button");
-    btn.id = "back-to-graph-btn";
-    btn.className = "back-to-graph-button";
-    btn.innerHTML = '<i data-lucide="arrow-left"></i> Back to Graph';
-    btn.style.cssText = `
-      position: fixed;
-      bottom: 24px;
-      left: 24px;
-      z-index: var(--z-toast);
-      background: var(--bg-secondary);
-      border-radius: 6px;
-      font-size: 13px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    `;
-    btn.addEventListener("click", () => {
-      showView("graph");
-      btn.remove();
+function _showExploreBackButton() {
+  let existing = document.getElementById("explore-back-btn");
+  if (existing) existing.remove();
+
+  const btn = document.createElement("button");
+  btn.id = "explore-back-btn";
+  btn.innerHTML = '<i data-lucide="arrow-left"></i> Back to Full Graph';
+  btn.style.cssText = `
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 10001; background: var(--bg-secondary); border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md); padding: 8px 16px; font-size: 12px; color: var(--text-primary);
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  `;
+  btn.addEventListener("click", () => {
+    _restoreFullGraph();
+    btn.remove();
+  });
+  document.body.appendChild(btn);
+  if (typeof lucide !== "undefined") lucide.createIcons();
+}
+
+/**
+ * Restore the full graph after explore mode
+ */
+function _restoreFullGraph() {
+  if (!cytoscapeInstance) return;
+
+  const saved = graphState._savedExploreState;
+
+  // Show all elements
+  cytoscapeInstance.elements().forEach((el) => {
+    el.style("display", "element");
+    el.style("opacity", "");
+  });
+
+  // Remove explore-center class
+  cytoscapeInstance.nodes().removeClass("explore-center");
+
+  // Restore positions if saved
+  if (saved && saved.positions) {
+    cytoscapeInstance.nodes().forEach((n) => {
+      const pos = saved.positions[n.data("id")];
+      if (pos) n.position(pos);
     });
-    document.body.appendChild(btn);
-    if (typeof lucide !== "undefined") lucide.createIcons();
+  } else {
+    // Fall back to re-layout
+    const layoutConfig = getLayoutConfig(graphState.layout || "cose");
+    cytoscapeInstance.layout(layoutConfig).run();
   }
+
+  // Re-apply ghost visibility and filters
+  const ghostToggle = document.getElementById("graph-show-ghosts");
+  if (ghostToggle && !ghostToggle.checked) {
+    cytoscapeInstance.nodes().forEach((node) => {
+      if (node.data("isGhost")) node.style("display", "none");
+    });
+    cytoscapeInstance.edges().forEach((edge) => {
+      if (edge.data("isGhost")) edge.style("display", "none");
+    });
+  }
+
+  setTimeout(() => updateGraphLabelVisibility(cytoscapeInstance), 300);
+
+  graphState.exploringNode = null;
+  delete graphState._savedExploreState;
+  saveGraphState();
 }
 
 /**
@@ -24789,16 +25230,29 @@ async function renderGraphFiltersPanel() {
       graphState.filters.showGhosts = showGhosts;
 
       if (cytoscapeInstance) {
-        // Hide/show ghost nodes
+        // Ghost nodes: show at reduced opacity (maintains spatial context)
+        // or hide completely based on toggle
         cytoscapeInstance.nodes().forEach((node) => {
           if (node.data("isGhost")) {
-            node.style("display", showGhosts ? "element" : "none");
+            if (showGhosts) {
+              node.style("display", "element");
+              node.style("opacity", 0.15);
+              node.style("events", "no");
+              node.style("label", "");
+            } else {
+              node.style("display", "none");
+            }
           }
         });
-        // Hide/show ghost edges
+        // Ghost edges: lower opacity or hidden
         cytoscapeInstance.edges().forEach((edge) => {
           if (edge.data("isGhost")) {
-            edge.style("display", showGhosts ? "element" : "none");
+            if (showGhosts) {
+              edge.style("display", "element");
+              edge.style("opacity", 0.1);
+            } else {
+              edge.style("display", "none");
+            }
           }
         });
       }
@@ -24978,12 +25432,10 @@ function renderGraphDetailsPanel(nodeData) {
     btn.addEventListener("click", (e) => {
       const action = btn.dataset.action;
       const nodeId = btn.dataset.nodeId;
-      if (action === "open-note" && window.notesManager) {
+      if (action === "open-note") {
         graphState.sourceNode = nodeId;
         saveGraphState();
-        window.notesManager.openNote(nodeId);
-        showView("notes");
-        showBackToGraphButton();
+        navigateToNote(nodeId);
       } else if (action === "explore") {
         exploreFromNode(nodeId);
       }
@@ -25312,7 +25764,42 @@ function setupSuggestionHandlers() {
       const idx = parseInt(item.dataset.suggestionIdx);
 
       if (action === "dismiss") {
-        item.remove();
+        // Build a unique key for this suggestion so it stays dismissed
+        let suggestionKey = "";
+        if (type === "connection") {
+          const sug = window.gardenSuggestions?.connection_suggestions?.[idx];
+          if (sug) suggestionKey = `${sug.source_note}::${sug.target_note}`;
+        } else if (type === "merge") {
+          const sug = window.gardenSuggestions?.merge_candidates?.[idx];
+          if (sug) suggestionKey = `${sug.entity_a}::${sug.entity_b}`;
+        } else if (type === "enrichment") {
+          const sug = window.gardenSuggestions?.enrichment_candidates?.[idx];
+          if (sug) suggestionKey = sug.note_name;
+        }
+
+        // Persist the dismissal so it doesn't reappear
+        if (suggestionKey) {
+          try {
+            await fetch(
+              "http://127.0.0.1:11436/polly/graph/garden/suggestion/dismiss",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  suggestion_type: type,
+                  suggestion_key: suggestionKey,
+                }),
+              },
+            );
+          } catch (err) {
+            console.warn("[Garden] Failed to persist dismissal:", err);
+          }
+        }
+
+        item.style.transition = "opacity 0.2s, transform 0.2s";
+        item.style.opacity = "0";
+        item.style.transform = "translateX(20px)";
+        setTimeout(() => item.remove(), 200);
         return;
       }
 
@@ -25332,7 +25819,18 @@ function setupSuggestionHandlers() {
             await acceptEnrichmentSuggestion(idx);
           }
 
-          item.style.opacity = "0.5";
+          // Show success feedback
+          const actionLabel =
+            type === "connection"
+              ? "Connection added"
+              : type === "merge"
+                ? "Entities merged"
+                : "Note enriched";
+          showToast(actionLabel, "success");
+
+          item.style.transition = "opacity 0.3s, transform 0.3s";
+          item.style.opacity = "0";
+          item.style.transform = "scale(0.95)";
           setTimeout(() => item.remove(), 300);
         } catch (error) {
           console.error(`[Garden] Failed to accept ${type} suggestion:`, error);
@@ -25462,14 +25960,37 @@ function setupGardenMaintenance() {
   const pruneWeakBtn = document.getElementById("garden-prune-weak-btn");
   const pruneStaleBtn = document.getElementById("garden-prune-stale-btn");
   const enrichAllBtn = document.getElementById("garden-enrich-all-btn");
+  const cleanupGarbageBtn = document.getElementById(
+    "garden-cleanup-garbage-btn",
+  );
 
   if (pruneWeakBtn) {
     pruneWeakBtn.addEventListener("click", async () => {
+      // Fetch preview counts first
+      pruneWeakBtn.disabled = true;
+      let previewCount = "unknown number of";
+      try {
+        const preview = await fetch(
+          "http://127.0.0.1:11436/polly/graph/garden/prune/preview",
+        );
+        if (preview.ok) {
+          const data = await preview.json();
+          previewCount = data.weak_relationships || 0;
+        }
+      } catch {
+        /* use fallback text */
+      }
+      pruneWeakBtn.disabled = false;
+
+      if (previewCount === 0) {
+        showToast("No weak links to prune!", "info");
+        return;
+      }
+
       if (
         !(await ConfirmDialog.show({
           title: "Prune weak links",
-          message:
-            "Remove all connections with strength below 0.3? This cannot be undone.",
+          message: `Found ${previewCount} connections with strength below 0.3. Remove them? This cannot be undone.`,
           confirmLabel: "Prune",
           destructive: true,
         }))
@@ -25484,9 +26005,7 @@ function setupGardenMaintenance() {
       try {
         const response = await fetch(
           "http://127.0.0.1:11436/polly/graph/garden/prune?weak_threshold=0.3",
-          {
-            method: "DELETE",
-          },
+          { method: "DELETE" },
         );
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
@@ -25508,11 +26027,31 @@ function setupGardenMaintenance() {
 
   if (pruneStaleBtn) {
     pruneStaleBtn.addEventListener("click", async () => {
+      // Fetch preview counts first
+      pruneStaleBtn.disabled = true;
+      let previewCount = "unknown number of";
+      try {
+        const preview = await fetch(
+          "http://127.0.0.1:11436/polly/graph/garden/prune/preview",
+        );
+        if (preview.ok) {
+          const data = await preview.json();
+          previewCount = data.stale_entities || 0;
+        }
+      } catch {
+        /* use fallback text */
+      }
+      pruneStaleBtn.disabled = false;
+
+      if (previewCount === 0) {
+        showToast("No stale entities to remove!", "info");
+        return;
+      }
+
       if (
         !(await ConfirmDialog.show({
           title: "Remove stale entities",
-          message:
-            "Remove entities not seen in 180 days with fewer than 3 mentions? This cannot be undone.",
+          message: `Found ${previewCount} entities not seen in 180 days with fewer than 3 mentions. Remove them? This cannot be undone.`,
           confirmLabel: "Remove",
           destructive: true,
         }))
@@ -25527,9 +26066,7 @@ function setupGardenMaintenance() {
       try {
         const response = await fetch(
           "http://127.0.0.1:11436/polly/graph/garden/prune?stale_days=180",
-          {
-            method: "DELETE",
-          },
+          { method: "DELETE" },
         );
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
@@ -25550,8 +26087,26 @@ function setupGardenMaintenance() {
 
   if (enrichAllBtn) {
     enrichAllBtn.addEventListener("click", async () => {
+      // Fetch preview counts first
+      enrichAllBtn.disabled = true;
+      let previewCount = 0;
+      try {
+        const preview = await fetch(
+          "http://127.0.0.1:11436/polly/graph/garden/prune/preview",
+        );
+        if (preview.ok) {
+          const data = await preview.json();
+          previewCount = data.unenriched_notes || 0;
+        }
+      } catch {
+        /* fallback to suggestion count */
+      }
+      enrichAllBtn.disabled = false;
+
       const suggestions = window.gardenSuggestions?.enrichment_candidates || [];
-      if (suggestions.length === 0) {
+      const count = previewCount || suggestions.length;
+
+      if (count === 0) {
         showToast("No notes need enrichment!", "info");
         return;
       }
@@ -25559,7 +26114,7 @@ function setupGardenMaintenance() {
       if (
         !(await ConfirmDialog.show({
           title: "Enrich notes",
-          message: `Enrich ${suggestions.length} unenriched notes? This may take a while.`,
+          message: `Enrich ${count} unenriched notes? This may take a while.`,
           confirmLabel: "Enrich",
         }))
       )
@@ -25596,6 +26151,67 @@ function setupGardenMaintenance() {
         enrichAllBtn.disabled = false;
         enrichAllBtn.innerHTML =
           '<i data-lucide="sparkles" style="width: 14px; height: 14px;"></i><span>Enrich Unenriched Notes</span>';
+        if (typeof lucide !== "undefined") lucide.createIcons();
+      }
+    });
+  }
+
+  // New: Cleanup garbage entities button
+  if (cleanupGarbageBtn) {
+    cleanupGarbageBtn.addEventListener("click", async () => {
+      cleanupGarbageBtn.disabled = true;
+      let previewCount = 0;
+      try {
+        const preview = await fetch(
+          "http://127.0.0.1:11436/polly/graph/garden/prune/preview",
+        );
+        if (preview.ok) {
+          const data = await preview.json();
+          previewCount = data.garbage_entities || 0;
+        }
+      } catch {
+        /* fallback */
+      }
+      cleanupGarbageBtn.disabled = false;
+
+      if (previewCount === 0) {
+        showToast("No garbage entities found!", "info");
+        return;
+      }
+
+      if (
+        !(await ConfirmDialog.show({
+          title: "Clean up garbage entities",
+          message: `Found ${previewCount} garbage entities (stopwords, single chars, etc). Remove them?`,
+          confirmLabel: "Clean Up",
+          destructive: true,
+        }))
+      )
+        return;
+
+      cleanupGarbageBtn.disabled = true;
+      cleanupGarbageBtn.innerHTML =
+        '<i data-lucide="loader-2" class="spinning" style="width: 14px; height: 14px;"></i><span>Cleaning...</span>';
+      if (typeof lucide !== "undefined") lucide.createIcons();
+
+      try {
+        const response = await fetch(
+          "http://127.0.0.1:11436/polly/graph/garden/cleanup",
+          { method: "POST" },
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        showToast(data.message, "success");
+        await loadGardenStats();
+        if (cytoscapeInstance) await initGraphCanvas();
+      } catch (error) {
+        console.error("[Garden] Cleanup garbage failed:", error);
+        showToast(`Failed to cleanup: ${error.message}`, "error");
+      } finally {
+        cleanupGarbageBtn.disabled = false;
+        cleanupGarbageBtn.innerHTML =
+          '<i data-lucide="eraser" style="width: 14px; height: 14px;"></i><span>Clean Up Garbage</span>';
         if (typeof lucide !== "undefined") lucide.createIcons();
       }
     });
@@ -25655,26 +26271,42 @@ async function loadGardenDigest() {
       </div>
     `;
 
-    // Isolated Notes section
+    // Isolated Notes section — show unprocessed notes prominently
     const isoNotes = digest.isolated_notes || [];
+    const unprocessedNotes = isoNotes.filter((n) => n.unprocessed);
+    const processedIso = isoNotes.filter((n) => !n.unprocessed);
     html += _renderDigestSection(
       "isolated-notes",
       "Isolated Notes",
       isoNotes.length,
       isoNotes.length > 0 ? "#f59e0b" : "#10b981",
-      isoNotes
-        .map(
-          (n) =>
-            `<div class="garden-digest-item">
-            <span class="garden-digest-item-name">${escapeHtml(n.source_id)}</span>
-            <span class="garden-digest-item-meta">${n.entity_count} entities, max ${n.max_connection_count} conn</span>
-          </div>`,
-        )
-        .join("") ||
+      (unprocessedNotes.length > 0
+        ? `<div style="padding: 6px 8px; margin-bottom: 6px; background: #f59e0b11; border-radius: 4px; border-left: 3px solid #f59e0b;">
+            <div style="font-size: 10px; font-weight: 600; color: #f59e0b; margin-bottom: 4px;">${unprocessedNotes.length} Unenriched Notes</div>
+            ${unprocessedNotes
+              .map(
+                (n) =>
+                  `<div class="garden-digest-item" style="display: flex; align-items: center; justify-content: space-between;">
+                    <span class="garden-digest-item-name" style="flex: 1;">${escapeHtml(n.source_id)}</span>
+                    <button class="garden-digest-enrich-btn" data-note-name="${escapeHtml(n.source_id)}" style="font-size: 9px; padding: 2px 6px; background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b44; border-radius: 3px; cursor: pointer;">Enrich</button>
+                  </div>`,
+              )
+              .join("")}
+          </div>`
+        : "") +
+        processedIso
+          .map(
+            (n) =>
+              `<div class="garden-digest-item">
+              <span class="garden-digest-item-name">${escapeHtml(n.source_id)}</span>
+              <span class="garden-digest-item-meta">${n.entity_count} entities, max ${n.max_connection_count} conn</span>
+            </div>`,
+          )
+          .join("") ||
         '<div style="padding: 8px; color: var(--text-secondary);">No isolated notes</div>',
     );
 
-    // Isolated Entities section
+    // Isolated Entities section — show type badge
     const isoEntities = digest.isolated_entities || [];
     html += _renderDigestSection(
       "isolated-entities",
@@ -25684,16 +26316,17 @@ async function loadGardenDigest() {
       isoEntities
         .map(
           (e) =>
-            `<div class="garden-digest-item">
-            <span class="garden-digest-item-name">${escapeHtml(e.name)}</span>
-            <span class="garden-digest-item-meta">${e.entity_type} · ${e.connection_count} conn · ${Math.round((e.authority_score || 0) * 100)}% auth</span>
+            `<div class="garden-digest-item" style="display: flex; align-items: center; gap: 6px;">
+            <span class="garden-digest-entity-type-badge">${escapeHtml(e.entity_type)}</span>
+            <span class="garden-digest-item-name" style="flex: 1;">${escapeHtml(e.name)}</span>
+            <span class="garden-digest-item-meta">${e.connection_count} conn · ${Math.round((e.authority_score || 0) * 100)}%</span>
           </div>`,
         )
         .join("") ||
         '<div style="padding: 8px; color: var(--text-secondary);">No isolated entities</div>',
     );
 
-    // Merge Candidates section
+    // Merge Candidates section — show confidence bar + dismiss button
     const merges = digest.merge_candidates || [];
     html += _renderDigestSection(
       "merge-candidates",
@@ -25701,18 +26334,23 @@ async function loadGardenDigest() {
       merges.length,
       merges.length > 0 ? "#f59e0b" : "#10b981",
       merges
-        .map(
-          (m) =>
-            `<div class="garden-digest-item">
-            <span class="garden-digest-item-name">${escapeHtml(m.entity_a)} ← ${escapeHtml(m.entity_b)}</span>
-            <span class="garden-digest-item-meta">${Math.round(m.confidence * 100)}%</span>
-          </div>`,
-        )
+        .map((m) => {
+          const pct = Math.round(m.confidence * 100);
+          const color =
+            pct >= 80 ? "#10b981" : pct >= 60 ? "#f59e0b" : "#808080";
+          return `<div class="garden-digest-item" style="display: flex; align-items: center; gap: 6px;">
+              <span class="garden-digest-item-name" style="flex: 1;">${escapeHtml(m.entity_a)} ← ${escapeHtml(m.entity_b)}</span>
+              <span style="font-size: 9px; color: ${color}; font-weight: 600; min-width: 30px; text-align: right;">${pct}%</span>
+              <button class="garden-digest-dismiss-btn" data-type="merge" data-key="${escapeHtml(m.entity_a)}::${escapeHtml(m.entity_b)}" title="Dismiss" style="background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 2px;">
+                <i data-lucide="x" style="width: 10px; height: 10px;"></i>
+              </button>
+            </div>`;
+        })
         .join("") ||
         '<div style="padding: 8px; color: var(--text-secondary);">No merge candidates</div>',
     );
 
-    // Connection Suggestions section
+    // Connection Suggestions section — show dismiss button
     const connSugs = digest.connection_suggestions || [];
     html += _renderDigestSection(
       "connection-sugs",
@@ -25720,18 +26358,21 @@ async function loadGardenDigest() {
       connSugs.length,
       connSugs.length > 0 ? "#3b82f6" : "#10b981",
       connSugs
-        .map(
-          (c) =>
-            `<div class="garden-digest-item">
-            <span class="garden-digest-item-name">${escapeHtml(c.source_note)} → ${escapeHtml(c.target_note)}</span>
-            <span class="garden-digest-item-meta">${Math.round(c.confidence * 100)}%</span>
-          </div>`,
-        )
+        .map((c) => {
+          const pct = Math.round(c.confidence * 100);
+          return `<div class="garden-digest-item" style="display: flex; align-items: center; gap: 6px;">
+              <span class="garden-digest-item-name" style="flex: 1;">${escapeHtml(c.source_note)} → ${escapeHtml(c.target_note)}</span>
+              <span style="font-size: 9px; color: #3b82f6; font-weight: 600; min-width: 30px; text-align: right;">${pct}%</span>
+              <button class="garden-digest-dismiss-btn" data-type="connection" data-key="${escapeHtml(c.source_note)}::${escapeHtml(c.target_note)}" title="Dismiss" style="background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 2px;">
+                <i data-lucide="x" style="width: 10px; height: 10px;"></i>
+              </button>
+            </div>`;
+        })
         .join("") ||
         '<div style="padding: 8px; color: var(--text-secondary);">No suggestions</div>',
     );
 
-    // Enrichment Candidates section
+    // Enrichment Candidates section — show Enrich button
     const enrichCands = digest.enrichment_candidates || [];
     html += _renderDigestSection(
       "enrich-candidates",
@@ -25741,9 +26382,10 @@ async function loadGardenDigest() {
       enrichCands
         .map(
           (e) =>
-            `<div class="garden-digest-item">
-            <span class="garden-digest-item-name">${escapeHtml(e.note_title || e.note_name)}</span>
+            `<div class="garden-digest-item" style="display: flex; align-items: center; gap: 6px;">
+            <span class="garden-digest-item-name" style="flex: 1;">${escapeHtml(e.note_title || e.note_name)}</span>
             <span class="garden-digest-item-meta">${e.connection_count} conn</span>
+            <button class="garden-digest-enrich-btn" data-note-name="${escapeHtml(e.note_name)}" style="font-size: 9px; padding: 2px 6px; background: #8b5cf622; color: #8b5cf6; border: 1px solid #8b5cf644; border-radius: 3px; cursor: pointer;">Enrich</button>
           </div>`,
         )
         .join("") ||
@@ -25770,6 +26412,75 @@ async function loadGardenDigest() {
           }
         });
       });
+
+    // Wire dismiss buttons in digest items
+    container.querySelectorAll(".garden-digest-dismiss-btn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const type = btn.dataset.type;
+        const key = btn.dataset.key;
+        const item = btn.closest(".garden-digest-item");
+
+        try {
+          await fetch(
+            "http://127.0.0.1:11436/polly/graph/garden/suggestion/dismiss",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                suggestion_type: type,
+                suggestion_key: key,
+              }),
+            },
+          );
+        } catch (err) {
+          console.warn("[Garden] Failed to persist digest dismissal:", err);
+        }
+
+        if (item) {
+          item.style.transition = "opacity 0.2s, height 0.2s";
+          item.style.opacity = "0";
+          item.style.height = "0";
+          item.style.overflow = "hidden";
+          setTimeout(() => item.remove(), 200);
+        }
+      });
+    });
+
+    // Wire enrich buttons in digest items
+    container.querySelectorAll(".garden-digest-enrich-btn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const noteName = btn.dataset.noteName;
+        btn.disabled = true;
+        btn.textContent = "...";
+
+        try {
+          const response = await fetch(
+            "http://127.0.0.1:11436/polly/graph/garden/enrich",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ note_names: [noteName], force: false }),
+            },
+          );
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+
+          btn.textContent = "\u2713";
+          btn.style.color = "#10b981";
+          btn.style.borderColor = "#10b98144";
+          btn.style.background = "#10b98122";
+          showToast(`Enriched with ${data.entities_added} entities`, "success");
+          // Refresh stats
+          loadGardenStats();
+        } catch (error) {
+          btn.textContent = "Failed";
+          btn.style.color = "#ef4444";
+          console.error("[Garden] Enrich single note failed:", error);
+        }
+      });
+    });
 
     if (typeof lucide !== "undefined") lucide.createIcons();
   } catch (error) {

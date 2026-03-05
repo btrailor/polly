@@ -77,7 +77,9 @@
   border-radius: 3px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .browser-ribbon-btn:hover {
@@ -168,7 +170,9 @@
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .btn-icon:hover {
@@ -204,7 +208,7 @@
   background: var(--bg-primary);
   border: none;
   color: var(--text-primary);
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", monospace;
   font-size: var(--font-md);
   line-height: 1.6;
   resize: none;
@@ -217,7 +221,9 @@
   overflow-y: auto;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+    Cantarell, sans-serif;
   font-size: 15px;
   line-height: 1.7;
   cursor: text;
@@ -272,7 +278,7 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 3px;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+  font-family: "SF Mono", "Monaco", "Inconsolata", monospace;
   font-size: var(--font-body);
   color: var(--accent);
 }
@@ -345,7 +351,9 @@
   border-left: 1px solid var(--border-color);
   overflow-y: auto;
   padding: 8px 0;
-  transition: width 0.2s, min-width 0.2s;
+  transition:
+    width 0.2s,
+    min-width 0.2s;
   position: relative;
 }
 
@@ -586,31 +594,31 @@
 }
 
 /* TOC Indentation Levels */
-.toc-item.level-1 { 
-  --toc-indent: 0px; 
-  font-weight: 500; 
+.toc-item.level-1 {
+  --toc-indent: 0px;
+  font-weight: 500;
 }
 
-.toc-item.level-2 { 
-  --toc-indent: 16px; 
+.toc-item.level-2 {
+  --toc-indent: 16px;
 }
 
-.toc-item.level-3 { 
-  --toc-indent: 32px; 
+.toc-item.level-3 {
+  --toc-indent: 32px;
 }
 
-.toc-item.level-4 { 
-  --toc-indent: 48px; 
+.toc-item.level-4 {
+  --toc-indent: 48px;
   font-size: var(--font-sm);
 }
 
-.toc-item.level-5 { 
-  --toc-indent: 64px; 
+.toc-item.level-5 {
+  --toc-indent: 64px;
   font-size: var(--font-sm);
 }
 
-.toc-item.level-6 { 
-  --toc-indent: 80px; 
+.toc-item.level-6 {
+  --toc-indent: 80px;
   font-size: var(--font-xs);
 }
 
@@ -638,7 +646,6 @@
 
 /* ======================================== */
 
-
 /* Search Results Dropdown */
 #notes-search-results {
   position: absolute;
@@ -651,7 +658,8 @@
   border-radius: var(--radius-sm);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   overflow-y: auto;
-  z-index: var(--z-dropdown);  display: none;
+  z-index: var(--z-dropdown);
+  display: none;
 }
 
 .search-results-list {
@@ -830,21 +838,25 @@
 }
 
 /* Callout type colors */
-.callout-note, .callout-info {
+.callout-note,
+.callout-info {
   border-left-color: #5b9fd8;
   background: rgba(91, 159, 216, 0.1);
 }
 
-.callout-note .callout-title, .callout-info .callout-title {
+.callout-note .callout-title,
+.callout-info .callout-title {
   color: #5b9fd8;
 }
 
-.callout-tip, .callout-hint {
+.callout-tip,
+.callout-hint {
   border-left-color: #3dc5c0;
   background: rgba(61, 197, 192, 0.1);
 }
 
-.callout-tip .callout-title, .callout-hint .callout-title {
+.callout-tip .callout-title,
+.callout-hint .callout-title {
   color: #3dc5c0;
 }
 
@@ -857,39 +869,55 @@
   color: #c266ff;
 }
 
-.callout-warning, .callout-caution, .callout-attention {
+.callout-warning,
+.callout-caution,
+.callout-attention {
   border-left-color: #f5a623;
   background: rgba(245, 166, 35, 0.1);
 }
 
-.callout-warning .callout-title, .callout-caution .callout-title, .callout-attention .callout-title {
+.callout-warning .callout-title,
+.callout-caution .callout-title,
+.callout-attention .callout-title {
   color: #f5a623;
 }
 
-.callout-danger, .callout-error, .callout-failure {
+.callout-danger,
+.callout-error,
+.callout-failure {
   border-left-color: #e85c5c;
   background: rgba(232, 92, 92, 0.1);
 }
 
-.callout-danger .callout-title, .callout-error .callout-title, .callout-failure .callout-title {
+.callout-danger .callout-title,
+.callout-error .callout-title,
+.callout-failure .callout-title {
   color: #e85c5c;
 }
 
-.callout-success, .callout-check, .callout-done {
+.callout-success,
+.callout-check,
+.callout-done {
   border-left-color: #5fcf80;
   background: rgba(95, 207, 128, 0.1);
 }
 
-.callout-success .callout-title, .callout-check .callout-title, .callout-done .callout-title {
+.callout-success .callout-title,
+.callout-check .callout-title,
+.callout-done .callout-title {
   color: #5fcf80;
 }
 
-.callout-question, .callout-help, .callout-faq {
+.callout-question,
+.callout-help,
+.callout-faq {
   border-left-color: #ad5ce5;
   background: rgba(173, 92, 229, 0.1);
 }
 
-.callout-question .callout-title, .callout-help .callout-title, .callout-faq .callout-title {
+.callout-question .callout-title,
+.callout-help .callout-title,
+.callout-faq .callout-title {
   color: #ad5ce5;
 }
 
@@ -902,12 +930,14 @@
   color: #e85c5c;
 }
 
-.callout-quote, .callout-cite {
+.callout-quote,
+.callout-cite {
   border-left-color: #9ca3af;
   background: rgba(156, 163, 175, 0.1);
 }
 
-.callout-quote .callout-title, .callout-cite .callout-title {
+.callout-quote .callout-title,
+.callout-cite .callout-title {
   color: #9ca3af;
 }
 
@@ -923,7 +953,9 @@
   font-weight: 500;
   padding: 2px 8px;
   border-radius: var(--radius-sm, 4px);
-  transition: color 0.2s, background 0.2s;
+  transition:
+    color 0.2s,
+    background 0.2s;
   white-space: nowrap;
 }
 
@@ -1187,8 +1219,10 @@
   opacity: 0.8;
   margin-bottom: 4px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.4;
 }
 
 .notes-card-meta {
@@ -1271,6 +1305,243 @@
   color: var(--text-primary);
 }
 
+/* ==================== List View: Domain Dot + Compact Tags ==================== */
+
+.browse-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.1s;
+  min-height: 28px;
+}
+
+.browse-list-item:hover {
+  background: var(--bg-hover);
+}
+
+.browse-list-item:focus {
+  background: var(--bg-hover);
+  outline: 1px solid var(--accent-primary);
+  outline-offset: -1px;
+}
+
+.browse-item-domain-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.browse-item-title {
+  flex: 1;
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browse-item-tags-compact {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.browse-item-tag {
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.browse-item-date {
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.5;
+  flex-shrink: 0;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* ==================== Card View: Rich Preview ==================== */
+
+.notes-card-info {
+  display: flex;
+  gap: 8px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  align-items: center;
+}
+
+.notes-card-domain-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border: 1px solid;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.notes-card-tag {
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.notes-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.notes-card-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.notes-card-conns {
+  opacity: 0.6;
+  font-size: 10px;
+}
+
+/* ==================== Quick Filter Pills ==================== */
+
+.notes-quick-filters {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.notes-quick-filter-btn {
+  font-size: 10px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.notes-quick-filter-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.notes-quick-filter-btn.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #fff;
+}
+
+/* ==================== Note Context Menu ==================== */
+
+.notes-context-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: 4px 0;
+  min-width: 140px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.notes-context-menu-item {
+  padding: 6px 12px;
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.notes-context-menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.notes-context-menu-danger {
+  color: #e06c75;
+}
+
+.notes-context-menu-danger:hover {
+  background: rgba(224, 108, 117, 0.15);
+}
+
+.notes-context-menu-separator {
+  height: 1px;
+  background: var(--border-primary);
+  margin: 3px 0;
+}
+
+/* ==================== Undo Toast ==================== */
+
+.notes-undo-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10001;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.2s ease-out;
+}
+
+.notes-undo-toast.fading {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.notes-undo-btn {
+  background: var(--accent-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: var(--font-xs);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.notes-undo-btn:hover {
+  opacity: 0.9;
+}
+
+.notes-undo-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 2px;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateX(-50%) translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
 /* ==================== End Notes Browse Enhancements ==================== */
 
 /* Responsive */
@@ -1278,7 +1549,7 @@
   .notes-sidebar {
     width: 200px;
   }
-  
+
   .notes-right-sidebar {
     width: 240px;
   }
@@ -1288,7 +1559,7 @@
   .notes-content {
     flex-direction: column;
   }
-  
+
   .notes-sidebar,
   .notes-right-sidebar {
     width: 100%;
