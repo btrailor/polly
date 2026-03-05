@@ -12,13 +12,28 @@
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Overall**          | ~92% Tier 1 complete, production-ready                                                                                                                                                                                                                        |
 | **Completed**        | 17+ major phases (0.5, 1, 1.5, 2a, 2b, 3, 4, 5, 11, 11c, 13a, 14, 16, 16c ✅, 16e, 21, 22, 23) + Core Framework Waves 1–5 + Knowledge Graph Navigation + Knowledge Graph Refinement + Knowledge Graph Advanced (12b) + Scalable Memory Layers + Nexus (24a–e) |
-| **Current priority** | Phase 24 (Agent Swarms) or Phase 12b (Knowledge Graph Advanced)                                                                                                                                                                                               |
-| **Next recommended** | Wave 5: LlamaIndex Knowledge Graph (#24) or Phase 24 Agent Swarms                                                                                                                                                                                             |
+| **Current priority** | UX Bug Fixes: All complete (AI Note Creation Pipeline ✅, Notes Browser Redesign ✅, Knowledge Graph Overhaul ✅)                                                                                                                                             |
+| **Next recommended** | Library Extraction (Phase C), Constitutional Epistemology, or other roadmap items                                                                                                                                                                             |
 | **Spec integration** | Feb 2026 — Knowledge management, DRM, BAD Canvas, knowledge quality specs integrated into OpenSpec                                                                                                                                                            |
 
 ---
 
 ## Current Priority (Active Work)
+
+### Fix Conversation Auto-Naming ✅ (March 2026)
+
+- **Status:** Complete. Case-insensitive title comparison fix, dedicated title generation endpoint, retry logic with heuristic fallback.
+- **OpenSpec:** [openspec/changes/fix-conversation-auto-naming/](../../changes/fix-conversation-auto-naming/)
+
+### UX Bug Fixes (Active — March 2026)
+
+All UX bug fixes completed:
+
+| Fix                               | Priority | Status      | OpenSpec                                                                       |
+| --------------------------------- | -------- | ----------- | ------------------------------------------------------------------------------ |
+| Fix AI Note Creation Pipeline     | P1       | ✅ Complete | [fix-ai-note-creation-pipeline/](../../changes/fix-ai-note-creation-pipeline/) |
+| Notes Browser Redesign            | P1       | ✅ Complete | [notes-browser-redesign/](../../changes/notes-browser-redesign/)               |
+| Knowledge Graph & Garden Overhaul | P0       | ✅ Complete | [knowledge-graph-overhaul/](../../changes/knowledge-graph-overhaul/)           |
 
 ### Core Framework Refinement 🧠 ✅ Waves 1–3 COMPLETE, Wave 4 In Progress (Feb 2026)
 
