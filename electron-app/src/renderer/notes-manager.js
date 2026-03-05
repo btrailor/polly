@@ -184,15 +184,20 @@ class NotesManager {
         console.warn("[Notes] Check server logs for index build messages.");
       }
 
-      // Update browse list (replaces updateFileTree)
-      const container = document.querySelector("#notes-browse-list");
-      if (container) {
-        this.updateBrowseList(container, {
-          ...this.browseFilters,
-          onItemClick: (itemEl, item) => this.openNote(item.id),
-        });
+      // Update browse list — use the view-mode-aware renderer if available
+      // so the correct view (list / grouped / card) is shown on initial load
+      if (typeof window.applyNotesBrowseFilters === "function") {
+        await window.applyNotesBrowseFilters();
       } else {
-        console.error("[Notes] Could not find #notes-browse-list container");
+        const container = document.querySelector("#notes-browse-list");
+        if (container) {
+          this.updateBrowseList(container, {
+            ...this.browseFilters,
+            onItemClick: (itemEl, item) => this.openNote(item.id),
+          });
+        } else {
+          console.error("[Notes] Could not find #notes-browse-list container");
+        }
       }
     } catch (error) {
       console.error("[Notes] Error loading notes:", error);
@@ -1304,9 +1309,13 @@ class NotesManager {
       html += `
         <div class="browse-list-item" data-note-name="${item.id}" data-path="${item.path || ""}" data-type="${item.type}">
           <span class="browse-item-domain-dot" style="background: ${domainColor};" title="${item.primary_domain || "No domain"}"></span>
-          <span class="browse-item-title">${item.name}</span>
-          <span class="browse-item-tags-compact">${tagsHtml}</span>
-          <span class="browse-item-date">${date}</span>
+          <div class="browse-item-content">
+            <div class="browse-item-main">
+              <span class="browse-item-title">${item.name}</span>
+              <span class="browse-item-date">${date}</span>
+            </div>
+            ${tagsHtml ? `<div class="browse-item-tags-compact">${tagsHtml}</div>` : ""}
+          </div>
         </div>
       `;
     }
@@ -1396,9 +1405,13 @@ class NotesManager {
         const action = item.dataset.action;
         if (action === "open") this.openNote(noteName);
         else if (action === "rename") {
-          const el = document.querySelector(
-            `.browse-list-item[data-note-name="${noteName}"]`,
-          );
+          const el =
+            document.querySelector(
+              `.browse-list-item[data-note-name="${noteName}"]`,
+            ) ||
+            document.querySelector(
+              `.notes-card-item[data-note-name="${noteName}"]`,
+            );
           if (el) this.startInlineRename(el);
         } else if (action === "delete") this.confirmDeleteNote(noteName);
       });
@@ -1423,10 +1436,12 @@ class NotesManager {
 
     if (!note) return;
 
-    // Try both old (.file-name) and new (.browse-item-title) DOM structures
+    // Try both old (.file-name) and new (.browse-item-title) DOM structures,
+    // plus card view (.notes-card-title)
     const titleSpan =
       item.querySelector(".browse-item-title") ||
-      item.querySelector(".file-name");
+      item.querySelector(".file-name") ||
+      item.querySelector(".notes-card-title");
     if (!titleSpan) return;
 
     const originalText = titleSpan.textContent;

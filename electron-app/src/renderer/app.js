@@ -22371,6 +22371,8 @@ async function applyNotesBrowseFilters() {
     });
   }
 }
+// Expose so notes-manager.js can trigger a view-mode-aware refresh
+window.applyNotesBrowseFilters = applyNotesBrowseFilters;
 
 /**
  * Render notes grouped by domain in collapsible sections.
@@ -22417,12 +22419,29 @@ async function renderNotesDomainGrouped(container) {
       domainMap[d.id] = d;
     });
 
-    // Group items by primary_domain
+    // Group items by domain — place each item under every domain it belongs to
     const groups = {};
     items.forEach((item) => {
-      const domain = item.primary_domain || "uncategorized";
-      if (!groups[domain]) groups[domain] = [];
-      groups[domain].push(item);
+      // Collect all domains for this item (primary + secondary)
+      const allDomains = new Set();
+      if (item.primary_domain) {
+        // Handle comma-separated primary domains as a safety net
+        item.primary_domain.split(",").forEach((d) => {
+          const trimmed = d.trim().toLowerCase();
+          if (trimmed) allDomains.add(trimmed);
+        });
+      }
+      if (item.secondary_domains && Array.isArray(item.secondary_domains)) {
+        item.secondary_domains.forEach((d) => {
+          if (d && typeof d === "string")
+            allDomains.add(d.trim().toLowerCase());
+        });
+      }
+      if (allDomains.size === 0) allDomains.add("uncategorized");
+      allDomains.forEach((domain) => {
+        if (!groups[domain]) groups[domain] = [];
+        groups[domain].push(item);
+      });
     });
 
     // Build ordered domain list: configured domains first (by config order), then uncategorized
@@ -22519,13 +22538,19 @@ async function renderNotesDomainGrouped(container) {
       });
     });
 
-    // Item click handlers + keyboard nav
+    // Item click handlers + keyboard nav + context menu
     container.querySelectorAll(".browse-list-item").forEach((item) => {
       item.setAttribute("tabindex", "0");
       item.addEventListener("click", () => {
         const noteName = item.dataset.noteName;
         if (noteName && window.notesManager)
           window.notesManager.openNote(noteName);
+      });
+      item.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        const noteName = item.dataset.noteName;
+        if (noteName && window.notesManager)
+          window.notesManager._showNoteContextMenu(e, noteName);
       });
       item.addEventListener("keydown", (e) => {
         if (e.key === "Enter") item.click();
@@ -22537,6 +22562,11 @@ async function renderNotesDomainGrouped(container) {
           e.preventDefault();
           const prev = item.previousElementSibling;
           if (prev) prev.focus();
+        } else if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          const noteName = item.dataset.noteName;
+          if (noteName && window.notesManager)
+            window.notesManager.confirmDeleteNote(noteName, item);
         }
       });
     });
@@ -22637,6 +22667,12 @@ async function renderNotesCardView(container) {
         const noteName = card.dataset.noteName;
         if (noteName && window.notesManager)
           window.notesManager.openNote(noteName);
+      });
+      card.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        const noteName = card.dataset.noteName;
+        if (noteName && window.notesManager)
+          window.notesManager._showNoteContextMenu(e, noteName);
       });
       card.addEventListener("keydown", (e) => {
         if (e.key === "Enter") card.click();
