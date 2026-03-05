@@ -1115,15 +1115,9 @@ def create_settings_router() -> APIRouter:
             if not polly:
                 return {"templates": [], "count": 0}
 
-            vault_path_str = polly.config.get("obsidian.vault_path")
-            if not vault_path_str:
-                return {"templates": [], "count": 0}
-
-            templates_folder = polly.config.get("templates.folder", ".polly/templates")
-            templates_dir = Path(vault_path_str) / templates_folder
-
-            if not templates_dir.exists():
-                return {"templates": [], "count": 0}
+            # Templates are stored in ~/.polly/templates/ (separate from browsable notes)
+            templates_dir = Path.home() / ".polly" / "templates"
+            templates_dir.mkdir(parents=True, exist_ok=True)
 
             manager = TemplateManager(str(templates_dir))
             templates_metadata = manager.get_gallery_metadata()

@@ -7171,27 +7171,9 @@ def create_app(polly_instance=None) -> FastAPI:
         try:
             from core.templates import TemplateManager
             
-            # Get vault path and templates folder from config
-            vault_path_str = polly.config.get("obsidian.vault_path")
-            if not vault_path_str:
-                logger.warning("Vault path not configured for templates")
-                return {
-                    "templates": [],
-                    "count": 0
-                }
-            
-            vault_path = Path(vault_path_str)
-            templates_folder = polly.config.get("templates.folder", ".polly/templates")
-            templates_dir = vault_path / templates_folder
-            
-            # Check if templates directory exists
-            if not templates_dir.exists():
-                logger.warning(f"Templates directory not found: {templates_dir}")
-                return {
-                    "templates": [],
-                    "count": 0,
-                    "error": f"Templates directory not found: {templates_dir}"
-                }
+            # Templates are stored in ~/.polly/templates/ (separate from browsable notes)
+            templates_dir = Path.home() / ".polly" / "templates"
+            templates_dir.mkdir(parents=True, exist_ok=True)
             
             # Load templates
             manager = TemplateManager(str(templates_dir))
@@ -7226,18 +7208,13 @@ def create_app(polly_instance=None) -> FastAPI:
         try:
             from core.templates import TemplateManager
             
-            # Get vault path and templates folder from config
             polly = get_polly()
             if not polly:
                 raise HTTPException(503, "Polly not initialized")
             
-            vault_path_str = polly.config.get("obsidian.vault_path")
-            if not vault_path_str:
-                raise HTTPException(503, "Vault path not configured")
-            
-            vault_path = Path(vault_path_str)
-            templates_folder = polly.config.get("templates.folder", ".polly/templates")
-            templates_dir = vault_path / templates_folder
+            # Templates are stored in ~/.polly/templates/ (separate from browsable notes)
+            templates_dir = Path.home() / ".polly" / "templates"
+            templates_dir.mkdir(parents=True, exist_ok=True)
             
             # Load template
             manager = TemplateManager(str(templates_dir))
@@ -7278,12 +7255,8 @@ def create_app(polly_instance=None) -> FastAPI:
             if not polly:
                 raise HTTPException(503, "Polly not initialized")
 
-            vault_path_str = polly.config.get("obsidian.vault_path")
-            if not vault_path_str:
-                raise HTTPException(503, "Vault path not configured")
-
-            templates_folder = polly.config.get("templates.folder", ".polly/templates")
-            templates_dir = Path(vault_path_str) / templates_folder
+            # Templates are stored in ~/.polly/templates/ (separate from browsable notes)
+            templates_dir = Path.home() / ".polly" / "templates"
             templates_dir.mkdir(parents=True, exist_ok=True)
 
             name = (request.get("name") or "").strip()
@@ -7362,12 +7335,8 @@ def create_app(polly_instance=None) -> FastAPI:
             if not polly:
                 raise HTTPException(503, "Polly not initialized")
 
-            vault_path_str = polly.config.get("obsidian.vault_path")
-            if not vault_path_str:
-                raise HTTPException(503, "Vault path not configured")
-
-            templates_folder = polly.config.get("templates.folder", ".polly/templates")
-            templates_dir = Path(vault_path_str) / templates_folder
+            # Templates are stored in ~/.polly/templates/ (separate from browsable notes)
+            templates_dir = Path.home() / ".polly" / "templates"
             filepath = templates_dir / filename
 
             if not filepath.exists():
@@ -7435,12 +7404,8 @@ def create_app(polly_instance=None) -> FastAPI:
             if not polly:
                 raise HTTPException(503, "Polly not initialized")
 
-            vault_path_str = polly.config.get("obsidian.vault_path")
-            if not vault_path_str:
-                raise HTTPException(503, "Vault path not configured")
-
-            templates_folder = polly.config.get("templates.folder", ".polly/templates")
-            templates_dir = Path(vault_path_str) / templates_folder
+            # Templates are stored in ~/.polly/templates/ (separate from browsable notes)
+            templates_dir = Path.home() / ".polly" / "templates"
             filepath = templates_dir / filename
 
             if not filepath.exists():

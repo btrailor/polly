@@ -122,7 +122,7 @@ notes:
 
 # Template system (Phase 16e)
 templates:
-  folder: ".polly/templates" # Relative to vault root
+  folder: "templates" # Stored in ~/.polly/templates/ (separate from browsable notes)
   auto_reload: true # Watch for template changes
 
 # Codebase indexing
