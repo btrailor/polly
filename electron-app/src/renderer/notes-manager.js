@@ -276,7 +276,21 @@ class NotesManager {
       );
 
       if (!note) {
-        console.warn(`[Notes] Note not found: ${noteName}`);
+        console.warn(
+          `[Notes] Note not found: ${noteName} — offering to create it`,
+        );
+        // Obsidian-style: broken link click creates a new note.
+        // Derive the parent folder from the current note's path so the new
+        // note inherits the same domain.
+        let prefillFolder = "";
+        if (this.currentNote && this.currentNote.path) {
+          const parts = this.currentNote.path.replace(/\\/g, "/").split("/");
+          // Path like …/notes/<folder>/note.md — folder is second-to-last segment
+          if (parts.length >= 2) {
+            prefillFolder = parts[parts.length - 2];
+          }
+        }
+        this.showCreateNoteModal(noteName, prefillFolder);
         return;
       }
 
@@ -410,9 +424,12 @@ class NotesManager {
         const count = result.broken_count;
         const noun = count === 1 ? "broken link" : "broken links";
         msgEl.textContent = `${count} ${noun} found: `;
-        targetsEl.textContent = broken
-          .map((bl) => `[[${bl.target}]]`)
-          .join(", ");
+        // Show up to 10 broken links inline, truncate if more
+        const shown = broken.slice(0, 10);
+        const remainder = count - shown.length;
+        let targetsText = shown.map((bl) => `[[${bl.target}]]`).join(", ");
+        if (remainder > 0) targetsText += ` and ${remainder} more…`;
+        targetsEl.textContent = targetsText;
         banner.classList.remove("hidden");
         if (window.lucide) lucide.createIcons();
       } else {
@@ -2604,7 +2621,7 @@ class NotesManager {
   /**
    * Show note creation modal
    */
-  async showCreateNoteModal(prefillName = "") {
+  async showCreateNoteModal(prefillName = "", prefillFolder = "") {
     const modal = document.getElementById("note-creation-modal");
     const nameInput = document.getElementById("note-name-input");
     const folderSelect = document.getElementById("note-folder-select");
@@ -2635,8 +2652,11 @@ class NotesManager {
         folderSelect.appendChild(option);
       });
 
-      // Pre-select default: use activeDomainFilter if set, otherwise first folder
-      if (
+      // Pre-select default: use prefillFolder if given (broken-link flow),
+      // then activeDomainFilter, then first folder.
+      if (prefillFolder && data.folders.includes(prefillFolder)) {
+        folderSelect.value = prefillFolder;
+      } else if (
         this.activeDomainFilter &&
         data.folders.includes(this.activeDomainFilter)
       ) {

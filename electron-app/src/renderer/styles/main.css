@@ -7728,9 +7728,11 @@ body {
 /* ==================== Per-Note Validation Banner (Task #22b) ==================== */
 .notes-validation-banner {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 8px 12px;
+  max-height: 80px;
+  overflow-y: auto;
   background: rgba(240, 144, 59, 0.1);
   border-left: 3px solid var(--warning);
   border-bottom: 1px solid var(--border-color);
@@ -7763,6 +7765,8 @@ body {
 
 .validation-banner-close {
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
   background: none;
   border: none;
   color: var(--text-muted);
@@ -7904,3 +7908,234 @@ body {
   color: var(--text-primary);
 }
 /* ==================== End Vault Health ==================== */
+
+/* ==================== Template Management ==================== */
+
+.template-mgmt-section {
+  padding: 0;
+}
+
+.template-mgmt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.template-mgmt-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.template-mgmt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.template-mgmt-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg-secondary, #1e1e2e);
+  border: 1px solid var(--border-color, #2d2d3d);
+  transition: border-color 0.15s;
+}
+
+.template-mgmt-row:hover {
+  border-color: var(--text-muted, #606080);
+}
+
+.template-mgmt-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.template-mgmt-icon {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.template-mgmt-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.template-mgmt-category {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary, #2a2a3e);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.template-mgmt-desc {
+  font-size: 12px;
+  color: var(--text-secondary, #a0a0b0);
+  margin-left: 24px;
+}
+
+.template-mgmt-actions {
+  display: flex;
+  gap: 4px;
+  align-self: flex-end;
+  margin-top: -20px;
+}
+
+/* Template Editor Modal */
+
+.template-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+
+.template-editor-modal {
+  width: 820px;
+  max-width: 95vw;
+  max-height: 90vh;
+  background: var(--bg-primary, #181825);
+  border: 1px solid var(--border-color, #2d2d3d);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.template-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color, #2d2d3d);
+}
+
+.template-editor-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.template-editor-body {
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.template-editor-form {
+  flex: 0 0 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.template-editor-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.template-editor-row label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #a0a0b0);
+}
+
+.template-editor-row input,
+.template-editor-row select {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #2d2d3d);
+  background: var(--bg-secondary, #1e1e2e);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.template-editor-row input:focus,
+.template-editor-row select:focus {
+  border-color: var(--accent-color, #7c6fef);
+}
+
+.template-editor-row-group {
+  display: flex;
+  gap: 10px;
+}
+
+.template-editor-row-group .template-editor-row {
+  flex: 1;
+}
+
+.template-editor-divider {
+  height: 1px;
+  background: var(--border-color, #2d2d3d);
+  margin: 4px 0;
+}
+
+.template-editor-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.template-editor-content label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #a0a0b0);
+}
+
+.template-editor-content textarea {
+  flex: 1;
+  min-height: 300px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #2d2d3d);
+  background: var(--bg-secondary, #1e1e2e);
+  color: var(--text-primary);
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+  tab-size: 2;
+  transition: border-color 0.15s;
+}
+
+.template-editor-content textarea:focus {
+  border-color: var(--accent-color, #7c6fef);
+}
+
+.template-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-color, #2d2d3d);
+}
+
+.settings-empty-state i {
+  display: block;
+  margin: 0 auto;
+  color: var(--text-muted);
+}
+
+/* ==================== End Template Management ==================== */

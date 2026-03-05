@@ -4721,6 +4721,8 @@ function updateLeftSidebar(view) {
               loadDedupSettings();
             } else if (tab === "providers") {
               loadProviderSettings();
+            } else if (tab === "notes") {
+              loadNotesSettings();
             }
           });
         });
@@ -13861,6 +13863,338 @@ function setupGeneralSettings() {
   const useLiteLLMCheckbox = document.getElementById("settings-use-litellm");
   if (useLiteLLMCheckbox) {
     useLiteLLMCheckbox.addEventListener("change", saveGeneralSettings);
+  }
+}
+
+/**
+ * ===========================================
+ * NOTES SETTINGS — Template Management
+ * ===========================================
+ */
+
+let notesSettingsTemplates = [];
+
+async function loadNotesSettings() {
+  const container = document.getElementById("settings-notes-content");
+  if (!container) return;
+
+  container.innerHTML =
+    '<div class="loading-spinner">Loading templates...</div>';
+
+  try {
+    const response = await fetch(`${API_URL}/polly/templates`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    notesSettingsTemplates = data.templates || [];
+  } catch (err) {
+    console.error("Failed to load templates:", err);
+    notesSettingsTemplates = [];
+  }
+
+  renderNotesSettings();
+}
+
+function renderNotesSettings() {
+  const container = document.getElementById("settings-notes-content");
+  if (!container) return;
+
+  const templateRows =
+    notesSettingsTemplates.length === 0
+      ? `<div class="settings-empty-state" style="padding:32px; text-align:center; color:#808080;">
+         <i data-lucide="layout-template" style="width:40px; height:40px; margin-bottom:12px; opacity:0.5;"></i>
+         <p style="margin:8px 0 0;">No templates yet. Create one to get started.</p>
+       </div>`
+      : notesSettingsTemplates
+          .map(
+            (t) => `
+      <div class="template-mgmt-row" data-filename="${t.filename}">
+        <div class="template-mgmt-info">
+          <span class="template-mgmt-icon"><i data-lucide="${t.icon || "file-text"}" style="width:16px;height:16px;"></i></span>
+          <span class="template-mgmt-name">${t.name}</span>
+          <span class="template-mgmt-category">${t.category || "general"}</span>
+        </div>
+        <div class="template-mgmt-desc">${t.description || ""}</div>
+        <div class="template-mgmt-actions">
+          <button class="btn btn-secondary btn-sm template-edit-btn" data-filename="${t.filename}" title="Edit">
+            <i data-lucide="edit" style="width:12px;height:12px;"></i>
+          </button>
+          <button class="btn btn-secondary btn-sm template-delete-btn" data-filename="${t.filename}" title="Delete">
+            <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+          </button>
+        </div>
+      </div>
+    `,
+          )
+          .join("");
+
+  container.innerHTML = `
+    <div class="template-mgmt-section">
+      <div class="template-mgmt-header">
+        <div>
+          <h3 style="margin:0 0 4px;">Note Templates</h3>
+          <p style="margin:0; font-size:12px; color:#808080;">Create reusable templates for new notes. Templates can include frontmatter defaults and {{variable}} placeholders.</p>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btn-create-template">
+          <i data-lucide="plus" style="width:14px;height:14px;"></i>
+          New Template
+        </button>
+      </div>
+      <div class="template-mgmt-list">
+        ${templateRows}
+      </div>
+    </div>
+  `;
+
+  if (typeof lucide !== "undefined") lucide.createIcons();
+
+  // Wire up create button
+  document
+    .getElementById("btn-create-template")
+    ?.addEventListener("click", () => openTemplateEditor());
+
+  // Wire up edit buttons
+  container.querySelectorAll(".template-edit-btn").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      openTemplateEditor(btn.dataset.filename),
+    );
+  });
+
+  // Wire up delete buttons
+  container.querySelectorAll(".template-delete-btn").forEach((btn) => {
+    btn.addEventListener("click", () => deleteTemplate(btn.dataset.filename));
+  });
+}
+
+async function openTemplateEditor(filename) {
+  const isEdit = !!filename;
+  let template = null;
+
+  if (isEdit) {
+    try {
+      const resp = await fetch(
+        `${API_URL}/polly/templates/${encodeURIComponent(filename)}`,
+      );
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      template = data.template || data;
+    } catch (err) {
+      showToast("Failed to load template", "error");
+      return;
+    }
+  }
+
+  // Fetch domains for dropdown
+  let domains = [];
+  try {
+    const dr = await fetch(`${API_URL}/polly/domains/config`);
+    if (dr.ok) {
+      const dd = await dr.json();
+      domains = dd.domains || [];
+    }
+  } catch (_) {}
+
+  const domainOptions = domains
+    .map(
+      (d) =>
+        `<option value="${d.id}" ${template && template.frontmatter?.default_domain === d.id ? "selected" : ""}>${d.name}</option>`,
+    )
+    .join("");
+
+  const name = template?.name || "";
+  const icon = template?.frontmatter?.template_icon || "file-text";
+  const description = template?.description || "";
+  const category = template?.frontmatter?.template_category || "general";
+  const tags = (template?.frontmatter?.template_tags || []).join(", ");
+  const aiTone = template?.frontmatter?.ai_tone || "professional";
+  const aiFocus = template?.frontmatter?.ai_focus || "";
+  const defaultDomain = template?.frontmatter?.default_domain || "";
+  const defaultFolder = template?.frontmatter?.default_folder || "";
+  const defaultTags = (template?.frontmatter?.default_tags || []).join(", ");
+  const content = template?.markdown_content || "# {{title}}\n\n";
+
+  // Create modal overlay
+  const overlay = document.createElement("div");
+  overlay.className = "template-editor-overlay";
+  overlay.innerHTML = `
+    <div class="template-editor-modal">
+      <div class="template-editor-header">
+        <h3>${isEdit ? "Edit" : "Create"} Template</h3>
+        <button class="btn btn-secondary btn-sm template-editor-close" title="Close">
+          <i data-lucide="x" style="width:16px;height:16px;"></i>
+        </button>
+      </div>
+      <div class="template-editor-body">
+        <div class="template-editor-form">
+          <div class="template-editor-row">
+            <label>Name <span style="color:#e06c75;">*</span></label>
+            <input type="text" id="tpl-name" value="${name.replace(/"/g, "&quot;")}" placeholder="e.g. Meeting Notes" />
+          </div>
+          <div class="template-editor-row-group">
+            <div class="template-editor-row">
+              <label>Icon</label>
+              <input type="text" id="tpl-icon" value="${icon}" placeholder="lucide icon name" />
+            </div>
+            <div class="template-editor-row">
+              <label>Category</label>
+              <select id="tpl-category">
+                <option value="general" ${category === "general" ? "selected" : ""}>General</option>
+                <option value="meeting" ${category === "meeting" ? "selected" : ""}>Meeting</option>
+                <option value="project" ${category === "project" ? "selected" : ""}>Project</option>
+                <option value="journal" ${category === "journal" ? "selected" : ""}>Journal</option>
+                <option value="reference" ${category === "reference" ? "selected" : ""}>Reference</option>
+                <option value="learning" ${category === "learning" ? "selected" : ""}>Learning</option>
+                <option value="creative" ${category === "creative" ? "selected" : ""}>Creative</option>
+                <option value="custom" ${category === "custom" ? "selected" : ""}>Custom</option>
+              </select>
+            </div>
+          </div>
+          <div class="template-editor-row">
+            <label>Description</label>
+            <input type="text" id="tpl-description" value="${description.replace(/"/g, "&quot;")}" placeholder="Brief description of this template" />
+          </div>
+          <div class="template-editor-row">
+            <label>Tags <span style="font-size:11px;color:#808080;">(comma-separated)</span></label>
+            <input type="text" id="tpl-tags" value="${tags}" placeholder="e.g. meetings, standup" />
+          </div>
+          <div class="template-editor-divider"></div>
+          <h4 style="margin:0 0 8px; font-size:13px; color:#808080;">Defaults &amp; AI Hints</h4>
+          <div class="template-editor-row-group">
+            <div class="template-editor-row">
+              <label>Default Domain</label>
+              <select id="tpl-default-domain">
+                <option value="">None</option>
+                ${domainOptions}
+              </select>
+            </div>
+            <div class="template-editor-row">
+              <label>Default Folder</label>
+              <input type="text" id="tpl-default-folder" value="${defaultFolder.replace(/"/g, "&quot;")}" placeholder="e.g. meetings/standup" />
+            </div>
+          </div>
+          <div class="template-editor-row">
+            <label>Default Tags <span style="font-size:11px;color:#808080;">(comma-separated)</span></label>
+            <input type="text" id="tpl-default-tags" value="${defaultTags}" placeholder="Tags applied to new notes" />
+          </div>
+          <div class="template-editor-row-group">
+            <div class="template-editor-row">
+              <label>AI Tone</label>
+              <select id="tpl-ai-tone">
+                <option value="professional" ${aiTone === "professional" ? "selected" : ""}>Professional</option>
+                <option value="casual" ${aiTone === "casual" ? "selected" : ""}>Casual</option>
+                <option value="academic" ${aiTone === "academic" ? "selected" : ""}>Academic</option>
+                <option value="creative" ${aiTone === "creative" ? "selected" : ""}>Creative</option>
+                <option value="technical" ${aiTone === "technical" ? "selected" : ""}>Technical</option>
+              </select>
+            </div>
+            <div class="template-editor-row">
+              <label>AI Focus</label>
+              <input type="text" id="tpl-ai-focus" value="${aiFocus.replace(/"/g, "&quot;")}" placeholder="e.g. action items, key decisions" />
+            </div>
+          </div>
+        </div>
+        <div class="template-editor-content">
+          <label>Template Content <span style="font-size:11px;color:#808080;">Use {{variable}} for placeholders</span></label>
+          <textarea id="tpl-content" spellcheck="false">${content.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</textarea>
+        </div>
+      </div>
+      <div class="template-editor-footer">
+        <button class="btn btn-secondary" id="tpl-cancel">Cancel</button>
+        <button class="btn btn-primary" id="tpl-save">${isEdit ? "Save Changes" : "Create Template"}</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  if (typeof lucide !== "undefined") lucide.createIcons();
+
+  // Focus name
+  setTimeout(() => document.getElementById("tpl-name")?.focus(), 100);
+
+  // Close handlers
+  const closeEditor = () => overlay.remove();
+  overlay
+    .querySelector(".template-editor-close")
+    .addEventListener("click", closeEditor);
+  document.getElementById("tpl-cancel").addEventListener("click", closeEditor);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closeEditor();
+  });
+
+  // Save handler
+  document.getElementById("tpl-save").addEventListener("click", async () => {
+    const payload = {
+      name: document.getElementById("tpl-name").value.trim(),
+      icon: document.getElementById("tpl-icon").value.trim() || "file-text",
+      description: document.getElementById("tpl-description").value.trim(),
+      category: document.getElementById("tpl-category").value,
+      tags: document
+        .getElementById("tpl-tags")
+        .value.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      content: document.getElementById("tpl-content").value,
+      ai_tone: document.getElementById("tpl-ai-tone").value,
+      ai_focus: document.getElementById("tpl-ai-focus").value.trim(),
+      default_domain: document.getElementById("tpl-default-domain").value,
+      default_folder: document
+        .getElementById("tpl-default-folder")
+        .value.trim(),
+      default_tags: document
+        .getElementById("tpl-default-tags")
+        .value.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
+
+    if (!payload.name) {
+      showToast("Template name is required", "error");
+      return;
+    }
+
+    try {
+      const url = isEdit
+        ? `${API_URL}/polly/templates/${encodeURIComponent(filename)}`
+        : `${API_URL}/polly/templates`;
+      const method = isEdit ? "PUT" : "POST";
+
+      const resp = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${resp.status}`);
+      }
+
+      showToast(isEdit ? "Template updated" : "Template created", "success");
+      closeEditor();
+      await loadNotesSettings();
+    } catch (err) {
+      showToast("Failed to save template: " + err.message, "error");
+    }
+  });
+}
+
+async function deleteTemplate(filename) {
+  if (!confirm(`Delete template "${filename}"?`)) return;
+
+  try {
+    const resp = await fetch(
+      `${API_URL}/polly/templates/${encodeURIComponent(filename)}`,
+      {
+        method: "DELETE",
+      },
+    );
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+    showToast("Template deleted", "success");
+    await loadNotesSettings();
+  } catch (err) {
+    showToast("Failed to delete template: " + err.message, "error");
   }
 }
 

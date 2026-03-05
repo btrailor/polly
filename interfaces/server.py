@@ -7253,6 +7253,209 @@ def create_app(polly_instance=None) -> FastAPI:
         except Exception as e:
             logger.error(f"Failed to load template {filename}: {e}", exc_info=True)
             raise HTTPException(500, f"Failed to load template: {str(e)}")
+
+    @app.post("/polly/templates")
+    async def create_template(request: Dict[str, Any]):
+        """
+        Create a new note template.
+
+        Request: {
+            "name": "My Template",
+            "icon": "file-text",
+            "description": "A custom template",
+            "category": "general",
+            "tags": ["custom"],
+            "content": "# {{title}}\n\nContent here...",
+            "ai_tone": "professional",
+            "ai_focus": "",
+            "default_domain": "",
+            "default_folder": "",
+            "default_tags": []
+        }
+        """
+        try:
+            polly = get_polly()
+            if not polly:
+                raise HTTPException(503, "Polly not initialized")
+
+            vault_path_str = polly.config.get("obsidian.vault_path")
+            if not vault_path_str:
+                raise HTTPException(503, "Vault path not configured")
+
+            templates_folder = polly.config.get("templates.folder", ".polly/templates")
+            templates_dir = Path(vault_path_str) / templates_folder
+            templates_dir.mkdir(parents=True, exist_ok=True)
+
+            name = (request.get("name") or "").strip()
+            if not name:
+                raise HTTPException(400, "Template name is required")
+
+            # Generate filename from name
+            import re as _re
+            slug = _re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+            filename = f"{slug}.md"
+
+            filepath = templates_dir / filename
+            if filepath.exists():
+                raise HTTPException(409, f"Template '{filename}' already exists")
+
+            # Build frontmatter
+            icon = request.get("icon", "file-text")
+            description = request.get("description", "")
+            category = request.get("category", "general")
+            tags = request.get("tags", [])
+            ai_tone = request.get("ai_tone", "professional")
+            ai_focus = request.get("ai_focus", "")
+            default_domain = request.get("default_domain", "")
+            default_folder = request.get("default_folder", "")
+            default_tags = request.get("default_tags", [])
+            content = request.get("content", f"# {{{{title}}}}\n\n")
+
+            import yaml as _yaml
+            frontmatter = {
+                "template_name": name,
+                "template_icon": icon,
+                "template_description": description,
+                "template_category": category,
+                "template_tags": tags,
+                "ai_tone": ai_tone,
+            }
+            if ai_focus:
+                frontmatter["ai_focus"] = ai_focus
+            if default_domain:
+                frontmatter["default_domain"] = default_domain
+            if default_folder:
+                frontmatter["default_folder"] = default_folder
+            if default_tags:
+                frontmatter["default_tags"] = default_tags
+
+            fm_str = _yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True)
+            file_content = f"---\n{fm_str}---\n{content}"
+            filepath.write_text(file_content, encoding="utf-8")
+
+            logger.info(f"Created template: {filename}")
+
+            from core.templates import TemplateManager
+            manager = TemplateManager(str(templates_dir))
+            template = manager.load_template(filename)
+
+            return {
+                "success": True,
+                "template": template.to_dict_full() if template else {"filename": filename, "name": name},
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to create template: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to create template: {str(e)}")
+
+    @app.put("/polly/templates/{filename}")
+    async def update_template(filename: str, request: Dict[str, Any]):
+        """
+        Update an existing template.
+
+        Request: same fields as POST /polly/templates
+        """
+        try:
+            polly = get_polly()
+            if not polly:
+                raise HTTPException(503, "Polly not initialized")
+
+            vault_path_str = polly.config.get("obsidian.vault_path")
+            if not vault_path_str:
+                raise HTTPException(503, "Vault path not configured")
+
+            templates_folder = polly.config.get("templates.folder", ".polly/templates")
+            templates_dir = Path(vault_path_str) / templates_folder
+            filepath = templates_dir / filename
+
+            if not filepath.exists():
+                raise HTTPException(404, f"Template not found: {filename}")
+
+            name = (request.get("name") or "").strip()
+            if not name:
+                raise HTTPException(400, "Template name is required")
+
+            icon = request.get("icon", "file-text")
+            description = request.get("description", "")
+            category = request.get("category", "general")
+            tags = request.get("tags", [])
+            ai_tone = request.get("ai_tone", "professional")
+            ai_focus = request.get("ai_focus", "")
+            default_domain = request.get("default_domain", "")
+            default_folder = request.get("default_folder", "")
+            default_tags = request.get("default_tags", [])
+            content = request.get("content", "")
+
+            import yaml as _yaml
+            frontmatter = {
+                "template_name": name,
+                "template_icon": icon,
+                "template_description": description,
+                "template_category": category,
+                "template_tags": tags,
+                "ai_tone": ai_tone,
+            }
+            if ai_focus:
+                frontmatter["ai_focus"] = ai_focus
+            if default_domain:
+                frontmatter["default_domain"] = default_domain
+            if default_folder:
+                frontmatter["default_folder"] = default_folder
+            if default_tags:
+                frontmatter["default_tags"] = default_tags
+
+            fm_str = _yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True)
+            file_content = f"---\n{fm_str}---\n{content}"
+            filepath.write_text(file_content, encoding="utf-8")
+
+            logger.info(f"Updated template: {filename}")
+
+            from core.templates import TemplateManager
+            manager = TemplateManager(str(templates_dir))
+            template = manager.load_template(filename)
+
+            return {
+                "success": True,
+                "template": template.to_dict_full() if template else {"filename": filename, "name": name},
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update template: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to update template: {str(e)}")
+
+    @app.delete("/polly/templates/{filename}")
+    async def delete_template(filename: str):
+        """Delete a template."""
+        try:
+            polly = get_polly()
+            if not polly:
+                raise HTTPException(503, "Polly not initialized")
+
+            vault_path_str = polly.config.get("obsidian.vault_path")
+            if not vault_path_str:
+                raise HTTPException(503, "Vault path not configured")
+
+            templates_folder = polly.config.get("templates.folder", ".polly/templates")
+            templates_dir = Path(vault_path_str) / templates_folder
+            filepath = templates_dir / filename
+
+            if not filepath.exists():
+                raise HTTPException(404, f"Template not found: {filename}")
+
+            filepath.unlink()
+            logger.info(f"Deleted template: {filename}")
+
+            return {"success": True, "deleted": filename}
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to delete template: {e}", exc_info=True)
+            raise HTTPException(500, f"Failed to delete template: {str(e)}")
     
     # ===== OBSIDIAN WRITE ENDPOINTS =====
     
