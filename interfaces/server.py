@@ -3410,12 +3410,19 @@ def create_app(polly_instance=None) -> FastAPI:
             notes = []
             by_domain = {}
             
+            # Load valid domain IDs for resolving note domains
+            valid_domain_ids = _get_valid_domain_ids()
+            
             for note_info in note_infos:
+                # Resolve domain to first valid configured domain ID
+                resolved = _resolve_note_domains(note_info.domain or "", valid_domain_ids)
+                display_domain = resolved[0] if resolved else None
+                
                 note_dict = {
                     "name": note_info.name,
                     "title": note_info.title,
                     "path": str(note_info.path),
-                    "domain": note_info.domain,
+                    "domain": display_domain,
                     "tags": note_info.tags,
                     "aliases": note_info.aliases,
                     "created": note_info.created.isoformat() if note_info.created else None,
@@ -3425,7 +3432,7 @@ def create_app(polly_instance=None) -> FastAPI:
                 notes.append(note_dict)
                 
                 # Count by domain
-                domain_name = note_info.domain or "Other"
+                domain_name = display_domain or "Other"
                 by_domain[domain_name] = by_domain.get(domain_name, 0) + 1
             
             # Get total count (before limit)
@@ -3746,11 +3753,13 @@ def create_app(polly_instance=None) -> FastAPI:
                     "domain": domain
                 }
             else:
+                _valid_ids = _get_valid_domain_ids()
+                _resolved = _resolve_note_domains(created_note.domain, _valid_ids)
                 created_note_info = {
                     "path": str(created_note.path),
                     "name": created_note.name,
                     "title": created_note.title,
-                    "domain": created_note.domain,
+                    "domain": _resolved[0] if _resolved else "",
                     "tags": created_note.tags
                 }
             
@@ -4143,11 +4152,12 @@ def create_app(polly_instance=None) -> FastAPI:
             processed = 0
             failed = 0
             
+            _valid_ids = _get_valid_domain_ids()
             for note in all_notes:
                 try:
                     # Read note content
                     content = note.path.read_text(encoding='utf-8')
-                    domains = [note.domain] if note.domain else []
+                    domains = _resolve_note_domains(note.domain, _valid_ids)
                     
                     # Extract and store entities
                     polly.entity_extractor.extract_and_store(
@@ -4181,6 +4191,25 @@ def create_app(polly_instance=None) -> FastAPI:
             logger.error(f"Graph backfill failed: {e}")
             raise HTTPException(500, f"Failed to backfill graph: {str(e)}")
     
+    # ---- Domain resolution helper ----
+    # Resolves a raw note.domain string (which may be comma-separated, a
+    # folder name, or None) to a list of valid user-configured domain IDs.
+    # Used everywhere we need clean domain values for the UI.
+    def _resolve_note_domains(raw_domain: str, valid_ids: set) -> list:
+        """Split comma-separated domain string, keep only configured IDs."""
+        if not raw_domain:
+            return []
+        parts = [d.strip().lower() for d in raw_domain.split(",") if d.strip()]
+        return [p for p in parts if p in valid_ids]
+
+    def _get_valid_domain_ids() -> set:
+        """Load the set of user-configured domain IDs."""
+        try:
+            from core.domain_config import load_domains as _ld
+            return {d.id for d in _ld().domains}
+        except Exception:
+            return set()
+
     @app.get("/polly/graph/list")
     async def get_graph_list(
         type: str = None,          # comma-separated: "note,conversation"
@@ -4253,6 +4282,11 @@ def create_app(polly_instance=None) -> FastAPI:
             if not indices_ready:
                 logger.info("Graph list: indices not ready yet, serving with partial data")
             
+            # Build set of valid user-configured domain IDs for filtering.
+            # Only these domains should appear in the UI — anything else
+            # (raw folder names, system folders, etc.) is mapped to uncategorized.
+            valid_domain_ids = _get_valid_domain_ids()
+            
             # Get all notes
             all_notes = notes_idx.get_all_notes()
             
@@ -4321,8 +4355,9 @@ def create_app(polly_instance=None) -> FastAPI:
                                     all_domains.update(doms)
                             
                             # Secondary domains = all connected domains except primary
-                            if note.domain:
-                                all_domains.discard(note.domain)
+                            # Discard each resolved primary domain (note.domain may be comma-separated)
+                            for _pd in _resolve_note_domains(note.domain or "", valid_domain_ids):
+                                all_domains.discard(_pd)
                             secondary_domains = list(all_domains)
                             
                     except Exception as e:
@@ -4333,14 +4368,19 @@ def create_app(polly_instance=None) -> FastAPI:
                     inbound_total = len(inbound) + len(mention_inbound) * 0.5
                     authority_score = min(1.0, inbound_total / 10.0)
                 
-                # Resolve domain: skip system folders, map to configured domain names
+                # Resolve domain: split comma-separated values, keep only
+                # user-configured domain IDs.  Anything that doesn't match a
+                # configured domain (folder names like "30-Ideas", system dirs,
+                # typos) is silently dropped so it falls into "uncategorized".
                 raw_domain = note.domain or ""
-                # Exclude system folders from appearing as domains
-                system_folders = {"00-system", ".polly", "templates", "_templates", ".obsidian"}
-                if raw_domain.lower() in system_folders:
-                    resolved_domain = ""
-                else:
-                    resolved_domain = raw_domain
+                resolved_domains = _resolve_note_domains(raw_domain, valid_domain_ids)
+                resolved_domain = resolved_domains[0] if resolved_domains else ""
+                # Merge extra frontmatter domains into secondary_domains
+                for efd in resolved_domains[1:]:
+                    if efd not in secondary_domains:
+                        secondary_domains.append(efd)
+                # Also filter entity-derived secondary_domains to valid IDs only
+                secondary_domains = [sd for sd in secondary_domains if sd in valid_domain_ids]
                 
                 # Generate preview snippet from file content (first ~120 chars of body)
                 preview_snippet = ""
@@ -4387,9 +4427,10 @@ def create_app(polly_instance=None) -> FastAPI:
                 if type and "note" not in type.split(","):
                     continue
                 
-                # Domain filter (matches primary or secondary)
+                # Domain filter (matches primary or any secondary domain)
                 if domain:
-                    if resolved_domain != domain and domain not in secondary_domains:
+                    all_item_domains = [resolved_domain] + secondary_domains
+                    if domain not in all_item_domains:
                         continue
                 
                 # Maturity filter
@@ -4430,9 +4471,10 @@ def create_app(polly_instance=None) -> FastAPI:
                 
                 items.append(item)
                 
-                # Count domains (use resolved domain, skip empty/system)
-                if resolved_domain:
-                    domain_counts[resolved_domain] = domain_counts.get(resolved_domain, 0) + 1
+                # Count domains — count each domain the note belongs to
+                for _d in [resolved_domain] + secondary_domains:
+                    if _d:
+                        domain_counts[_d] = domain_counts.get(_d, 0) + 1
             
             # Sort items
             if sort == "authority":
@@ -4538,6 +4580,9 @@ def create_app(polly_instance=None) -> FastAPI:
             backlinks_idx = get_backlinks_index(notes_idx)
             tags_idx = get_tags_index(notes_idx)
             mentions_idx = get_unlinked_mentions_index(notes_idx)
+            
+            # Valid configured domain IDs for resolving note domains
+            valid_domain_ids = _get_valid_domain_ids()
             
             # Check if graph indices are ready (built by background thread at startup).
             # If not ready yet, serve nodes without edges rather than blocking the event loop.
@@ -4668,8 +4713,10 @@ def create_app(polly_instance=None) -> FastAPI:
                             passes_filter = False
                     
                     # Domain filter
-                    if domains_filter and note.domain not in domains_filter:
-                        passes_filter = False
+                    if domains_filter:
+                        note_domains = _resolve_note_domains(note.domain or "", valid_domain_ids)
+                        if not any(d in domains_filter for d in note_domains):
+                            passes_filter = False
                     
                     # Maturity filter
                     if maturity:
@@ -4726,7 +4773,7 @@ def create_app(polly_instance=None) -> FastAPI:
                         "id": note.name,
                         "name": note.title or note.name,
                         "type": "note",
-                        "domain": note.domain or "",
+                        "domain": (_resolve_note_domains(note.domain or "", valid_domain_ids) or [""])[0],
                         "authority": authority,
                         "connection_count": 0,  # Updated after edges are built
                         "is_ghost": False
@@ -4742,7 +4789,7 @@ def create_app(polly_instance=None) -> FastAPI:
                         "id": note.name,
                         "name": note.title or note.name,
                         "type": "note",
-                        "domain": note.domain or "",
+                        "domain": (_resolve_note_domains(note.domain or "", valid_domain_ids) or [""])[0],
                         "authority": authority,
                         "connection_count": 0,  # Updated after edges are built
                         "is_ghost": True
@@ -4844,8 +4891,10 @@ def create_app(polly_instance=None) -> FastAPI:
                             continue
                     
                     # Domain filter
-                    if domains_filter and note.domain not in domains_filter:
-                        continue
+                    if domains_filter:
+                        note_domains = _resolve_note_domains(note.domain or "", valid_domain_ids)
+                        if not any(d in domains_filter for d in note_domains):
+                            continue
                     
                     # Maturity filter
                     if maturity:
@@ -4906,7 +4955,7 @@ def create_app(polly_instance=None) -> FastAPI:
                         "id": note.name,
                         "name": note.title or note.name,
                         "type": "note",
-                        "domain": note.domain or "",
+                        "domain": (_resolve_note_domains(note.domain or "", valid_domain_ids) or [""])[0],
                         "authority": authority,
                         "connection_count": 0,  # Updated after edges are built
                         "is_ghost": False,
@@ -5048,6 +5097,7 @@ def create_app(polly_instance=None) -> FastAPI:
             isolated_notes = 0
             enriched_notes = 0
             domain_counts = {}
+            valid_domain_ids = _get_valid_domain_ids()
             
             for note in all_notes:
                 inbound = len(backlinks_idx.get_backlinks(note.name))
@@ -5063,9 +5113,13 @@ def create_app(polly_instance=None) -> FastAPI:
                 if mentions:
                     enriched_notes += 1
                 
-                # Track domain counts
-                domain = note.domain or "uncategorized"
-                domain_counts[domain] = domain_counts.get(domain, 0) + 1
+                # Track domain counts — only configured domains
+                resolved = _resolve_note_domains(note.domain, valid_domain_ids)
+                if resolved:
+                    for d in resolved:
+                        domain_counts[d] = domain_counts.get(d, 0) + 1
+                else:
+                    domain_counts["uncategorized"] = domain_counts.get("uncategorized", 0) + 1
             
             # Entity stats
             entity_stats = entity_store.get_stats()
@@ -5291,6 +5345,7 @@ def create_app(polly_instance=None) -> FastAPI:
             enriched_count = 0
             entities_added = 0
             notes_processed = []
+            _enrich_valid_ids = _get_valid_domain_ids()
             
             for note_name in note_names:
                 note = notes_idx.find_note_by_name_or_alias(note_name)
@@ -5312,7 +5367,7 @@ def create_app(polly_instance=None) -> FastAPI:
                         text=content,
                         source_type="note",
                         source_id=note.name,
-                        domains=[note.domain] if note.domain else []
+                        domains=_resolve_note_domains(note.domain, _enrich_valid_ids)
                     )
                     if extracted:
                         enriched_count += 1
@@ -5866,6 +5921,7 @@ def create_app(polly_instance=None) -> FastAPI:
 
             isolated_notes = entity_store.get_isolated_notes(max_entity_connections=isolation_threshold)
             isolated_entities = entity_store.get_isolated_entities(max_connections=isolation_threshold)
+            _garden_valid_ids = _get_valid_domain_ids()
 
             # Also include notes with NO entity records at all (truly unprocessed)
             entity_noted_sources = set()
@@ -5881,7 +5937,7 @@ def create_app(polly_instance=None) -> FastAPI:
                             "entity_count": 0,
                             "max_connection_count": 0,
                             "note_title": note.title or note.name,
-                            "domain": note.domain or "",
+                            "domain": (_resolve_note_domains(note.domain, _garden_valid_ids) or [""])[0],
                             "unprocessed": True,
                         })
 
@@ -6429,13 +6485,14 @@ def create_app(polly_instance=None) -> FastAPI:
             # Use NotesIndex.search_notes() method
             results = notes_idx.search_notes(q, limit=limit)
             
+            _search_valid_ids = _get_valid_domain_ids()
             return {
                 "results": [
                     {
                         "name": note.name,
                         "title": note.title,
                         "path": str(note.path),
-                        "domain": note.domain or "",
+                        "domain": (_resolve_note_domains(note.domain, _search_valid_ids) or [""])[0],
                         "snippet": ""  # TODO: Extract matching snippet from content
                     }
                     for note in results
@@ -6504,6 +6561,7 @@ def create_app(polly_instance=None) -> FastAPI:
             # Get notes for this tag
             notes = tags_idx.get_notes_by_tag(tag)
             
+            _tag_valid_ids = _get_valid_domain_ids()
             return {
                 "tag": tag,
                 "notes": [
@@ -6511,7 +6569,7 @@ def create_app(polly_instance=None) -> FastAPI:
                         "name": note.name,
                         "title": note.title,
                         "path": str(note.path),
-                        "domain": note.domain or ""
+                        "domain": (_resolve_note_domains(note.domain, _tag_valid_ids) or [""])[0]
                     }
                     for note in notes
                 ]
@@ -6852,6 +6910,7 @@ def create_app(polly_instance=None) -> FastAPI:
                 }
             
             # Get backlinks from BacklinksIndex
+            _bl_valid_ids = _get_valid_domain_ids()
             backlink_objects = backlinks_idx.get_backlinks(note_name)
             
             # Convert Backlink objects to response format
@@ -6864,7 +6923,7 @@ def create_app(polly_instance=None) -> FastAPI:
                         "name": source_note.name,
                         "title": source_note.title,
                         "path": str(source_note.path),
-                        "domain": source_note.domain
+                        "domain": (_resolve_note_domains(source_note.domain, _bl_valid_ids) or [""])[0]
                     })
             
             return {

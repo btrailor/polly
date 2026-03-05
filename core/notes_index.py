@@ -298,9 +298,11 @@ class NotesIndex:
             
             if len(parts) > 1:
                 folder = parts[0]
-                # Resolve to configured domain ID if available
+                # Only return a domain if the folder maps to a user-configured domain.
+                # Never fall back to the raw folder name — that creates spurious
+                # domain groups like "00-System", "30-Ideas", "20-Active", etc.
                 mapping = getattr(self, '_folder_to_domain_id', {})
-                return mapping.get(folder, folder)
+                return mapping.get(folder, None)
         except ValueError:
             pass
         
@@ -399,10 +401,15 @@ class NotesIndex:
         Returns:
             List of NoteInfo objects in that domain
         """
-        results = [
-            note for note in self._notes_by_path.values()
-            if note.domain and note.domain.lower() == domain.lower()
-        ]
+        target = domain.strip().lower()
+        results = []
+        for note in self._notes_by_path.values():
+            if not note.domain:
+                continue
+            # note.domain may be comma-separated (e.g. "sigils, signals")
+            parts = [d.strip().lower() for d in note.domain.split(",")]
+            if target in parts:
+                results.append(note)
         return sorted(results, key=lambda n: n.name.lower())
     
     def search_notes(self, query: str, limit: int = 20) -> List[NoteInfo]:
