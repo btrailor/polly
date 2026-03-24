@@ -29,6 +29,14 @@
 ### What Polly Is
 Polly is a native iPhone app that serves as the primary mobile client for an OpenClaw gateway. It provides everything Aight provides — chat, Today view, shortcuts, settings — while adding Polly's unique attributes: RAG-aware chat, domain awareness, mental model selection, Obsidian vault integration, and a distinct design identity.
 
+**Core organizing unit: Teams.** Everything in Polly lives inside a team. A team is a named collection of agents with a shared purpose (e.g., "Dev Squad," "Life Team," "Content Studio"). You set up teams during onboarding from pre-built templates or by composing your own. Once set up:
+- The drawer shows your active team and its agents
+- Sessions (individual chats + group chats) are scoped to a team
+- Switching teams switches the entire context — agents, sessions, and group chats
+- Agents can exist in multiple teams, but their sessions and memory are team-scoped
+
+This mirrors Aight's team model exactly, and it's the right mental model for Polly too.
+
 ### Why It Exists
 - Aight is in free beta. When it goes freemium, we need a self-hosted replacement.
 - OpenClaw is open-source (MIT) and self-hosted — we own the backend forever.
@@ -1020,7 +1028,7 @@ Chat is the permanent home surface. The drawer slides in from the left (swipe ri
 **Drawer sections:**
 
 1. **Header:** App name + [+] new conversation button
-2. **Workspace selector:** Shows current workspace name with dropdown chevron. Tapping opens a workspace picker sheet. Maps to OpenClaw workspace concept (the active agent group/context). In most single-user setups this is one workspace — the dropdown is there for power users with multiple OpenClaw setups.
+2. **Team selector:** Shows active team name with dropdown chevron. Tapping opens a team picker sheet — lists all configured teams (from templates or custom). Switching teams switches the active context: agents, sessions, group chats, and Today items all scope to the selected team. In single-team setups the dropdown is low-traffic; power users with multiple teams switch here frequently.
 3. **Agent selector:** Shows current agent emoji + name with dropdown chevron. Tapping opens agent picker sheet (full list of configured agents). Switching agent here switches the active chat session.
 4. **TODAY (collapsible):** Recent active chat sessions **scoped to the currently-selected agent or group**. If the agent selector shows "Strategist," TODAY shows only sessions with the Strategist. If the agent selector shows "Sigils" (a group), TODAY shows individual sessions with each Sigils member agent AND any group chat sessions for that group. Switching the agent selector updates TODAY immediately — it is never a global flat list. Each row shows session label + relative time. Tap navigates to that session.
 5. **Navigation links (bottom section):** Agents, Today, Shortcuts, Usage, Moltbook, Settings — each with a colored square icon badge (Lucide icon on colored background per domain color system). Tapping navigates to that full-screen view, closing the drawer.
@@ -1659,7 +1667,7 @@ interface Attachment {
 **Workspace pill (top-right nav bar):**
 - Shows current workspace name with dropdown chevron
 - **Persistent across all full-screen views** (Agents, Today, Shortcuts, Usage, Moltbook) — not just the drawer
-- Tapping opens workspace picker sheet
+- Tapping opens team picker sheet
 - In single-workspace setups this is mostly decorative but provides context
 
 #### 4.7.1 Agent Creation Flow
@@ -2944,7 +2952,7 @@ type NavDestination = 'agents' | 'today' | 'shortcuts' | 'usage' | 'moltbook' | 
 ┌─────────────────────────┐
 │  [+]          [✕]       │  ← header: new convo + close
 │  ─────────────────────  │
-│  [workspace ▾]          │  ← workspace selector
+│  [team ▾]          │  ← team selector
 │  Agent: Strategist ▾    │  ← agent selector → AgentSwitcherSheet (§6.10)
 │  ─────────────────────  │
 │  TODAY ▾                │  ← collapsible recent sessions
@@ -5487,9 +5495,45 @@ Cold open
   ↓
   [Auth handshake → success]
   ↓
-  Polly: "You're in. Let me show you around."
-  → [Enter main app — gateway active, full agent roster live]
+  Polly: "You're in. Now let's get your team set up."
+  → [Team selection screen — §20.4.1]
+  ↓
+  Polly: "You're ready. Let me show you around."
+  → [Enter main app — gateway active, team active, full agent roster live]
 ```
+
+#### §20.4.1 Team Selection (Onboarding Step)
+
+After gateway connection is established, the user picks their first team. This is the "Pick a team" screen shown in Aight's onboarding — same concept, Polly's design.
+
+**UI:** Full-screen grid of team template cards (2-column). Each card shows:
+- Team emoji/icon
+- Team name (bold)
+- One-line description
+- Agent count badge (accent green pill)
+
+Bottom of list: **"Start from scratch →"** row for custom team composition.
+
+**Polly's built-in team templates (Phase 1):**
+
+| Template | Description | Agent count |
+|---|---|---|
+| Dev Squad | Build, test, secure, ship | 9 agents |
+| Startup Team | Full stack founding crew | 9 agents |
+| Content Studio | Create and distribute content | 8 agents |
+| Marketing Engine | Acquisition, growth, and analytics | 9 agents |
+| Life Team | Personal wellness and growth | 8 agents |
+| Finance Team | Money, markets, and strategy | 7 agents |
+| App Launch | Ship your app and get users | 7 agents |
+| Learning Squad | Study, debate, and level up | 6 agents |
+
+> **Note to @researcher / @infra:** The agent roster for each team template needs to be defined and mapped to `POLLY_AGENT_TEMPLATES.md` entries. This is Phase 1 content work. The templates above are drawn from Aight's onboarding screenshots — confirm names match or adjust.
+
+**"Start from scratch":** Opens an agent picker sheet — user selects agents individually, names the team, picks an emoji. Creates a custom team with those agents.
+
+**Multi-team:** User can create additional teams at any time from Settings → Teams → [+]. No limit on team count.
+
+**Team switching:** Drawer team selector lists all created teams. Switching is instant — gateway doesn't change (it's still the same OpenClaw instance), only the active team context changes in the client.
 
 **Key design rules:**
 - Every step is a conversation turn, not a form. The user talks; Polly responds.
@@ -6131,7 +6175,78 @@ When the coordinator tries to close a task with members still `in_progress` or `
 
 ---
 
-## §23 — Plans Layer & Spec-Driven Development
+### 22.9 Cross-Team Bridge Agents
+
+Teams are intentionally isolated — sessions, memory, and group chats are all scoped to a single team. But there are legitimate use cases for cross-team communication: the Dev Squad needs input from the Marketing Engine; the Life Team's coach surfaces a question that belongs in the Finance Team; a user wants a high-level synthesis across all teams.
+
+Three tiers of bridge capability, in ascending complexity:
+
+---
+
+#### Tier 1 — Persona-Level Bridge (Phase 3, client-side only)
+
+A bridge agent is an agent whose **SOUL explicitly knows about other teams** and can relay information between them via the user as the carrier. No new gateway infrastructure required.
+
+**How it works:**
+1. User creates a "Bridge" agent (or a team template includes one)
+2. The bridge agent's SOUL contains a team registry: names, purposes, and key agents in each team
+3. When the user asks "What would the Finance Team think about this?", the bridge agent answers from its embedded knowledge of that team's perspective
+4. For live cross-team consultation: user pastes the question into the other team's chat, gets the answer, pastes it back. The bridge agent helps synthesize.
+
+**Team registry format (in bridge agent SOUL):**
+```
+## Team Registry
+
+I have working knowledge of the following teams:
+
+**Dev Squad** — Build, test, secure, ship. Key agents: @code_architect, @frontend, @backend, @security_audit. Best for: technical implementation, architecture decisions.
+
+**Marketing Engine** — Acquisition, growth, analytics. Key agents: @growth, @content, @analytics. Best for: go-to-market, messaging, channel strategy.
+
+[...one entry per team...]
+```
+
+**Limitation:** The bridge's knowledge of other teams is static — it reflects the state of the SOUL when written. It can answer "what would they think?" but it cannot actually talk to them.
+
+---
+
+#### Tier 2 — Async Cross-Team Mailbox (Phase 4, requires file tools)
+
+Teams can send structured requests to each other via a **shared mailbox pattern** using `agents.files.set/get`. No real-time session required.
+
+**Mechanism:**
+- Each team has a designated **liaison agent** (can be any agent — just needs the liaison role in its SOUL)
+- Outbound: Team A's liaison writes a request to a shared mailbox directory: `_mailbox/[team-b-id]/[request-id].md`
+- Inbound: Team B's liaison reads from `_mailbox/[team-b-id]/` on session start, processes requests, writes responses to `_mailbox/[team-a-id]/responses/[request-id].md`
+- Team A's liaison checks for responses on its next session start
+
+**This works today** — `agents.files.get` supports cross-workspace reads (same gateway). The mailbox directory just needs to be in a workspace both liaisons can access (the coordinator's workspace, or a dedicated shared workspace).
+
+**Phase 4 iOS work:** Surface cross-team request status in Today view — "Dev Squad → Marketing Engine: 1 pending request." Tap to view.
+
+---
+
+#### Tier 3 — Real-Time Cross-Team Session (Phase 5, aspirational)
+
+A group chat that includes agents from multiple teams simultaneously. User creates a session, invites `@code_architect` from Dev Squad and `@growth` from Marketing Engine into the same conversation.
+
+**Gateway requirement:** Multi-workspace session membership — a session key that spans two team workspaces. Not currently supported in OpenClaw. This is a future gateway feature request, not a client-side problem.
+
+**Phase gate:** Blocked on OpenClaw upstream support. Spec here is a design intent marker only.
+
+---
+
+**Summary:**
+
+| Tier | Phase | Who does the work | Complexity |
+|------|-------|-------------------|------------|
+| Tier 1: Persona bridge | 3 | Agent template author | Low — SOUL content only |
+| Tier 2: Async mailbox | 4 | @backend (mailbox spec) + @infra (shared workspace) | Medium |
+| Tier 3: Real-time cross-team | 5 | OpenClaw upstream + @backend | High |
+
+**Recommendation:** Ship Tier 1 in Phase 3 as a built-in "Liaison" agent in multi-team setups. Users get immediate value with zero infrastructure changes.
+
+---
 
 **Owner:** @code_architect  
 **Date:** March 23, 2026  
