@@ -1022,7 +1022,7 @@ Chat is the permanent home surface. The drawer slides in from the left (swipe ri
 1. **Header:** App name + [+] new conversation button
 2. **Workspace selector:** Shows current workspace name with dropdown chevron. Tapping opens a workspace picker sheet. Maps to OpenClaw workspace concept (the active agent group/context). In most single-user setups this is one workspace — the dropdown is there for power users with multiple OpenClaw setups.
 3. **Agent selector:** Shows current agent emoji + name with dropdown chevron. Tapping opens agent picker sheet (full list of configured agents). Switching agent here switches the active chat session.
-4. **TODAY (collapsible):** Recent active chat sessions, most recent first. Each row shows session label + relative time. Group chat sessions show a group icon. Tapping a session navigates to it. This is **session history**, not the Today reminders view.
+4. **TODAY (collapsible):** Recent active chat sessions **scoped to the currently-selected agent or group**. If the agent selector shows "Strategist," TODAY shows only sessions with the Strategist. If the agent selector shows "Sigils" (a group), TODAY shows individual sessions with each Sigils member agent AND any group chat sessions for that group. Switching the agent selector updates TODAY immediately — it is never a global flat list. Each row shows session label + relative time. Tap navigates to that session.
 5. **Navigation links (bottom section):** Agents, Today, Shortcuts, Usage, Moltbook, Settings — each with a colored square icon badge (Lucide icon on colored background per domain color system). Tapping navigates to that full-screen view, closing the drawer.
 
 **Drawer interaction:**
@@ -2970,9 +2970,13 @@ type NavDestination = 'agents' | 'today' | 'shortcuts' | 'usage' | 'moltbook' | 
 
 **⚠️ Do NOT use `@react-navigation/drawer`** — use `Animated` + `PanGestureHandler` from `react-native-gesture-handler` directly for spring physics and parallax control.
 
-**TODAY section:** `SessionEntry[]` sorted by `updatedAt` desc. Group chats get group icon prefix. Tap → navigate to that `ChatView` + close drawer.
+**TODAY section:** `SessionEntry[]` **scoped to the active agent/group selection** — filtered by `agentId` (or `groupId` for group chats). If active selection is a solo agent, shows sessions where `sessionKey` matches `agent:<agentId>:*`. If active selection is a group (e.g., "Sigils"), shows:
+- Individual sessions with each member agent (`agent:<memberId>:main`, etc.)
+- Group chat sessions for that group (`agent:*:group-chat:<groupId>`)
 
-**Session row long-press → context menu:**
+Switching the agent selector in the drawer immediately re-filters TODAY. Sessions from other agents/groups are not shown — they're accessible from All Sessions (§4.1.5) with the group filter set to "All."
+
+Sorted by `updatedAt` desc. Starred sessions pinned above. Limit: 10 rows; "All Sessions →" link for overflow.
 - **Rename** — inline text edit on the row; `sessions.update` on confirm
 - **Star / Unstar** — toggled star icon on row; stored in MMKV `"polly.starredSessions"` (array of session keys); starred sessions pinned to top of TODAY section with ★ prefix
 - **Archive** — removes from TODAY section; session retained at gateway, accessible from All Sessions view (§4.1.5); uses `sessions.update` with `{ archived: true }`
@@ -2984,6 +2988,8 @@ type NavDestination = 'agents' | 'today' | 'shortcuts' | 'usage' | 'moltbook' | 
 
 Full-screen view accessed from "All Sessions →" in drawer TODAY section. Handles session accumulation for power users.
 
+**Scoping:** Defaults to the currently-active agent/group (same scope as TODAY). A **"Group" filter chip row** at the top lets the user switch scope without going back to the drawer — tapping a different group/agent filters the list to that context. "All" chip shows sessions across all agents/groups.
+
 **Layout:**
 ```
 ┌─────────────────────────────────────┐
@@ -2991,11 +2997,13 @@ Full-screen view accessed from "All Sessions →" in drawer TODAY section. Handl
 │                                     │
 │ [🔍 Search conversations...]        │
 │                                     │
-│ [All] [Starred ★] [Archived]        │  ← filter chips
+│ [Strategist] [Sigils] [All] [+more] │  ← agent/group scope chips (scrollable)
+│ [All] [Starred ★] [Archived]        │  ← status filter chips
 │                                     │
 │ Today                               │  ← date section headers
-│   ★ Polly Spec Review      [⋯]     │
-│     Code Architect — 2h ago [⋯]    │
+│   ★ Polly Spec Review       [⋯]    │
+│     Code Architect — 2h ago  [⋯]   │
+│   ◎ Sigils group chat — 4h   [⋯]   │  ← group chat session (group icon)
 │                                     │
 │ Yesterday                           │
 │   ...                               │
@@ -3004,12 +3012,14 @@ Full-screen view accessed from "All Sessions →" in drawer TODAY section. Handl
 └─────────────────────────────────────┘
 ```
 
-- **Search:** client-side filter on session `title` + `agentName`; no server search in Phase 1
-- **Filter chips:** All · Starred · Archived
+- **Group/agent scope chips (top row):** One chip per configured agent + one per group. Scrollable horizontally. Active chip: filled accent background. "All" shows everything. Defaults to whatever was active in the drawer.
+- **Status filter chips (second row):** All · Starred · Archived
+- **Group chat rows:** Prefixed with ◎ icon + group name label (e.g., "Sigils group chat")
+- **Search:** Client-side filter on session `title` + `agentName`; no server search in Phase 1
 - **[⋯] per row:** Same context menu as long-press (Rename, Star, Archive, Delete)
-- **Bulk mode:** Tap [Select] → checkboxes appear on each row → "Archive Selected" / "Delete Selected" actions in bottom action bar
+- **Bulk mode:** Tap [Select] → checkboxes → "Archive Selected" / "Delete Selected" in bottom action bar
 - **Date grouping:** Today / Yesterday / This Week / This Month / Older
-- **Pagination:** Loads 50 sessions at a time, infinite scroll fetches more via `sessions.list` with offset
+- **Pagination:** 50 sessions at a time, infinite scroll via `sessions.list` with `agentId` filter + offset
 
 **Nav links:** Colored square icon badge (28pt) + label. Active: `accent` tint. Tap → close drawer + navigate.
 
