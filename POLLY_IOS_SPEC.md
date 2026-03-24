@@ -1986,70 +1986,112 @@ This flag is never surfaced in the Security UI, Settings, or any runtime toggle.
 
 ## 5. Design System
 
-✅ **Complete — see `~/polly/DESIGN_SYSTEM_iOS.md` for full spec (@design_eng)**
+✅ **Complete — all design tokens below. Framework: React Native + Expo (TypeScript)**
+
+> **⚠️ Deprecation Notice:** `~/polly/DESIGN_SYSTEM_iOS.md` is stale (SwiftUI/Swift references). **This section (§5) is the authoritative source for design tokens.** The SwiftUI file was written before the tech stack decision (December 2025) and has not been updated. Use the token values below; ignore any SwiftUI-specific syntax.
 
 ### 5.1 Colors
 
-**Accent (Polly Brand)**
-```swift
-static let accent     = Color(red: 0.941, green: 0.345, blue: 0.047) // #f0903b
-static let accentDim  = Color(red: 0.784, green: 0.251, blue: 0.047) // #c84012
-static let accentLight = Color(red: 1.0,  green: 0.978, blue: 0.933) // #fff7ed
+All colors below are specified as **hex values** and are framework-agnostic. In React Native, import or define these as string constants. In TypeScript/React Native with `StyleSheet`, define as:
+
+```typescript
+const colors = {
+  // Accent (Polly Brand)
+  accent:       '#f0903b',
+  accentDim:    '#c84012',
+  accentLight:  '#fff7ed',
+  
+  // Backgrounds (Dark Mode — primary app experience)
+  bgPrimary:    '#020617',
+  bgSecondary:  '#0c1323',
+  bgBorder:     '#1e2b48',
+  
+  // Text (Dark Mode)
+  textPrimary:   '#f8fafc',
+  textSecondary: '#b5c1ce',
+  
+  // Semantic
+  success: '#22c55e',
+  error:   '#ef4444',
+  warning: '#eab308',
+  info:    '#2563eb',
+  
+  // Domain Colors
+  sigils:  '#2563eb',  // Code (blue)
+  signals: '#ad48dd',  // Audio (purple)
+  scrolls: '#22c55e',  // Writing (green) — WCAG AA compliant on dark bg
+  glyphs:  '#eab308',  // Design (gold)
+  grids:   '#16a399',  // Systems (teal)
+};
 ```
 
-**Backgrounds (Dark Mode — primary app experience)**
-```swift
-static let bgPrimary   = Color(red: 0.008, green: 0.015, blue: 0.043) // #020617
-static let bgSecondary = Color(red: 0.047, green: 0.075, blue: 0.141) // #0c1323
-static let bgBorder    = Color(red: 0.118, green: 0.165, blue: 0.282) // #1e2b48
-```
-
-**Text (Dark Mode)**
-```swift
-static let textPrimary   = Color(red: 0.973, green: 0.980, blue: 0.988) // #f8fafc
-static let textSecondary = Color(red: 0.710, green: 0.757, blue: 0.808) // #b5c1ce
-```
-
-**Semantic**
-```swift
-static let success = Color(red: 0.133, green: 0.773, blue: 0.369) // #22c55e
-static let error   = Color(red: 0.937, green: 0.267, blue: 0.267) // #ef4444
-static let warning = Color(red: 0.920, green: 0.702, blue: 0.051) // #eab308
-static let info    = Color(red: 0.145, green: 0.392, blue: 0.929) // #2563eb
-```
-
-**Domain Colors**
-```swift
-static let sigils  = Color(red: 0.145, green: 0.392, blue: 0.929) // #2563eb — Code (blue)
-static let signals = Color(red: 0.678, green: 0.282, blue: 0.867) // #ad48dd — Audio (purple)
-static let scrolls = Color(red: 0.133, green: 0.773, blue: 0.369) // #22c55e — Writing (green) — WCAG AA compliant on dark bg (updated from #16a34a per @design_eng BLOCKER #1)
-static let glyphs  = Color(red: 0.920, green: 0.702, blue: 0.051) // #eab308 — Design (gold)
-static let grids   = Color(red: 0.086, green: 0.639, blue: 0.600) // #16a399 — Systems (teal)
-```
-
-**Dark mode is automatic** via `UIColor` trait collection adapters. See `DESIGN_SYSTEM_iOS.md §Color System` for full light/dark pairs.
+**Color rationale:**
+- **Dark mode** is the primary app experience (§18 App Constitution: "designed for low-light usage")
+- **Accent orange `#f0903b`** is Polly's distinctive brand color — distinct from Aight's lime
+- **Domain colors** are semantically mapped to agent domains (Code → blue, Audio → purple, etc.) for visual scanning in group chats and agent selection screens
+- **`scrolls` green `#22c55e`** updated from `#16a34a` for WCAG AA contrast compliance on dark backgrounds
 
 ### 5.2 Typography
-- **Font:** System (SF Pro) — Dynamic Type, no custom font needed
-- **Code:** `.system(.footnote, design: .monospaced)` — SF Mono
-- **Scale:** Standard SwiftUI named styles (`.largeTitle` → `.caption2`)
-- Respects user accessibility font size settings automatically
+
+**Fonts:**
+- **Body/UI text:** System font (SF Pro on iOS, Roboto on Android) — use default `fontFamily: undefined` in React Native
+- **Monospace (code blocks):** SF Mono on iOS, Courier New fallback on Android — set `fontFamily: 'monospace'` or `fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' })`
+
+**Scale (React Native / Expo):**
+
+Use Expo `expo-font` for dynamic type + accessibility scaling:
+
+```typescript
+const typography = {
+  largeTitle:    { fontSize: 34, fontWeight: '700', lineHeight: 41 },  // Screen headers
+  title1:        { fontSize: 28, fontWeight: '700', lineHeight: 34 },  // Section headers
+  title2:        { fontSize: 22, fontWeight: '700', lineHeight: 26 },  // Subsections
+  title3:        { fontSize: 20, fontWeight: '600', lineHeight: 24 },  // Card headers
+  headline:      { fontSize: 17, fontWeight: '600', lineHeight: 22 },  // Component labels
+  body:          { fontSize: 17, fontWeight: '400', lineHeight: 22 },  // Body text (default)
+  callout:       { fontSize: 16, fontWeight: '500', lineHeight: 21 },  // Emphasized body
+  subheadline:   { fontSize: 15, fontWeight: '600', lineHeight: 20 },  // Input labels
+  footnote:      { fontSize: 13, fontWeight: '400', lineHeight: 18 },  // Metadata, captions
+  caption1:      { fontSize: 12, fontWeight: '500', lineHeight: 16 },  // Small labels
+  caption2:      { fontSize: 11, fontWeight: '400', lineHeight: 13 },  // Smallest text
+};
+```
+
+**Accessibility:** Always use `allowFontScaling={true}` on `<Text>` components. Respect user's system font size setting (enabled by default in Expo).
 
 ### 5.3 Spacing
-- **Base unit:** 4pt
-- `spacing1=4`, `spacing2=8`, `spacing3=12`, `spacing4=16`, `spacing6=24`, `spacing8=32`
-- **Minimum touch target:** 44pt (Apple HIG)
-- **List row height:** 56–72pt
-- **Safe areas:** Always respected (notch, home indicator, Dynamic Island)
+
+**Base unit:** 4pt (logical pixels)
+
+```typescript
+const spacing = {
+  spacing1: 4,
+  spacing2: 8,
+  spacing3: 12,
+  spacing4: 16,
+  spacing6: 24,
+  spacing8: 32,
+};
+```
+
+**Constraints:**
+- **Minimum touch target:** 44pt × 44pt (Apple HIG)
+- **List row height (standard):** 56pt (44pt touch target + 12pt vertical padding)
+- **List row height (compact):** 52pt
+- **Safe areas:** Always use `useSafeAreaInsets()` from `react-native-safe-area-context` to respect notch, home indicator, Dynamic Island
 
 ### 5.4 Key Design Rules
-- Bottom tab bar for primary navigation (thumb-reachable)
-- Swipe gestures for list actions (done, cancel, delete)
-- Long-press for context menus (never right-click)
-- Pull-to-refresh for all live data views
-- Orange accent for all primary CTAs
-- Status bar always visible (never hidden)
-- Offline state always communicated — never silent failure
+
+1. **Navigation:** Bottom tab bar for primary navigation (thumb-reachable on larger screens). Drawer navigation for secondary views (Vault Search, Moltbook, Settings).
+2. **Gestures:** 
+   - Swipe left/right on list rows for actions (done, cancel, delete)
+   - Long-press for context menus (never right-click)
+   - Pull-to-refresh for live data views (ChatView, Today View)
+   - Swipe down to dismiss modals/sheets
+3. **Color:** Orange accent (`#f0903b`) for all primary CTAs, success states, and visual emphasis
+4. **Status bar:** Always visible; do NOT hide or tint
+5. **Offline state:** Always communicated via connection dot or banner; never silent failure
+6. **Keyboard:** Always dismiss when user taps outside the input field; don't overlay content
 
 ---
 

@@ -1,10 +1,27 @@
-# Polly iOS Design System
+# ⚠️ DEPRECATED — Polly iOS Design System (SwiftUI)
 
-**Version:** 1.0  
+**Version:** 1.0 (ARCHIVED)  
 **Platform:** iOS 16+  
 **Framework:** SwiftUI  
 **Last Updated:** March 23, 2026  
-**Status:** Mobile-optimized adaptation from Polly Web
+**Status:** STALE — DO NOT USE
+
+---
+
+## ⛔ This document is outdated and preserved for reference only.
+
+The tech stack has changed from **SwiftUI to React Native + Expo** (March 2026). This file has not been updated to reflect that change.
+
+### Where to find current design tokens:
+
+**👉 Use `~/polly/POLLY_IOS_SPEC.md` §5 (Design System) instead.**
+
+All design tokens are now specified in framework-agnostic formats:
+- Colors as **hex values** (e.g., `#f0903b`, not `Color(red: 0.941, ...)`)
+- Typography as **font sizes in pt** (not SwiftUI named styles)
+- Spacing as **numeric constants** (not SwiftUI spacing units)
+
+§5 is the authoritative source. This file will not be maintained.
 
 ---
 
