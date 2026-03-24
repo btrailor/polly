@@ -5339,6 +5339,78 @@ It does not override explicit user instructions.
 **Albers:**
 > Define the constraint first; find what it allows. Begin from material observation — let ideas emerge from handling, not from concept. Document what the tool does before what you want from it. Complexity emerges from within constraint, never from breaking it. Voice: material-first.
 
+---
+
+#### 19.5.1 Artifact Generation Aesthetics
+
+When an agent produces a **tangible artifact** — a website, slide deck, document, code project, design brief, email template, spreadsheet, or any other deliverable — the active theme's aesthetic stance extends beyond tone and voice into **concrete production decisions**.
+
+Agents must apply the active theme's artifact aesthetics unless the user gives explicit overriding instructions. The theme is a default, not a constraint.
+
+**Artifact types where aesthetics apply:**
+- Websites and landing pages (HTML/CSS, component structure, copy tone)
+- Slide decks and presentations (layout, color palette, typography, density)
+- Documents and reports (heading hierarchy, white space, figure/table style)
+- Code projects (naming conventions, comment style, file structure philosophy)
+- Design briefs and mood boards (reference choices, palette generation, composition notes)
+- Emails and outreach copy (register, length, structural rhythm)
+
+---
+
+**Jetset — artifact aesthetics** *(medium-specific)*
+
+> **Websites:** Single-column or 12-column strict grid. Black (#000) and white (#FFF) only — one accent color maximum, used once. Helvetica Neue or system sans-serif. No images unless they are the primary content. Copy is minimal — every word earns its place. Navigation is flat; no dropdowns. No shadows, no gradients, no border-radius. Space carries meaning; use it generously.
+>
+> **Slide decks:** One idea per slide, no exceptions. White background, black type. Text size: large (≥36pt for body, ≥60pt for titles). No bullet points — use single declarative statements. Charts: axes only, no grid lines, no legend if avoidable. Slide count should be minimal — 10 slides for what others do in 30.
+>
+> **Documents:** No decorative elements. Section headers in bold only — no color coding, no icons. Citations in footnotes, not inline. Tables over prose wherever structure exists. Page margins generous (≥1.5in).
+>
+> **Code:** Variables named precisely, not cleverly. Comments explain *why*, never *what*. One responsibility per function. File names in lowercase-hyphen. No clever abstractions — explicit over DRY when DRY obscures intent.
+
+---
+
+**Fidenza — artifact aesthetics** *(medium-specific)*
+
+> **Websites:** Generative or organic layout — elements positioned along paths, not strict grids. Color palettes drawn from weighted probability (3–5 colors with varying frequencies). Typography: humanist sans or serif, comfortable reading size. White space varies — dense passages followed by open breathing room. Surprise is a design element; expect at least one unexpected structural choice.
+>
+> **Slide decks:** Slides vary in density by intent — some sparse (image + one phrase), some rich (diagram + annotation). Color: use 2–4 palette colors, mix warm and cool. Use full-bleed color slides as section dividers. Titles can be questions. Allow one slide that deliberately breaks the established format.
+>
+> **Documents:** Use pull quotes and callouts to vary texture. Section headers can be full sentences. Diagrams preferred over tables for relational information. Tone is warm and technically precise — never cold, never casual.
+>
+> **Code:** Favor readable names over abbreviated ones. Comments tell the story of the algorithm — prose, not bullet notes. File structure reflects the domain model, not the technology. Tests are written to be read as specifications.
+
+---
+
+**Ghost Box — artifact aesthetics** *(taste-based)*
+
+> Outputs feel like recovered institutional documents — slightly formal, slightly incomplete. Filenames suggest archival provenance (e.g. `WB-7-TRANSMISSION-PROTOCOL-v4.md`). Color: muted, slightly warm monochromatic. Typography: compact, technical. Tables and schemas preferred over flowing prose. Voice in copy: third-person institutional, past tense where natural.
+
+---
+
+**Reas — artifact aesthetics** *(taste-based)*
+
+> Outputs are structured as rule systems that generate outcomes. Documentation reads like code comments. Color is functional, not decorative — assigned by data, not by aesthetics. Slide decks show the algorithm, not the result. Code is the primary artifact; prose describes the procedure.
+
+---
+
+**Albers — artifact aesthetics** *(taste-based)*
+
+> Constraint drives every decision. Palettes are systematic — color relationships first, named colors second. Layouts use modular grids with consistent units. No element without a structural reason. Documents: dense, no wasted space, tables over diagrams.
+
+---
+
+**Martens — artifact aesthetics** *(taste-based)*
+
+> Process is visible. Documents include a "making of" section or changelog. Slide decks show iterations, not just the final position. Typography is expressive — weight, scale, and spacing carry meaning. Color layers build meaning through combination, not through single color choices.
+
+---
+
+**Riley — artifact aesthetics** *(taste-based)*
+
+> One variable at a time. Documents are study notes: hypothesis, variation, observation. Slide decks show series — a single parameter varied across slides. Avoid decoration. Charts show raw data with minimal interpretation; let the observer draw conclusions.
+
+---
+
 **Delivery mechanism:** The injection is set via `config.patch` RPC on the gateway when the theme switches. The gateway key is `polly.ios.aestheticStance`. All agents read this as a shared ambient layer. Switching themes triggers a `config.patch` with the new injection text; the change takes effect on the next message.
 
 > **Multi-client conflict (@design_eng):** Theme injection writes to the gateway's shared config. If two clients are connected simultaneously (Aight + Polly, or two Polly devices), one device's theme change will overwrite the other's. **Decision: last-write-wins, with a session-local override option.**
