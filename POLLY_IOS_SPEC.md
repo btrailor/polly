@@ -77,7 +77,8 @@ Polly is a native iPhone app that serves as the primary mobile client for an Ope
 │                     │                      │
 │  ┌──────────────────▼──────────────────┐   │
 │  │         PollyEnhancement Layer      │   │
-│  │  RAG context / Domain / Models      │   │
+│  │  Message Augmentation (client-side) │   │
+│  │  Vault note injection / Model text  │   │
 │  └─────────────────────────────────────┘   │
 └─────────────────────┬───────────────────────┘
                       │ WebSocket
@@ -96,7 +97,7 @@ Polly is a native iPhone app that serves as the primary mobile client for an Ope
 ```
 
 ### Key Principle
-The GatewayClient is the only component that speaks directly to OpenClaw. Everything else in the app consumes its observable state. The PollyEnhancement Layer intercepts outgoing messages to inject RAG context, domain tags, and mental model overrides before they hit the gateway.
+The GatewayClient is the only component that speaks directly to OpenClaw. Everything else in the app consumes its observable state. The PollyEnhancement Layer intercepts outgoing messages to inject user-selected context (vault notes, mental model text) before they hit the gateway — this is **message augmentation, not RAG retrieval**. There is no direct iOS → Polly REST API connection. The Polly Python backend, if running, is a gateway-side resource that agents tool-call independently. The iOS client never knows it exists.
 
 ---
 
@@ -329,6 +330,7 @@ Polly requests `scopes: ["operator.admin"]` on connect for full access.
 | `cron.list` | `{ includeDisabled?, limit?, query?, enabled?, sortBy? }` | `{ jobs: CronJob[] }` | Today view |
 | `cron.status` | `{}` | Scheduler status | Today header |
 | `cron.runs` | `{ jobId?, id?, limit?, statuses?, status? }` | `{ runs: CronRun[] }` | Run history |
+| `push.status` | `{}` | `{ configured, mode, relay?, direct? }` | Pre-registration validation — see §3.14 |
 | `models.list` | `{}` | Available models by provider | Settings |
 | `usage.status` | `{}` | Provider usage windows | Stats screen |
 | `usage.cost` | `{}` | Cost breakdown by model | Stats screen |
@@ -565,11 +567,24 @@ struct AgentSummary: Decodable {
 
 struct AgentIdentity: Decodable {
     let name: String?
-    let theme: String?           // color theme string
+    let theme: String?           // hex color string e.g. "#f0903b" — USE THIS as agent accent color
     let emoji: String?           // e.g. "🧠"
     let avatar: String?          // filename
     let avatarUrl: String?       // resolved URL
 }
+```
+
+**`identity.theme` — agent accent color (confirmed from `AgentSummarySchema` source)**
+- Field: `agent.identity.theme` (optional hex string, e.g. `"#f0903b"`)
+- Currently unpopulated on all agents in this gateway — `theme: null` for all
+- **Read**: present in `agents.list` response when set
+- **Write**: use `config.patch` to set (e.g. `{ "agents": { "list": [...agent with theme field...] } }`). `agents.update` does NOT support `theme` — it's missing from `AgentsUpdateParamsSchema`. This is a known gateway gap; `config.patch` is the workaround until upstream adds it.
+- **Client fallback**: when `identity.theme` is null, derive deterministic color from `agentId`:
+  ```typescript
+  // SHA-1 first 3 bytes → HSL(h, 65%, 55%) — consistent across devices, looks good on dark bg
+  const hue = (hashBytes[0] + hashBytes[1] * 256) % 360;
+  const fallbackColor = `hsl(${hue}, 65%, 55%)`;
+  ```
 ```
 
 **Live agents on this gateway** (from `openclaw.json`):
@@ -805,6 +820,58 @@ The `sendKey` is used to verify incoming push payloads — store in Keychain alo
 - Triggered on cron completion, agent message delivery, system events
 - On receive → open relevant session or Today view
 
+#### Push Configuration Validation (@infra Blocker 2)
+
+Before attempting push registration, Polly must validate that the gateway's push infrastructure is correctly configured. An unconfigured gateway will silently accept push registrations and then fail to deliver — the user sees notifications promised in Settings but never arriving.
+
+**`push.status` RPC — add to §3.4:**
+
+```swift
+// REQUEST
+{ "method": "push.status", "id": "rpc-1" }
+
+// RESPONSE
+{
+  "configured": true | false,
+  "mode": "relay" | "direct" | "unconfigured",
+  "relay": {                          // present when mode == "relay"
+    "reachable": true | false,
+    "latencyMs": 42
+  },
+  "direct": {                         // present when mode == "direct"
+    "keyPresent": true | false,       // .p8 key file exists and is readable
+    "keyValid": true | false,         // key parses as valid EC private key
+    "teamId": "ABCDE12345",
+    "keyId": "FGHIJ67890",
+    "environment": "production" | "sandbox"
+  }
+}
+```
+
+**iOS client behavior based on `push.status`:**
+
+| `configured` | `mode` | Action |
+|---|---|---|
+| `true` | `relay` or `direct` | Proceed with `aight.push.register` |
+| `false` | `unconfigured` | Show Settings → Notifications banner: "Push not configured on gateway — [How to set up]" |
+| `true` | `direct`, `keyValid: false` | Show warning: "Gateway APNs key is invalid — notifications may not deliver" |
+
+**When to call `push.status`:**
+- On first connect after install
+- When user enables notifications in Settings → Notifications
+- On reconnect after 24h+ gap (config may have changed)
+
+**`NSAllowsLocalNetworking` ATS exception (@infra):**
+Add to `Info.plist`:
+```xml
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+</dict>
+```
+This permits `ws://` on LAN IP addresses. Does not affect remote connections (still WSS required). Required for LAN path to work without certificate gymnastics.
+
 ---
 
 ### 3.15 Agents Files API (Moltbook)
@@ -901,14 +968,89 @@ struct AgentParams: Encodable {
 
 ## 4. Screen Specifications
 
+### 4.0 Navigation Model — Drawer
+
+**Polly uses a slide-out drawer, not a tab bar.**
+
+Chat is the permanent home surface. The drawer slides in from the left (swipe right or tap the hamburger icon in the chat nav bar). The drawer is the control center: switch agents, navigate to other views, start new conversations, see active sessions.
+
+**Full app layout:**
+
+```
+┌─────────────────────────────────────┐
+│ [≡]  🤖 Agent Name  [domain] [🧠]  │  ← Chat nav bar
+├─────────────────────────────────────┤
+│                                     │
+│           Chat surface              │
+│         (always present)            │
+│                                     │
+│                                     │
+├─────────────────────────────────────┤
+│ [ AugmentationPills if active     ] │
+│ [🎤] [Type a message...      ] [➤] │
+└─────────────────────────────────────┘
+```
+
+**Drawer open (swipe right or tap [≡]):**
+
+```
+┌──────────────┬──────────────────────┐
+│ POLLY      [+]│                      │
+│              │                      │
+│ Workspace  ▾ │                      │
+│ [Home      ] │    Chat surface      │
+│              │    (dimmed)          │
+│ Agent      ▾ │                      │
+│ [🖥️ Code Arch]│                      │
+│              │                      │
+│ TODAY      ▾ │                      │
+│ Home — Now   │                      │
+│ Group — 2m   │                      │
+│              │                      │
+│ ─────────────│                      │
+│ 👥 Agents    │                      │
+│ 📅 Today     │                      │
+│ ⚡ Shortcuts │                      │
+│ 📊 Usage     │                      │
+│ 📚 Moltbook  │                      │
+│ ⚙️ Settings  │                      │
+└──────────────┴──────────────────────┘
+```
+
+**Drawer sections:**
+
+1. **Header:** App name + [+] new conversation button
+2. **Workspace selector:** Shows current workspace name with dropdown chevron. Tapping opens a workspace picker sheet. Maps to OpenClaw workspace concept (the active agent group/context). In most single-user setups this is one workspace — the dropdown is there for power users with multiple OpenClaw setups.
+3. **Agent selector:** Shows current agent emoji + name with dropdown chevron. Tapping opens agent picker sheet (full list of configured agents). Switching agent here switches the active chat session.
+4. **TODAY (collapsible):** Recent active chat sessions, most recent first. Each row shows session label + relative time. Group chat sessions show a group icon. Tapping a session navigates to it. This is **session history**, not the Today reminders view.
+5. **Navigation links (bottom section):** Agents, Today, Shortcuts, Usage, Moltbook, Settings — each with a colored square icon badge (Lucide icon on colored background per domain color system). Tapping navigates to that full-screen view, closing the drawer.
+
+**Drawer interaction:**
+- Open: swipe right from left edge, or tap [≡] in chat nav bar
+- Close: swipe left, tap backdrop (dimmed chat area), or tap any nav item
+- Animation: spring-physics slide, 300ms, slight parallax on chat surface
+- Backdrop: chat surface dims to 40% opacity while drawer is open
+
+**Right panel (swipe LEFT from right edge of chat):**
+- User-configurable in Settings → Preferences → Swipe Right Screen: `Voice` | `Shortcuts`
+- Default: Voice panel (voice mode controls + waveform)
+- Shortcuts panel: same shortcuts grid as the Shortcuts view, quick-access without navigating away
+- This is a separate gesture from the drawer — swipe right edge → right panel; swipe left edge → drawer
+
+**[+] New conversation:**
+- Tap → opens agent picker sheet → select agent → new empty chat session
+- If already in an empty session with that agent, do nothing (don't stack)
+
+---
+
 ### 4.1 Chat View
 
-**Purpose:** Primary interface. Chat with a single agent or a group.
+**Purpose:** Primary interface. Permanent background surface. Accessible from everywhere via drawer close.
 
 **Layout:**
 ```
 ┌─────────────────────────────────────┐
-│ [←]  🤖 Agent Name    [⋯]  [+group] │  ← Navigation bar
+│ [≡]  🤖 Agent Name  [domain] [🧠]  │  ← Nav bar
 ├─────────────────────────────────────┤
 │                                     │
 │        [message bubbles]            │
@@ -922,9 +1064,16 @@ struct AgentParams: Encodable {
 │ └─────────────────────────────────┘ │
 │                                     │
 ├─────────────────────────────────────┤
+│ [📄 MEMORY.md ✕]  [🧠 Inversion ✕]│  ← Augmentation pills (conditional)
 │ [🎤] [Type a message...      ] [➤] │  ← Input bar
 └─────────────────────────────────────┘
 ```
+
+**Nav bar elements:**
+- **[≡]** (left): Opens drawer
+- **Agent name + emoji** (center): Tappable — opens agent picker sheet (same as drawer agent selector)
+- **[domain badge]** (right of name): Colored domain pill — auto-detected, tappable to override (§11.2)
+- **[🧠]** (right): Mental model quick-select (§11.3)
 
 **States:**
 - Idle (waiting for input)
@@ -939,190 +1088,899 @@ struct AgentParams: Encodable {
 - Syntax-highlighted code blocks
 - Streaming text (characters appear progressively)
 - Tool call visibility (collapsible "Thinking..." or "Searching..." block)
-- Agent switcher (tap agent name → slide-up sheet with agent list)
 - Long-press message → copy / quote / delete
 - Pull to load history
+- `/` in input → opens vault note picker (§11.1)
 
-**Polly Enhancements:**
-- `/` in input → opens vault note picker (RAG context injection)
-- Domain badge in nav bar (auto-detected from conversation)
-- Mental model quick-select button in nav bar
+**Scroll behavior:**
+- `FlatList` (inverted) — messages rendered bottom-up, newest at bottom
+- `inverted={true}` + data array in reverse-chronological order so newest message is always in view
+- `keyboardShouldPersistTaps="handled"` — tapping a message does not dismiss keyboard
+- Auto-scroll to bottom on: new outbound message, first delta of a new streaming response
+- Pull-to-load-history: `onEndReached` (inverted = top of list) triggers `chat.history` fetch with cursor; prepends older messages; scroll position preserved
+- Scroll lock: if the user manually scrolls up mid-stream, auto-scroll suspends. Resume auto-scroll when user scrolls back to bottom or stream ends.
+
+**Empty state:**
+- Shown when conversation history is empty (new session or history cleared)
+- Centered in the message area (above input bar)
+- Agent emoji in a large circle (56pt, agent's theme color bg)
+- Agent name in `semibold/18`
+- One-question frame text in `regular/15` secondary color — pulled from agent template metadata (e.g. *"Is this the right design?"*)
+- No button, no CTA — just the framing question. User types to begin.
+
+**Keyboard / layout:**
+- `KeyboardAvoidingView` with `behavior="padding"` on iOS
+- Input bar + augmentation pills rise with keyboard; message list compresses above
+- Safe area bottom inset applied to input bar container — no content hidden behind home indicator
+- On iPhone SE / small devices: augmentation pills collapse to a single `+X more` chip when they would overflow one line. **In practice this never triggers in Phase 1–4: the pill row contains a maximum of two pills simultaneously (one vault note + one mental model). Theme injection never appears as a pill — it operates on the system prompt at the gateway layer, not the message. Two pills always fit on one line on all supported devices. The collapse chip is a defensive implementation detail for Phase 5+ if domain injection is added.** (@design_eng BLOCKER #2 closed — max pill count is bounded and known.)
+
+**Layout grid:**
+- Nav bar: 44pt height + safe area top
+- Message list: flex-fill between nav bar and input bar
+- Augmentation pills row: 36pt height, 12pt horizontal padding, hidden when no pills active
+- Input bar: 52pt min-height (expands with multiline text, max 120pt / ~4 lines), 12pt horizontal padding
+- Total chrome (nav + input bar): ~96pt — leaves ~700pt content area on iPhone 15 Pro
+
+**Error states:**
+| Error | Display |
+|-------|---------|
+| Gateway disconnected | Inline banner below nav bar: "Disconnected — [Retry]" (amber bg). Input bar disabled. |
+| Message send failed | Bubble shows red `!` retry icon. Tap to resend. |
+| Stream interrupted mid-response | Partial response shown with `[Response interrupted]` appended in secondary color. Retry button in bubble. |
+| Auth failure | Sheet: "Connection lost — check your gateway token." with Settings deep-link. |
 
 ---
 
 ### 4.2 Today View
 
-**Purpose:** Dashboard of active items — reminders, tasks, background processes.
+**Purpose:** Dashboard of active items — reminders, tasks, background processes. Accessed from drawer nav link.
 
 **Layout:**
 ```
 ┌─────────────────────────────────────┐
-│  Today                    [+ Add]   │
-├─────────────────────────────────────┤
-│  ⏰ UPCOMING                        │
-│  ┌───────────────────────────────┐  │
-│  │ 🔔 Call dentist   2:00 PM     │  │  ← trigger
-│  └───────────────────────────────┘  │
+│ [<]                         [⊞]    │  ← nav bar (back + filter)
 │                                     │
-│  ✅ TASKS                           │
-│  ┌───────────────────────────────┐  │
-│  │ ☐ Draft Q2 proposal  [work]   │  │  ← item
-│  │ ☐ Review PR #142     [code]   │  │
-│  └───────────────────────────────┘  │
+│  Today   Mar                        │  ← large title + month
 │                                     │
-│  ⚡ ACTIVE PROCESSES                │
-│  ┌───────────────────────────────┐  │
-│  │ ⟳ Research: Polly iOS spec    │  │  ← process
-│  └───────────────────────────────┘  │
+│  T   F   S   S  [M]  T   W   T     │  ← date strip (horizontal scroll)
+│  19  20  21  22 [23] 24  25  26    │    selected date = filled circle
+│                                     │
+│  [All 0] [Upcoming 0] [Tasks 0]    │  ← filter chips
+│  [Activity 0]                       │
+│                                     │
+│  ┌─────────────────────────────┐   │
+│  │  ✦  All clear               │   │  ← empty state (sparkles icon)
+│  │  No reminders or tasks for  │   │
+│  │  today. Enjoy the calm.     │   │
+│  └─────────────────────────────┘   │
+│                                     │
+│                              [+]   │  ← FAB bottom-right
 └─────────────────────────────────────┘
 ```
 
-**Item Types:**
-- `trigger` — time-based, shows scheduled time, fires once
-- `item` — stateful task with labels, lifecycle management
-- `process` — background agent run, shows progress
+**Date strip:**
+- Horizontally scrollable week strip
+- Day-of-week letter above, date number below
+- Selected date: filled white circle around date number
+- Today is always pre-selected on open
+- Tap a date to filter items to that date
+- Custom component — not a full calendar sheet
 
-**Actions:**
-- Swipe right → mark done
-- Swipe left → cancel / delete
-- Tap → expand detail + edit
-- Long-press → quick actions sheet
+**Filter chips:**
+- `All` / `Upcoming` / `Tasks` / `Activity` — pill chips with item counts
+- Active chip: white filled bg, dark text
+- Inactive chips: dark muted bg, secondary text
+- "Activity" = background agent processes (what we previously called "Processes")
+- Chips filter a **flat list** — not grouped sections with headers
+
+**Item list (when populated):**
+- Flat scroll, no section headers
+- Each item row:
+  - Left: type icon (🔔 Upcoming, ☐ Task, ⟳ Activity)
+  - Title + time/label
+  - Right: status indicator or chevron
+  - Domain-colored label chip (from client-side domain config)
+- Swipe right → mark done (green checkmark reveal)
+- Swipe left → cancel/delete (red trash reveal)
+- Tap → expand inline or push detail view
+
+**Empty state:**
+- Sparkles icon on dark circle bg (Polly accent color, not Aight lime)
+- Headline: **"All clear"**
+- Body: *"No reminders or tasks for today. Enjoy the calm."*
+- Shown when filtered count = 0
+
+**FAB [+] → Add Item sheet:**
+- Bottom sheet, slides up above keyboard
+- **Title:** "Add Item"
+- **Type selector:** Three pill chips — `☑ Task` · `📅 Event` · `⏰ Reminder`
+  - Active type: Polly accent fill (`#f0903b`)
+  - Inactive: dark muted bg
+  - Switching type changes the text field placeholder and submit button label
+- **Text field:** Full-width, multiline, auto-focused on sheet open
+  - Task placeholder: "What needs to be done?"
+  - Event placeholder: "What's the event?"
+  - Reminder placeholder: "What do you want to be reminded of?"
+- **Submit button:** Full-width, "Add Task" / "Add Event" / "Add Reminder" — disabled (muted) until text entered; enabled once text present
+- **No enrichment fields on creation** — labels, domain, time, priority are set after creation by tapping the item. Keep creation friction minimal.
+- Keyboard auto-raises when sheet opens
+
+**[⊞] Filter button (top-right):**
+- Opens **"Filter by Label"** bottom sheet
+- Shows all labels currently attached to items as selectable chips — tap a label to filter the list to only items with that label
+- Empty state: tag icon, "No labels yet", "Labels will appear here as you add items to your day."
+- [✕] circle button top-right to dismiss
+- This is label-only filtering — not sort/priority/domain. Keep it simple.
 
 **Polly Enhancements:**
-- Pattern transparency cards: "💡 Polly noticed you usually..." 
-- Domain-colored label chips
+- Domain-colored label chips on items
+- **Inbox card:** When `_inbox/` contains unprocessed captures, a persistent card appears at the top of the Today list (above all other items, regardless of date filter):
+  ```
+  ┌─────────────────────────────────────┐
+  │  📥  3 captures waiting             │
+  │  Tap to process your Polly Inbox    │  → tapping opens Inbox Review queue
+  └─────────────────────────────────────┘
+  ```
+  Card style: muted border, secondary text. Disappears when inbox is empty.
+
+- **"Polly noticed..." card** *(Phase 3+ — agent-mediated, opt-in)*: A dismissible insight card that surfaces when the active agent observes a recurring topic across recent captures or conversations. Not engine-driven — the agent generates this on a timed cadence (e.g., once per week). Example:
+  ```
+  ┌─────────────────────────────────────┐
+  │  🧠  Polly noticed                  │
+  │  You've captured 6 notes about      │
+  │  norns synthesis this week.         │
+  │  Want to organize them?  [Yes] [✕] │
+  └─────────────────────────────────────┘
+  ```
+  Opt-in toggle in Settings → Preferences → Features: "Polly Noticed cards". Default: ON. Card dismissal is permanent (stored in MMKV).
 
 ---
 
 ### 4.3 Shortcuts View
 
-**Purpose:** Quick-access saved prompts.
+**Purpose:** Quick-access saved prompts — one tap starts a conversation with the active agent using a pre-written prompt. Optionally exposed to iOS Shortcuts app via App Intents.
+
+**Subtitle:** "One tap to start a conversation"
 
 **Layout:**
 ```
 ┌─────────────────────────────────────┐
-│  Shortcuts                 [Edit]   │
-├─────────────────────────────────────┤
-│  ┌─────────┐  ┌─────────┐           │
-│  │ 🌅      │  │ 📋      │           │
-│  │ Morning │  │ Daily   │           │
-│  │ Briefing│  │ Standup │           │
-│  └─────────┘  └─────────┘           │
-│  ┌─────────┐  ┌─────────┐           │
-│  │ 🔍      │  │ ✍️      │           │
-│  │ Research│  │ Draft   │           │
-│  │  Mode   │  │  Email  │           │
-│  └─────────┘  └─────────┘           │
+│ [<]                                 │
+│                                     │
+│  Shortcuts                          │  ← large title
+│  One tap to start a conversation    │  ← subtitle, muted
+│                                     │
+│  ┌──────┐ ┌──────┐ ┌──────┐ ┌────┐ │
+│  │  ☁️  │ │  📋  │ │  ✉️  │ │ 📅 │ │  ← 4-column icon grid
+│  └──────┘ └──────┘ └──────┘ └────┘ │
+│  Weather  Daily    Emails  Calendar │
+│           Brief                     │
+│                                     │
+│  ┌──────┐                           │
+│  │  +   │                           │  ← inline Add tile (next grid slot)
+│  └──────┘                           │
+│   Add                               │
+│                                     │
 └─────────────────────────────────────┘
 ```
 
-**Features:**
-- Grid layout (2-column)
-- Tap → sends shortcut prompt to active agent
-- Long-press → edit / delete / reorder
-- Add new shortcut: name + emoji + prompt text
-- The `shortcut:` JSON labeling protocol handled transparently (app sends label request, renders JSON silently)
+**Grid layout:**
+- 4 columns, wrapping rows — iOS home screen grid style
+- Each shortcut: custom colorful rounded-square icon image (~72pt, same corner radius as iOS app icons `size × 0.225`) + label below in small text
+- [+] Add tile: muted gray rounded square, `+` icon, "Add" label — always in the next open grid position after existing shortcuts
+- Long-press shortcut → context menu: Edit / Delete / Rearrange
+- Tap shortcut → sends its prompt to the active agent, navigates to Chat view
+
+**Shortcut icon design:**
+- Custom colorful rounded-square images — not emoji, not Lucide icons
+- Each shortcut has a background color + a centered icon (Lucide icon or SF Symbol rendered on the color bg)
+- When creating a shortcut, user picks: name + background color + icon from icon picker
+- Icon renders at ~40pt on the colored bg, total tile ~72pt
+
+**Add shortcut sheet:**
+- Name (text field)
+- Prompt text (multiline — the full prompt sent on tap)
+- Icon picker (grid of Lucide icons)
+- Color picker (palette of preset colors)
+- "Create Shortcut" button
+
+**Apple Shortcuts / App Intents integration *(Phase 2):***
+- Polly shortcuts are exposed as App Intents, making them invocable from:
+  - iOS Shortcuts app (automation workflows)
+  - Siri ("Hey Siri, run my Daily Brief in Polly")
+  - Lock Screen / Action Button shortcuts
+  - Shortcuts widget on home screen
+- Requires a native Swift module wrapping `AppIntents` framework — not available in JS-only Expo
+- Phase 1: in-app grid only
+- Phase 2: `expo-app-intents` native module or bare workflow with custom native code
+- Each Polly shortcut auto-registers as an `AppIntent` with title + prompt payload
 
 ---
 
 ### 4.4 Moltbook View
 
-**Purpose:** Browse and interact with OpenClaw memory layer (MEMORY.md files per agent, knowledge base entries).
+**Purpose:** Browse the Moltbook social network for AI agents (`moltbook.com`). Read submolt feeds, see what agents are discussing, and let your agents participate via the Moltbook skill.
+
+**What Moltbook is:** An independent open platform — "the front page of the agent internet." Not Aight's product. Has a public REST API (`https://www.moltbook.com/api/v1`) and an OpenClaw-compatible skill file at `https://www.moltbook.com/skill.md`. Agents register, get claimed by their human owner, and can post/comment/upvote.
+
+**Architecture:**
+- **Feed browsing:** iOS client calls Moltbook API directly (`GET /api/v1/feed`, `/api/v1/submolts/{name}/posts`) — public read endpoints, no auth required for reading
+- **Agent participation (post/comment/upvote):** Happens via gateway-side Moltbook skill — iOS sends a chat message to an agent, agent uses the skill to post. iOS never holds the Moltbook API key.
+- **Moltbook API key storage:** `expo-secure-store` key `"polly.moltbook.apiKey"` — used only for agent registration/claim flow, not for feed browsing
 
 **Layout:**
 ```
 ┌─────────────────────────────────────┐
-│  Moltbook               [🔍 Search] │
-├─────────────────────────────────────┤
-│  AGENTS                             │
+│ [<]                    [🔍] [⊞]    │
+│                                     │
+│  Moltbook                           │  ← large title
+│                                     │
+│  [Everything]  [Following]          │  ← tab selector
+│                                     │
+│  [Hot] [New] [Top] [Rising]         │  ← sort chips
+│                                     │
 │  ┌───────────────────────────────┐  │
-│  │ 🖥️ Code Architect            >│  │
-│  │ 🏗️ Backend Architect         >│  │
-│  │ 🧠 AI Expert                 >│  │
+│  │ ▲ 12                         │  │  ← upvote button + count
+│  │ The operationalized self:     │  │  ← post title
+│  │ why your cron jobs define     │  │
+│  │ who you are more than your    │  │
+│  │ SOUL.md                       │  │
+│  │ excerpt text...               │  │
+│  │ [m/general]  👤user  2h  💬5  │  │  ← meta row
 │  └───────────────────────────────┘  │
 │                                     │
-│  GLOBAL MEMORY                      │
 │  ┌───────────────────────────────┐  │
-│  │ 📝 MEMORY.md (main)          >│  │
+│  │ ▲ 8                          │  │
+│  │ meaning provenance: the       │  │
+│  │ problem nobody is solving     │  │
+│  │ ...                           │  │
+│  │ [m/philosophy]  👤bot  4h 💬2 │  │
 │  └───────────────────────────────┘  │
 └─────────────────────────────────────┘
 ```
 
-**Features:**
-- View MEMORY.md per agent (rendered markdown)
-- View global workspace memory
-- Search across all memory
-- Read-only initially; edit in v2
+**Feed tabs:**
+- **Everything** — global feed across all submolts
+- **Following** — submolts your agents are subscribed to (requires Moltbook skill configured)
+- A third entry point: **[🦞 Submolts]** button/link in the feed header → navigates to Submolts directory
+
+#### 4.4.1 Submolts Directory
+
+Accessible from a "Submolts" link in the Moltbook feed header.
+
+```
+┌─────────────────────────────────────┐
+│ [<]                                 │
+│ 🦞 Submolts                         │  ← large title + lobster emoji
+│    20 communities                   │  ← subtitle (count from API)
+│                                     │
+│ [🔍 Search communities...        ]  │  ← full-width search bar
+│                                     │
+│ ┌───────────────────────────────┐   │
+│ │ [m/introductions] 👥 126.1k [Subscribe]│
+│ │ New here? Tell us about        │   │
+│ │ yourself! Who are you...       │   │
+│ └───────────────────────────────┘   │
+│ ┌───────────────────────────────┐   │
+│ │ [m/openclaw-explorers] 👥 2.0k [Subscribe]│
+│ │ OpenClaw Explorers             │   │
+│ │ A gathering place for agents   │   │
+│ │ running on OpenClaw...         │   │
+│ └───────────────────────────────┘   │
+└─────────────────────────────────────┘
+```
+
+**Submolt cards:**
+- Submolt name pill (dark muted bg, accent-text label) left-aligned
+- Member count (👥 + formatted number) center
+- "Subscribe" button (accent color filled pill) right-aligned
+- Optional display name (semibold, below pill row)
+- Description (muted, 2 lines max, truncated)
+- Card bg elevated (bgSecondary), full-width, 12pt radius
+
+**Subscribe in Phase 1:** Button visible but disabled — tapping shows "Connect an agent to subscribe. Go to Settings → Integrations → Moltbook."
+
+**Recommended submolts to pre-subscribe on agent setup:**
+- `m/openclaw-explorers` — directly relevant; auto-suggest during Moltbook skill setup
+- `m/agents` — for autonomous agent discussion
+- `m/general` — town square
+
+**Sort chips:** Hot · New · Top · Rising — maps to Moltbook API sort parameters. Active = filled accent pill; inactive = plain text (no border).
+
+**Tab indicator:** Underline style (not filled pill) — accent color `#f0903b` on active tab.
+
+**Post cards:**
+- **Left column:** ↑ arrow (accent color) stacked above upvote count (bold, accent color, ~20pt) — fixed-width left column, not inline with title
+- Title (semibold, white, 2 lines max, truncated with …)
+- Excerpt (muted, 2 lines, truncated)
+- Meta row: `m/submolt` tag (dark rounded pill) · agent avatar (Moltbook circular identicon, render from URL) · username · relative time · ○ comment count (open circle icon)
+- Card bg: slightly elevated (bgSecondary), full-width, 12pt radius
+- Tap → post detail view (threaded comments, full text)
+- Tapping upvote: requires gateway skill configured; if not connected, prompt to connect
+
+**Agent connection (Settings → Integrations → Moltbook):**
+- If no agent is connected: banner at top "Connect an agent to participate"
+- Connection flow: user sends their agent to `moltbook.com/skill.md` (agent self-registers, sends claim link back, user verifies via X/Twitter)
+- Once connected: upvote/comment/post available
+
+**Phase 1 scope:** Read-only feed browsing (no auth required). Agent participation (post/comment) deferred to Phase 2 when Moltbook skill is installable from Settings.
+
+**Moltbook API key:** Collected during agent registration UX and held temporarily in `expo-secure-store` key `"polly.moltbook.apiKey"`. On registration completion, forwarded to gateway via `config.set` and immediately purged from `expo-secure-store`. iOS does not hold the key after setup. Never logged, never sent to any domain other than `https://www.moltbook.com`.
 
 ---
 
 ### 4.5 Usage Stats View
 
-**Purpose:** Token usage, cost tracking, model breakdowns.
+**Purpose:** Token usage tracking — OpenClaw gateway stats + external provider quota (if applicable).
+
+**Layout (scrollable, no period picker):**
+```
+┌─────────────────────────────────────┐
+│  Usage                              │  ← large title, no nav chrome
+│                                     │
+│  MODELS                             │  ← small-caps section header
+│  ┌───────────────────────────────┐  │
+│  │ [icon] Provider Name         │  │  ← per configured provider
+│  │        plan_tier              │  │
+│  │ Quota A              58% left │  │  ← progress bar (provider color)
+│  │ Quota B             100% left │  │
+│  └───────────────────────────────┘  │
+│                                     │
+│  CREDIT USAGE                       │
+│  ┌─────────────┐ ┌───────────────┐  │
+│  │ 📅 Today    │ │ 📅 Last 30d   │  │  ← 2-up stat cards
+│  │ 0           │ │ 128.8k        │  │
+│  │ tokens      │ │ tokens        │  │
+│  └─────────────┘ └───────────────┘  │
+│                                     │
+│  ┌───────────────────────────────┐  │
+│  │ Daily Breakdown               │  │  ← breakdown card
+│  │ Last 3 days                   │  │
+│  │ Mar 22  ██░░░░░░░░░  6.5k    │  │
+│  │ Mar 21  ████░░░░░░░  24.8k   │  │
+│  │ Mar 17  ██████████░  97.6k   │  │
+│  └───────────────────────────────┘  │
+│                                     │
+│  OPENCLAW                           │
+│  ┌─────────────┐ ┌───────────────┐  │
+│  │ ↗ Total     │ │ ↑ Input       │  │  ← 2×2 stat grid
+│  │ Tokens      │ │               │  │
+│  │ 1M          │ │ 6.2k          │  │
+│  │ 35 sessions │ │ prompt tokens │  │
+│  └─────────────┘ └───────────────┘  │
+│  ┌─────────────┐ ┌───────────────┐  │
+│  │ ↓ Output    │ │ ⊞ Sessions    │  │
+│  │ 29k         │ │ 35            │  │
+│  │ completion  │ │ active        │  │
+│  └─────────────┘ └───────────────┘  │
+│                                     │
+│  ┌───────────────────────────────┐  │
+│  │ [chip] claude-sonnet-4.6      │  │  ← active model card
+│  │ Context Window        128.0k  │  │
+│  └───────────────────────────────┘  │
+│                                     │
+│  ┌───────────────────────────────┐  │
+│  │ Usage by Session              │  │
+│  │ Top sessions by token count   │  │
+│  │ Home               454.5k ██  │  │
+│  │ claude-sonnet-4.6             │  │
+│  │ Home               200.8k ██  │  │
+│  │ claude-haiku-4.5              │  │
+│  │ ...                           │  │
+│  └───────────────────────────────┘  │
+└─────────────────────────────────────┘
+```
+
+**MODELS section:**
+- Only shown if external providers with quota tracking are configured (e.g., GitHub Copilot)
+- One card per quota-tracked provider
+- Progress bars show remaining quota (not consumed) — colored with provider's brand color
+- Hidden entirely for self-hosted/API-key providers (Anthropic, OpenAI direct) — those don't have quota in this sense
+- Polly Phase 1: section hidden (no quota-tracked providers in default config)
+
+**CREDIT USAGE:**
+- "Today" and "Last 30 Days" stat cards side-by-side
+- Token counts formatted with k/M suffixes (e.g., 128.8k, 1M)
+- Data sourced from OpenClaw gateway `usage.get` RPC
+
+**Daily Breakdown card:**
+- "Last 3 days" (fixed window — no user-configurable period)
+- Per-day rows: date label left, formatted token count right, lime green progress bar
+- Bar width proportional to max day in the set
+- Bar color: Polly accent (`#f0903b`) — not lime green (that's Aight's brand color)
+
+**OPENCLAW 2×2 stat grid:**
+- Total Tokens (with session count subtitle)
+- Input (prompt tokens)
+- Output (completion tokens)
+- Sessions (active session count)
+- Each card: colored icon badge (Lucide icon on rounded-square bg) + large number + descriptor subtitle
+
+**Active model card:**
+- Shows current active model name + context window size
+- Model chip icon (chip/processor Lucide icon)
+
+**Usage by Session:**
+- "Top sessions by token consumption" subtitle
+- Flat list, ordered by token count descending
+- Each row: session title (truncated with …) | token count right-aligned | lime/accent bar | model name below title
+- Scrolls within the parent scroll view
+
+**No period picker.** Stats are always-on cumulative + last-30-days. No date range selector in Phase 1.
+
+---
+
+### 4.6 Vault Search View
+
+**Purpose:** Search the user's configured vault (Obsidian or Notion) and the Polly Inbox. Accessed via drawer nav link or the `/` command in chat input (§11.1).
+
+> **Phase gate:** Phase 1 — Obsidian only (filesystem read). Notion search via API in Phase 2.
 
 **Layout:**
 ```
 ┌─────────────────────────────────────┐
-│  Usage                    [Period ▾]│
-├─────────────────────────────────────┤
-│  TODAY                              │
-│  Tokens in:   142,300               │
-│  Tokens out:   28,100               │
-│  Est. cost:     $0.84               │
+│ [<]                                 │
 │                                     │
-│  BY MODEL                           │
-│  ██████████ claude-sonnet  68%      │
-│  ████       gpt-4o         21%      │
-│  ██         auto           11%      │
+│  [🔍 Search your vault...        ]  │  ← auto-focused on open
 │                                     │
-│  BY AGENT                           │
-│  ████████ Code Architect   52%      │
-│  ████     AI Expert        31%      │
-│  ██       Backend          17%      │
+│  RECENT SEARCHES                    │
+│  ┌─────────────────────────────┐   │
+│  │  "norns synthesis"          │   │
+│  │  "first principles"         │   │
+│  └─────────────────────────────┘   │
+│                                     │
+│  ── or ──                           │
+│                                     │
+│  [results list when query active]   │
 └─────────────────────────────────────┘
 ```
 
+**Search behavior:**
+- Searches local Obsidian vault (file names + content) via the configured vault path
+- Also searches `_inbox/` (Polly captures) — inbox results shown with a 📥 badge
+- Debounced: fires 300ms after last keystroke
+- Results: file name (bold), domain chip (colored), first matching snippet (secondary text, matching terms highlighted)
+- Tap result → opens file in read-only markdown view (same renderer as Moltbook, §4.4)
+- Tap result with vault context active → offers "Insert as context" (injects `[[note title]]` link into chat input)
+
+**Filter chips (below search bar, appear after first query):**
+- `All` · `Notes` · `Inbox` · `[active domains...]`
+- Domain chips are dynamically generated from the user's configured domains
+
+**Empty state (no query):**
+- Shows recent searches (last 5, stored MMKV `"polly.recentSearches"`)
+- Below recent searches: "Browse by domain" — one chip per configured domain, tap to filter full vault by domain tag
+
+**No-results state:**
+- "Nothing found for '[query]'" 
+- Suggestion: "Try asking an agent — tap here to open chat with this search as your message"
+
+**Keyboard:**
+- Search field auto-focused on view open (keyboard up immediately)
+- Back button or swipe-down → closes view, returns to chat
+
 ---
 
-### 4.6 Settings View
+### 4.7 Agents View
 
-**Purpose:** Configure everything about the OpenClaw connection and Polly preferences.
+**Purpose:** Browse all configured OpenClaw agents, create new ones, manage existing.
 
-**Sections:**
+**Layout:**
+```
+┌─────────────────────────────────────┐
+│  [<]              [Workspace ▾]     │  ← nav bar
+│                                     │
+│  Agents                             │  ← large title
+│                                     │
+│   [😀] [🎨] [📊] [👨‍🍳] [✍️]         │  ← avatar strip (scrollable)
+│                                     │
+│      Build your team                │  ← header copy
+│   Add more specialists to cover     │
+│   every angle. Each agent has its   │
+│   own personality, skills, and      │
+│   model.                            │
+│                                     │
+│  ┌───────────────────────────────┐  │
+│  │     Create New Agent          │  │  ← primary CTA, full-width pill
+│  └───────────────────────────────┘  │
+│                                     │
+│  YOUR AGENTS                  Edit  │  ← section header
+│  ┌───────────────────────────────┐  │
+│  │ [🖥] Code Architect         > │  │
+│  │      @code_architect          │  │
+│  ├───────────────────────────────┤  │
+│  │ [🖼] Frontend Developer     > │  │
+│  │      @frontend                │  │
+│  ├───────────────────────────────┤  │
+│  │ [🏗] Backend Architect      > │  │
+│  │      @backend                 │  │
+│  └───────────────────────────────┘  │
+└─────────────────────────────────────┘
+```
 
-**Gateway**
-- Gateway URL (e.g., `ws://[tailscale-ip]:18789`)
-- Connection status indicator
-- Re-pair / re-authenticate
-- Test connection button
+**Header section ("Build your team"):**
+- Always shown, not just empty state — it's a persistent top section with motivational copy
+- Avatar strip: horizontally scrollable row of all existing agent avatars (emoji on dark rounded-square bg, iOS app-icon style)
+- Copy is fixed: "Add more specialists to cover every angle. Each agent has its own personality, skills, and model."
 
-**Providers & Models**
-- List configured providers (Anthropic, OpenAI, blockrun, Ollama, etc.)
-- API key management (read from `openclaw.json` auth profiles)
-- Default model selection
-- Reasoning model toggle
+**Create New Agent button:**
+- Full-width, large pill shape, Polly accent color (`#f0903b` orange)
+- Tapping opens the agent creation flow (see §4.7.1 below)
 
-**Agents**
-- List all agents
-- View agent SOUL.md
-- Enable/disable agents
-- Create new agent (shortcut to OpenClaw agent creation)
+**YOUR AGENTS section:**
+- Small-caps section label + "Edit" link (accent color) on right
+- Edit mode: rows show drag handle (reorder) + delete button (red circle ✕)
+- Each agent row:
+  - **Avatar:** emoji rendered on dark rounded-square background (≈44pt, iOS app-icon style). **Not bare emoji — emoji on a dark badge bg.**
+  - **Name:** semibold, 16pt
+  - **Handle:** `@username`, muted, 13pt
+  - **Chevron:** `>` right-aligned
+  - **Divider:** subtle 1px between rows
+  - Grouped in a single rounded card container (bgSecondary bg, 12pt radius)
+- Tap row → Agent detail view (SOUL.md viewer, model config, enable/disable)
 
-**Polly Features**
-- RAG / vault path configuration
-- Domain detection toggle
-- Mental models default selection
-- Pattern learning visibility toggle
+**Workspace pill (top-right nav bar):**
+- Shows current workspace name with dropdown chevron
+- **Persistent across all full-screen views** (Agents, Today, Shortcuts, Usage, Moltbook) — not just the drawer
+- Tapping opens workspace picker sheet
+- In single-workspace setups this is mostly decorative but provides context
 
-**Notifications**
-- Push notification enable/disable
-- Per-agent notification preferences
+#### 4.7.1 Agent Creation Flow
 
-**About**
-- App version
-- Gateway version
-- OpenClaw version
-- GitHub links
+Tapping "Create New Agent" navigates to **"Choose a Template"** screen.
+
+**Template screen layout:**
+```
+┌─────────────────────────────────────┐
+│ [<]  Choose a Template              │
+│                                     │
+│ Pick a template, create a public    │
+│ figure agent, or build from scratch │
+│                                     │
+│ [All] [Technical] [Productivity]    │ ← horizontal filter chips, scrollable
+│ [Creative] [Business] [Social]      │
+│ [Lifestyle] [Finance] [Fun]         │
+│                                     │
+│ ┌─────────────────────────────────┐ │ ← Public Figure (accent-highlighted)
+│ │ [👤] Public Figure           > │ │
+│ │      Create an agent inspired   │ │
+│ │      by a well-known personality│ │
+│ └─────────────────────────────────┘ │
+│                                     │
+│ ┌─────────────────────────────────┐ │
+│ │ [🖥] Code Architect          > │ │
+│ │      Your senior dev on call    │ │
+│ └─────────────────────────────────┘ │
+│   ... (list continues)              │
+│                                     │
+│ ┌─────────────────────────────────┐ │ ← Start from Scratch (accent, bottom)
+│ │ [+] Start from Scratch       > │ │
+│ │     Build a custom agent with   │ │
+│ │     your own personality & role │ │
+│ └─────────────────────────────────┘ │
+└─────────────────────────────────────┘
+```
+
+**Filter chips:** Horizontal scrollable row. "All" selected by default (filled/accent). Tapping a category filters the list. Active chip = accent border + accent text. Inactive = muted bg, secondary text.
+
+**Public Figure row:** Always pinned at top regardless of filter. Distinct visual treatment — darker green-tinted bg in Aight; Polly uses a subtle `accent/10` background tint.
+
+**Start from Scratch:** Always pinned at bottom regardless of filter.
+
+**Template list items:**
+- Icon on dark rounded-square badge (emoji or rendered image, 44pt)
+- Template name (semibold, 16pt)
+- Tagline (muted, 13pt, max 2 lines)
+- Chevron right
+
+**Templates are bundled client-side** — not fetched from any server. They are static SOUL.md templates included in the app bundle. See `src/data/agentTemplates.ts`.
+
+**On template tap → Agent Customization screen:**
+1. Template name pre-filled (editable)
+2. Template emoji pre-filled (tappable to change)
+3. Personality text pre-filled from template (editable multiline)
+4. Model selector (lists available configured models)
+5. Username auto-generated from name (editable)
+6. "Create Agent" button → `config.patch` RPC to gateway → navigate to new agent chat
+
+**SOUL.md assembly:** The generated `SOUL.md` is not just the personality text the user sees. At creation time, the app assembles the final file as:
+
+```
+[personality text — from template or user-written]
+
+---
+
+[Standard SOUL Baseline — injected by app, always appended]
+```
+
+The Standard SOUL Baseline (defined in `POLLY_AGENT_TEMPLATES.md`) contains four universal blocks: Session Startup (read memory + USER.md on first message), Context Management (compress at ~80 messages, announce, write to memory), Blockers & Honesty (escalate immediately, never work around blockers silently), and Memory Writes (persist durable facts to daily memory file).
+
+This assembly happens for **every agent** — template-based, Public Figure, and Start from Scratch. The user never sees or edits the baseline blocks in the creation flow. They are always present in the final SOUL.md on the gateway. If the user later edits the agent's personality via the Agent Detail View (§4.7.3), the baseline blocks are preserved at the bottom of the file.
+
+**Public Figure flow:** Opens a text field — "Who do you want to recreate?" → enters name → triggers `[PUBLIC_FIGURE_AGENT]` protocol (sub-agent spawned to research + create, per system prompt instructions).
+
+**Start from Scratch:** Opens same customization screen with empty fields.
+
+#### 4.7.2 Polly Template Library
+
+Polly ships its own curated template library — not Aight's generic list verbatim. The full template definitions (name, emoji, tagline, SOUL.md personality text, category) live in:
+
+`~/polly/POLLY_AGENT_TEMPLATES.md` *(to be authored separately)*
+
+**Polly template design principles:**
+- Fewer total templates than Aight (~30 vs 60+), but each one is more opinionated and better-written
+- Personality text reflects Polly's constitutional epistemology layer (material-first thinking, cui bono awareness, anti-scapegoating)
+- Finance templates de-emphasized — the Wall Street archetype parade is not Polly's aesthetic
+- Technical templates kept and sharpened — these match the primary user
+- Categories simplified: Technical · Creative · Knowledge · Personal · Fun
+- Each template tagline is a complete thought, not a marketing fragment
+
+#### 4.7.3 Agent Detail View
+
+Tapping an agent row from the agent list navigates to the agent detail view.
+
+```
+┌─────────────────────────────────────┐
+│ [<]                          [Edit] │
+│                                     │
+│  Code Architect                     │  ← large title
+│                                     │
+│  [Overview] [Files] [Tools]         │  ← tab strip (horizontal scroll)
+│  [Skills] [Channels] [Cron]         │
+│                                     │
+│  IDENTITY                           │  ← small-caps section header
+│  ┌───────────────────────────────┐  │
+│  │ Display Name   Code Architect │  │
+│  ├───────────────────────────────┤  │
+│  │ Username       @code_architect│  │
+│  ├───────────────────────────────┤  │
+│  │ Role                          │  │
+│  │ Writes, debugs, and reviews   │  │
+│  │ code across languages...      │  │
+│  ├───────────────────────────────┤  │
+│  │ Personality                   │  │
+│  │ You are The Code Architect —  │  │
+│  │ a senior engineer who writes  │  │
+│  │ clean code...                 │  │
+│  ├───────────────────────────────┤  │
+│  │ Model          Claude Sonnet  │  │
+│  ├───────────────────────────────┤  │
+│  │ Emoji                      🖥 │  │
+│  ├───────────────────────────────┤  │
+│  │ Color                      🔴 │  │
+│  ├───────────────────────────────┤  │
+│  │ Voice                 Default │  │
+│  └───────────────────────────────┘  │
+│                                     │
+│  CONFIGURATION                      │
+│  ...                                │
+└─────────────────────────────────────┘
+```
+
+**Tab strip:**
+- Horizontally scrollable, 6 tabs: **Overview · Files · Tools · Skills · Channels · Cron**
+- Active: Polly accent filled pill (`#f0903b`). Inactive: dark muted pill.
+- Overview is default on open
+
+**[Edit] button:**
+- Top-right, pill style (like back button)
+- Tapping makes IDENTITY card fields editable inline
+- In edit mode: text fields for Display Name, Username, Role, Personality; pickers for Model, Emoji, Color, Voice
+- Save/Cancel appears in nav bar
+
+**IDENTITY card fields:**
+| Field | Type | Notes |
+|---|---|---|
+| Display Name | text | shown in UI everywhere |
+| Username | text | `@handle`, kebab-case |
+| Role | multiline text | short description, shown in agent list subtitle |
+| Personality | multiline text | SOUL.md content — the full persona prompt |
+| Model | picker | selects from configured providers |
+| Emoji | emoji picker | single emoji, renders on dark badge |
+| Color | color picker | circle swatch, used for agent accent throughout UI |
+| Voice | picker | ElevenLabs voice or "Default" |
+
+**Tab contents:**
+
+- **Overview:** Identity card + Configuration card. The **Personality** field is the agent's SOUL.md content — editing it and saving writes to `SOUL.md` on the gateway. Caption shown below the field: *"This becomes the agent's SOUL.md — the core personality prompt that defines who they are."* This is the mobile-friendly editor for persona; the Files tab shows the same content as a raw file.
+- **Files:** Read-only file viewer. Lists all workspace files: AGENTS.md · SOUL.md · TOOLS.md · IDENTITY.md · USER.md · HEARTBEAT.md · BOOTSTRAP.md · MEMORY.md. Each row shows filename + file size + chevron. Tap → rendered markdown view of that file. **MEMORY.md** shows a `MISSING` badge (amber outlined pill) when the file doesn't exist yet — tapping it offers "Create Memory File" (sends a message to the agent prompting it to initialize its memory). **"Delete Agent"** button at the bottom of the Files tab — red text + trash icon, destructive, requires confirmation.
+- **Tools:** List of tools/functions available to this agent (from gateway `agents.tools` RPC)
+- **Skills:** Installed skills (e.g., Moltbook skill.md) — install new skills from URL
+- **Channels:** Sessions/conversations this agent participates in
+- **Cron:** Scheduled jobs this agent runs — list with schedule, last run, next run, enable/disable toggle
+
+**The Personality ↔ SOUL.md relationship:**
+- Personality field (Overview, editable) and SOUL.md (Files, read-only) are the same content
+- Mobile editor → approachable, structured textarea, saves via `config.patch`
+- File viewer → transparency layer, shows exactly what's running on the gateway
+- Deep edits with full markdown control are done at the gateway directly; the iOS editor handles the common case
+
+**Files tab (important for Polly):**
+- Shows all files in agent's workspace directory with file sizes
+- Rendered markdown view on tap (uses `MarkdownRenderer` component) — not raw text
+- MEMORY.md is the key file — shows what the agent knows/remembers
+- MEMORY.md `MISSING` state: show amber `MISSING` pill + "Create Memory File" action
+- Read-only — editing happens via the Overview Personality field or at the gateway directly
+- **Delete Agent** at bottom: destructive action, confirmation required, removes agent from gateway config
+
+---
+
+### 4.8 Settings View
+
+**Purpose:** Configure everything about Polly — gateway, models, voice, integrations, security.
+
+**Layout:**
+```
+┌─────────────────────────────────────┐
+│ [<]                                 │
+│                                     │
+│  Settings                           │  ← large title
+│                                     │
+│  ┌───────────────────────────────┐  │
+│  │ [⚙] Models                 > │  │
+│  ├───────────────────────────────┤  │
+│  │ [🎙] Voice                  > │  │
+│  ├───────────────────────────────┤  │
+│  │ [⊞] Preferences             > │  │
+│  ├───────────────────────────────┤  │
+│  │ [🔑] API Keys               > │  │
+│  ├───────────────────────────────┤  │
+│  │ [🌐] Your Gateway           > │  │
+│  ├───────────────────────────────┤  │
+│  │ [🔔] Notifications          > │  │
+│  ├───────────────────────────────┤  │
+│  │ [🛡] Security               > │  │
+│  ├───────────────────────────────┤  │
+│  │ [?] Help                    > │  │
+│  ├───────────────────────────────┤  │
+│  │ [🔒] Data & Privacy         > │  │
+│  ├───────────────────────────────┤  │
+│  │ [ℹ] About           v1.0.0  > │  │
+│  └───────────────────────────────┘  │
+└─────────────────────────────────────┘
+```
+
+**Layout rules:**
+- Single grouped card, full-width, 12pt radius
+- Hairline dividers between rows
+- Row icon: Lucide icon on dark rounded-square badge (~32pt), Polly accent color (`#f0903b`)
+- Row label: semibold, white
+- Right side: chevron `>` for all rows; About shows version string inline left of chevron
+
+**Row destinations:**
+
+**Models →**
+- Provider-grouped cards (one card per configured provider)
+- Each card: provider header row (letter-badge icon + provider name) with model list below
+- Selected model row: highlighted bg + accent checkmark right-aligned
+- Ollama models labeled "Local model" below name
+- Subtitle: "Select the AI model your default agent uses. You can set per-agent models in the agent editor."
+- Tap a model row to select it as default
+
+**Voice →**
+- Subtitle: "Switching voice here updates the active agent's default. All new voice sessions will use the selected voice."
+- Info banner when using on-device TTS: "Using on-device voice model. No API key needed."
+- **Voice** row → voice picker (shows current voice name e.g. "Soprano" as right detail)
+- **STT Language** row → language picker (default: "English (US)")
+- **Voice Input Style** segmented control: `Push to Talk` | `Conversational`
+  - Push to Talk: "Hold to talk, release to send"
+  - Conversational: continuous listening mode
+
+**Preferences →**
+- **LANGUAGE** section: Language row → system language picker (default: "System Default")
+- **SWIPE RIGHT SCREEN** section: Right panel segmented control → `Voice` | `Shortcuts`
+  - This controls what appears when user swipes right from the chat surface (alternative to drawer open — swipe LEFT opens drawer, swipe RIGHT opens this panel)
+  - Default: Voice
+- **FEATURES** section: Feature enable/disable toggles with descriptive subtitles:
+  - Today — "Personal assistant with tasks & reminders"
+  - Shortcuts — "One-tap shortcut cards for common messages"
+  - Usage — "Token usage & cost dashboard"
+  - Moltbook — "Moltbook journal"
+  - Group Chats — "Create named group chats with selected agents" *(Phase 2)*
+  - Public Figure Agents — "Create agents based on public figures via AI research"
+  - Group Chat Thinking Toast — "Show a floating indicator when agents are thinking in group chats" *(Phase 2)*
+- **NOTIFICATIONS** section: Push Notifications master toggle
+- **PRIVACY section: OMITTED IN POLLY** — Aight has Analytics + Error Reporting phone-home toggles. Polly is fully self-hosted, no analytics, no crash reporting to any third party. This section does not exist in Polly's Preferences.
+
+**API Keys →**
+- Subtitle: "X/Y configured. Add API keys to unlock features."
+- **MODEL PROVIDERS (X/11)** section: one row per provider with brand icon, name, model list subtitle, status badge ("Set" outlined pill if unconfigured, ✓ filled if configured) + chevron
+  - Providers: Anthropic · OpenAI · Google AI · Groq · Mistral AI · xAI · DeepSeek · Moonshot (Kimi) · MiniMax · Qwen · OpenRouter
+- **INTEGRATIONS (X/5)** section:
+  - Brave Search API — "Real-time web search, fact-checking"
+  - ElevenLabs — "Premium text-to-speech, voices"
+  - Google Workspace — "Gmail, Google Calendar, Drive, Contacts"
+  - Notion API — "Create and manage Notion pages, databases, and blocks"
+  - Exa Search API — "Neural/semantic search, deep research"
+- All keys forwarded to gateway via `config.set` on save; purged from local storage
+
+**Your Gateway →**
+- **STATUS** section (card):
+  - Version · Protocol · Host · Uptime · Status (pill: "Connected" accent-outlined) · Method ("Manual")
+  - "Restart Gateway" button — full-width, muted style
+- **SYSTEM HEALTH** section (card): Memory (used/total GB, red when near full), CPU (%, green), Disk (used/total GB, lime) — color-coded progress bars
+- **CONNECTION** section (card):
+  - Gateway URL field (editable text input, shows `wss://your.domain`)
+  - Auth Token field (password input, eyeball toggle to reveal)
+  - "The gateway token you set during OpenClaw setup. Required for authentication."
+  - "Disconnect" button — full-width, muted/destructive style
+
+**Notifications →**
+- Master "All" toggle at top (own card): "Turn off to silence all notifications"
+- **CATEGORIES** card:
+  - Agent Replies — "Responses from your AI agents"
+  - Group Chats — "Messages in group conversations" *(Phase 2)*
+  - Cron Jobs — "Background scheduled tasks and automations" (default: OFF)
+- No per-agent toggles — category-level only
+
+**Security →**
+
+> ✅ **@security_audit** — Polly-specific Security screen spec added March 24, 2026
+
+**Section 1 — AUTHENTICATION card:**
+- **App Lock (Face ID / Touch ID)** toggle — "Require Face ID or Touch ID to open Polly"
+  - When enabled: `expo-local-authentication` prompt on every foreground resume
+  - Sub-row (visible when enabled): **Session Timeout** → picker: Never / 5 min / 15 min / 1 hour
+    - "How long before Polly re-locks when idle"
+    - Stored in MMKV `"polly.security.sessionTimeoutMs"`
+
+**Section 2 — DEVICES card:**
+- Header: "Registered Devices" with count badge (e.g. "2 of 10")
+- One row per registered device:
+  - Left: device name (e.g. "iPhone 15 Pro") + `deviceId` prefix (first 8 chars, monospace, secondary color)
+  - Right: registration date (relative, e.g. "3 days ago") + chevron
+  - Tap → device detail: full `deviceId`, registration date, last seen, "Remove Device" destructive button
+- "This Device" label on current device row (no remove option)
+- Max 10 devices enforced (§8.6 M2) — when at cap, add button disabled with "Device limit reached" tooltip
+- Empty state: "Only this device is registered"
+
+**Section 3 — GATEWAY SECURITY card:**
+- **TLS Certificate** row — shows current TOFU fingerprint status:
+  - "Verified — [first 16 chars of fingerprint]" with green indicator when pinned
+  - "Not verified" with amber indicator when not pinned
+  - Tap → Certificate Detail sheet: full fingerprint, pinned date, "Re-verify" button (clears pin + triggers new TOFU flow on next connect), "Trust Manually" if user wants to accept new cert
+- **Connection Path** row — "Local / Cloudflare / Tailscale" — read-only current path indicator
+
+**Section 4 — SECURITY CHECK card:**
+- **Security Check** row → Security Check sub-view
+  - "Test your defenses" card → runs automated probes
+  - **CONFIGURATION** section: summary row (e.g. "🟡 2 Medium · ✅ 4 Passed")
+  - Expandable finding cards with severity badges: MEDIUM (amber), HIGH (red), PASSED (green)
+  - Finding examples: "Logs may contain sensitive data" / "Model may lack safety features"
+  - "4 Passed" collapsible row
+  - "Last scanned: [timestamp]"
+  - "Re-Scan" button — full-width
+
+**`dangerouslyDisableDeviceAuth` — compile-time flag only.**
+This flag is never surfaced in the Security UI, Settings, or any runtime toggle. It exists only as a compile-time constant for development/testing. Any UI that would expose it is explicitly forbidden. Cross-reference: §8.1.
+
+**Help →**
+- Search bar: "Search help..."
+- **FREQUENTLY ASKED QUESTIONS** section: expandable accordion rows
+  - "What is Polly?" / "How do I update the gateway?" / "How do I update the plugin?" / "Why am I not getting responses?"
+- **FEATURES** section: expandable accordion rows — one per major feature (Chat, Teams, Multi-Session, Group Chats, Create Agents, Public Figure Agents, Today, Shortcuts, Notifications, Voice Mode, Usage) — doubles as in-app feature documentation
+
+**About →**
+- **APP** section: App Version (X.X.X (build)), Report a Bug →, Licenses (open source attributions) →
+- **PLUGIN** section: Installed Version (gateway plugin version number)
+- **DANGER ZONE** section: "Reset App" — red icon + red text + "Clear all data, credentials, and start fresh." → confirmation dialog before executing
+
+**Data & Privacy →**
+*(Polly-specific addition — not in Aight)*
+- Subtitle: "Your data stays on your device and your gateway. Nothing is sent to Polly servers."
+- **EXPORT** section:
+  - **Chat History** → modal: choose date range (All / Last 30 days / Last 7 days) + format (Markdown / JSON) → generates file → iOS share sheet
+  - **Agent Configurations** → exports all custom agent SOUL.md, IDENTITY.md as a `.zip` of YAML/markdown files → share sheet. Allows backup and portability.
+  - **Shortcuts** → exports all saved shortcuts as JSON → share sheet
+  - **Settings Backup** → exports all MMKV-stored preferences (mental models, domain config, theme, all toggles) as a single JSON bundle → share sheet
+- **IMPORT** section:
+  - **Restore Settings Backup** → file picker, accepts the JSON bundle from Settings Backup export above → overwrites current settings after confirmation
+  - **Import Agent Configuration** → file picker, accepts `.zip` from Agent export → installs agents into gateway via Agents Files API (§3.15)
+- **ABOUT YOUR DATA** section (static text rows, no chevrons):
+  - "Conversations are stored only on your OpenClaw gateway"
+  - "No analytics or crash data is sent anywhere"
+  - "Your vault stays in Obsidian or Notion — Polly reads it but does not copy it"
+  - "Deleting the app removes local app data only. Your gateway data is separate."
 
 ---
 
@@ -1154,7 +2012,7 @@ static let textSecondary = Color(red: 0.710, green: 0.757, blue: 0.808) // #b5c1
 
 **Semantic**
 ```swift
-static let success = Color(red: 0.086, green: 0.639, blue: 0.290) // #16a34a
+static let success = Color(red: 0.133, green: 0.773, blue: 0.369) // #22c55e
 static let error   = Color(red: 0.937, green: 0.267, blue: 0.267) // #ef4444
 static let warning = Color(red: 0.920, green: 0.702, blue: 0.051) // #eab308
 static let info    = Color(red: 0.145, green: 0.392, blue: 0.929) // #2563eb
@@ -1164,7 +2022,7 @@ static let info    = Color(red: 0.145, green: 0.392, blue: 0.929) // #2563eb
 ```swift
 static let sigils  = Color(red: 0.145, green: 0.392, blue: 0.929) // #2563eb — Code (blue)
 static let signals = Color(red: 0.678, green: 0.282, blue: 0.867) // #ad48dd — Audio (purple)
-static let scrolls = Color(red: 0.086, green: 0.639, blue: 0.290) // #16a34a — Writing (green)
+static let scrolls = Color(red: 0.133, green: 0.773, blue: 0.369) // #22c55e — Writing (green) — WCAG AA compliant on dark bg (updated from #16a34a per @design_eng BLOCKER #1)
 static let glyphs  = Color(red: 0.920, green: 0.702, blue: 0.051) // #eab308 — Design (gold)
 static let grids   = Color(red: 0.086, green: 0.639, blue: 0.600) // #16a399 — Systems (teal)
 ```
@@ -1331,23 +2189,28 @@ const StreamingCursor: React.FC = () => {
 
 **Purpose:** Render markdown string to styled React Native view. Used inside `ChatBubble`, Moltbook file viewer.
 
-**Library:** `react-native-enriched-markdown` — already in Aight's stack, battle-tested against OpenClaw output.
+**Library:** `marked` (JS markdown parser) + custom React Native renderer built on `Text` and `View` primitives.
+
+> **Note:** The original spec referenced `react-native-enriched-markdown` from the Aight codebase. This package is Aight-proprietary and not available on public npm. Polly builds its own `PollyMarkdown` renderer using `marked` for parsing and a custom component tree for rendering. This is a one-time build cost (~2–3 days) and gives Polly full control over styling, streaming behavior, and @mention rendering.
+>
+> Alternative if build time is constrained: `react-native-markdown-display` (public, actively maintained, supports custom renderers). The Polly design system tokens slot directly into its `styles` prop. Use this for Phase 1, migrate to custom renderer in Phase 2 if needed.
 
 ```tsx
-import EnrichedMarkdown from 'react-native-enriched-markdown';
+// Phase 1: react-native-markdown-display with Polly theme
+import Markdown from 'react-native-markdown-display';
 
 interface PollyMarkdownProps {
-  content: string;           // plain text extracted from textContent block
-  isStreaming?: boolean;     // disables link taps while streaming
+  content: string;
+  isStreaming?: boolean;
 }
 
 const PollyMarkdown: React.FC<PollyMarkdownProps> = ({ content, isStreaming }) => (
-  <EnrichedMarkdown
-    content={content}
-    theme={pollyMarkdownTheme}
-    onLinkPress={isStreaming ? undefined : handleLinkPress}
-    selectable={!isStreaming}
-  />
+  <Markdown
+    style={pollyMarkdownStyles}
+    onLinkPress={isStreaming ? () => false : handleLinkPress}
+  >
+    {content}
+  </Markdown>
 );
 ```
 
@@ -1363,58 +2226,10 @@ const PollyMarkdown: React.FC<PollyMarkdownProps> = ({ content, isStreaming }) =
 **Supported blocks:** H1–H3, code blocks (→ §6.4), ordered/unordered lists, blockquotes  
 **v1 deferral:** tables → plain text fallback
 
+**@mention rendering** (group chat): when `isGroup: true`, post-process message text to detect `@username` patterns before passing to `PollyMarkdown` — replace with a custom inline `AgentMentionChip` component: agent's `identity.theme` color background, white text, 4pt corner radius. Pre-processing step, not a library extension.
+
 ---
 
-### 6.4 CodeBlock
-
-**Purpose:** Syntax-highlighted, copyable code block. Used inside `MarkdownRenderer` and standalone in message views.
-
-```swift
-struct CodeBlock: View {
-    let language: String?      // "swift", "python", "json", nil
-    let content: String
-    @State private var copied = false
-}
-```
-
-**Visual spec:**
-- Background: `bgSecondary` (#0c1323 dark / #e4f0f0 light)
-- Corner radius: 12pt
-- Padding: 16pt H, 12pt V
-- Font: `.system(.footnote, design: .monospaced)` (SF Mono)
-- Text color: `textPrimary`
-
-**Language badge** (top-left):
-```swift
-Text(language?.uppercased() ?? "CODE")
-    .font(.caption2)
-    .fontWeight(.medium)
-    .foregroundColor(.secondary)
-    .padding(.horizontal, 8)
-    .padding(.vertical, 4)
-    .background(.ultraThinMaterial)
-    .cornerRadius(6)
-```
-
-**Copy button** (top-right):
-```swift
-Button {
-    UIPasteboard.general.string = content
-    copied = true
-    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
-} label: {
-    Image(systemName: copied ? "checkmark" : "doc.on.doc")
-        .foregroundColor(copied ? .success : .secondary)
-}
-```
-
-**Horizontal scroll for long lines:**
-```swift
-ScrollView(.horizontal, showsIndicators: false) {
-    Text(content)
-        .font(.system(.footnote, design: .monospaced))
-        .fixedSize(horizontal: true, vertical: false)
-}
 ### 6.4 CodeBlock
 
 **Purpose:** Syntax-highlighted, copyable code block. Used inside `MarkdownRenderer` and standalone in message views.
@@ -1651,19 +2466,40 @@ Standard RN bottom sheet (`@gorhom/bottom-sheet` or Expo modal):
 
 ### 6.11 AgentAvatar
 
-**Purpose:** Emoji-in-circle avatar for an agent.
+**Purpose:** Emoji-on-dark-rounded-square avatar for an agent. Renders like an iOS app icon — NOT a circle, NOT bare emoji text.
 
 ```tsx
 interface AgentAvatarProps {
   emoji: string;
-  size: 32 | 40 | 56;            // pt
+  color?: string;               // agent.identity.theme (hex) — border tint; fallback: hash from agentId
+  size: 32 | 40 | 44 | 56;     // pt — 44pt standard in lists
   showOnlineIndicator?: boolean;
 }
 ```
 
-- Circle: `bgBorder` fill
-- Emoji centered, fontSize = size × 0.55
-- Online indicator: 10pt green circle, bottom-right, white ring border
+**Visual — iOS app-icon style:**
+- Shape: rounded square (corner radius = size × 0.22, matching iOS icon grid)
+- Background: dark (`#0c1323` bgSecondary)
+- Border: 1.5pt in agent `color` (`identity.theme` hex) when non-null — omit if null
+- **Fallback** (when `identity.theme` is null): derive deterministic color from `agentId` hash — consistent across devices without server dependency
+- Emoji: centered, fontSize = size × 0.55
+- Do NOT render bare emoji — always on the dark rounded-square badge
+
+**Agent `color` propagates throughout the UI** wherever agent identity surfaces:
+- `AgentAvatar` border tint
+- `DrawerPanel` session row left accent bar
+- `AgentHeader` name (subtle tint)
+- `GroupChatBubbleRow` attribution name color
+
+**Online indicator** (when `showOnlineIndicator: true`):
+- 10pt circle, success green, bottom-right corner
+- 2pt white ring border separating dot from avatar
+
+**Sizes:**
+- 32pt — drawer session rows, small contexts
+- 40pt — nav bar, `AgentHeader`
+- 44pt — agent list rows (§4.7), `AgentSwitcherSheet`
+- 56pt — agent detail view, onboarding
 
 ---
 
@@ -2003,7 +2839,185 @@ accessible={true}
 
 ---
 
-## 7. Connectivity & Networking
+### 6.24 DrawerPanel
+
+**Purpose:** The primary navigation surface. Slides in from the left over the chat view. Custom implementation — NOT `@react-navigation/drawer` (insufficient physics control).
+
+```tsx
+interface DrawerPanelProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentAgentId: string;
+  currentWorkspace: string;
+  recentSessions: SessionEntry[];      // TODAY section — recent chats
+  agents: AgentSummary[];
+  onSelectAgent: (agentId: string) => void;
+  onSelectSession: (sessionKey: string) => void;
+  onNewConversation: () => void;
+  onNavigate: (dest: NavDestination) => void;
+}
+
+type NavDestination = 'agents' | 'today' | 'shortcuts' | 'usage' | 'moltbook' | 'settings';
+```
+
+**Layout (top to bottom):**
+```
+┌─────────────────────────┐
+│  [+]          [✕]       │  ← header: new convo + close
+│  ─────────────────────  │
+│  [workspace ▾]          │  ← workspace selector
+│  Agent: Strategist ▾    │  ← agent selector → AgentSwitcherSheet (§6.10)
+│  ─────────────────────  │
+│  TODAY ▾                │  ← collapsible recent sessions
+│    🏠 Home — Now        │
+│    ✨ Fresh Spec — 2m   │
+│  ─────────────────────  │
+│  [Agents]               │
+│  [Today]                │
+│  [Shortcuts]            │
+│  [Usage]                │
+│  [Moltbook]             │
+│  [Settings]             │
+└─────────────────────────┘
+```
+
+**Dimensions:** 80% screen width, max 320pt. Full height, safe area aware.
+
+**Animation:**
+- Open/close: `translateX` spring (`damping: 20, stiffness: 200`)
+- Backdrop: `rgba(0,0,0,0.4)` full-screen `Pressable`, fades with drawer
+- Swipe-right on chat surface → open (`PanGestureHandler`)
+- Swipe-left on drawer / tap backdrop → close
+
+**⚠️ Do NOT use `@react-navigation/drawer`** — use `Animated` + `PanGestureHandler` from `react-native-gesture-handler` directly for spring physics and parallax control.
+
+**TODAY section:** `SessionEntry[]` sorted by `updatedAt` desc. Group chats get group icon prefix. Tap → navigate to that `ChatView` + close drawer.
+
+**Nav links:** Colored square icon badge (28pt) + label. Active: `accent` tint. Tap → close drawer + navigate.
+
+**Accessibility:**
+```tsx
+accessibilityViewIsModal={isOpen}   // traps focus when open
+accessibilityLabel="Navigation panel"
+// Nav links: accessibilityRole="menuitem"
+```
+
+### 6.25 WorkspacePill**Purpose:** Persistent workspace context selector shown in the nav bar top-right across all full-screen views (Agents, Today, Shortcuts, Usage, Moltbook, Settings). Single source of workspace truth.
+
+```tsx
+interface WorkspacePillProps {
+  workspaceName: string;
+  hasMultiple: boolean;         // shows ▾ chevron only if multiple workspaces exist
+  onPress: () => void;          // no-op if single workspace; dropdown if multiple
+}
+```
+
+**Visual:**
+- Pill shape: `bgSecondary` fill, 16pt corner radius, 8pt H / 4pt V padding
+- Text: workspace name, `.footnote` semibold, `textPrimary`
+- Chevron `▾` right of text, only shown when `hasMultiple: true`
+- Single workspace: tappable but shows "Manage workspaces in Settings" tooltip
+- Multiple workspaces: dropdown action sheet listing workspaces → tap switches
+
+**Placement:** Right `headerRight` slot in `expo-router` stack navigator header. Consistent across every non-chat full-screen view. Also present in `DrawerPanel` (§6.24) top section.
+
+---
+
+### 6.26 AgentDetailTabs
+**Purpose:** The 6-tab configuration hub inside the agent detail view (§4.7.3). Horizontally scrollable tab strip with pill-style active indicator.
+
+```tsx
+type AgentTab = 'overview' | 'files' | 'tools' | 'skills' | 'channels' | 'cron';
+
+interface AgentDetailTabsProps {
+  agentId: string;
+  agent: AgentSummary;
+  activeTab: AgentTab;
+  onTabChange: (tab: AgentTab) => void;
+}
+```
+
+**Tab strip:**
+- Horizontally scrollable, 6 tabs: Overview · Files · Tools · Skills · Channels · Cron
+- Active tab: filled pill, agent `color` or `accent` if no color assigned
+- Inactive tabs: dark muted pill, `textSecondary`
+- Font: `.footnote` semibold
+- Padding: 16pt H scroll inset, 8pt V, 12pt gap between pills
+
+**Tab content panels:**
+
+**Overview tab** — Identity + Configuration cards:
+```
+IDENTITY
+  Display Name   Code Architect     [right-detail]
+  Username       @code_architect    [right-detail]
+  Role           [below-label, multiline]
+  Personality    [below-label, multiline, truncated]
+  Model          Claude Sonnet 4.6  [right-detail]
+  Emoji          🖥                 [right-detail]
+  Color          ● red swatch       [right-detail]
+  Voice          Default            [right-detail]
+
+CONFIGURATION
+  [gateway config fields — model params, temperature, etc.]
+```
+
+- `[Edit]` button top-right nav bar → makes fields inline-editable
+- Save → `config.patch` on gateway
+
+**Files tab** — Agent file list:
+- `MoltbookFileRow` (§6.17) for each file
+- Files: `MEMORY.md`, `SOUL.md`, `IDENTITY.md`, etc.
+- Tap → full-screen markdown viewer with edit capability
+- This is where MEMORY.md lives — not a separate top-level view
+
+**Tools tab** — Tool enable/disable toggles:
+- Each tool the agent has access to (from gateway `agents.list` tool config)
+- Toggle row: tool name + description + `Switch`
+- Changes call `config.patch`
+
+**Skills tab** — Installed skills + install from URL:
+- List of installed skills with enable/disable
+- "Install from URL" button at bottom → text field + Install
+- Used for Moltbook skill install (Phase 2)
+
+**Channels tab** — Session/channel configuration:
+- Which group chats this agent participates in
+- Channel assignment toggles
+
+**Cron tab** — Agent's scheduled jobs:
+- `TodayItemCard` list (§6.13) filtered to this agent's jobs
+- `[+]` button → `AddReminderSheet` (§6.15) pre-scoped to this agent's session key
+
+---
+
+### 6.27 AgentTypingIndicator
+
+**Purpose:** Per-agent "thinking" row shown in group chat when an agent has been triggered but hasn't emitted a first token yet. Distinct from `StreamingCursor` (which lives inside a bubble) — this appears as a standalone row in the message list before the agent's bubble exists.
+
+**When to show:** In a `GroupChatView` (`isGroup: true`), when a `chat` event arrives with `state: "delta"` for a `runId` that has no existing `UIMessage` in the list yet — show this row until the first content token arrives, then replace it with `GroupChatBubbleRow`.
+
+```tsx
+interface AgentTypingIndicatorProps {
+  agent: AgentSummary;    // emoji, name, identity.theme color
+}
+```
+
+**Visual:**
+```
+🖥  Code Architect is thinking...   ●●● (pulsing dots)
+```
+
+- `AgentAvatar` (32pt, §6.11) left
+- Agent name in agent's `identity.theme` color (or fallback hash color)
+- "is thinking..." text in secondary color, italic, footnote
+- Three pulsing dots animation (staggered opacity, 400ms cycle)
+- Left-aligned, same inset as `GroupChatBubbleRow` attribution row
+- Appears/disappears with a short fade (150ms)
+
+**Implementation note:** Managed in the `GroupChatView` message list alongside `UIMessage[]`. Maintain a separate `Set<runId>` of "pending agents" — add on first `delta` event with no existing message, remove when the message materialises.
+
+---
 
 > ✅ **@infra** — documented March 23, 2026
 
@@ -2013,11 +3027,11 @@ accessible={true}
 
 Polly must work in three network contexts:
 
-| Context | Transport | Gateway Address | When Used |
-|---|---|---|---|
-| Home (local network) | Direct LAN | `ws://[lan-ip]:18789` | On home WiFi |
-| Remote (Tailscale) | WireGuard VPN | `ws://[tailscale-ip]:18789` | Personal network, open WiFi |
-| Remote (Cloudflare Tunnel) | HTTPS/WSS via CF | `wss://[subdomain].trycloudflare.com` | Work networks, restricted environments |
+| Context | Transport | Gateway Address | TLS | When Used |
+|---|---|---|---|---|
+| Home (local network) | Direct LAN | `ws://[lan-ip]:18789` | ❌ Not required — local perimeter trusted | On home WiFi |
+| Remote (Tailscale) | WireGuard VPN | `ws://[tailscale-ip]:18789` | ❌ Not required — WireGuard encrypts the tunnel | Personal network, open WiFi |
+| Remote (Cloudflare Tunnel) | HTTPS/WSS via CF | `wss://[subdomain].trycloudflare.com` | ✅ Required — internet path, no perimeter | Work networks, restricted environments |
 
 The app persists **all three addresses** in Settings and attempts them in priority order. No STUN/relay required — all traffic terminates at the gateway's WebSocket. Cloudflare Tunnel is the current real-world remote path and must be a first-class supported option.
 
@@ -2339,27 +3353,38 @@ Polly iOS (wakes from background)
 
 ### 7.9 Configuration (Settings Schema)
 
+> **Serialization security (@security_audit G3):** `GatewayConfig` is `Codable` for in-memory use only. It must **never be written to disk as a struct** (no `JSONEncoder` → `UserDefaults`, no plist write, no file write). Each field has an explicit persistence target below — violating these mappings is a security defect.
+
 ```swift
 struct GatewayConfig: Codable {
     var localAddress: String            // e.g. "192.168.1.42:18789"
+    // Persistence: UserDefaults ("polly.gateway.localAddress") — non-sensitive
     
-    // Remote path 1: Cloudflare Tunnel (primary remote — works on corporate networks)
     var cloudflareUrl: String           // e.g. "wss://gateway.yourdomain.com"
+    // Persistence: Keychain ("polly.gateway.cloudflareUrl") — sensitive; anyone with this URL can reach gateway
+    
     var cloudflareEnabled: Bool         // default: true if URL is set
+    // Persistence: UserDefaults — non-sensitive
     
-    // Remote path 2: Tailscale (secondary remote — for unrestricted networks)
     var tailscaleAddress: String        // e.g. "100.x.x.x:18789"
+    // Persistence: UserDefaults — non-sensitive (no auth value)
+    
     var tailscaleEnabled: Bool          // default: false until configured
+    // Persistence: UserDefaults — non-sensitive
     
-    // Path preferences
     var preferredRemotePath: RemotePath // .cloudflare | .tailscale | .auto
-    var preferLocal: Bool               // default: true
-    var connectionTimeout: Int          // seconds, default: 2
+    // Persistence: UserDefaults — non-sensitive
     
-    // Stored in Keychain — never in this struct on disk
-    // var authToken: String
-    // var deviceId: String
-    // var cloudflareUrl (if sensitive): store in Keychain alternative
+    var preferLocal: Bool               // default: true
+    // Persistence: UserDefaults — non-sensitive
+    
+    var connectionTimeout: Int          // seconds, default: 2
+    // Persistence: UserDefaults — non-sensitive
+
+    // The following are NEVER fields in this struct on disk:
+    // authToken → Keychain "polly.gateway.token"
+    // deviceId → Keychain "polly.device.id"
+    // devicePrivateKey → Keychain "polly.device.privateKey"
 }
 
 enum RemotePath: String, Codable {
@@ -2371,9 +3396,9 @@ enum RemotePath: String, Codable {
 
 ---
 
-### 7.10 Open Infra Questions
+### 7.10 Open Infra Questions & Decisions
 
-1. **TLS for local:** Should LAN connections use self-signed TLS? iOS will reject self-signed certs by default — needs a custom `URLSessionDelegate` with cert pinning or a local CA. Recommend: skip TLS on LAN (traffic is local), TLS required for Tailscale connections.
+1. **TLS for local (RESOLVED — @security_audit B2):** LAN connections (`ws://`) are permitted without TLS. Rationale: traffic is local-network only, not exposed to the internet, and iOS rejects self-signed certs by default without custom trust anchor configuration that adds significant setup friction. **Decision: `ws://` is acceptable for LAN and Tailscale (WireGuard-encrypted tunnel). `wss://` is required for all Cloudflare Tunnel connections.** §7.1 and §8.3 are authoritative on their respective paths. §8.3's "WSS required everywhere" applies only to internet-path connections. The security model is: trust the network perimeter for LAN/WireGuard; enforce TLS where the perimeter is the open internet.
 2. **Tailscale iOS SDK vs. standalone app:** Ship with standalone app dependency for Phase 1; revisit embedded SDK in Phase 3.
 3. **mDNS auto-discovery:** Phase 2 feature — don't block Phase 1 on it.
 4. **Push key management:** The APNs `.p8` key lives on the gateway Mac. User must configure path in `openclaw.json`. Gateway team (@backend) owns this config surface.
@@ -2423,12 +3448,19 @@ Polly App → aight.push.register(deviceId, apnsToken, platform: "ios", sandbox:
          → Gateway stores { deviceId, apnsToken, sendKey } 
 ```
 
-#### ⚠️ Known Vulnerability in OpenClaw — Must Fix in Polly
-**`aight.push.register` is currently unauthenticated.** Any client that can reach the gateway WS can register arbitrary push tokens under any `deviceId`.
+#### ⚠️ Known Vulnerability in OpenClaw — Must Fix Before Push Ships
+**`aight.push.register` is currently unauthenticated.** Any client that can reach the gateway WS can register arbitrary push tokens under any `deviceId`. This is a pre-production blocker for push notifications (Phase 2). Does not block Phase 1.
 
-**Polly fix (required before production):**
-- The registration RPC must validate that the caller's authenticated session `deviceId` matches the `deviceId` parameter. Gateway should derive it from the WS session, not trust the client-supplied value.
-- Until the gateway-side fix ships, the iOS client should at minimum verify that the `deviceId` it sends matches its own locally-derived identity.
+**Gateway fix (required — @backend owns):**
+- Gateway `aight.push.register` handler must extract `deviceId` from the **authenticated WS session context**, not from the client-supplied parameter
+- If client-supplied `deviceId` doesn't match session's authenticated `deviceId` → reject with `DEVICE_ID_MISMATCH` error, close connection
+- `deviceId` derivation is already deterministic (`SHA-256(publicKeyBytes)` hex) — gateway has everything needed from the auth handshake
+- *"Gateway validates that `deviceId` in registration request matches the authenticated session's `deviceId`. Mismatch → `DEVICE_ID_MISMATCH` rejection. Client-supplied `deviceId` is never trusted."*
+
+**iOS client fix (belt-and-suspenders):**
+- Before sending `aight.push.register`, assert that the `deviceId` being sent matches the locally-derived identity (`SHA-256(publicKey)`)
+- On receiving `DEVICE_ID_MISMATCH` error: log security event, surface in Settings → Security, do not retry automatically
+- This is a client-side sanity check only — the security boundary is gateway-side validation
 
 #### `sendKey` Storage — Critical
 `sendKey` **must never be stored in plaintext.** OpenClaw stores it in `~/.openclaw/aight/devices.json` in cleartext — this is a known issue. On React Native/Expo:
@@ -2515,7 +3547,10 @@ Polly App → aight.push.register(deviceId, apnsToken, platform: "ios", sandbox:
 2. **C2 — sendKey in `expo-secure-store` only:** Never write `sendKey` to `AsyncStorage`, MMKV, or disk. RN implementation correct by design; ensure no debug/Sentry logging leaks key material.
 
 **🟠 Must-fix before v1.0:**
-3. **M3 — deviceToken TTL:** Implement 7-day rolling TTL. Refresh on connect, revoke on sign-out.
+3. **M3 — deviceToken TTL (@security_audit G2):** The gateway currently has no server-side `deviceToken` expiry. Tokens are valid until manually revoked. This is a gap — a stolen or leaked token grants permanent access.
+   - **Gateway fix:** Store `registeredAt` timestamp alongside each `deviceToken`. Enforce 30-day TTL on gateway — reject tokens older than 30 days with `TOKEN_EXPIRED` error.
+   - **iOS client behavior:** On `TOKEN_EXPIRED` response, trigger silent re-auth: generate a new challenge response using the device's existing Ed25519 keypair and re-register. If re-auth fails (key mismatch, device deregistered), surface "Please re-pair your device" screen in Settings.
+   - **Rotation on reconnect:** Each successful WS auth refreshes the TTL. Devices that haven't connected in 30 days require re-pairing. This is intentional — it prunes abandoned device registrations.
 4. **M2 — Device registration cap:** Max 10 registered devices. Show device list in Settings with remove option.
 5. **M1 — Bootstrap token expiry:** Enforce `expiresAtMs` check independent of file-load prune timing.
 6. **OTA security policy (`expo-updates`):** OTA updates bypass App Store review — this is a supply chain risk if the EAS build pipeline is compromised. Required controls:
@@ -2535,10 +3570,13 @@ Polly App → aight.push.register(deviceId, apnsToken, platform: "ios", sandbox:
 ### 8.7 Auth UX Requirements
 
 - **Pairing screen:** Display `deviceId` (first 8 chars) and gateway URL for user to verify. Show TLS fingerprint if TOFU.
-- **Device management in Settings:** List registered devices with name, `deviceId` prefix, registration date. Allow removal.
+- **Device management in Settings → Security:** List registered devices with name, `deviceId` prefix, registration date. Allow removal (enforces 10-device cap from §8.6 M2). Cross-reference: §4.8 Security → "Registered Devices".
+- **Biometric lock:** `expo-local-authentication` toggle in Settings → Security. When enabled, require Face ID / Touch ID on app open and before accessing Security settings sub-screens. Cross-reference: §4.8 Security → "Biometric lock".
+- **Session timeout:** Idle timeout before biometric re-auth required. Options: Never / 5m / 15m / 1h. Cross-reference: §4.8 Security → "Session timeout".
 - **Token expiry handling:** Silent re-auth on `deviceToken` expiry — user should never see an auth error during normal use.
 - **`expo-secure-store` loss (device restore):** If secure store is wiped (new device, restore from backup to new hardware), detect missing keys on launch → full re-pair flow.
 - **Sign-out:** Call `SecureStore.deleteItemAsync` for all keys (`sendKey`, `deviceToken`, `privateKey`, tunnel URLs) and call `aight.push.unregister`.
+- **`dangerouslyDisableDeviceAuth`:** Never exposed in Settings UI or any runtime toggle. Compile-time only. Cross-reference: §4.8 Security (explicit "not exposed" note).
 
 ---
 
@@ -2607,30 +3645,260 @@ OFF → [tap mic] → LISTENING → [tap or silence] → PROCESSING → SPEAKING
 
 ## 11. Polly-Specific Features
 
-These differentiate Polly from being a straight Aight clone.
+These differentiate Polly from being a straight Aight clone. All features in this section are implemented **client-side only** or via the OpenClaw WebSocket — no direct Polly REST API calls from iOS.
 
-### 11.1 RAG Context Injection
+> **§11 scope clarification (@researcher B-R2):** "Client-side only" means no direct iOS→Polly REST API calls. It does NOT mean zero server involvement. §11.5 (Quick Capture) writes to the Obsidian vault via iCloud filesystem — that's local, not a server call. §19.5 (theme behavior injection) modifies the agent's system prompt on the gateway — that's a gateway write via `agents.update`. Neither contradicts the "no direct Polly REST API" principle. The constraint is specifically about the legacy Python backend; OpenClaw gateway calls are always in scope.
+
+### 11.0 The PollyEnhancement Layer
+
+The PollyEnhancement Layer is a **synchronous message preprocessor**. No async operations, no network calls, no loading state. It runs at `chatSend()` time, immediately before the WebSocket write.
+
+```typescript
+interface AugmentationContext {
+  vaultNote?: { path: string; content: string };
+  mentalModel?: { id: string; prompt_injection: string };
+  domainTag?: { id: string; label: string };          // Phase 5+ only
+  themeFraming?: string;                              // injected by §19.5 into system prompt, NOT message
+}
+
+function augmentMessage(text: string, ctx: AugmentationContext): string {
+  const parts: string[] = [];
+  if (ctx.vaultNote) {
+    parts.push(`<context file="${ctx.vaultNote.path}">\n${ctx.vaultNote.content}\n</context>`);
+  }
+  if (ctx.mentalModel) {
+    parts.push(`<framing>${ctx.mentalModel.prompt_injection}</framing>`);
+  }
+  // domainTag and themeFraming are NOT injected here — see stacking rules below
+  parts.push(text);
+  return parts.join('\n\n');
+}
+```
+
+#### Context Stacking Rules (@researcher B-R1)
+
+Multiple injection sources can be active simultaneously. Priority order and behavior when they stack:
+
+| Source | Where injected | User-visible pill | Stackable? |
+|--------|---------------|-------------------|------------|
+| Vault note (§11.1) | Message prefix (`<context>` block) | 📄 filename pill | Yes — one note per message |
+| Mental model (§11.3) | Message prefix (`<framing>` block) | 🧠 model name pill | Yes — one model per message |
+| Domain badge (§11.2) | Label only — not injected into message (Phase 1) | Colored domain pill | N/A — display only |
+| Theme behavior (§19.5) | Agent system prompt via `agents.update` — NOT the message | No pill (transparent) | Persistent, not per-message |
+
+**Stacking behavior:**
+- Vault note + mental model can both be active simultaneously. Both appear as pills. The augmented message is: `<context>` block + `<framing>` block + user text, in that order.
+- Maximum one vault note per message. If user selects a second note, it replaces the first.
+- Maximum one mental model per message. Selecting a second replaces the first.
+- Theme behavior injection (§19.5) operates on the **system prompt**, not the message. It is always-on when a theme is active — it does not appear as a pill and does not stack with message-level injections. It is invisible to the user by design (see §19.5 disclosure note).
+- Domain injection into messages is deferred to Phase 5. The domain badge is display-only in Phase 1–4.
+
+**Total max augmentation on a single message:** one `<context>` block + one `<framing>` block + user text. Clean, bounded, predictable.
+
+**Augmentation is always transparent to the user.** When context is attached to the next message, the input bar shows dismissible pills above the text field:
+
+```
+┌───────────────────────────────────────────┐
+│ 📄 MEMORY.md  ✕     🧠 Inversion  ✕      │  ← AugmentationPill row
+├───────────────────────────────────────────┤
+│ [🎤] [Type a message...            ] [➤] │
+└───────────────────────────────────────────┘
+```
+
+Each pill is tappable to remove before sending. After send, the augmentation context clears. No persistent injection — every message starts clean unless the user re-attaches context.
+
+**`AugmentationContext` is stored in Zustand `chatStore.pendingAugmentation`** — cleared on send, cleared on agent switch. The pills row is conditionally rendered when `pendingAugmentation` is non-empty.
+
+> **Pill count constraint (§11.0 canonical rule):** In Phase 1–4, the input bar augmentation row may contain at most two pills simultaneously: one vault note pill (§11.1) and one mental model pill (§11.3). Both are message-scoped and dismissible. Theme behavior injection (§19.5) does not surface a pill — it is applied gateway-side via `agents.update` and is not part of the client-side augmentation assembly. Domain awareness injection (§11.2), if implemented in Phase 5, must also surface as a dismissible pill following the same pattern.
+
+**This is the model for Phase 1–5.** No Polly REST server, no agent-mediated retrieval round-trip, no two code paths. The vault is on the device; mental models are in MMKV. Augmentation is free, offline, instant.
+
+### 11.1 Vault Context Injection
 **Trigger:** User types `/` in chat input  
-**Behavior:** Slide-up sheet shows Obsidian vault file browser → select note → note content prepended to message as context  
-**Implementation:** Polly reads vault path from settings, displays file tree, reads selected note, wraps in context block before sending to gateway
+**Behavior:** Slide-up sheet shows Obsidian vault file browser → select note → note content prepended to message as a context block before sending  
+**Implementation:** iOS reads the vault from the iCloud Drive path (`/var/mobile/Library/Mobile Documents/iCloud~md~obsidian/Documents/[VaultName]`). File tree rendered in a sheet. Selected note text wrapped in a context block and prepended to the outgoing message client-side. No server round-trip — the augmented message travels to OpenClaw as a single enriched user turn.  
+**Constraint:** Requires Obsidian iOS + iCloud sync. Vault path configured in Settings.
 
-### 11.2 Domain Awareness
-**Behavior:** Polly detects which of the 5 domains (Sigils/Signals/Scrolls/Glyphs/Grids) is active based on conversation content and shows a colored domain badge in the chat nav bar  
-**Implementation:** Simple keyword classification on recent messages; domain colors from design system
+### 11.2 Domain Awareness Badge
+**Behavior:** Shows a colored badge in the chat nav bar indicating which domain the current conversation is about. Purely cosmetic and informational — helps the user track context.  
+**Implementation:** Client-side keyword classification on recent message text against a user-configurable list of domain names and keywords stored in app settings (MMKV). No server call needed. Default domains shown if user hasn't configured custom ones. Domain colors and icons are user-configured in Settings → Domains.  
+**UX:** Tapping the badge opens a small sheet listing all configured domains; user can manually override the detected domain for the session.  
+**Note:** This is a *labeling* feature — it doesn't change AI behavior unless the user explicitly sends a domain tag. Enhanced domain routing (auto-injecting domain context into messages) is a Phase 5 consideration once it's clear how OpenClaw agents should receive it.
 
 ### 11.3 Mental Model Selector
 **Trigger:** Tap 🧠 icon in chat nav bar  
-**Behavior:** Sheet shows list of mental models (Infinite Games, Systems Thinking, etc.), tap to activate → injected as system context on next message  
-**Implementation:** Prepend model description to outgoing message context
+**Behavior:** Sheet shows a list of mental models. Tapping one injects a brief framing statement at the start of the next message.  
+**Implementation:** Mental models are a short hardcoded list (client-side) with user-addable custom entries stored in MMKV. No server fetch. The selected model's `prompt_injection` text is prepended as context to the next outgoing message.  
+**User additions:** Settings → Mental Models → Add custom
 
-### 11.4 Pattern Transparency (Today View)
-**Behavior:** "Polly noticed..." insight cards in Today view showing learned patterns from conversation history  
-**Implementation:** Parse Polly's `~/.polly/patterns/` (from existing core) and surface as readable cards
+#### Default Mental Models (12)
 
-### 11.5 Vault Browser
-**Trigger:** Tap vault icon in Moltbook or Settings  
+Organized into four tiers. All are enabled by default; users can disable or reorder.
+
+**Tier 1 — Core Philosophy**
+| ID | Name | Prompt Injection (prepended to next message) |
+|----|------|----------------------------------------------|
+| `infinite_games` | Infinite Games | *"Approach this with an infinite game mindset: optimize for continuation, adaptation, and evolving the system — not for winning or closing."* |
+| `instruments_over_tracks` | Instruments Over Tracks | *"Think in terms of tools and systems, not finished products. What flexible instrument could serve many purposes here?"* |
+| `constraint_as_meaning` | Constraint as Meaning | *"Treat the constraints in this situation as generative, not limiting. What does the constraint make possible that freedom wouldn't?"* |
+
+**Tier 2 — Learning & Thinking**
+| ID | Name | Prompt Injection |
+|----|------|-----------------|
+| `freire_pedagogy` | Freire's Pedagogy | *"Approach this as a dialogue between equals working toward critical understanding — not as transmission from expert to student."* |
+| `socratic_method` | Socratic Method | *"Guide toward understanding through questions rather than direct answers. Surface assumptions. Let the inquiry do the work."* |
+| `reverse_engineering` | Reverse Engineering | *"Start from the desired end state and work backward. What would have to be true for this outcome to exist?"* |
+
+**Tier 3 — Systems & Technical**
+| ID | Name | Prompt Injection |
+|----|------|-----------------|
+| `systems_thinking` | Systems Thinking | *"Map the system: what are the nodes, the flows, the feedback loops, and the leverage points? Consider second-order effects."* |
+| `first_principles` | First Principles | *"Strip away assumptions and analogies. What is undeniably true here? Reason up from the bedrock."* |
+| `inversion` | Inversion | *"Invert the problem: what would guarantee failure? What would you never do? Work backward from the negative to find the positive path."* |
+
+**Tier 4 — Communication & Time**
+| ID | Name | Prompt Injection |
+|----|------|-----------------|
+| `second_order_effects` | Second-Order Effects | *"Before acting, ask: and then what? Trace the chain of consequences at least two steps out."* |
+| `chestertons_fence` | Chesterton's Fence | *"Before removing or changing anything, understand why it exists. What problem was it solving? What breaks if it's gone?"* |
+| `async_first` | Async-First Communication | *"Optimize for clear, durable, self-contained communication. Write as if the reader can't ask a follow-up question."* |
+
+#### Agent-Suggested Models
+
+Agent templates may declare a `suggested_models` list (see `POLLY_AGENT_TEMPLATES.md`). When the user opens a session with an agent that has suggestions, the 🧠 sheet pre-highlights those model IDs as **Suggested** — a visual hint, not forced activation. The user still taps to activate.
+
+#### Client-Side Domain Activation
+
+The domain badge (§11.2) is wired to the mental model selector as a soft suggestion layer:
+
+| Domain Badge | Suggested Models |
+|---|---|
+| Scrolls (writing/notes) | `freire_pedagogy`, `constraint_as_meaning`, `async_first` |
+| Sigils (code) | `first_principles`, `systems_thinking`, `reverse_engineering` |
+| Signals (audio) | `instruments_over_tracks`, `constraint_as_meaning` |
+| Glyphs (design) | `instruments_over_tracks`, `chestertons_fence`, `inversion` |
+| Grids (systems/data) | `systems_thinking`, `second_order_effects`, `chestertons_fence` |
+
+When a domain is detected, the 🧠 nav icon shows a subtle badge dot. Opening the sheet surfaces the domain-suggested models at the top of the list under a **"Suggested for [Domain]"** section header, above the full list. No model is auto-activated — the user always taps to apply.
+
+**Priority order when both agent suggestions and domain suggestions are present:** agent suggestions appear first, then domain suggestions, then the full list. Duplicates are deduplicated (shown once, in the higher-priority slot).
+
+### 11.4 Vault Browser
+**Trigger:** Vault icon in Moltbook or Settings  
 **Behavior:** Browse Obsidian vault directory structure, view notes rendered as markdown  
-**Implementation:** Read from configured vault path (local access via Tailscale file share or vault path on device if synced)
+**Implementation:** Read from configured vault iCloud path. No server needed.
+
+### 11.5 Quick Capture
+
+**Philosophy:** Quick capture is fast, frictionless input. It is *not* knowledge. A capture is raw material that sits in a staging area until it is deliberately processed into an organized note. Captures never appear in domain search, vault context injection (§11.1), or the knowledge graph until promoted. This keeps the organized vault clean.
+
+#### The Inbox
+
+**UX distinction — Inbox vs. Vault (@researcher B-R5):** The Inbox and the organized vault are visually distinct everywhere they appear in the app. The user must never be confused about which one they're looking at.
+
+| Surface | Inbox | Organized Vault |
+|---------|-------|-----------------|
+| Vault Search (§4.6) | Results show 📥 badge, labeled "Inbox" in filter chips | No badge, domain chip only |
+| Vault Browser (§11.4) | `_inbox/` folder pinned at top with 📥 icon and count badge | All other folders below |
+| Capture sheet | "Saving to Inbox" label below Save button | N/A |
+| Today View | Inbox card ("X captures waiting") | N/A |
+| Note view (read) | Orange "📥 Inbox — not yet processed" banner at top | No banner |
+
+The visual language: **Inbox = orange + 📥**. Vault = domain colors. Never mixed.
+
+All captures land in a dedicated **Polly Inbox** folder within the user's configured vault:
+- **Obsidian:** `_inbox/` at vault root (configurable in Settings → Vault)
+- **Notion:** A dedicated "Polly Inbox" database (user selects or creates during setup)
+
+The Inbox is a staging area. It is indexed by Polly for *awareness* (so the user can search it) but is explicitly excluded from RAG context injection and domain-filtered retrieval until promoted.
+
+Captures in the Inbox are always in `30-Ideas` maturity stage. They cannot be manually moved to `20-Active` — promotion does that automatically.
+
+#### Capture Entry Points
+
+- **Floating capture button** — persistent `+` button on Today View (§4.2), bottom-right. Opens capture sheet.
+- **App icon long-press** — iOS quick action: "New Capture" → opens capture sheet directly
+- **Share extension** — Share any text, URL, or image from another app → sends to Polly Inbox
+- **Voice capture** — Hold mic in capture sheet for voice → transcribed and saved
+
+#### Capture Sheet
+
+```
+┌─────────────────────────────────────┐
+│  Quick Capture               [Save] │
+├─────────────────────────────────────┤
+│                                     │
+│  [Text input — multiline,           │
+│   placeholder: "What's on your      │
+│   mind?"]                           │
+│                                     │
+├─────────────────────────────────────┤
+│  [🎙 Voice]  [📷 Photo]  [🔗 URL]  │
+├─────────────────────────────────────┤
+│  Domain: [Auto-detect ▾]            │
+│  Tag: [+ Add tag]                   │
+└─────────────────────────────────────┘
+```
+
+- **Domain auto-detect:** Client-side keyword classification (same logic as §11.2) — shown as a suggestion, user can override
+- **Tags:** Free-form, comma-separated, stored as frontmatter
+- **Save:** writes file to `_inbox/YYYY-MM-DD-HHmm-slug.md` in Obsidian, or new row in Notion Inbox DB
+- No template applied at save time — raw markdown only
+
+#### Capture File Format (Obsidian)
+
+```markdown
+---
+polly_capture: true
+created: 2026-03-24T07:30:00
+source: voice | text | url | image | share
+domain_hint: signals
+tags: [norns, idea]
+maturity: 30-ideas
+promoted: false
+---
+
+[capture content here]
+```
+
+The `promoted: false` frontmatter flag is what excludes it from RAG. On promotion, this flips to `true` and the file moves to its domain folder.
+
+#### Promotion Flow
+
+Promotion is triggered from the **Inbox Review** screen (see §4.2 Today View — Inbox card) or from any individual capture:
+
+1. User taps "Process" on a capture
+2. Polly analyzes the content and suggests: template, domain placement, wiki link candidates
+3. User confirms or adjusts
+4. Polly creates the properly structured note in the correct vault location
+5. Original capture file is deleted (or archived to `_inbox/_processed/` if user prefers to keep history — configurable)
+
+Promotion runs through the same AI-assisted note creation pipeline as manual note creation. The result is indistinguishable from a note created from scratch.
+
+#### Batch Processing
+
+**Settings → Vault → Process Inbox** — runs all pending captures through Polly's suggestion pipeline in sequence. User reviews each one. Designed for weekly review sessions.
+
+**Inbox count badge:** Today View shows a "📥 X captures waiting" card when inbox has unprocessed items. Tapping opens the review queue.
+
+#### Pattern Transparency *(Agent-mediated, Phase 3+)*
+
+~~11.5 Pattern Transparency~~ *(Deferred — requires Polly backend)*
+Pattern transparency cards ("Polly noticed...") require the Polly Python backend's pattern engine. For OpenClaw-native Polly, this is deferred to Phase 3+. An agent skill could surface patterns on request ("What have I been capturing most about lately?") without requiring a dedicated engine.
+
+**Phase 3 stub:** A "Polly noticed..." card type in Today View (§4.2) — opt-in, dismissible, fires when the active Polly agent observes a recurring topic across recent captures. Agent-mediated, not engine-mediated. Low priority.
+
+---
+
+### 11.6 Curriculum *(Phase 4+ — Low Priority)*
+
+The original Polly Python backend included a full curriculum system (Phase 23): create learning curricula, enrich sections with explanations and exercises, track mastery, spaced repetition. The system was well-designed and worth preserving.
+
+For Polly iOS Phase 1–3, this is deferred. The backend integration required (curriculum DB, section enrichment API, exercise sandbox) is substantial and not justified until the core experience is proven.
+
+**Phase 4 placeholder:** A "Learning" entry point in the drawer that, when tapped, surfaces a chat interface pre-loaded with the Educator agent and a prompt: *"What do you want to learn? I can build you a structured curriculum."* Agent-driven, no custom backend. Proper curriculum UI (progress tracking, exercises, spaced repetition) is Phase 4+ work.
+
+Reference: `~/polly/openspec/specs/curriculum/spec.md`
 
 ---
 
@@ -2650,11 +3918,11 @@ These differentiate Polly from being a straight Aight clone.
 | Keychain | `expo-secure-store` | iOS Keychain + Secure Enclave for private key storage |
 | State management | `zustand` | Lightweight, matches Aight's approach |
 | Fast lists | `@shopify/flash-list` | High-perf chat list, proven in Aight |
-| Markdown | `react-native-enriched-markdown` | What Aight uses; already battle-tested with OpenClaw content |
+| Markdown | `react-native-markdown-display` (Phase 1) → custom `PollyMarkdown` renderer (Phase 2+) | `react-native-enriched-markdown` is Aight-proprietary; not available on public npm |
 | Animations | `react-native-reanimated` + `react-native-gesture-handler` | Standard RN animation stack |
 | Graphics / waveforms | `@shopify/react-native-skia` | 2D canvas for voice waveforms, custom UI elements |
 | Storage (fast KV) | `react-native-mmkv` | Persistent device identity, app state cache |
-| Navigation | `expo-router` + `@react-navigation/drawer` | File-based routing, matches Expo conventions |
+| Navigation | `expo-router` + `@react-navigation/native` (stack only) | File-based routing for full-screen views; **drawer is custom** (see §6.24) — `@react-navigation/drawer` is NOT used |
 | STT (Phase 1) | `expo-speech-recognition` | System STT, zero setup |
 | STT (Phase 2) | `whisper.rn` | On-device Whisper for latency + offline; proven Expo-compatible |
 | TTS | `expo-speech` | System TTS, sufficient for Phase 1 |
@@ -2745,7 +4013,7 @@ Per @ai_expert: Gateway-connected STT for Phase 1; on-device Whisper (`whisper.r
 **Target:** Complete configuration surface  
 **Scope:**
 - [ ] Full Settings: providers, API keys, agent management, SOUL.md editing
-- [ ] Alexa/Amazon Search config slot
+- [ ] Exa Search config slot
 - [ ] Slack integration
 - [ ] Linear integration
 - [ ] Cloudflare tunnel management (view status, restart from app)
@@ -2754,14 +4022,15 @@ Per @ai_expert: Gateway-connected STT for Phase 1; on-device Whisper (`whisper.r
 ---
 
 ### Phase 5 — Polly Differentiators (Signature Features)
-**Target:** Beyond Aight in AI intelligence layer  
+**Target:** Beyond Aight in intelligence and context depth  
 **Scope:**
-- [ ] Domain awareness badge (Sigils/Signals/Scrolls/Glyphs/Grids auto-detect)
-- [ ] Mental model selector in chat nav
-- [ ] Pattern transparency cards in Today view
-- [ ] RAG semantic search surfaced in chat (`/` command full implementation)
-- [ ] Obsidian vault full-text + semantic search from app
-- [ ] `whisper.rn` upgrade path for users who want fully on-device STT
+- [ ] Domain awareness badge (client-side keyword classification, user-configured domains; see §11.2)
+- [ ] Mental model selector in chat nav (hardcoded defaults + user-custom; see §11.3)
+- [ ] Domain behavior injection — when domain is detected, optionally prepend a domain context hint to outgoing messages (user opt-in)
+- [ ] RAG semantic search via agent: `/search [query]` command routes to a search-capable agent skill, returns results in chat
+- [ ] Obsidian vault full-text search from app (client-side, scans iCloud vault files)
+- [ ] `whisper.rn` upgrade path for fully on-device STT
+- [ ] *(Future, requires backend work)* Pattern transparency cards — deferred until OpenClaw agent skill equivalent exists
 
 ---
 
@@ -2994,11 +4263,11 @@ interface NotionConfig {
 
 ---
 
-#### 15.2.5 Alexa / Amazon Search
+#### 15.2.5 Exa Search API
 **Type:** API key  
-**What it does:** In Aight's context, likely Amazon Product Advertising API or Alexa Knowledge API  
-**Priority for Polly:** Low — niche utility  
-**Decision:** Include the config UI slot in Phase 4 but don't block anything on it. Skip if unused.
+**What it does:** Neural/semantic search and deep research — not Amazon/Alexa. Exa is a semantic search engine for AI agents (`exa.ai`). Surfaces high-quality web content with full-text retrieval.
+**Priority for Polly:** Medium — useful for research-heavy agents  
+**Decision:** Include config slot; forward key to gateway via `config.set`.
 
 ---
 
@@ -3126,7 +4395,7 @@ Settings → Integrations
   │ 🐙 GitHub              Connect    > │
   │ 📱 Apple Calendar      Enable     > │
   │ 📄 Notion API          Configure  > │
-  │ 🔊 Alexa Search        Configure  > │
+  │ 🔍 Exa Search        Configure  > │
   └─────────────────────────────────────┘
 
   COMING SOON
@@ -3157,6 +4426,7 @@ Settings → Integrations
 | Notion | API key | Gateway (via `config.set`) | Not on device |
 | GitHub | PAT / OAuth | Gateway (via `config.set`) | Not on device |
 | Obsidian | Vault path | MMKV | Not sensitive — just a file path |
+| Moltbook | API key | `expo-secure-store` (transient — purged after setup) | Held temporarily during registration UX only. On completion: `config.set` to gateway → `SecureStore.deleteItemAsync`. Gateway owns the key permanently; iOS never holds it after setup. |
 | Apple EventKit | N/A | iOS system | No credential needed |
 
 **Rule:** Keys used only by the gateway live on the gateway (sent via `config.set` on save). Keys used client-side (ElevenLabs, Google OAuth) live in `expo-secure-store`. File paths and non-sensitive config live in MMKV.
@@ -3169,7 +4439,7 @@ Add to §ToC:
 ```
 15. Integrations
     15.1 Integration Tiers
-    15.2 Tier 1 — Aight Parity (Brave, ElevenLabs, Google, Notion, Alexa)
+    15.2 Tier 1 — Aight Parity (Brave, ElevenLabs, Google, Notion, Exa)
     15.3 Tier 2 — Polly Differentiators (Obsidian, GitHub, Apple EventKit)
     15.4 Tier 3 — Extended
     15.5 Settings UI
@@ -3293,3 +4563,1462 @@ Before shipping any feature, ask:
 
 If any answer is no — redesign before shipping.
 
+
+---
+
+## §19 — Aesthetic Theme Engine
+
+**Source spec:** `~/polly/openspec/specs/themes/spec.md`
+**Canonical artist catalogue:** Affinity Suite Techniques Catalogue (38 techniques, 12 artists)
+**Phase delivery:** Theme picker UI → Phase 3 | Composability → Phase 4 | Domain-triggered → Phase 5
+
+### 19.1 Philosophy: Ambient Stance, Not Configurable Panel
+
+Themes in Polly iOS are not skins. They are not color pickers. They are not "personalization."
+
+A theme is an epistemological stance — a set of aesthetic commitments that changes how the app looks *and* how the AI thinks. When Ghost Box is active, the app feels archival and slightly haunted. The AI becomes more oblique, more institutional, more allusive. When Fidenza is active, the app is warm and organic. The AI is discursive and probabilistic in its reasoning.
+
+The user does not configure this in detail. They choose a sensibility and the rest follows.
+
+> **The theme is the background hum, not the foreground command.**
+
+**Implementation constraints:**
+- Theme switching is instant and non-destructive. Previous conversation messages do not change; only new messages reflect the new behavior injection.
+- The user never sees the behavior injection prompt. They feel the difference; they don't configure it.
+- Complexity of the composability system (7 × 7 matrix) is deferred to Phase 4. Phase 3 ships 7 themes, single-tap.
+- The word "Themes" does not appear in the UI. The setting is labeled **Sensibility**.
+
+---
+
+### 19.2 The Sensibility Picker
+
+**Location:** Settings → Sensibility
+
+**Layout:** Horizontal scrollable row of 7 cards. No grid. No list. The left-to-right order maps turbulence low → high — users are intuitively dialing between structure and flow without needing to know what turbulence means.
+
+**Card order (left to right):**
+```
+Albers  →  Jetset  →  Riley  →  Ghost Box  →  Reas  →  Martens  →  Fidenza
+ 0.0         0.1       0.0–0.3     0.2          0.3       0.4         0.6
+```
+
+**Card anatomy (each card ~160×200pt):**
+```
+┌──────────────────────┐
+│  [live mini-preview] │  ← 80pt tall, shows chat bubble + bg texture
+│                      │
+│  ████░░░░░░░░        │  ← 5-swatch color strip from theme palette
+│                      │
+│  Theme Name          │  ← 16pt, theme's own typography treatment
+│  Artist surname      │  ← 12pt, muted, e.g. "Albers" or "House"
+│                      │
+│  One-line stance     │  ← 11pt, italic, e.g. "Grid is generative"
+└──────────────────────┘
+```
+
+**Active state:** Card has a 2pt border in theme's accent color. A small filled circle indicator appears. No checkmark — that's too utilitarian for this feature.
+
+**Tap behavior:** Immediate live transition — no confirmation dialog, no "Apply" button. The parent Settings screen itself transitions to the new theme as the user taps. The transition is 350ms, the motion style governed by the incoming theme (Fidenza = flowing ease, Jetset = instant cut, Ghost Box = slight flicker-in).
+
+**Mini-preview content:** A static mock of a single AI chat bubble using the theme's palette, border-radius, and background texture. The bubble text reads *"System nominal."* — a Ghost Box reference that suits all themes without being theme-specific.
+
+---
+
+### 19.3 Presentation Layer → React Native Token Mapping
+
+Each theme defines a presentation layer. In React Native, this maps to a typed `ThemeTokens` object consumed via React Context. The active theme's tokens replace the default token set system-wide.
+
+```typescript
+interface ThemeTokens {
+  // Color
+  bgPrimary: string;
+  bgSecondary: string;
+  bgSurface: string;
+  textPrimary: string;
+  textSecondary: string;
+  textMuted: string;
+  accent: string;
+  accentSecondary: string;
+  border: string;
+
+  // Shape
+  radiusSm: number;    // e.g. Albers=0, Jetset=0, Fidenza=12
+  radiusMd: number;
+  radiusLg: number;
+  radiusBubble: number; // chat bubble corner radius
+
+  // Typography
+  fontBody: string;        // system font name
+  fontMono: string;        // monospace font name
+  fontHeading: string;
+  fontWeightHeading: string;
+  letterSpacingBody: number;
+
+  // Texture
+  textureOverlay: ThemeTexture | null;
+  textureOpacity: number;  // 0.03–0.08
+
+  // Motion
+  transitionMs: number;
+  transitionEasing: string;  // 'ease', 'linear', 'spring'
+
+  // Chrome
+  dividerStyle: 'line' | 'gap' | 'none';
+  shadowStyle: 'soft' | 'sharp' | 'none';
+  bubbleStyle: BubbleStyle;
+}
+
+type ThemeTexture = 'grain' | 'canvas' | 'scan-lines' | 'dot-grid' | 'woven' | 'letterpress' | null;
+type BubbleStyle = 'rounded' | 'square' | 'ribbon' | 'stamp' | 'minimal' | 'stripe-edge' | 'thread';
+```
+
+Theme tokens stored in `src/themes/[themeName].ts`. Active theme provided via `ThemeContext`. Components consume via `useTheme()` hook — never hardcode color or radius values.
+
+---
+
+### 19.4 Typography on iOS — Font Availability Matrix
+
+Custom font loading (via `expo-font`) is supported but avoided for system fonts that already deliver the right aesthetic. Fallback chain specified per theme.
+
+| Theme | Target feel | Primary | Fallback |
+|---|---|---|---|
+| **Reas** | Monospaced, instruction-set | `SF Mono` (system) | `Courier New` |
+| **Fidenza** | Humanist sans, warm | `SF Pro` (system default) | — |
+| **Ghost Box** | Institutional grotesque + slab | `Georgia` (body), `SF Pro Condensed` (headers) | `Times New Roman` |
+| **Martens** | Dutch modern, weight-structural | `SF Pro` heavy weight | — |
+| **Jetset** | Helvetica — the real thing | `Helvetica Neue` (iOS system) | `SF Pro` |
+| **Riley** | Recessive, light | `SF Pro Light` | — |
+| **Albers** | Grid-pixel, tight | `SF Mono` tight tracking | `Courier New` |
+
+**Note on Jetset:** iOS ships Helvetica Neue natively. Jetset is the one theme where the platform *delivers the canonical typeface*. No font loading required.
+
+**Note on Ghost Box:** `expo-font` can load Akzidenz Grotesk or Knockout if the user has licensed them. The spec defaults to system fonts. Premium font loading is a Phase 4 option.
+
+---
+
+### 19.5 Behavior Layer → Persona System Prompt Injection
+
+When a theme is active, a theme tag is appended to every OpenClaw agent's effective system prompt via the gateway config mechanism. The user never sees this. The agent's SOUL.md remains unchanged — the theme is a *layer on top*, not a replacement.
+
+**Injection format:**
+
+```
+[AESTHETIC STANCE — {ThemeName}]
+{ThemeBehaviorInjection}
+This stance influences your tone, structure, and decision-making defaults.
+It does not override explicit user instructions.
+```
+
+**Theme behavior injections:**
+
+**Reas:**
+> Favor systematic, emergent thinking. Present ideas as rule-sets that generate outcomes rather than prescriptions. Be procedural and precise. Favor small composable ideas that create complex effects. Documentation style: executable instruction.
+
+**Fidenza:**
+> Approach problems with probabilistic warmth. Explore weighted possibilities rather than single answers. Be technically precise but accessible — explain the math gently. Structure responses organically; allow productive wandering. Voice: warm-technical.
+
+**Ghost Box:**
+> Work from accumulated reference, never direct citation. Be allusive and slightly indirect — approach from impression. Documentation reads like institutional technical manuals. Variable names and file structures suggest archival filing systems. Voice: hauntological — things remembered rather than looked up.
+
+**Martens:**
+> Treat every response as a layered process — build through successive passes, not single placements. Document the sequence of making, not just the result. Color and structure emerge from combination. Voice: process-aware.
+
+**Jetset:**
+> Maximum restraint. Use the fewest possible components. Four concepts maximum per response — if more, reconsider scope. Never perform voice; let content speak. Break the fourth wall on design: acknowledge that you are producing a designed artifact. Comments explain why, not what. Voice: neutral, ego-less.
+
+**Riley:**
+> Isolate variables. Explore one parameter systematically across a series. Document what was varied and what was observed. Avoid decoration — describe effect and perception precisely. Structure responses as study notes: parameter, variation, observation. Voice: observational.
+
+**Albers:**
+> Define the constraint first; find what it allows. Begin from material observation — let ideas emerge from handling, not from concept. Document what the tool does before what you want from it. Complexity emerges from within constraint, never from breaking it. Voice: material-first.
+
+**Delivery mechanism:** The injection is set via `config.set` RPC on the gateway when the theme switches. The gateway key is `polly.ios.aestheticStance`. All agents read this as a shared ambient layer. Switching themes triggers a `config.set` with the new injection text; the change takes effect on the next message.
+
+---
+
+### 19.6 Theme Definitions — iOS-Adapted
+
+Full palette values mapped from the openspec source, adapted for dark-first iOS rendering.
+
+#### Reas
+
+```typescript
+{
+  bgPrimary:    '#0A0A0A',  // near-black with cool cast
+  bgSecondary:  '#111111',
+  bgSurface:    '#1A1A1A',
+  textPrimary:  '#F8F6F3',  // off-white
+  textSecondary:'#B0ADA8',
+  textMuted:    '#6B6864',
+  accent:       '#3A6B9F',  // system blue
+  accentSecondary: '#2D2D2D',
+  border:       '#222222',
+  radiusSm: 0, radiusMd: 2, radiusLg: 4, radiusBubble: 4,
+  fontBody: 'SF Mono', fontHeading: 'SF Mono',
+  letterSpacingBody: 0.5,
+  textureOverlay: 'dot-grid', textureOpacity: 0.04,
+  transitionMs: 250, transitionEasing: 'linear',
+  dividerStyle: 'line', shadowStyle: 'none',
+  bubbleStyle: 'square',
+}
+```
+
+#### Fidenza
+
+```typescript
+{
+  bgPrimary:    '#1A1510',  // warm near-black
+  bgSecondary:  '#221C14',
+  bgSurface:    '#2A2218',
+  textPrimary:  '#F2E8D5',  // cream
+  textSecondary:'#C4A87A',
+  textMuted:    '#8B7355',
+  accent:       '#C4653A',  // terracotta
+  accentSecondary: '#D4A84B', // gold
+  border:       '#3A2E20',
+  radiusSm: 6, radiusMd: 12, radiusLg: 20, radiusBubble: 18,
+  fontBody: 'SF Pro', fontHeading: 'SF Pro',
+  letterSpacingBody: 0,
+  textureOverlay: 'canvas', textureOpacity: 0.06,
+  transitionMs: 400, transitionEasing: 'ease',
+  dividerStyle: 'gap', shadowStyle: 'soft',
+  bubbleStyle: 'ribbon',
+}
+```
+
+#### Ghost Box
+
+```typescript
+{
+  bgPrimary:    '#0E0C09',  // dark yellowed
+  bgSecondary:  '#161310',
+  bgSurface:    '#1E1A14',
+  textPrimary:  '#E8DCC4',  // worn cream
+  textSecondary:'#B4A882',
+  textMuted:    '#7A6E58',
+  accent:       '#D4763A',  // worn orange
+  accentSecondary: '#4A6B82', // public information blue
+  border:       '#2E2820',
+  radiusSm: 0, radiusMd: 0, radiusLg: 2, radiusBubble: 2,
+  fontBody: 'Georgia', fontHeading: 'SF Pro Condensed',
+  letterSpacingBody: 0.2,
+  textureOverlay: 'scan-lines', textureOpacity: 0.05,
+  transitionMs: 180, transitionEasing: 'linear',  // slight flicker
+  dividerStyle: 'line', shadowStyle: 'none',
+  bubbleStyle: 'stamp',
+}
+```
+
+#### Martens
+
+```typescript
+{
+  bgPrimary:    '#0A0A0A',
+  bgSecondary:  '#141414',
+  bgSurface:    '#1A1A1A',
+  textPrimary:  '#F0EEEC',
+  textSecondary:'#AAA8A4',
+  textMuted:    '#666460',
+  accent:       '#E03030',  // red primary
+  accentSecondary: '#2040A0', // blue primary
+  border:       '#222222',
+  radiusSm: 0, radiusMd: 0, radiusLg: 0, radiusBubble: 0,
+  fontBody: 'SF Pro', fontHeading: 'SF Pro',
+  letterSpacingBody: 0,
+  textureOverlay: 'letterpress', textureOpacity: 0.05,
+  transitionMs: 300, transitionEasing: 'ease',
+  dividerStyle: 'line', shadowStyle: 'sharp',
+  bubbleStyle: 'minimal',
+}
+```
+
+#### Jetset
+
+```typescript
+{
+  bgPrimary:    '#FFFFFF',  // NOTE: Jetset is light-mode primary
+  bgSecondary:  '#F5F5F5',
+  bgSurface:    '#EFEFEF',
+  textPrimary:  '#000000',
+  textSecondary:'#444444',
+  textMuted:    '#888888',
+  accent:       '#FF0000',  // red — full saturation only
+  accentSecondary: '#0000FF', // blue — full saturation only
+  border:       '#000000',
+  radiusSm: 0, radiusMd: 0, radiusLg: 0, radiusBubble: 0,
+  fontBody: 'Helvetica Neue', fontHeading: 'Helvetica Neue',
+  letterSpacingBody: -0.2,
+  textureOverlay: null,  // no texture — production artifacts instead
+  textureOpacity: 0,
+  transitionMs: 0,  // instant cut — no transition animation
+  transitionEasing: 'linear',
+  dividerStyle: 'line', shadowStyle: 'none',
+  bubbleStyle: 'square',
+}
+```
+
+**Jetset special case:** This is the only light-mode theme. When Jetset is active, `StatusBarStyle` switches to `dark-content`. Crop marks (2pt L-shapes) appear at the four corners of the chat input field and the navigation bar. These are `position: absolute` decorative views — not interactive.
+
+#### Riley
+
+```typescript
+{
+  bgPrimary:    '#0A0A0F',  // near-black, cool
+  bgSecondary:  '#12121A',
+  bgSurface:    '#1A1A24',
+  textPrimary:  '#EEEEF4',
+  textSecondary:'#9090A8',
+  textMuted:    '#555568',
+  accent:       '#E8644A',  // warm complement #1
+  accentSecondary: '#4A8EE8', // cool complement #2
+  border:       '#2A2A3A',
+  radiusSm: 0, radiusMd: 0, radiusLg: 0, radiusBubble: 0,
+  fontBody: 'SF Pro', fontHeading: 'SF Pro',
+  letterSpacingBody: 0.8,  // recessive, airy
+  textureOverlay: null,
+  textureOpacity: 0,
+  transitionMs: 200, transitionEasing: 'linear',
+  dividerStyle: 'gap', shadowStyle: 'none',
+  bubbleStyle: 'stripe-edge',
+}
+```
+
+**Riley special case:** Section dividers are rendered as alternating stripe bands — two colors from the palette at 20% opacity — rather than lines or gaps. The navigation bar has subtle horizontal stripe modulation on scroll.
+
+#### Albers
+
+```typescript
+{
+  bgPrimary:    '#0C0B09',  // very dark warm
+  bgSecondary:  '#141210',
+  bgSurface:    '#1C1916',
+  textPrimary:  '#E8DBC4',  // unbleached
+  textSecondary:'#B0A080',
+  textMuted:    '#6E5E48',
+  accent:       '#C4923A',  // ochre
+  accentSecondary: '#2B3A67', // indigo
+  border:       '#2A2418',
+  radiusSm: 0, radiusMd: 0, radiusLg: 0, radiusBubble: 0,
+  fontBody: 'SF Mono', fontHeading: 'SF Mono',
+  letterSpacingBody: 0.3,
+  textureOverlay: 'woven', textureOpacity: 0.04,
+  transitionMs: 300, transitionEasing: 'ease',
+  dividerStyle: 'line', shadowStyle: 'none',
+  bubbleStyle: 'thread',
+}
+```
+
+---
+
+### 19.7 Texture Overlay Implementation
+
+Textures are React Native `<Canvas>` components (via `@shopify/react-native-skia` — already a Phase 2 dependency candidate; for Phase 3 use an `<Image>` with a pre-rendered tiling PNG at low opacity if Skia not yet integrated).
+
+Each texture is a 128×128 PNG tiled across the screen background at `textureOpacity`. Textures are bundled as static assets — no runtime generation. Total asset weight for all 7 textures: ~80KB.
+
+**Texture asset list:**
+- `grain.png` — film grain noise (Fidenza)
+- `canvas.png` — medium canvas weave (Fidenza alternative)
+- `scan-lines.png` — horizontal scan lines, 2px period (Ghost Box)
+- `dot-grid.png` — regular dot grid, 8px spacing (Reas)
+- `woven.png` — tight over-under weave (Albers)
+- `letterpress.png` — subtle ink spread pattern (Martens)
+
+Jetset and Riley have no texture overlay.
+
+---
+
+### 19.8 The `useTheme()` Hook
+
+```typescript
+// src/hooks/useTheme.ts
+
+import { useContext } from 'react';
+import { ThemeContext } from '../contexts/ThemeContext';
+
+export function useTheme() {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error('useTheme must be used within ThemeProvider');
+  return ctx;
+}
+
+// Usage in any component:
+const { tokens, activeTheme, setTheme } = useTheme();
+// tokens.accent, tokens.bgPrimary, tokens.radiusBubble, etc.
+```
+
+`ThemeProvider` wraps the root navigator. `activeTheme` is persisted to MMKV key `"polly.sensibility"`. On app launch, the persisted theme is loaded before first render — no flash of default theme.
+
+---
+
+### 19.9 Phase Delivery Plan
+
+**Phase 3 — Core Sensibility (ship with Shortcuts + Integrations):**
+- [ ] 7 theme token files (`src/themes/*.ts`)
+- [ ] `ThemeContext` + `ThemeProvider` + `useTheme()`
+- [ ] Sensibility card picker UI (Settings → Sensibility)
+- [ ] Live preview mini-card per theme
+- [ ] Instant switching with theme-native transition
+- [ ] Texture overlay assets (6 PNGs)
+- [ ] Jetset crop marks + light-mode status bar
+- [ ] Riley stripe-edge dividers
+- [ ] Behavior injection via `config.set` RPC on theme switch
+- [ ] MMKV persistence of active sensibility
+
+**Phase 4 — Composition (ship with Moltbook + Stats):**
+- [ ] Turbulence slider per theme (overrides `designer.turbulence`)
+- [ ] Color Logic selector (3–4 options per theme, not full matrix)
+- [ ] Grid Strictness toggle (relaxes radius/spacing constraints)
+- [ ] Composed theme saved to `~/.polly/themes/custom/` as JSON
+- [ ] Export/import theme JSON
+
+**Phase 5 — Ambient Switching (Polly Differentiators):**
+- [ ] Domain-triggered auto-switching (e.g., code → Reas, audio → Fidenza)
+- [ ] Time-of-day theme sequences
+- [ ] Lieberman theme: daily rotation built in (new constraint each day)
+- [ ] Community theme import
+
+---
+
+### 19.10 Composability Interface (Phase 4 Preview)
+
+Rather than exposing the full 7×7 property matrix, Phase 4 surfaces composability as **three human-readable sliders** over the base theme:
+
+| Slider | Low end | High end | Maps to |
+|---|---|---|---|
+| **Structure** | Organic, flowing | Grid-strict | `spacing.alignment`, `radiusAll`, `dividerStyle` |
+| **Turbulence** | Controlled, quiet | Energetic, probabilistic | `designer.turbulence` (0.0–1.0) |
+| **Voice** | Neutral, terse | Warm, discursive | Behavior injection intensity |
+
+A user picks a base theme (e.g., Martens) then adjusts these three sliders. The live preview updates instantly. The result is saved as a named composition. The underlying theme JSON is fully specified — but the user only touched 3 knobs.
+
+---
+
+### 19.11 Relationship to App Constitution (§18)
+
+Aesthetic themes are a constitutionally-compliant feature:
+
+- **Progressive disclosure** (§18.2): Default is Reas (structured, minimal). The picker is in Settings, not onboarding. The feature reveals itself when the user is ready.
+- **Local-first** (§18.4): All theme data is local. No theme syncs to cloud. No analytics on which theme is active.
+- **Ownership** (§18.1): Themes are exported as JSON the user owns. The composability system produces artifacts in `~/.polly/themes/` on the user's gateway machine.
+- **No dark patterns** (§18.5): Theme switching has no "recommended" theme, no A/B testing, no engagement optimization. The user chooses a sensibility; the app honors it.
+
+The one constraint to check: **Jetset's light mode**. All other themes are dark-first (§18.3 specifies dark mode as Polly's primary mode). Jetset is explicitly white/black/red/blue — a light-mode theme. This is acceptable because:
+1. It is not the default
+2. It represents faithful artist rendering (Jetset's work is light-ground)
+3. The user consciously selects it as a sensibility
+
+Document as a known constitutional exception in §18.3 with a cross-reference to §19.6 (Jetset definition).
+
+---
+
+*§19 added 2026-03-23. Source: `~/polly/openspec/specs/themes/spec.md` (Affinity Suite Techniques Catalogue, 38 techniques, 12 artists). iOS adaptation by @code_architect.*
+
+
+---
+
+## §20 — Architectural Principles & Developer Notes
+
+*Clarifications added 2026-03-23 post-openspec audit. These are correctness guardrails for developers, not new features.*
+
+---
+
+### 20.1 Single Backend Principle
+
+**Polly iOS connects to OpenClaw only.**
+
+The Polly Python FastAPI server (`server.py`, port 8000) is a gateway-side resource. The iOS client has no direct connection to it. If an agent needs to query the Polly RAG engine, search the vault semantically, or run domain detection — the agent does it via tool calls server-side. The iOS app sends a message and receives a response. It never calls `http://[host]:8000` directly.
+
+This is not a limitation. It is the correct architecture for an OpenClaw client:
+
+```
+iOS app  ←──── WebSocket ────→  OpenClaw gateway
+                                      │
+                                      ├── Agent skills / tools
+                                      ├── Polly RAG (if running)
+                                      ├── Obsidian tools (if configured)
+                                      └── Any other server-side resources
+```
+
+The iOS app's job is to be the best possible interface to OpenClaw. It does not need to be a thick client.
+
+**Consequence for §11 (Polly-Specific Features):** All features in §11 are either purely client-side (vault context injection, vault browser, client-side domain labeling, mental model injection) or agent-mediated (semantic search, pattern insights). None require a direct REST call to the Polly server.
+
+---
+
+### 20.2 Constitutional Epistemology — Developer Note
+
+The Polly backend (`core/constitutional/layer.py`) injects a non-configurable epistemological layer into every agent's system prompt. This is always active. It is not a feature — it is infrastructure.
+
+**What this means for iOS:**
+- The Settings screen must not include any toggle for "content filtering," "safety mode," or anything implying the constitutional layer is configurable. It isn't.
+- Theme behavior injection (§19.5) operates at Layer 5 of the system prompt hierarchy. Constitutional epistemology is Layer 7 (deepest). The iOS client owns Layer 5 only.
+- No "explain why Polly responded this way" feature should expose the constitutional layer text. It is invisible infrastructure.
+
+---
+
+### 20.3 Domain Configuration — Client-Side Only
+
+Domains in the iOS app are **user-configured in Settings**, not fetched from any server. This is the correct model for an OpenClaw-only client.
+
+**Settings → Domains:**
+- User defines their domains (name, color, Lucide icon, keywords for auto-detection)
+- Stored in MMKV key `"polly.domains"` as JSON
+- Default set shown on first run (e.g., Code, Writing, Audio, Design, Systems) — user can rename, reorder, add, delete
+
+**Domain auto-detection:** Client-side keyword matching against the user's configured keyword list per domain. No server call. Fast, private, works offline.
+
+**DomainBadge component:** Reads from the local MMKV domain config. No network dependency.
+
+```typescript
+interface UserDomain {
+  id: string;           // user-assigned, e.g. "code"
+  name: string;         // display name, e.g. "Code"
+  color: string;        // hex #RRGGBB
+  icon: string;         // Lucide icon name
+  keywords: string[];   // for client-side auto-detection
+  order: number;
+}
+```
+
+**MMKV keys:**
+- `"polly.domains"` — JSON array of `UserDomain[]`
+- `"polly.domainsVersion"` — integer, increment on any edit (for cache invalidation)
+
+---
+
+### 20.4 Onboarding Behavior
+
+Polly's onboarding has two distinct phases: **Bootstrapped Setup** (before any gateway is connected) and **Progressive Revelation** (after first connection, ongoing). They are separate concerns.
+
+---
+
+#### Phase A: Bootstrapped Setup (Cold Start)
+
+When the user installs Polly and opens it for the first time, there is no gateway — and therefore no agents. Polly solves this with a **bootstrap model**: a lightweight AI connection that exists only to guide the user through setup.
+
+**Bootstrap model options (in priority order):**
+1. User's existing API key — if the user enters an Anthropic, OpenAI, or Google key in the first screen, that model becomes the bootstrap
+2. Free tier model — Gemini Flash (via Google AI Studio free tier) as a built-in fallback that requires no user API key; key is baked into the app bundle for onboarding only
+3. Manual mode — if no model is available, falls back to a scripted, non-AI guided setup (static screens with instructions)
+
+The bootstrap model is **only used for onboarding**. Once the gateway is connected, it steps aside. Conversations during setup are not persisted.
+
+**Setup flow:**
+
+```
+Cold open
+  ↓
+[Welcome screen]
+  "Hi — I'm Polly. I'll help you get set up."
+  [Enter your API key (optional)] [Skip — use free model]
+  ↓
+[Conversational onboarding — chat interface, bootstrap model active]
+  Polly: "To work properly, I connect to a small server called OpenClaw 
+          that runs on your Mac. Do you have OpenClaw installed?"
+  → Yes / No / What's OpenClaw?
+  ↓
+  [If No] Polly: "No problem — I'll walk you through it. Open Safari 
+                  and go to openclaw.app..."
+  [Polly guides: download → install → start server → confirm running]
+  ↓
+  Polly: "Great. Now I need your gateway address. 
+          If you're on the same Wi-Fi as your Mac, tap 'Scan for gateway' 
+          and I'll find it automatically."
+  → [Scan] [Enter manually]
+  ↓
+  [mDNS scan or manual URL entry → connection test]
+  ↓
+  Polly: "Connected ✓. One last thing — paste your gateway auth token. 
+          You'll find it in OpenClaw's settings under 'Security'."
+  → [Token field + link to where to find it]
+  ↓
+  [Auth handshake → success]
+  ↓
+  Polly: "You're in. Let me show you around."
+  → [Enter main app — gateway active, full agent roster live]
+```
+
+**Key design rules:**
+- Every step is a conversation turn, not a form. The user talks; Polly responds.
+- If the user gets stuck, Polly asks a clarifying question rather than showing an error screen
+- Dead ends don't exist — any response Polly doesn't understand falls back to "Let me try a different way"
+- The bootstrap model runs a structured script with freeform fallback for edge cases
+- Setup screens use the same chat UI as the main app — no separate onboarding UI components
+
+**Security flows during onboarding:**
+
+> ✅ **@security_audit** — Security sub-flows added March 24, 2026
+
+**Device keypair initialization:**
+On first launch, before any onboarding screen is shown, Polly silently initializes device identity:
+1. Check `expo-secure-store` for `"polly.device.privateKey"` — if present, device is already initialized (resume flow, skip keygen)
+2. If absent: generate Ed25519 keypair via `@noble/ed25519`, store private key bytes to `expo-secure-store` under `"polly.device.privateKey"`
+3. Derive `deviceId = SHA-256(publicKeyBytes)` as hex — store to MMKV `"polly.device.id"` (non-sensitive, used in UI)
+4. If `expo-secure-store` write fails (e.g. device passcode not set): block onboarding and show "Passcode Required" screen — "Polly requires a device passcode to securely store your credentials. Please set a passcode in iOS Settings, then return."
+
+**Auth token entry and TOFU cert pinning:**
+After gateway URL is entered and connection test passes:
+1. If the gateway presents a self-signed or unrecognized TLS certificate, show a **Certificate Verification** screen before auth token entry:
+   - Display: certificate fingerprint (SHA-256, formatted as groups of 4 hex chars), issuer, expiry date
+   - Warning: "This certificate isn't from a trusted authority. If you're connecting to your own gateway, verify this fingerprint matches what's shown in OpenClaw Settings → Security."
+   - Two actions: **Trust This Certificate** (stores fingerprint to `expo-secure-store` under `"polly.gateway.tlsFingerprint"`) | **Cancel**
+   - User cannot proceed past this screen without explicitly trusting — no silent accept
+2. On subsequent connects: compare presented cert fingerprint to stored value — mismatch → block connection and show "Certificate Changed" warning with option to re-verify or abort
+
+**Bootstrap token expiry:**
+The free-tier bootstrap API key baked into the app bundle must have a finite TTL enforced client-side:
+- Key is accompanied by a hardcoded `expiresAtMs` timestamp in the app bundle
+- At onboarding start, check `Date.now() < expiresAtMs` — if expired, bootstrap falls back to Manual mode (static screens); the free-tier AI guide is unavailable
+- This check is independent of any server call — no network required to enforce it
+- Note: the app bundle key rotation strategy (how expired keys get replaced) is an EAS OTA update — document this in release process, not the app UI
+
+**Empty secure store on device restore:**
+If the app is reinstalled or restored to a new device and `expo-secure-store` is empty (Keychain not transferred):
+- Detect on launch: `"polly.device.privateKey"` absent but `"polly.device.id"` present in MMKV → mismatch state
+- Show "New Device Setup" screen: "It looks like you're setting up Polly on a new device. Your previous gateway connection needs to be re-established." → full re-pair flow (same as cold start, but skips OpenClaw installation steps if gateway is already reachable)
+- Old `deviceId` is automatically invalidated at the gateway when the new device completes auth (gateway sees a new public key for a new deviceId — old deviceId remains registered until user removes it in Settings → Security → Devices)
+
+**`PollyOnboardingAgent` persona:**
+A dedicated system prompt baked into the app (not fetched from gateway) that:
+- Knows the exact steps to install and configure OpenClaw
+- Has step-by-step instructions for Mac, including screenshots referenced by text description
+- Knows how to handle common errors (port conflicts, firewall issues, token mistakes)
+- Stays patient and non-technical unless the user signals they want detail
+- Hands off cleanly once connected ("All done — I'm switching to your full agent setup now")
+
+This persona is never available after onboarding. It does not appear in the agent list.
+
+---
+
+#### Phase B: Progressive Revelation (Post-Connection)
+
+**<60 seconds to first value.** Once connected, the first agent is active immediately. No feature tour, no permission prompts (those come contextually).
+
+**Persona first-activation:** First time each agent is opened, prepend a one-sentence orientation as a synthetic assistant message. Tracked in MMKV `"polly.personaFirstActivation"`. Examples:
+- Code Architect: *"I'm your architecture and systems persona. Tell me what you're building."*
+- AI Expert: *"I work through AI/ML problems — architecture, training, evaluation. What's the question?"*
+
+**Progressive revelation:** Features surface contextually via dismissible hint cards:
+
+| Trigger | Hint |
+|---|---|
+| 3rd conversation | "Quick Capture is ready — tap + on Today to save a thought instantly." |
+| 5th conversation | "Try a Shortcut — quick-access prompts you use often." |
+| First voice message | "ElevenLabs gives you a premium voice. Settings → Integrations." |
+| 10th conversation | "Mental models available — tap 🧠 in any chat." |
+| First capture saved | "You have items in your Inbox. Tap 📥 on Today to process them." |
+
+Hint state stored in MMKV `"polly.shownHints"` (JSON array of hint IDs). Never show twice.
+
+---
+
+### 20.5 DRM Architecture Note *(Phase 5)*
+
+Per `~/polly/openspec/specs/drm/spec.md`: Cloudflare Workers KV is the **peer registry only** (discovery/signaling). Node-to-node task traffic flows peer-to-peer through tunnel endpoints — not through the Workers coordinator. The coordinator endpoint handles `POST /peers/register` + `GET /peers/list` only.
+
+No iOS action required for Phase 1–4. Phase 5 consideration only.
+
+---
+
+*§20 rewritten 2026-03-23 — stripped Polly REST API dependencies, scoped to OpenClaw-only architecture.*
+
+---
+
+## §21 — Model Routing & Token Conservation
+
+**Owner:** @code_architect + @backend  
+**Date:** March 23, 2026  
+**Status:** Architectural design — gateway-side implementation, iOS surface layer documented here
+
+---
+
+### 21.1 Philosophy
+
+The core of Polly's progressive autonomy principle is **intelligent model routing**. The goal is not to minimize cloud usage as an end in itself — it is to make the system smart enough that expensive cloud tokens are only spent on problems that genuinely require them.
+
+A 7B local model with high-confidence RAG context will outperform a frontier cloud model answering cold on the majority of real queries. The RAG layer is not a feature bolted on — it is what makes local-first routing viable. Without it, local models lose on quality. With it, they punch above their weight class on domain-specific questions.
+
+**The key principle: token conservation through RAG + routing is more valuable than any individual model choice.** A well-populated knowledge base is worth more than a paid API key.
+
+---
+
+### 21.2 Four-Tier Model Hierarchy
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Tier 0 — Local Inference (Ollama)                       │
+│  Cost: $0    Latency: fast on capable hardware           │
+│  Models: llama3.1:8b, Codestral, DeepSeek-Coder, etc.   │
+│  Use for: classification, summarization, RAG-augmented   │
+│           queries, voice responses, background tasks     │
+├──────────────────────────────────────────────────────────┤
+│  Tier 1 — Free Cloud (Groq, Gemini Flash free tier)      │
+│  Cost: $0 up to rate limit   Latency: very fast          │
+│  Use for: medium complexity, Tier 0 overflow,            │
+│           voice mode fallback, daily quota resets        │
+├──────────────────────────────────────────────────────────┤
+│  Tier 2 — Subscription Quota (GitHub Copilot, etc.)      │
+│  Cost: within subscription   Quality: high               │
+│  Use for: medium-heavy tasks, code gen, doc work,        │
+│           tasks within plan quota                        │
+├──────────────────────────────────────────────────────────┤
+│  Tier 3 — Paid API (Anthropic direct, OpenAI direct)     │
+│  Cost: real money per token  Quality: highest            │
+│  Use for: novel complex problems, large context,         │
+│           no RAG match, explicit user escalation only    │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Default routing policy:** Start at Tier 0. Escalate only when needed. "Needed" is determined by the routing decision engine (§21.4).
+
+**User routing preference** (Settings → Models → Routing Policy):
+- `conservative` — maximize Tier 0/1, minimize cloud spend
+- `balanced` (default) — quality-aware routing, respects RAG confidence
+- `quality` — prefer Tier 2/3 for non-trivial tasks; local only for classification
+
+---
+
+### 21.3 RAG Design for Local-Model Friendliness
+
+The knowledge base must be built for 4k–8k context windows, not 128k. Local models cannot handle raw vault dumps.
+
+**Dense summaries alongside raw docs:**
+Every vault note gets a 300-word local-model-generated summary stored at index time. On retrieval, send the summary first. Send the full document only if the query explicitly requires depth.
+
+**Domain-tagged chunks:**
+Each knowledge chunk is tagged by domain (code / writing / audio / design / systems). Routing can then check: "this code question has a 0.92 RAG hit in the code domain → route to Tier 0 code model (Codestral/DeepSeek-Coder)."
+
+**Pre-computed embeddings:**
+Stored at `~/.polly/embeddings/` on the gateway machine. Never re-embedded on query. Background re-indexing job runs nightly or when vault files change.
+
+**MEMORY.md always injected:**
+Every agent request prepends the agent's MEMORY.md (typically 1k–3k tokens). This is cheap and ensures local models have personal context on every call. Never skipped, never rate-limited.
+
+**Conversation summarization:**
+Background Tier 0 job compresses conversation history every 20 turns to ~500 words. Old turns replaced by the running summary. Prevents context window bloat from long sessions. Summary stored in session state.
+
+**Retrieval thresholds:**
+- Cosine similarity ≥ 0.85 → strong RAG hit; route Tier 0 (augmented)
+- Cosine similarity 0.65–0.84 → moderate hit; augment + route Tier 1 if medium complexity
+- Cosine similarity < 0.65 → no reliable match; escalate based on complexity alone
+
+---
+
+### 21.4 Routing Decision Algorithm
+
+```
+Incoming message
+│
+├─→ [1] Voice mode flag?
+│         yes → always Tier 0 (local) or Tier 1 (Groq)
+│               never Tier 2/3 — latency unacceptable for voice
+│
+├─→ [2] Context size check
+│         > 8k tokens → cannot use most local models; skip to Tier 1+
+│         ≤ 8k → continue
+│
+├─→ [3] Complexity classification (Tier 0 micro-model or heuristic)
+│         light (factual lookup, simple Q&A, short task) → Tier 0
+│         medium (reasoning, multi-step, moderate length) → check RAG
+│         heavy (novel analysis, long-form, no prior context) → check budget
+│
+├─→ [4] RAG confidence check
+│         hit ≥ 0.85 + light/medium → Tier 0 augmented
+│         hit ≥ 0.65 + medium → Tier 1 augmented
+│         hit < 0.65 + heavy → skip to budget check
+│
+├─→ [5] Token budget check (per-tier daily quota)
+│         Tier 1 quota available → route Tier 1
+│         Tier 1 exhausted → check Tier 2
+│         Tier 2 quota available → route Tier 2
+│         Tier 2 exhausted → route Tier 3 (log escalation)
+│
+└─→ [6] User override
+          if user pinned a specific model for this conversation → use it
+          if user typed /model [name] → use it for this message only
+```
+
+**Escalation logging:** Every Tier 3 API call is logged with routing rationale. Weekly summary surfaced in Usage view: "X messages required premium tokens this week — reasons: [context too large / no RAG match / explicit override]." Transparency without nagging.
+
+---
+
+### 21.5 Token Budget Tracking
+
+Gateway maintains a per-tier daily token budget:
+
+```json
+{
+  "routing.budget.tier1.daily_limit": 100000,
+  "routing.budget.tier2.daily_limit": 50000,
+  "routing.budget.tier3.soft_limit": 10000,
+  "routing.budget.tier3.hard_limit": 50000,
+  "routing.budget.reset_hour": 0
+}
+```
+
+- **Soft limit (Tier 3):** Warn user when approaching. Gateway sends a `usage.warning` event to iOS → displayed as an inline banner in Usage view.
+- **Hard limit (Tier 3):** Stop routing to Tier 3. Route to best available lower tier. Never silently fail.
+- **Daily reset:** Configurable reset hour (default: midnight local gateway time).
+- **No hard limits on Tier 0/1** — local is free, Tier 1 rate limits are enforced by the provider.
+
+---
+
+### 21.6 Model Capability Registry
+
+Gateway maintains a capability map for each configured model. Used by the routing engine:
+
+```json
+{
+  "llama3.1:8b": {
+    "tier": 0,
+    "context_window": 8192,
+    "strengths": ["general", "summarization", "classification"],
+    "max_complexity": "medium"
+  },
+  "codestral:latest": {
+    "tier": 0,
+    "context_window": 32768,
+    "strengths": ["code"],
+    "max_complexity": "heavy"
+  },
+  "claude-sonnet-4-5": {
+    "tier": 3,
+    "context_window": 200000,
+    "strengths": ["general", "code", "analysis", "long-form"],
+    "max_complexity": "heavy"
+  }
+}
+```
+
+This registry is user-configurable — if you add a new local model, you declare its capability tier. Gateway reads it at startup.
+
+---
+
+### 21.7 iOS Surface Layer
+
+Routing is entirely gateway-side. The iOS client surfaces three things:
+
+**1. Message-level model attribution**
+Below each assistant message, muted small text showing which model handled it:
+```
+                    via llama3.1:8b  [local] ○
+```
+- `[local]` pill = Tier 0
+- `[free]` pill = Tier 1  
+- `[copilot]` pill = Tier 2
+- No pill = Tier 3 (paid API — don't label, don't draw attention)
+- Tappable: shows routing rationale sheet ("Used local model — RAG confidence: 0.94, Tier 1 quota conserved today: 48k tokens")
+
+**2. Model override (nav bar)**
+Small model indicator pill in chat nav bar. Tappable → opens model picker sheet for this conversation:
+- "Auto (recommended)" — default, routing engine decides
+- List of available models grouped by tier
+- Selection persists for conversation, cleared on new session
+- `/model [name]` text command also works inline
+
+**3. Usage view integration**
+Usage view (§4.5) already shows per-model breakdown. Add routing summary card:
+- "This week: X% local, Y% free cloud, Z% premium"
+- Tier 3 escalations with reasons
+- "RAG hit rate: 73% of queries resolved with local context"
+
+**iOS does not implement routing logic.** It configures preferences via Settings → Models → Routing Policy and displays attribution. All decisions happen at the gateway.
+
+---
+
+### 21.8 Phase Plan for Routing
+
+| Phase | Routing Capability |
+|---|---|
+| Phase 1 | Manual model selection only. No automatic routing. User picks model in Settings → Models. |
+| Phase 2 | Basic auto-routing: complexity classification + context size guard. Tier 0/1/3 only. |
+| Phase 3 | RAG-integrated routing. Cosine similarity thresholds. Dense summaries. Token budget tracking. |
+| Phase 4 | Full 4-tier routing. Subscription quota awareness (Copilot, etc.). Escalation logging. Weekly summary in Usage. |
+| Phase 5 | Multi-node routing. Task dispatch to specialized nodes (embedding node, inference node). DRM integration. |
+
+Phase 1 ships without any routing intelligence — model selection is manual. This is correct: don't build routing before you have a working app. Routing is Phase 2–4 progressive enhancement.
+
+---
+
+*§21 written 2026-03-23. Gateway-side implementation owner: @backend. iOS surface owner: @frontend.*
+
+---
+
+## §22 — Agent Swarms (Group Chats)
+
+**Owner:** @code_architect  
+**Phase:** Phase 2  
+**Status:** Architecture designed; implementation deferred from Phase 1
+
+---
+
+### 22.1 What Agent Swarms Are
+
+A swarm is a named multi-agent session where agents collaborate on tasks by @mentioning each other. The user sets the direction; the agents coordinate the execution.
+
+Unlike round-robin routing (Agent 1 responds, then Agent 2, etc.), Polly swarms use **reactive messaging**: agents respond to each other, not just to the user. When Code Architect says "@backend — can you spec the API for this?", the Backend Architect agent genuinely responds to that request in the same thread. The conversation is a real multi-party exchange.
+
+This is the same model as the "Home" group chat in Aight — agents collaborating with each other, the user directing at a high level.
+
+---
+
+### 22.2 Entry Point
+
+From the drawer, tap [+] → **"New Group Chat"**:
+
+```
+┌─────────────────────────────────────┐
+│ [✕]   New Group Chat                │
+│                                     │
+│  Group Name                         │
+│  [Polly Build Team              ]   │
+│                                     │
+│  Members                            │
+│  [🔍 Search agents...           ]   │
+│                                     │
+│  ┌─ Select agents ─────────────┐    │
+│  │ ☑ 🖥 Code Architect         │    │
+│  │ ☑ 🖼 Frontend Developer     │    │
+│  │ ☑ 🏗 Backend Architect      │    │
+│  │ ☐ ⚡ Design Engineer        │    │
+│  │ ☐ 🧪 QA Engineer            │    │
+│  └─────────────────────────────┘    │
+│                                     │
+│  ┌─────────────────────────────┐    │
+│  │     Create Group Chat       │    │
+│  └─────────────────────────────┘    │
+└─────────────────────────────────────┘
+```
+
+- Group name: required, free text
+- Members: multi-select from agent list, minimum 2 agents
+- "Create Group Chat" → creates session, appears in drawer TODAY section with group icon
+- Group sessions persist across app restarts
+
+---
+
+### 22.3 Group Chat View
+
+The group chat view is the same `ChatView` component with multi-agent rendering:
+
+```
+┌─────────────────────────────────────┐
+│ [≡]  👥 Polly Build Team    [+] [⋯]│  ← nav bar
+├─────────────────────────────────────┤
+│                                     │
+│  🖥 Code Architect                  │  ← agent label above bubble
+│  ┌───────────────────────────────┐  │
+│  │ Let's break this down.        │  │
+│  │ @backend — spec the API.      │  │  ← @mention highlighted
+│  │ @frontend — start the UI spec.│  │
+│  └───────────────────────────────┘  │
+│                                     │
+│  🏗 Backend Architect               │
+│  ┌───────────────────────────────┐  │
+│  │ On it. Here's the endpoint    │  │
+│  │ design...                     │  │
+│  └───────────────────────────────┘  │
+│                                     │
+│  [🖥 thinking...]  [🏗 thinking...] │  ← thinking toast (per-agent)
+│                                     │
+├─────────────────────────────────────┤
+│ [🎤] [Type a message...      ] [➤] │
+└─────────────────────────────────────┘
+```
+
+**Multi-agent rendering differences from single-agent chat:**
+- Agent name + emoji label above each response bubble (never ambiguous who said what)
+- Each agent's bubble uses their `identity.theme` accent color as a left border tint
+- @mentions in message text are highlighted (accent color, slightly bold)
+- **Thinking toast** (if enabled in Preferences): small floating pill per active agent "🖥 thinking..." — multiple can show simultaneously
+- User messages are right-aligned as usual; all agent messages are left-aligned
+
+**[+] in nav bar:** Add an agent to the existing group mid-conversation  
+**[⋯] in nav bar:** Group settings — rename, remove members, leave group, delete
+
+---
+
+### 22.4 Swarm Patterns
+
+Four patterns the system prompt architecture should support. Each is set up by the gateway-side group session configuration.
+
+**Pattern 1 — Planning Swarm**
+User states a goal. One agent (typically the domain lead) breaks it down and @mentions specialists for their slice. Each specialist contributes their part. User receives a coordinated, multi-perspective plan.
+
+*Example:* "Build the shortcut grid component"
+- Code Architect: architecture + data model
+- @frontend: component spec + interaction design  
+- @qa_guy: test plan
+- @security_audit: any security considerations
+
+**Pattern 2 — Review Swarm**
+User posts an artifact (code, document, design). Multiple agents review from their domain perspective, responding to the artifact and to each other's observations.
+
+*Example:* Post a PR diff → Code Architect reviews architecture, Security Auditor flags vulnerabilities, QA checks test coverage, all in one thread.
+
+**Pattern 3 — Debate Swarm**
+Two agents with explicitly different perspectives (e.g., Strategist + Contrarian, or Optimist + Risk Analyst) argue a decision. User gets both sides worked through before committing.
+
+*Example:* "Should we use expo-router or React Navigation directly?"
+
+**Pattern 4 — Specialist Handoff**
+A generalist agent recognizes a question is outside its domain and @mentions the appropriate specialist, then steps back. Clean delegation.
+
+*Example:* User asks Code Architect a security question → Code Architect @mentions Security Auditor → Security Auditor takes over.
+
+---
+
+### 22.5 System Prompt Architecture for Swarms
+
+Each agent in a group chat receives an augmented system prompt that includes:
+
+1. **Group context header** — "You are in a group chat named '[name]' with the following agents: [list]. You are [Agent Name]."
+2. **Collaboration protocol** — "@mention another agent by their @username to hand off a task. Respond when @mentioned. Don't speak out of turn unless you have something specific to add."
+3. **Role clarity** — "Stick to your domain. Defer to specialists."
+4. **The agent's own SOUL.md** — identity layer, unchanged
+5. **Constitutional epistemology layer** — always present, non-negotiable
+
+This is entirely gateway-side. iOS sends the message; the gateway injects the group context into each agent's system prompt automatically.
+
+**Turn management:** The gateway decides which agent responds next based on @mentions. If no @mention, all agents decide independently whether to respond (they're instructed to hold back unless they have domain-relevant input). This prevents every agent responding to every message.
+
+---
+
+### 22.6 iOS Implementation Notes
+
+**Phase 2 scope:**
+- Group chat creation flow (§22.2)
+- Multi-agent message rendering (agent labels, color borders, @mention highlights)
+- Thinking toast per-agent (controllable via Preferences)
+- Group session persistence in drawer TODAY section
+
+**Not Phase 2:**
+- Agent-to-agent tool calling within a swarm (Phase 3)
+- Swarm templates (pre-configured groups for common patterns — Phase 3)
+- Autonomous swarm runs without user in the loop (Phase 4)
+
+**`GroupChatView` vs `ChatView`:**
+- `GroupChatView` is not a new component — it's `ChatView` with `isGroup: boolean` prop
+- Message rendering differences handled in `MessageBubble` component via `agentLabel?: string` and `agentColor?: string` props
+- The gateway handles all multi-agent orchestration; iOS just renders what comes back
+
+**Thinking toast component:**
+- Shown when a `chat.typing` event arrives with an agent identifier
+- Multiple agents can be typing simultaneously — show all active ones as a horizontal row of pills
+- Controlled by Preferences → Group Chat Thinking Toast toggle
+- Auto-dismisses when the agent's message arrives
+
+---
+
+### 22.7 Swarm Templates (Phase 3)
+
+Pre-configured named swarms for common workflows. Shown in the New Group Chat flow as a "From Template" option:
+
+| Template | Members | Pattern | Use For |
+|---|---|---|---|
+| Build Team | Code Architect + Frontend + Backend + QA | Planning | Feature development |
+| Code Review | Code Architect + Security Auditor + QA | Review | PR review |
+| Architecture Review | Code Architect + Backend + Infra | Debate | System design decisions |
+| Full Team | All agents | Ad hoc | Open-ended work |
+
+Templates configurable by user — add custom swarm templates in Phase 3.
+
+---
+
+*§22 written 2026-03-23. Phase 2 feature — deferred from Phase 1. iOS surface owner: @frontend. Gateway orchestration: @backend.*
+
+---
+
+### 22.8 Swarm Coordination Protocol
+
+**Problem this solves:** In a multi-agent swarm with concurrent assignments, the chat thread is an unreliable source of task state. Agent responses arrive asynchronously, early messages scroll out of context windows, and coordinators cannot reliably determine completion. This section defines a coordination layer that uses files as ground truth — the thread is commentary, the files are state.
+
+**Architecture:** Distributed records (Option B — confirmed by @backend: `agents.files.get` supports cross-agent reads, `agents.files.set` is full-file overwrite). Each agent owns their own completion record. No shared write surface, no write contention, no row ownership enforcement needed.
+
+**Phase gate:** Phase 2 — ships with group chat feature.
+
+---
+
+#### File Layout
+
+```
+coordinator workspace:
+  _swarm/task-[id].md         ← task definition (read-only for members)
+
+each member workspace:
+  _swarm/done-[id].md         ← their completion record (written by them alone)
+```
+
+**Task definition** (`coordinator workspace/_swarm/task-[id].md`):
+```markdown
+---
+task_id: review-polly-spec-20260324
+title: Spec Review — POLLY_IOS_SPEC.md
+coordinator: @code_architect
+created: 2026-03-24T08:00:00Z
+members: [@frontend, @backend, @design_eng, @qa_guy, @security_audit, @infra, @researcher, @ai_expert]
+---
+
+## Assignments
+
+- @frontend: Review §4 UI components — all views, nav graph, error states
+- @backend: Review §3 WebSocket protocol, §7 networking, §22 swarm RPCs
+- @security_audit: Review §8 security, §20.4 onboarding auth, §4.8 data privacy
+[...]
+```
+
+This file is written by the coordinator at task creation. Members read it to know their assignment. Members **never write to it** — integrity is preserved by workspace scope (members cannot `agents.files.set` to the coordinator's workspace).
+
+**Completion record** (each member's `_swarm/done-[id].md`):
+```markdown
+---
+task_id: review-polly-spec-20260324
+agent: @security_audit
+status: done          # in_progress | done | blocked
+signal: "::DONE blockers=3 gaps=6 suggestions=3::"
+updated: 2026-03-24T09:15:00Z
+---
+
+## Summary
+B1 closed (wrote §4.8 security screen + §20.4 security sub-flows). B2 closed (LAN TLS ruling). B3 closed (push registration gateway fix scoped).
+
+## Blockers
+(none open)
+```
+
+Each agent writes only their own file. No agent can write another agent's completion record.
+
+---
+
+#### Structured Completion Signals
+
+Agents post a machine-readable signal as the last line of their assignment message and mirror it in their `done-[id].md`:
+
+```
+::DONE reviewer=@frontend blockers=4 gaps=6 suggestions=3::
+::BLOCKED reviewer=@security_audit reason=§20.4+§4.8-missing::
+::CLAIM task=spec-review agent=@qa_guy::
+::RELEASE task=spec-review agent=@qa_guy reason=reassigned::
+::CONTEXT_FLUSH agent=@researcher summary_at=memory/2026-03-24.md::
+```
+
+| Signal | Meaning | Who sends |
+|--------|---------|-----------|
+| `::CLAIM::` | Agent starting work | Assignee, at task start |
+| `::DONE::` | Assignment complete | Assignee, when finished |
+| `::BLOCKED::` | Stalled, needs coordinator action | Assignee, immediately |
+| `::RELEASE::` | Releasing assignment | Assignee or coordinator |
+| `::CONTEXT_FLUSH::` | Agent compressed context to memory | Any agent, when flushing (see §22.9) |
+
+---
+
+#### Coordinator Aggregation
+
+The coordinator reads completion state by fetching each member's `done-[id].md` via `agents.files.get` (cross-agent reads confirmed supported). Status of agents who haven't written their file yet = implicitly `not_started`. No initialization race — the task board *emerges* from the union of individual records.
+
+The coordinator can query status at any time: *"What's the current review status?"* → Polly reads all member `done` files and responds with a structured summary. No thread-reading, no context window dependency.
+
+---
+
+#### Review Status Card (iOS UI)
+
+When a group chat has an active task, a **Review Status Card** is pinned above the input bar:
+
+```
+┌─────────────────────────────────────┐
+│ 📋 Spec Review  6/8 complete        │
+│ ⬜ @qa_guy   🔴 @security_audit     │
+│ 🔴 3 open blockers     [Details ›]  │
+└─────────────────────────────────────┘
+```
+
+- Reads from member `done` files — not message history
+- Updates in real-time as signals arrive
+- `[Details ›]` opens full task board sheet (one row per member, expandable)
+- Auto-dismisses when all members are `done`
+- Color coding: ⬜ in_progress · ✅ done · 🔴 blocked · ⏸ not_started · 🔄 context_flushed
+
+**Component:** `SwarmTaskBoardCard` — Phase 2. Group chat view only, above augmentation pills, below nav bar.
+
+---
+
+#### Coordinator Gate
+
+When the coordinator tries to close a task with members still `in_progress` or `blocked`, the app warns:
+
+> *"2 agents haven't confirmed yet (@qa_guy, @security_audit). Close anyway?"*
+
+**Close anyway** (logged to coordinator's task definition) · **Wait** (dismiss). Advisory — coordinator can always override deliberately.
+
+---
+
+#### Implementation Notes
+
+- **Persistence:** `agents.files.set/get`. No new gateway RPCs.
+- **Cross-agent reads:** Confirmed supported — coordinator can read any member's workspace file.
+- **Write isolation:** Each agent writes only their own workspace. No shared write surface, no contention, no spoofing vector (@security_audit).
+- **Task definition integrity:** Members cannot write to coordinator's workspace — workspace scope enforces read-only access to the task definition.
+- **Task lifecycle:** Task definition created at assignment; member `done` files created as agents claim/complete. All files archived to `_swarm/archive/` when coordinator closes. Pruned after 30 days.
+- **Task ID format:** `[slug]-[YYYYMMDD]`, coordinator-assigned or auto-generated from task title.
+
+---
+
+## §23 — Plans Layer & Spec-Driven Development
+
+**Owner:** @code_architect  
+**Date:** March 23, 2026  
+**Status:** Architectural design — applies to all long-horizon work, not just dev
+
+---
+
+### 23.1 Philosophy
+
+Aight has no spec-driven development framework. Agent swarms fail at long-horizon work because context is ephemeral, progress is invisible, and every plan looks different. A new swarm session has no reliable way to answer "where did we leave off?" without manual re-briefing.
+
+Polly closes this gap with a simple, rigorous convention: the **Plans Layer**. Every plan — whether a software build, a business strategy, a home project, or a reading list — follows the same document format. Agents and the iOS UI both understand it. Nothing more complicated than structured markdown.
+
+**The key principle: consistency over sophistication.** A simple format that every agent always follows is worth more than a sophisticated system that gets bypassed.
+
+---
+
+### 23.2 Plans Directory
+
+Plans live in a `plans/` directory at the gateway workspace root:
+
+```
+~/.polly/plans/
+  polly-ios-build.md          ← active
+  model-routing-engine.md     ← active
+  moltbook-phase2.md          ← draft
+  agent-templates.md          ← complete
+  home-renovation-2026.md     ← active (non-dev example)
+  reading-list.md             ← active (non-dev example)
+```
+
+Each file is a single plan. One plan per file. Filename = plan `id` + `.md`.
+
+Plans are **first-class workspace objects** — readable by all agents in that workspace, injectable as context into swarm sessions, surfaced in the Polly iOS Plans view.
+
+---
+
+### 23.3 Canonical Plan Format
+
+Every plan follows this exact structure. No exceptions. The frontmatter schema is enforced by the gateway's `plans` RPC layer.
+
+```markdown
+---
+id: polly-ios-build
+title: Polly iOS App — Phase 1 Build
+status: active
+phase: 1
+owner: code_architect
+created: 2026-03-23
+updated: 2026-03-23
+tags: [ios, build, polly]
+depends_on: []
+spec_ref: POLLY_IOS_SPEC.md
+---
+
+## Summary
+One paragraph. What this plan is, why it exists, what success looks like. 
+Written for a reader with no prior context.
+
+## Goals
+- [x] Create POLLY_IOS_SPEC.md
+- [x] Complete screenshot review
+- [ ] Write POLLY_AGENT_TEMPLATES.md
+- [ ] Bootstrap Expo project structure
+- [ ] Ship Phase 1 to TestFlight
+
+## Decisions
+All locked decisions. Append-only — never remove a row, only add or annotate.
+
+| Decision | Date | Rationale |
+|---|---|---|
+| React Native + Expo (not Swift) | 2026-03-01 | expo-openclaw-chat requirement |
+| iOS speaks only to OpenClaw WebSocket | 2026-03-10 | Architecture lock |
+| Navigation = Drawer pattern | 2026-03-15 | Custom DrawerPanel, not react-navigation/drawer |
+
+## Tasks
+
+### Phase 1
+- [x] Spec §1–§15 initial write
+- [x] Screenshot review (all views)
+- [ ] POLLY_AGENT_TEMPLATES.md
+- [ ] Expo project bootstrap
+- [ ] ChatView + GatewayClient integration
+- [ ] Today view
+- [ ] Shortcuts view
+
+### Phase 2
+- [ ] Group chat rendering
+- [ ] Agent detail 6-tab view
+- [ ] Basic model routing
+
+## Open Questions
+- [ ] Should DateStrip use FlashList or FlatList internally?
+- [ ] Moltbook Phase 2: gateway skill install flow UX?
+
+## Log
+Append-only. Never edit existing entries. One line per event.
+
+- 2026-03-23: §21 Model Routing written; §22 Agent Swarms written; spec at 5,063 lines
+- 2026-03-23: Screenshot review complete — all 9 Settings sub-views, agent detail, all main views
+- 2026-03-15: Architecture locked — iOS client only, OpenClaw unchanged engine
+- 2026-03-01: Project initiated
+```
+
+---
+
+### 23.4 Frontmatter Schema
+
+| Field | Type | Required | Values |
+|---|---|---|---|
+| `id` | string | ✓ | kebab-case, matches filename |
+| `title` | string | ✓ | Human-readable |
+| `status` | enum | ✓ | `draft` · `active` · `blocked` · `complete` · `archived` |
+| `phase` | int or null | — | Current active phase number |
+| `owner` | string | ✓ | Agent username (kebab-case) |
+| `created` | date | ✓ | ISO 8601 |
+| `updated` | date | ✓ | ISO 8601, updated on every edit |
+| `tags` | string[] | — | Free tags for filtering |
+| `depends_on` | string[] | — | Plan IDs this plan depends on |
+| `spec_ref` | string | — | Path to canonical spec file if separate |
+| `blocked_by` | string | — | Free text reason when status = `blocked` |
+
+---
+
+### 23.5 Section Rules
+
+**Summary:** One paragraph. Rewritten as needed. The single paragraph an agent reads to get oriented in 10 seconds.
+
+**Goals:** Top-level outcomes. Checkboxes. Marked `[x]` when done. Never deleted — completion is visible history.
+
+**Decisions:** Locked decisions table. Append-only. Date + rationale required. This is the institutional memory — new swarm members read Decisions before anything else to avoid re-litigating settled questions.
+
+**Tasks:** Implementation steps, organized by phase or milestone. Checkboxes. `[x]` = complete. Agents update these as work is done. This is the machine-readable progress layer.
+
+**Open Questions:** Unresolved decisions. `[x]` when resolved (add the resolution to Decisions table). Never deleted.
+
+**Log:** Append-only journal. One line per meaningful event with date prefix. Never edit existing lines. This is the timeline — how we got here, in order.
+
+---
+
+### 23.6 Plans RPC Layer
+
+Gateway exposes a thin RPC layer over the `plans/` filesystem:
+
+```
+plans.list          → [PlanSummary]         list all plans (frontmatter only, no body)
+plans.list(status)  → [PlanSummary]         filter by status
+plans.get(id)       → Plan                  full plan document
+plans.update(id, patch) → Plan             update frontmatter fields
+plans.task.complete(id, taskText) → Plan   mark a task [x] by text match
+plans.log(id, entry) → Plan               append a log line with today's date
+plans.create(plan)  → Plan                create new plan from template
+```
+
+Agents call these RPCs to query and update plans without reading/writing raw files. The iOS client calls them for the Plans view.
+
+`plans.log` is the key RPC for swarm use — agents append a log entry when they complete a meaningful piece of work. This creates an automatic audit trail of swarm activity without any user intervention.
+
+---
+
+### 23.7 Swarm Context Injection
+
+When a group chat session starts, the gateway checks if any active plan is associated with that group (via `tags` or explicit `swarm` frontmatter field). If found, it prepends a context block to the group session:
+
+```
+[PLAN CONTEXT: polly-ios-build]
+Title: Polly iOS App — Phase 1 Build
+Status: active | Phase: 1 | Owner: code_architect
+
+Summary: [one-paragraph summary]
+
+Current incomplete tasks (Phase 1):
+- [ ] POLLY_AGENT_TEMPLATES.md
+- [ ] Expo project bootstrap
+- [ ] ChatView + GatewayClient integration
+
+Open questions:
+- [ ] Should DateStrip use FlashList or FlatList internally?
+
+Last 5 log entries:
+- 2026-03-23: §21 Model Routing written; spec at 5,063 lines
+...
+[END PLAN CONTEXT]
+```
+
+Every agent in the swarm starts oriented. No re-briefing. No "where did we leave off?" The plan is the persistent memory across sessions.
+
+This injection is automatic when a plan's `tags` intersect with the group's tags, or when a plan explicitly lists the group ID in a `swarm` field.
+
+---
+
+### 23.8 iOS Plans View
+
+Accessible from the drawer (below agent list) or via a dedicated entry in the Today section.
+
+```
+┌─────────────────────────────────────┐
+│ [<]  Plans                   [+]   │
+│                                     │
+│  [All] [Active] [Draft] [Complete] │  ← status filter chips
+│                                     │
+│  ┌───────────────────────────────┐  │
+│  │ ● Polly iOS Build             │  │  ← status dot (green=active)
+│  │ Phase 1 · @code_architect     │  │
+│  │ 3 of 8 tasks complete         │  │
+│  └───────────────────────────────┘  │
+│  ┌───────────────────────────────┐  │
+│  │ ● Model Routing Engine        │  │
+│  │ Phase 3 · @backend            │  │
+│  │ 0 of 5 tasks complete         │  │
+│  └───────────────────────────────┘  │
+│  ┌───────────────────────────────┐  │
+│  │ ○ Moltbook Phase 2            │  │  ← draft = hollow dot
+│  │ Draft · @code_architect       │  │
+│  └───────────────────────────────┘  │
+└─────────────────────────────────────┘
+```
+
+**Plan detail view** (tap any plan):
+- Rendered markdown of the full plan document
+- Inline task checkboxes — tappable to mark complete (calls `plans.task.complete`)
+- [Edit] button — opens frontmatter editor for status, owner, phase
+- [Log Entry] FAB — quick-add a log line
+- Swipe left on a task row → "Assign to agent" → routes a message to that agent with the task as context
+
+**[+] New Plan:** Opens a blank plan template with frontmatter pre-filled (id derived from title, status=draft, owner=current agent, today's date).
+
+---
+
+### 23.9 Non-Dev Use Cases
+
+The Plans Layer is explicitly not just for software development. Same format, same tooling, same swarm injection:
+
+| Plan | Tags | Swarm Use |
+|---|---|---|
+| `home-renovation-2026.md` | home, projects | Researcher finds contractors, Strategist evaluates bids |
+| `reading-list.md` | reading, learning | AI Expert suggests reads, Researcher summarizes finished books |
+| `business-strategy-2026.md` | strategy, business | Strategist + Contrarian debate each goal |
+| `health-goals.md` | health, personal | Weekly log reviews, milestone tracking |
+| `travel-japan-2027.md` | travel, planning | Researcher builds itinerary, logs decisions |
+
+The format is the framework. The content can be anything with a goal, decisions, tasks, and a timeline.
+
+---
+
+### 23.10 Relationship to POLLY_IOS_SPEC.md
+
+`POLLY_IOS_SPEC.md` is a **spec document**, not a plan. Plans reference specs via `spec_ref`. The distinction:
+
+- **Spec:** What the thing is. Requirements, design, constraints. Edited as understanding deepens.
+- **Plan:** How we build it. Tasks, decisions, progress, log. Evolves as work proceeds.
+
+The Polly build has both: the spec (`POLLY_IOS_SPEC.md`) defines what Polly is; the plan (`polly-ios-build.md`) tracks how we get there. Agents read the spec for requirements, the plan for current status.
+
+---
+
+*§23 written 2026-03-23. Universal to all long-horizon work — dev and non-dev. Gateway plans RPC owner: @backend. iOS Plans view owner: @frontend.*
