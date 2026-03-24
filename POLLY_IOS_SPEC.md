@@ -1299,14 +1299,13 @@ Chat is the permanent home surface. The drawer slides in from the left (swipe ri
 
 ### 4.4 Moltbook View
 
-**Purpose:** Browse the Moltbook social network for AI agents (`moltbook.com`). Read submolt feeds, see what agents are discussing, and let your agents participate via the Moltbook skill.
+**Phase gate: Phase 2.** Moltbook is an external platform with an API Polly doesn't control. Detailed spec is deferred to avoid over-investing in a dependency that may change. The full Moltbook screen spec is in Appendix B (§Appendix B — Moltbook Full Spec) for reference.
 
-**What Moltbook is:** An independent open platform — "the front page of the agent internet." Not Aight's product. Has a public REST API (`https://www.moltbook.com/api/v1`) and an OpenClaw-compatible skill file at `https://www.moltbook.com/skill.md`. Agents register, get claimed by their human owner, and can post/comment/upvote.
+**Phase 1 behavior:** Moltbook tab is present in the drawer nav but tapping shows: "Moltbook is coming in Phase 2 — the front page of the agent internet." No API calls, no web view, no feed rendering.
 
-**Architecture:**
-- **Feed browsing:** iOS client calls Moltbook API directly (`GET /api/v1/feed`, `/api/v1/submolts/{name}/posts`) — public read endpoints, no auth required for reading
-- **Agent participation (post/comment/upvote):** Happens via gateway-side Moltbook skill — iOS sends a chat message to an agent, agent uses the skill to post. iOS never holds the Moltbook API key.
-- **Moltbook API key storage:** `expo-secure-store` key `"polly.moltbook.apiKey"` — used only for agent registration/claim flow, not for feed browsing
+**Phase 2 scope (summary):** Read-only feed browsing (public REST API, no auth). Hot/New/Top/Rising sort. Submolts directory. Agent participation (post/comment) via gateway-side Moltbook skill.
+
+**API key security:** Collected during agent registration flow, forwarded to gateway via `config.patch`, purged from client. iOS never retains the Moltbook API key after setup.
 
 **Layout:**
 ```
@@ -1513,6 +1512,44 @@ Accessible from a "Submolts" link in the Moltbook feed header.
 ### 4.6 Vault Search View
 
 **Purpose:** Search the user's configured vault (Obsidian or Notion) and the Polly Inbox. Accessed via drawer nav link or the `/` command in chat input (§11.1).
+
+---
+
+### 4.6.1 Chat History Search
+
+**Purpose:** Find past conversations across all agents and sessions. A power user with 200+ sessions needs this to be functional.
+
+**Phase 1 scope:** Client-side search over cached session titles and agent names only (fast, no server round-trip). Searches `sessions` table in `expo-sqlite`.
+
+**Phase 2 scope:** Full-text search over cached message content (`messages.content_json` column) + `chat.history` server search if the gateway adds a search parameter to `sessions.list`.
+
+**UI:** Accessed from "All Sessions" view (§4.1.5) search bar. Filters the session list in real time. No separate screen.
+
+**Empty state:** "No conversations match '[query]'. Try searching by agent name."
+
+---
+
+### 4.6.2 Image Attachments
+
+**Phase gate:** Phase 2. Phase 1 text-only.
+
+**Wire format (Phase 2):** Images sent as base64-encoded data URLs in `ChatSendParams.attachments`:
+```typescript
+interface Attachment {
+  type: 'image';
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+  data: string;       // base64 encoded
+  filename?: string;
+}
+```
+
+**Size limit:** 5MB per image, 3 images per message. Client enforces before send — shows "Image too large (max 5MB)" toast if exceeded.
+
+**Sources:** Camera capture (`expo-camera`) + photo library picker (`expo-image-picker`). Both require permissions — request on first use with clear rationale.
+
+**Rendering:** Images in chat rendered as rounded `<Image>` components (max 240pt wide, aspect-ratio-preserved). Tap to open full-screen viewer with pinch-zoom. No inline image editing.
+
+**Phase 1 fallback:** If a received message contains `type: "image"` content blocks (from a future gateway feature), render a "📎 Image attachment (not supported in this version)" placeholder rather than crashing.
 
 > **Phase gate:** Phase 1 — Obsidian only (filesystem read). Notion search via API in Phase 2.
 
@@ -2935,6 +2972,45 @@ type NavDestination = 'agents' | 'today' | 'shortcuts' | 'usage' | 'moltbook' | 
 
 **TODAY section:** `SessionEntry[]` sorted by `updatedAt` desc. Group chats get group icon prefix. Tap → navigate to that `ChatView` + close drawer.
 
+**Session row long-press → context menu:**
+- **Rename** — inline text edit on the row; `sessions.update` on confirm
+- **Star / Unstar** — toggled star icon on row; stored in MMKV `"polly.starredSessions"` (array of session keys); starred sessions pinned to top of TODAY section with ★ prefix
+- **Archive** — removes from TODAY section; session retained at gateway, accessible from All Sessions view (§4.1.5); uses `sessions.update` with `{ archived: true }`
+- **Delete** — confirmation sheet: "Delete this conversation? This cannot be undone." → `sessions.delete` with `{ deleteTranscript: true }`; removed locally immediately, deletion sent to gateway
+
+**TODAY section display limit:** Shows 10 most recent (unarchived, unstated sessions sorted by `updatedAt` + starred sessions pinned above). "All Sessions →" link at bottom of TODAY section opens the full session list view (§4.1.5).
+
+#### 4.1.5 All Sessions View
+
+Full-screen view accessed from "All Sessions →" in drawer TODAY section. Handles session accumulation for power users.
+
+**Layout:**
+```
+┌─────────────────────────────────────┐
+│ [<]  All Conversations              │
+│                                     │
+│ [🔍 Search conversations...]        │
+│                                     │
+│ [All] [Starred ★] [Archived]        │  ← filter chips
+│                                     │
+│ Today                               │  ← date section headers
+│   ★ Polly Spec Review      [⋯]     │
+│     Code Architect — 2h ago [⋯]    │
+│                                     │
+│ Yesterday                           │
+│   ...                               │
+│                                     │
+│ [Select]                            │  ← bulk mode toggle
+└─────────────────────────────────────┘
+```
+
+- **Search:** client-side filter on session `title` + `agentName`; no server search in Phase 1
+- **Filter chips:** All · Starred · Archived
+- **[⋯] per row:** Same context menu as long-press (Rename, Star, Archive, Delete)
+- **Bulk mode:** Tap [Select] → checkboxes appear on each row → "Archive Selected" / "Delete Selected" actions in bottom action bar
+- **Date grouping:** Today / Yesterday / This Week / This Month / Older
+- **Pagination:** Loads 50 sessions at a time, infinite scroll fetches more via `sessions.list` with offset
+
 **Nav links:** Colored square icon badge (28pt) + label. Active: `accent` tint. Tap → close drawer + navigate.
 
 **Accessibility:**
@@ -3473,6 +3549,27 @@ enum RemotePath: String, Codable {
     case tailscale
     case auto   // try both, use whichever connects first
 }
+
+#### config.patch Rollback & Last-Known-Good
+
+If a `config.patch` call breaks the gateway connection (bad URL, invalid auth token, malformed config), the user is locked out with no way to recover from the app. Mitigation:
+
+**Before every `config.patch` call from Settings:**
+1. Read current config snapshot via `config.get`
+2. Store snapshot in MMKV `"polly.config.lastKnownGood"` (JSON string) with timestamp
+3. Attempt the `config.patch`
+4. If the subsequent connection test fails (no WS connect within 5s), auto-restore from `lastKnownGood` via another `config.patch`
+
+**Recovery UI:**
+- If auto-restore succeeds: toast "Settings change failed — restored previous configuration"
+- If auto-restore also fails (gateway unreachable): show "Gateway Unreachable" screen with:
+  - Last known good config displayed (read-only)
+  - "Try Last Good Config" button — attempts `config.patch` with stored snapshot
+  - "Manual Reset" button — clears all gateway config, returns to onboarding connection screen
+
+**MMKV key:** `"polly.config.lastKnownGood"` — stores full `config.get` response JSON. Overwritten on every successful `config.patch`. Never cleared except on "Manual Reset."
+
+**Scope:** Any Settings change that calls `config.patch` — gateway URL, auth token, model configuration, agent config updates. Does NOT apply to MMKV-only settings (theme, mental models, notification prefs).
 ```
 
 ---
@@ -5828,7 +5925,20 @@ Each agent in a group chat receives an augmented system prompt that includes:
 
 This is entirely gateway-side. iOS sends the message; the gateway injects the group context into each agent's system prompt automatically.
 
-**Turn management:** The gateway decides which agent responds next based on @mentions. If no @mention, all agents decide independently whether to respond (they're instructed to hold back unless they have domain-relevant input). This prevents every agent responding to every message.
+**Turn management:** The gateway routes messages to agents based on @mentions. The no-@mention case requires a deterministic fallback — prompt instructions alone ("hold back unless relevant") are not reliable because LLMs will respond to conversational messages even when instructed not to.
+
+**Phase 1 turn management (simple, reliable):**
+- @mention present → only the mentioned agent(s) respond
+- No @mention → only the **designated responder** responds (the agent set as `defaultResponder` in the group config, defaults to the first agent added to the group)
+- "Anyone want to add something?" style messages → user must @mention explicitly; no implicit broadcast
+
+**Phase 2 turn management (smarter, requires §22.5 resolution):**
+- No @mention → coordinator agent (if one exists) routes to the most relevant member based on message content
+- Coordinator uses a lightweight classification prompt: "Which agent is best suited to respond to this? Options: [list]. Reply with @handle only."
+- Non-coordinator agents in the group have their response gated by coordinator's routing decision
+- This requires the gateway to support a two-step dispatch: coordinator responds first with routing decision, then routed agent responds. **This is the §22.5 open question @ai_expert flagged** — the gateway may not natively support two-step dispatch within a single user turn. @backend owns resolution.
+
+**Phase 1 ships with simple deterministic routing.** Phase 2 coordinator routing is a gateway feature, not a client feature.
 
 ---
 
