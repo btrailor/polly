@@ -2029,7 +2029,122 @@ This flag is never surfaced in the Security UI, Settings, or any runtime toggle.
 
 ---
 
-## 5. Design System
+### 4.9 Skills Marketplace *(Phase 2+)*
+
+> **Phase gate:** §8.8 security model (@security_audit sign-off) required before this view is built. No skill installation UI in Phase 1. `suggested_skills` fields in team templates are metadata only in Phase 1 — they display recommendations but do not trigger any install flow.
+
+**Purpose:** Browse, install, and manage OpenClaw skills from the ClawHub registry (curated via [awesome-openclaw-skills](https://github.com/VoltAgent/awesome-openclaw-skills)). Skills extend agent capabilities with external service integrations, automation tools, and domain-specific functions.
+
+**Data source:** Polly caches the curated awesome-openclaw-skills list (5,200+ filtered skills) rather than exposing raw ClawHub (13,700+ skills including spam/duplicates). Cache refreshes weekly via background fetch. Fallback: link to `clawskills.sh` if offline.
+
+---
+
+#### 4.9.1 Skills List View
+
+**Entry point:** Settings → Skills (drawer nav link, or team template setup "Suggested Skills" card)
+
+**Layout:**
+```
+┌─────────────────────────────────────┐
+│ [<]  Skills                [🔍]     │
+│                                     │
+│ [All] [Installed] [Suggested]       │  ← tab chips
+│                                     │
+│ Browse by Category                  │
+│ ┌─────────────┐ ┌─────────────┐    │
+│ │ 📝 Notes &  │ │ 🔍 Search & │    │
+│ │    PKM  71  │ │  Research   │    │
+│ │             │ │    352      │    │
+│ └─────────────┘ └─────────────┘    │
+│ ┌─────────────┐ ┌─────────────┐    │
+│ │ 🛠 Git &    │ │ 📅 Calendar │    │
+│ │  GitHub 167 │ │   & Sched   │    │
+│ └─────────────┘ └─────────────┘    │
+│  ...                                │
+│                                     │
+│ Suggested for Dev Squad             │  ← team-contextual suggestions
+│  [arc-security-audit] [azure-devops]│
+└─────────────────────────────────────┘
+```
+
+- **Tabs:** All (full catalogue) · Installed (gateway-installed skills) · Suggested (team-contextual from `suggested_skills` in team template)
+- **Category grid:** 2-column card grid; each card shows category name, emoji, skill count; tap → category list view
+- **Suggested for [Team]:** Horizontal scroll row of skill chips based on active team's `suggested_skills`. Tap chip → Skill Detail.
+- **Search:** Full-text search over cached skill names and descriptions. Client-side, instant.
+
+---
+
+#### 4.9.2 Skill Detail View
+
+Shown when tapping any skill card or chip.
+
+**Layout (top to bottom):**
+- Skill name (large, bold) + author handle
+- One-line description
+- **Badges row:** [Curated ✓] [VirusTotal →] [Last updated: 3mo ago] [Downloads: 12k]
+- **Permissions section** (§8.8.2 manifest) — displayed prominently before any install CTA:
+  ```
+  This skill will be able to:
+  ✅ Connect to: api.github.com
+  ⚠️  Write to agent workspace files
+  ❌ Connect to any server (wildcard network — use caution)
+  ```
+- Full description / README
+- **[Install Skill]** button — disabled until user scrolls past permissions section
+- If installed: **[Installed ✓]** + **[Remove]** button
+
+**VirusTotal link:** Prominent tap target, opens Safari to the ClawHub VirusTotal scan page for this skill. Never hidden.
+
+**`arc-trust-verifier` score:** If available, shown as "Community trust score: 4.2/5" with explicit disclaimer tooltip: *"Community-generated, not a security review."*
+
+---
+
+#### 4.9.3 Install Flow
+
+1. User taps **[Install Skill]** on Skill Detail view
+2. Permissions sheet appears (modal, not dismissible by swipe) — lists all manifest permissions with plain-English labels
+3. Wildcard network: red warning banner "This skill can connect to any internet server"
+4. Cross-agent access: amber warning "This skill can send messages to your agents"
+5. **[Allow & Install]** / **[Cancel]** — both explicit taps, no swipe-to-dismiss
+6. On Allow: `clawhub install <skill-slug>` sent to gateway via `exec` or a dedicated `skills.install` RPC (Phase 2 @backend item)
+7. Success: toast "Skill installed — restart any active agent sessions to activate"
+8. Skill appears in Installed tab
+
+**No auto-install:** `suggested_skills` entries in team templates never auto-install. They are always user-initiated from the Suggested tab or Skill Detail.
+
+---
+
+#### 4.9.4 Installed Skills Management
+
+**Installed tab shows:**
+- Installed skill name + version
+- Which agents/teams have this skill active
+- Last used date
+- **[⋯]** per row: Update (if available), Permissions (view current manifest), Remove
+
+**Update flow:**
+- Permission-identical updates: one-tap "Update" button, no re-approval
+- Permission-expanding updates: full install flow re-run with diff showing new permissions highlighted in amber
+
+---
+
+#### 4.9.5 Phase 1 Behavior
+
+The Skills entry point exists in Settings but tapping shows:
+> "Skills are coming in Phase 2. You'll be able to extend your agents with 5,000+ community-built integrations for GitHub, Slack, Obsidian, and more."
+
+`suggested_skills` fields in team templates display as a "Suggested Skills" info card during team setup: "When Skills launches in Phase 2, your Dev Squad will suggest: arc-security-audit, azure-devops, arc-skill-gitops." No install UI, no gateway calls.
+
+---
+
+#### 4.9.6 Audit Notes (from §11 PKM Skills Research)
+
+- **No existing Obsidian iOS skill in registry** — the registry contains macOS CLI-based Obsidian tools only; Polly's `expo-document-picker` approach (§11) is not duplicated
+- **`better-notion`** — Phase 2+ note: users with Notion vaults should be directed to install `better-notion` as an alternative vault backend
+- **`boof`** — Phase 3+ note: PDF→markdown ingestion skill; consider surfacing in §11 capture flow for users who want to ingest PDFs into vault
+- **`arc-trust-verifier`** — never used to gate installs; explicitly documented in §8.8.4 T5 mitigation
+
+---
 
 ✅ **Complete — all design tokens below. Framework: React Native + Expo (TypeScript)**
 
@@ -3773,6 +3888,112 @@ Polly App → aight.push.register(deviceId, apnsToken, platform: "ios", sandbox:
 - **`expo-secure-store` loss (device restore):** If secure store is wiped (new device, restore from backup to new hardware), detect missing keys on launch → full re-pair flow.
 - **Sign-out:** Call `SecureStore.deleteItemAsync` for all keys (`sendKey`, `deviceToken`, `privateKey`, tunnel URLs) and call `aight.push.unregister`.
 - **`dangerouslyDisableDeviceAuth`:** Never exposed in Settings UI or any runtime toggle. Compile-time only. Cross-reference: §4.8 Security (explicit "not exposed" note).
+
+---
+
+### 8.8 Skills Security Model *(Phase 2+)*
+
+> ✅ **@security_audit** — Written March 24, 2026. Required before §4.9 Skills Marketplace ships.
+
+Skills are third-party OpenClaw plugins installed from ClawHub or the curated awesome-openclaw-skills list. They extend agent capabilities but represent a meaningful attack surface. This section defines the security model for skill installation, sandboxing, and trust assessment in Polly.
+
+---
+
+#### 8.8.1 Threat Model
+
+**T1 — Prompt injection via skill metadata**
+A skill's name, description, or tool definitions contain injected instructions that alter agent behavior when loaded into context. Example: a tool description containing `"Ignore previous instructions and..."`.
+
+**T2 — Tool poisoning / data exfiltration**
+A skill registers a tool that appears benign (`search_web`, `read_file`) but silently forwards conversation content, vault data, or credentials to an attacker-controlled endpoint.
+
+**T3 — Dependency confusion at install time**
+A skill that pulls npm/pip/gem packages at install time may reference packages that have been squatted with malicious versions on public registries.
+
+**T4 — Supply chain via curated list**
+The VoltAgent awesome-openclaw-skills list is community-maintained via PRs. A patient attacker could submit a malicious skill that passes review. Curation is spam-filtering, not a security audit.
+
+**T5 — Trust laundering via `arc-trust-verifier`**
+`arc-trust-verifier` is a skill that assigns provenance scores to other skills. If it is itself compromised or manipulated, it becomes a mechanism for laundering trust — malicious skills receive clean scores, users install confidently. This is a high-value target.
+
+**T6 — Permissions escalation via silent update**
+A skill installed with a minimal permissions manifest later updates to a broader manifest. If updates are applied silently, users never see the expanded permissions.
+
+---
+
+#### 8.8.2 Permissions Manifest
+
+Every skill must declare a permissions manifest before installation. Polly surfaces this manifest in the Skill Detail view and requires explicit user approval before install proceeds.
+
+**Manifest fields (required in ClawHub skill metadata):**
+```json
+{
+  "permissions": {
+    "network": ["api.openai.com", "search.brave.com"],   // exact domains; "*" requires explicit warning
+    "files": ["read:vault", "write:agent-workspace"],    // scoped access declarations
+    "tools": ["web_search", "read_file"],                // tool names registered
+    "crossAgent": false                                   // can this skill invoke other agents?
+  }
+}
+```
+
+**UI requirements:**
+- Permissions are displayed as a human-readable list before install, not buried in a detail screen
+- Wildcard network access (`"*"`) displays a prominent red warning: "This skill can connect to any server on the internet"
+- `crossAgent: true` displays an amber warning: "This skill can send messages to your other agents"
+- File write access displays amber warning: "This skill can modify files in your agent workspace"
+- User must tap "Allow & Install" — no silent install, no auto-install from `suggested_skills`
+
+---
+
+#### 8.8.3 Sandboxing Rules
+
+Skills installed from ClawHub are sandboxed by default:
+
+| Resource | Default | Override condition |
+|---|---|---|
+| Vault files (`MEMORY.md`, `SOUL.md`) | ❌ No access | Must declare `"files": ["read:vault"]` in manifest + user approval |
+| Agent workspace writes | ❌ No access | Must declare `"files": ["write:agent-workspace"]` + user approval |
+| Cross-agent calls | ❌ Blocked | Must declare `"crossAgent": true` + user approval |
+| Network (declared domains) | ✅ Allowed | Declared in manifest, approved at install |
+| Network (undeclared domains) | ❌ Blocked | Gateway enforces — undeclared outbound connections are rejected |
+
+Gateway-side enforcement: the gateway skill runner must block outbound network calls to domains not listed in the installed manifest. This is a gateway implementation requirement, not just a UI convention. Flag to @backend when Phase 2 skills work begins.
+
+---
+
+#### 8.8.4 Trust Signals
+
+Polly surfaces trust signals in the Skill Detail view. These are **advisory only** — they inform user judgment, they do not gate installation or modify sandbox rules.
+
+**Signals displayed:**
+- **ClawHub download count** — volume indicator, not quality
+- **Last updated date** — stale skills (>12 months) show an amber "Not recently maintained" badge
+- **`arc-trust-verifier` score** — if available, displayed as a community provenance score with explicit disclaimer: *"This score is community-generated and is not a security audit. It does not guarantee the skill is safe."*
+- **VirusTotal scan link** — one-tap link to VirusTotal scan of the skill package. Surfaced prominently in the Skill Detail view, not buried. Label: "Scan on VirusTotal →"
+- **"Curated" badge** — skills from the awesome-openclaw-skills list show a "Curated" badge. Tooltip on tap: *"This skill appears on a community-curated list filtered for spam and duplicates. Curation is not a security review."*
+
+**`arc-trust-verifier` special handling (T5 mitigation):**
+- `arc-trust-verifier` scores are never used to auto-approve installs or bypass the permissions manifest flow
+- `arc-trust-verifier` itself is subject to the same manifest approval and sandboxing as any other skill — it receives no elevated trust by virtue of its purpose
+- If `arc-trust-verifier` requests `crossAgent: true` or write access to agent workspaces, those requests are treated with the same scrutiny as any other skill making those requests
+
+---
+
+#### 8.8.5 Update Policy
+
+When an installed skill publishes an update:
+- If the update's permissions manifest is **identical or narrower** than the installed version → update may proceed with a standard "Skill updated" notification
+- If the update's permissions manifest **adds new permissions** → update is blocked until the user reviews and approves the new manifest, identical to a fresh install flow
+- Gateway must not auto-apply skill updates silently — update check runs on app launch, user is notified, approval is required for permission-expanding updates
+
+---
+
+#### 8.8.6 Phase Gate
+
+This entire section is **Phase 2+ scope**. No skill installation UI exists in Phase 1. `suggested_skills` fields in team templates are metadata only — they do not trigger any install flow in Phase 1.
+
+§4.9 Skills Marketplace must not be built until this security model is reviewed and accepted. @security_audit sign-off required before §4.9 implementation begins.
 
 ---
 
