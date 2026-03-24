@@ -2264,7 +2264,7 @@ const spacing = {
 >
 > **Key source:** `expo-openclaw-chat@0.2.3` (public npm) provides `GatewayClient`, `ChatEngine`, and `protocol.ts` — Polly's gateway client layer is this package, not a from-scratch build. Component props below are typed against `UIMessage` and `ChatMessageContent[]` from that package.
 
-Components live in `polly/src/components/`. All design tokens reference `DESIGN_SYSTEM_iOS.md`.
+Components live in `polly/src/components/`. All design tokens reference §5 and `src/theme/colors.ts`.
 
 ---
 
@@ -2416,7 +2416,7 @@ const PollyMarkdown: React.FC<PollyMarkdownProps> = ({ content, isStreaming }) =
 );
 ```
 
-**Theme tokens** (from `DESIGN_SYSTEM_iOS.md`):
+**Theme tokens** (from §5 / `src/theme/colors.ts`):
 - Body text: `textPrimary`
 - Headings: semibold, scaled (H1: 22, H2: 18, H3: 16)
 - Inline code: monospace, 13pt, `bgBorder` background
@@ -3033,7 +3033,7 @@ accessible={true}
 
 **Touch targets:** All tappable elements minimum 44×44pt — use `minWidth: 44, minHeight: 44` in style, or `hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}` on small icons.
 
-**Dynamic Type:** All text uses named style constants from `DESIGN_SYSTEM_iOS.md` — never hardcoded `fontSize`. Use `allowFontScaling={true}` (default in RN) everywhere.
+**Dynamic Type:** All text uses named style constants from §5 — never hardcoded `fontSize`. Use `allowFontScaling={true}` (default in RN) everywhere.
 
 **Color independence:** Status never communicated by color alone — always icon or text label alongside color.
 
@@ -3100,9 +3100,11 @@ type NavDestination = 'agents' | 'today' | 'shortcuts' | 'usage' | 'moltbook' | 
 Switching the agent selector in the drawer immediately re-filters TODAY. Sessions from other agents/groups are not shown — they're accessible from All Sessions (§4.1.5) with the group filter set to "All."
 
 Sorted by `updatedAt` desc. Starred sessions pinned above. Limit: 10 rows; "All Sessions →" link for overflow.
-- **Rename** — inline text edit on the row; `sessions.update` on confirm
+
+**Recent (all agents):** Below the scoped TODAY list, a collapsible "Recent" section shows the **3 most recent session updates across all agents** — regardless of active scope. Collapsed by default if the scoped TODAY list has 3+ items; expanded by default if scoped TODAY is empty. Each row shows agent emoji + session preview + relative time. Tapping navigates to that session and switches the active scope to that agent. This prevents missing background activity (e.g. Researcher completing a task while you're in a Code Architect session).
+- **Rename** — inline text edit on the row; `sessions.patch` on confirm
 - **Star / Unstar** — toggled star icon on row; stored in MMKV `"polly.starredSessions"` (array of session keys); starred sessions pinned to top of TODAY section with ★ prefix
-- **Archive** — removes from TODAY section; session retained at gateway, accessible from All Sessions view (§4.1.5); uses `sessions.update` with `{ archived: true }`
+- **Archive** — removes from TODAY section; session retained at gateway, accessible from All Sessions view (§4.1.5); uses `sessions.patch` with `{ archived: true }`
 - **Delete** — confirmation sheet: "Delete this conversation? This cannot be undone." → `sessions.delete` with `{ deleteTranscript: true }`; removed locally immediately, deletion sent to gateway
 
 **TODAY section display limit:** Shows 10 most recent (unarchived, unstated sessions sorted by `updatedAt` + starred sessions pinned above). "All Sessions →" link at bottom of TODAY section opens the full session list view (§4.1.5).
@@ -3554,7 +3556,15 @@ CREATE TABLE today_items (
 1. App reconnects → sends `chat.history` RPC for each recently-active session (last 7 days)
 2. Server response is authoritative — overwrites local cache for returned sessions
 3. Sessions not in server response retain local cache until TTL expires
-4. Messages written locally during offline period are queued in MMKV (`"polly.offlineQueue"`) — replayed as WS sends on reconnect in order, then local copies replaced with server-echoed versions
+4. Messages written locally during offline period are queued in MMKV (`"polly.offlineQueue"`) — replayed as WS sends on reconnect in order. Each queued message has a `idempotencyKey` (UUID) to prevent duplicate sends if the user sent the same message from another client.
+
+**Pending state UX:** Queued messages render immediately in the chat with a **pending indicator** (small clock icon, muted text opacity `0.6`). They are visually distinct from confirmed messages.
+
+**On replay:**
+- Send each queued message via `chat.send` with the stored `idempotencyKey`
+- On `chat.accepted` response: silently swap the pending message to confirmed state (remove clock icon, restore full opacity) — no flicker; the local message ID is preserved
+- On `chat.error` or timeout (>15s with no `accepted`): mark the message as **failed** — red "!" indicator + "Retry" tap target inline. Never silently drop a failed queued message.
+- Clear the MMKV queue entry only after confirmed `chat.accepted` (not on send attempt)
 
 ---
 
@@ -4164,14 +4174,36 @@ export class PollyGatewayAdapter {
     await this.engine.send(augmented);
   }
 
-  // All other ChatEngine methods pass through directly
-  get messages() { return this.engine.messages; }
-  get isStreaming() { return this.engine.isStreaming; }
-  // ... etc
+  // ── Complete passthrough surface ──────────────────────────────────────────
+  // All components must use this adapter — never access ChatEngine directly.
+
+  // State
+  get messages()    { return this.engine.messages; }
+  get isStreaming()  { return this.engine.isStreaming; }
+  get sessionKey()   { return this.engine.sessionKey; }
+  get agentId()      { return this.engine.agentId; }
+  get isConnected()  { return this.engine.isConnected; }
+
+  // Actions
+  abort()            { return this.engine.abort(); }
+  loadHistory(opts?: { limit?: number; before?: string }) {
+    return this.engine.loadHistory(opts);
+  }
+  reset()            { return this.engine.reset(); }
+
+  // Event subscriptions
+  on(event: 'update' | 'error' | 'connected' | 'disconnected', handler: (...args: any[]) => void) {
+    return this.engine.on(event, handler);
+  }
+  off(event: 'update' | 'error' | 'connected' | 'disconnected', handler: (...args: any[]) => void) {
+    return this.engine.off(event, handler);
+  }
 }
 ```
 
 **All send calls in the app go through `PollyGatewayAdapter.send()` — never `ChatEngine.send()` directly.** This is enforced by convention (ESLint rule: no direct `chatEngine.send` calls outside the adapter). The adapter is created once per session and stored in Zustand `chatStore.adapter`.
+
+> **Proxy alternative:** If `ChatEngine` adds more than ~12 surface items in a future version, replace manual forwarding with a `Proxy`: `return new Proxy(this.engine, { get: (target, prop) => prop === 'send' ? this.send.bind(this) : Reflect.get(target, prop) })`. Document the switch in the adapter file.
 
 **If `ChatEngine.send()` changes signature in a future `expo-openclaw-chat` version:** the adapter is the only place that needs updating. The rest of the app is insulated.
 
@@ -5751,6 +5783,46 @@ Bottom of list: **"Start from scratch →"** row for custom team composition.
 > **Note to @researcher / @infra:** The agent roster for each team template needs to be defined and mapped to `POLLY_AGENT_TEMPLATES.md` entries. This is Phase 1 content work. The templates above are drawn from Aight's onboarding screenshots — confirm names match or adjust.
 
 **"Start from scratch":** Opens an agent picker sheet — user selects agents individually, names the team, picks an emoji. Creates a custom team with those agents.
+
+#### §20.4.2 Team Provisioning Sequence
+
+When the user selects a team template (or completes "Start from scratch"), the app executes the following sequence:
+
+**Agent identity model:** Agents are **shared across teams** — there is one `the-researcher` on the gateway, not one per team. The Researcher's workspace, SOUL.md, and memory are the same regardless of which team accesses it. This is a deliberate choice:
+- Simpler provisioning (no duplicate agents)
+- Memory accumulates across all contexts (Researcher remembers the code review from Dev Squad when you're in Content Studio — this is a feature, not a bug; cross-domain synthesis is the point)
+- Agent count in gateway stays manageable
+
+**Team scoping is client-side only.** A "team" is a client-side grouping that determines which agents appear in the drawer and which sessions show in TODAY. The gateway has no concept of teams — it just has agents. Teams don't change the gateway; they change the client's view.
+
+**Provisioning sequence (on team template selection):**
+
+```
+1. For each agent in the template's `agents` list:
+   a. Call `agents.list` — check if agent already exists (by agentId)
+   b. If not exists: call `agents.create` with `{ agentId, name, emoji, model }`
+   c. Call `agents.files.set` to write SOUL.md (personality text + Standard SOUL Baseline)
+   d. Call `agents.files.set` to write MEMORY.md (blank header)
+   e. Mark agent as provisioned in local MMKV `"polly.provisioned.{agentId}"` = true
+
+2. For each `group_chats` entry in the template:
+   a. Generate a `groupId` client-side: kebab-case name + 6-char random hex (e.g. `sigils-a3f7c1`)
+   b. Call `sessions.create` with `{ sessionKey: "group-chat:{groupId}", members: [...agentIds] }`
+   c. Store groupId in MMKV `"polly.teams.{teamId}.groups"` array
+
+3. Store team metadata in MMKV `"polly.teams.{teamId}"`:
+   { teamId, name, emoji, agentIds[], groupIds[], createdAt }
+
+4. Set `"polly.activeTeam"` = teamId in MMKV
+
+5. Navigate to main app
+```
+
+**Error handling:**
+- Each step is independent and retried individually. If agent #6 of 9 fails to create, the provisioning continues with #7, #8, #9 — then surfaces a non-blocking warning: "2 agents couldn't be set up. You can retry in Settings → Teams → [Team] → Repair."
+- Partial provisioning is resumable. The `"polly.provisioned.{agentId}"` flag means re-running provisioning skips already-created agents.
+- SOUL.md write failure is non-fatal at provisioning time — agent will use default SOUL until repaired. Logged to MMKV `"polly.provisioningErrors"` for the Repair flow to surface.
+- If `sessions.create` for a group chat fails: group chat is omitted from the team's group list; user can recreate from Settings → Teams → [Team] → Group Chats → [+].
 
 **Multi-team:** User can create additional teams at any time from Settings → Teams → [+]. No limit on team count.
 

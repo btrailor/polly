@@ -193,3 +193,57 @@ export default {
   layout,
   semanticColors,
 };
+
+// ============================================================================
+// LIGHT MODE COLOR MAP (Albers theme — light variant)
+// ============================================================================
+
+export const dark = colors;
+
+export const light = {
+  // Base
+  bgPrimary:    '#FFFFFF',
+  bgSecondary:  '#F5F5F7',
+  bgTertiary:   '#EBEBF0',
+  bgElevated:   '#FFFFFF',
+
+  // Text
+  textPrimary:  '#0A0A0A',
+  textSecondary:'#3C3C43',
+  textTertiary: '#8E8E93',
+  textInverse:  '#FFFFFF',
+
+  // Accent (same as dark — brand colors don't flip)
+  accentGreen:  '#22C55E',
+  accentBlue:   '#3B82F6',
+  accentAmber:  '#F59E0B',
+  accentRed:    '#EF4444',
+  accentPurple: '#8B5CF6',
+
+  // Surface
+  surfaceCard:  '#FFFFFF',
+  surfaceBorder:'#E5E5EA',
+  surfaceInput: '#F2F2F7',
+
+  // Chat
+  bubbleUser:   '#007AFF',
+  bubbleAgent:  '#E9E9EB',
+  bubbleUserText:   '#FFFFFF',
+  bubbleAgentText:  '#0A0A0A',
+
+  // Status
+  statusOnline: '#22C55E',
+  statusAway:   '#F59E0B',
+  statusOffline:'#8E8E93',
+} as const;
+
+// ============================================================================
+// COLOR SCHEME HOOK
+// ============================================================================
+
+import { useColorScheme } from 'react-native';
+
+export function useColors() {
+  const scheme = useColorScheme();
+  return scheme === 'dark' ? dark : light;
+}
