@@ -1,193 +1,82 @@
-# Polly: Edge-Native Personal AI System
+# Polly
 
-## A prototype for an AI assistant that deeply understands you
+**A personal AI system built for how you actually think.**
 
-Polly is an edge-first AI system designed to:
+Polly is a native iOS app that connects to your self-hosted OpenClaw gateway, giving you a team of intelligent agents that know your work, your knowledge base, and your mental models — and can act on them.
 
-- **Understand your domains**: Query your Obsidian vault, codebases, and filesystem
-- **Learn your patterns**: Build a personal knowledge graph from your work
-- **Adapt to your thinking**: Apply your personal mental models to every response
-- **Execute efficiently**: Route between local models and cloud when needed
-- **Work across devices**: iPhone, MacBook, anywhere via Tailscale
+---
 
-## Philosophy
+## What it is
 
-This system embodies several core principles:
+- **Team-based agents** — Organized around what you're doing (Dev Squad, Content Studio, Life Team, etc.). Each team has specialized agents that collaborate in group chats.
+- **Vault-connected** — Reads and writes to your Obsidian vault via iOS security-scoped bookmarks. Quick captures land in `_inbox/`; the agents help you process them.
+- **Mental models** — 12 built-in thinking frameworks (Systems Thinking, Socratic Method, First Principles, etc.) you can apply to any conversation as a lens.
+- **Your gateway, your data** — All AI traffic routes through your self-hosted OpenClaw gateway on your Mac. Nothing goes through a third-party server.
 
-- **Continuation over completion** (infinite games): The system evolves with you
-- **Instruments over tracks**: Generative tools that create new possibilities
-- **Constraint as meaning-creation**: Boundaries that enable rather than limit
-- **Autonomous infrastructure**: You own the stack, no platform lock-in
+---
 
-## Architecture
+## Stack
+
+| Layer | Tech |
+|-------|------|
+| iOS app | React Native + Expo (TypeScript) |
+| Navigation | expo-router (file-based) |
+| Design tokens | `src/theme/colors.ts` |
+| Markdown | `react-native-markdown-display` |
+| Local storage | MMKV + expo-sqlite |
+| Secrets | expo-secure-store |
+| Gateway | OpenClaw (self-hosted, Mac mini) |
+| Transport | WebSocket (`wss://`) |
+
+---
+
+## Repo layout
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                         POLLY CORE                              │
-├────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐│
-│  │   Domains   │  │   Pattern   │  │    Intelligent Router   ││
-│  │   Engine    │  │   Learner   │  │   (Local ↔ Cloud)       ││
-│  └──────┬──────┘  └──────┬──────┘  └───────────┬─────────────┘│
-│         │                │                      │              │
-│         │      ┌─────────────────┐              │              │
-│         │      │ Mental Models   │              │              │
-│         │      │ (12 defaults +  │              │              │
-│         │      │  custom)        │              │              │
-│         │      └────────┬────────┘              │              │
-│         │               │                       │              │
-│         └───────────────┴───────────────────────┘              │
-│                          │                                      │
-│              ┌───────────▼───────────┐                         │
-│              │   Unified RAG Layer   │                         │
-│              │   ┌─────────────────┐ │                         │
-│              │   │ Obsidian Vault  │ │                         │
-│              │   │ Project Codebases│ │                         │
-│              │   │ Filesystem Docs │ │                         │
-│              │   │ Pattern Memory  │ │                         │
-│              │   └─────────────────┘ │                         │
-│              └───────────────────────┘                         │
-│                                                                 │
-├────────────────────────────────────────────────────────────────┤
-│                       INTERFACES                                │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │   CLI    │  │  VS Code │  │  Polly   │  │  Open WebUI  │  │
-│  │ (polly)  │  │Extension │  │   App    │  │   Bridge     │  │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────────┘  │
-└────────────────────────────────────────────────────────────────┘
+POLLY_IOS_SPEC.md          — Full iOS spec (authoritative)
+POLLY_AGENT_TEMPLATES.md   — Agent SOUL templates + team definitions
+MASTER_ROADMAP.md          — Phased delivery plan
+src/
+  theme/
+    colors.ts              — Design tokens (authoritative)
+archive/                   — Pre-iOS legacy docs
 ```
 
-## Quick Start
+Old Python backend, Electron app, and openspec are preserved on the `archive/pre-ios-rewrite` branch.
 
-### Option 1: Electron App (Recommended)
+---
 
-```bash
-cd electron-app
-npm install
-npm start
-```
+## Branches
 
-The app will guide you through setup with a visual wizard.
+| Branch | Purpose |
+|--------|---------|
+| `development` | Active iOS development |
+| `master` | Stable releases |
+| `archive/pre-ios-rewrite` | Full history of the Python/Electron era |
 
-### Option 2: Command Line
+---
 
-```bash
-# 1. From the project root, install dependencies (includes internal libs)
-pip install -r requirements.txt
+## Gateway setup
 
-# 2. Configure your paths
-cp config/config.example.yaml config/config.yaml
-# Edit config.yaml with your paths
+Polly requires a running OpenClaw gateway. The iOS app connects via WebSocket at `wss://your-gateway-domain`.
 
-# 3. Index your knowledge
-python -m polly index
+See `POLLY_IOS_SPEC.md §3` for the full WebSocket protocol and `§20.4` for the onboarding flow.
 
-# 4. Start Polly
-python -m polly serve
+---
 
-# 5. Query from anywhere
-polly "What patterns do I use for MIDI handling?"
-```
+## Phase 1 scope
 
-**Internal libraries:** The app uses packages under `libs/` (e.g. `polly-routing`). They are installed in editable mode by `pip install -r requirements.txt` when run from the project root. To install or update only the libs: `./scripts/install_libs.sh` or `pip install -e libs/polly-routing` (and others as they are added).
+- Core chat UI (agents + group chats)
+- Teams + drawer navigation
+- Vault quick capture
+- Mental models lens system
+- Onboarding (gateway connection + team selection)
+- Settings (security, appearance, model)
 
-## What Makes Polly Different
+Phase 2+ features (skills marketplace, model routing, plans layer) are stubbed in the spec but not implementation targets for Phase 1.
 
-### 1. Personal Mental Models 🧠
-
-Polly learns your thinking frameworks and applies them automatically:
-
-- **12 default models** including Infinite Games, Systems Thinking, Socratic Method
-- **Create custom models** with templates
-- **Context-aware activation** based on what you're working on
-- **Per-conversation override** for fine control
-
-### 2. Domain-Aware Intelligence
-
-Not just file patterns—deep understanding of five creative and technical domains:
-
-- **Sigils** (code), **Signals** (audio), **Scrolls** (writing), **Glyphs** (design), **Grids** (systems)
-
-### 3. Pattern Learning
-
-Automatically learns from your work patterns and reuses them in future queries.
-
-### 4. True Data Autonomy
-
-- All data stored locally in `~/.polly/`
-- You own your knowledge graph
-- No platform lock-in
-- Full export capabilities
-
-## Five Domains
-
-Polly understands your five domains:
-
-| Domain      | Focus                            | File Patterns                              |
-| ----------- | -------------------------------- | ------------------------------------------ |
-| **Sigils**  | Code, infrastructure, automation | `.py`, `.rs`, `.go`, `docker-compose.yaml` |
-| **Signals** | Audio programming, synthesis     | `.scd`, `.lua`, `norns/`, `supercollider/` |
-| **Scrolls** | Writing, pedagogy, documentation | `.md`, `vault/`, `essays/`                 |
-| **Glyphs**  | Visual work, design              | `.fig`, `.sketch`, `design/`               |
-| **Grids**   | Systems thinking, frameworks     | `frameworks/`, `models/`, tagged notes     |
-
-## Components
-
-### 1. Unified RAG System (`core/rag.py`)
-
-Multi-source semantic search across your entire knowledge base.
-
-### 2. Mental Models System (`core/mental_models.py`)
-
-Your personal thinking frameworks guide every response:
-
-- 12 default models (Infinite Games, Systems Thinking, Socratic Method, etc.)
-- Custom model creation with templates
-- Three-tier context activation (domain, page, persona)
-- Per-conversation override
-- PIL compression for efficiency
-
-### 3. Pattern Learner (`learners/patterns.py`)
-
-Discovers and tracks recurring patterns in your work over time.
-
-### 4. Domain Engine (`core/domains.py`)
-
-Understands context and routes queries to relevant sources.
-
-### 5. Intelligent Router (`core/router.py`)
-
-Seamlessly pivots between local (Ollama) and cloud (Anthropic/OpenAI) models.
-
-### 6. Personal Knowledge Graph (`core/graph.py`)
-
-Builds connections between concepts, files, and patterns.
-
-## Electron App Features
-
-- **Setup Wizard**: One-click installation of Python environment and AI models
-- **Chat Interface**: Beautiful chat UI with domain-aware responses
-- **Dashboard**: Visual overview of indexed knowledge and patterns
-- **System Tray**: Quick access from menu bar
-- **IDE Integration**: OpenAI-compatible API for Cursor/Continue
-
-## Future Hardware
-
-When Apple Neural Engine becomes more accessible, or dedicated AI hardware arrives:
-
-- On-device embedding generation
-- Local fine-tuned models
-- Real-time pattern detection
-- Continuous learning without cloud
-
-## Directory layout
-
-- **openspec/** — Project tracking and specs (status, roadmap, domain specs). Start here for "where we are" and "what's next."
-- **docs/** — Detailed docs (planning, status, troubleshooting). **archive/root-docs/** — Root-level planning docs moved here (MASTER_ROADMAP, FEATURES_TO_BUILD, etc.).
-- **tests/** — Test suite. **tests/root/** — Tests moved from repo root during cleanup.
-- **scripts/** — Dev/ops scripts. **scripts/debug/**, **scripts/demo/**, **scripts/diagnostics/** — Debug, demo, and diagnostic scripts moved from root.
+---
 
 ## License
 
-Personal use. Built on open-source foundations.
+Personal use.
