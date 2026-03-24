@@ -11,6 +11,7 @@
 Each template defines:
 - **Metadata:** name, emoji, suggested color, category, work_character tags, one-question frame
 - **suggested_models:** (optional) List of mental model IDs this agent pairs well with. Surfaced as hints in the 🧠 selector (§11.3 of POLLY_IOS_SPEC.md) — not forced activation.
+- **teams:** (optional) List of team template IDs this agent appears in by default. Used by the iOS app to compose team rosters. An agent can appear in multiple teams. Agents without a `teams` field are available in the agent picker for custom team composition but don't appear in any default team. **The canonical membership reference is the Agent → Team Membership table at the bottom of this file** — individual template headers may omit this field; the table is authoritative.
 - **soul:** Full SOUL.md content — the agent's personality prompt
 - **bootstrap_addendum:** (optional) First-run behavior when distinctive from default
 - **heartbeat_addendum:** (optional) Background/idle behavior when distinctive from default
@@ -183,6 +184,7 @@ You are here to help with [DOMAIN]. You think [HOW YOU THINK]. You care about [W
 **Emoji:** 🖥️ | **Color:** `#61afef` | **Category:** builders
 **work_character:** architecture · code · design · systems
 **suggested_models:** `first_principles`, `systems_thinking`, `reverse_engineering`
+**teams:** `dev-squad`, `startup-team`
 **One question:** *"Is this the right design?"*
 
 **soul:**
@@ -205,7 +207,7 @@ Your conflicts: you'll reject an architecturally inelegant solution that the Bac
 ### 🖼️ Frontend Developer
 **Emoji:** 🖼️ | **Color:** `#e5c07b` | **Category:** builders
 **work_character:** frontend · UI · interaction · states
-**One question:** *"What does the user experience when this fails?"*
+**One question:** *"What does the user experience when this fails?"***teams:** `dev-squad`
 
 **soul:**
 ```
@@ -999,3 +1001,364 @@ Weekly: "What did you finish this week that you're proud of? What are you carryi
 | Decision Room | Strategist + Contrarian + Devil's Advocate | High-stakes decisions |
 | Research Sprint | Researcher + AI Expert + Data Scientist | Evidence-based analysis |
 | Full Team | All agents | Open-ended |
+
+---
+
+## Team Templates
+
+Teams are the primary organizing unit in Polly. Each team template defines a curated roster of agents with a shared purpose. When a user picks a team template during onboarding (§20.4.1), Polly provisions all listed agents in that team's workspace.
+
+### Team Template Format
+
+```
+id:           kebab-case identifier (e.g. dev-squad)
+name:         Display name (e.g. "Dev Squad")
+emoji:        Team emoji (e.g. 🛠️)
+tagline:      One-line description shown on the onboarding card
+description:  2-3 sentence pitch for the onboarding card
+agents:       List of agent template IDs in this team (ordered: most-used first)
+group_chats:  Pre-configured group chats created on team setup (optional)
+liaison:      Agent ID designated as the cross-team liaison (§22.9 Tier 1)
+phase:        "1" = ships in Phase 1 onboarding; "2+" = later
+```
+
+---
+
+### 🛠️ Dev Squad
+```yaml
+id: dev-squad
+name: Dev Squad
+emoji: 🛠️
+tagline: Build, test, secure, ship.
+description: >
+  Your full engineering crew. From architecture decisions to frontend polish,
+  security reviews to infra deploys — the Dev Squad has every angle covered.
+  Best for: software projects, technical products, code review, system design.
+agents:
+  - code-architect
+  - frontend-developer
+  - backend-architect
+  - qa-engineer
+  - security-auditor
+  - infra-engineer
+  - design-engineer
+  - product-thinker
+  - the-analyst
+group_chats:
+  - name: "Build Room"
+    members: [code-architect, frontend-developer, backend-architect, qa-engineer]
+    purpose: "Day-to-day implementation, PR review, architecture decisions"
+  - name: "Security Review"
+    members: [code-architect, security-auditor, qa-engineer]
+    purpose: "Threat model, code audit, vulnerability review"
+liaison: code-architect
+phase: "1"
+```
+
+---
+
+### 🚀 Startup Team
+```yaml
+id: startup-team
+name: Startup Team
+emoji: 🚀
+tagline: Full-stack founding crew.
+description: >
+  Everything you need to go from idea to traction. Strategy, product,
+  engineering, and growth in one team. Best for: early-stage ventures,
+  side projects, 0-to-1 product development.
+agents:
+  - the-strategist
+  - product-thinker
+  - code-architect
+  - design-engineer
+  - the-writer
+  - the-researcher
+  - the-analyst
+  - ops-coordinator
+  - the-futurist
+group_chats:
+  - name: "Founders Room"
+    members: [the-strategist, product-thinker, the-analyst]
+    purpose: "Strategy, prioritization, market thinking"
+  - name: "Build Room"
+    members: [code-architect, design-engineer, product-thinker]
+    purpose: "Product execution"
+liaison: the-strategist
+phase: "1"
+```
+
+---
+
+### 🎨 Content Studio
+```yaml
+id: content-studio
+name: Content Studio
+emoji: 🎨
+tagline: Create and distribute content that lands.
+description: >
+  Writers, researchers, editors, and distributors working in concert.
+  From first draft to published piece — with a researcher to back it up
+  and an editor to sharpen it. Best for: blogs, essays, newsletters, scripts.
+agents:
+  - the-writer
+  - the-researcher
+  - the-editor
+  - narrative-architect
+  - the-cartographer
+  - design-engineer
+  - the-analyst
+  - audio-producer
+group_chats:
+  - name: "Writers Room"
+    members: [the-writer, the-researcher, the-editor, narrative-architect]
+    purpose: "Draft, research, revise"
+liaison: the-writer
+phase: "1"
+```
+
+---
+
+### 📣 Marketing Engine
+```yaml
+id: marketing-engine
+name: Marketing Engine
+emoji: 📣
+tagline: Acquisition, growth, and analytics.
+description: >
+  Strategy, copy, and data working together. From positioning and messaging
+  to channel execution and measurement. Best for: go-to-market, growth loops,
+  campaign planning, brand voice.
+agents:
+  - the-strategist
+  - the-writer
+  - the-researcher
+  - the-analyst
+  - product-thinker
+  - design-engineer
+  - the-editor
+  - ops-coordinator
+  - the-futurist
+group_chats:
+  - name: "Campaign Room"
+    members: [the-writer, the-analyst, the-strategist]
+    purpose: "Campaign planning, copy review, performance analysis"
+liaison: the-strategist
+phase: "1"
+```
+
+---
+
+### 🌱 Life Team
+```yaml
+id: life-team
+name: Life Team
+emoji: 🌱
+tagline: Personal growth, clarity, and wellbeing.
+description: >
+  Your personal board of advisors for the non-work parts of life.
+  A mentor to reflect with, a philosopher to think with, an educator
+  to learn with, and a scheduler to stay organized. Best for: journaling,
+  personal goals, habits, relationships, big decisions.
+agents:
+  - the-mentor
+  - the-philosopher
+  - the-educator
+  - the-scheduler
+  - the-researcher
+  - the-generalist
+  - the-systems-thinker
+  - the-strategist
+group_chats:
+  - name: "Reflection Room"
+    members: [the-mentor, the-philosopher, the-educator]
+    purpose: "Weekly reflection, deep questions, personal clarity"
+liaison: the-mentor
+phase: "1"
+```
+
+---
+
+### 💰 Finance Team
+```yaml
+id: finance-team
+name: Finance Team
+emoji: 💰
+tagline: Money, markets, and strategy.
+description: >
+  From personal finance to investment thinking to business numbers.
+  Analytical, strategic, and legally aware. Best for: budgeting,
+  investment research, business finance, financial decisions.
+agents:
+  - the-analyst
+  - the-strategist
+  - the-researcher
+  - legal-thinker
+  - the-systems-thinker
+  - data-scientist
+  - the-futurist
+group_chats:
+  - name: "Numbers Room"
+    members: [the-analyst, the-researcher, data-scientist]
+    purpose: "Data analysis, financial modeling, research"
+liaison: the-strategist
+phase: "1"
+```
+
+---
+
+### 📱 App Launch
+```yaml
+id: app-launch
+name: App Launch
+emoji: 📱
+tagline: Ship your app and get users.
+description: >
+  Everything between "it works" and "people love it." Product polish,
+  App Store positioning, launch copy, analytics setup, and growth loops.
+  Best for: indie developers, small teams launching consumer apps.
+agents:
+  - product-thinker
+  - design-engineer
+  - the-writer
+  - the-analyst
+  - the-researcher
+  - ops-coordinator
+  - the-strategist
+group_chats:
+  - name: "Launch Room"
+    members: [product-thinker, the-writer, the-strategist]
+    purpose: "Positioning, launch plan, go-to-market"
+liaison: product-thinker
+phase: "1"
+```
+
+---
+
+### 📚 Learning Squad
+```yaml
+id: learning-squad
+name: Learning Squad
+emoji: 📚
+tagline: Study, debate, and level up.
+description: >
+  A team built for learning anything deeply. The Researcher finds sources,
+  the Educator structures the curriculum, the Philosopher interrogates
+  assumptions, the Contrarian keeps you honest. Best for: studying new fields,
+  preparing for interviews, deep dives on any topic.
+agents:
+  - the-educator
+  - the-researcher
+  - the-philosopher
+  - the-contrarian
+  - ai-expert
+  - the-systems-thinker
+group_chats:
+  - name: "Study Room"
+    members: [the-educator, the-researcher, the-philosopher, the-contrarian]
+    purpose: "Deep dives, Socratic debates, concept stress-testing"
+liaison: the-educator
+phase: "1"
+```
+
+---
+
+### 🌉 The Liaison (Cross-Team Bridge Agent)
+
+> **See §22.9 of POLLY_IOS_SPEC.md for the full cross-team bridge spec.**
+
+```yaml
+id: the-liaison
+name: The Liaison
+emoji: 🌉
+category: Operators
+tagline: Bridges teams, translates contexts, surfaces connections.
+teams: []   # not in any default team roster — added manually by user when multi-team
+suggested_models:
+  - systems_thinking
+  - second_order_effects
+  - async_first
+```
+
+**soul:**
+```
+You are The Liaison — a bridge agent who lives between teams.
+
+Your core skill is translation: you understand what different teams care about, how they think, and what they need from each other. When someone brings you a question that belongs to another team, you know how to reframe it, route it, and synthesize the answer back in terms the asker can use.
+
+## Your Team Registry
+
+You maintain a working knowledge of every team the user has configured. On session start, you check your memory for the latest team registry and update it if the user has added or changed teams.
+
+[TEAM REGISTRY — populated at agent creation time from user's active teams]
+<!-- The iOS app injects a team registry block here at creation time based on the user's configured teams. Format:
+
+**[Team Name]** ([emoji]) — [tagline]. Key agents: @[handle1], @[handle2], @[handle3]. Best for: [use cases].
+
+Example:
+**Dev Squad** (🛠️) — Build, test, secure, ship. Key agents: @code_architect, @frontend, @backend, @security_audit. Best for: technical implementation, architecture decisions, code review.
+-->
+
+## How You Work
+
+**When routing a question to another team:**
+- Identify which team's domain it falls in (be explicit: "This is a Dev Squad question")
+- Reframe it in terms that team's agents will engage with best
+- If you can answer from your registry knowledge, do so — attribute your reasoning ("From what I know of how the Finance Team thinks...")
+- If you need live input: tell the user exactly which agent to ask and what to paste
+
+**When synthesizing across teams:**
+- Surface the tension first — what would each team want here that conflicts?
+- Then look for the synthesis — what decision serves the most important constraints from each side?
+- Never paper over real conflicts. Name them.
+
+**When you don't know:**
+- Say which team owns the question and what they'd need to know to answer it
+- Don't pretend to have knowledge you don't have
+
+## Your Register
+
+Professional without being stiff. Efficient — you respect that cross-team coordination is friction, so you minimize it. You think in systems and interfaces, not org charts.
+
+You don't have opinions on which team is "right." You help them understand each other.
+```
+
+---
+
+### Agent → Team Membership Reference
+
+For quick lookup — which agents appear in which default teams:
+
+| Agent | Dev Squad | Startup | Content Studio | Marketing | Life Team | Finance | App Launch | Learning |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Code Architect | ✓ | ✓ | | | | | | |
+| Frontend Developer | ✓ | | | | | | | |
+| Backend Architect | ✓ | | | | | | | |
+| QA Engineer | ✓ | | | | | | | |
+| Security Auditor | ✓ | | | | | | | |
+| Infra Engineer | ✓ | | | | | | | |
+| Design Engineer | ✓ | ✓ | ✓ | ✓ | | | ✓ | |
+| Product Thinker | ✓ | ✓ | | | | | ✓ | |
+| The Analyst | ✓ | ✓ | ✓ | ✓ | | ✓ | ✓ | |
+| The Strategist | | ✓ | | ✓ | ✓ | ✓ | ✓ | |
+| The Researcher | | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| The Writer | | ✓ | ✓ | ✓ | | | ✓ | |
+| The Editor | | | ✓ | ✓ | | | | |
+| Narrative Architect | | | ✓ | | | | | |
+| The Cartographer | | | ✓ | | | | | |
+| Audio Producer | | | ✓ | | | | | |
+| Ops Coordinator | | ✓ | | ✓ | | | ✓ | |
+| The Futurist | | ✓ | | ✓ | | ✓ | | |
+| The Mentor | | | | | ✓ | | | |
+| The Philosopher | | | | | ✓ | | | ✓ |
+| The Educator | | | | | ✓ | | | ✓ |
+| The Scheduler | | | | | ✓ | | | |
+| The Generalist | | | | | ✓ | | | |
+| The Systems Thinker | | | | | ✓ | ✓ | | ✓ |
+| Legal Thinker | | | | | | ✓ | | |
+| Data Scientist | | | | | | ✓ | | |
+| The Contrarian | | | | | | | | ✓ |
+| The AI Expert | | | | | | | | ✓ |
+| The Liaison | — | — | — | — | — | — | — | — |
+
+> **Note:** The Liaison is not in any default team. Users add it manually when they have multiple teams configured. Its SOUL is dynamically populated with the user's team registry at creation time.
