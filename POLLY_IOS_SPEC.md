@@ -378,8 +378,28 @@ Polly requests `scopes: ["operator.admin"]` on connect for full access.
 | `sessions.delete` | `{ key, deleteTranscript? }` | Remove session |
 | `sessions.compact` | `{ key, maxLines? }` | Compact transcript |
 | `chat.inject` | `{ sessionKey, message, label? }` | Inject system message |
-| `config.set` | `{ raw, baseHash? }` | Write full config (dangerous) |
+| `config.write` | `{ raw, baseHash? }` | Write full config (dangerous — full overwrite) |
 | `config.patch` | `{ patch, note?, restartDelayMs? }` | Partial config update (preferred) |
+
+> **`config.write` vs `config.patch`:** `config.write` performs a full config overwrite; `config.patch` performs a partial/deep-merge update. Polly always uses `config.patch` — never `config.write`. The `config.set` name does not exist in the gateway; the correct RPC is `config.patch`.
+
+#### Agent Management RPCs *(ADMIN scope required)*
+
+| RPC | Params | Response | Notes |
+|-----|--------|----------|-------|
+| `agents.list` | `{}` | `AgentEntry[]` | Lists all configured agents |
+| `agents.create` | `{ id, name, workspace?, agentDir? }` | `{ ok: true }` | Creates agent entry in openclaw.json; does NOT write SOUL.md — use `agents.files.set` separately |
+| `agents.update` | `{ id, ...fields }` | `{ ok: true }` | Updates agent metadata |
+| `agents.delete` | `{ id }` | `{ ok: true }` | Removes agent and workspace |
+| `agents.files.set` | `{ agentId, path, content }` | `{ ok: true }` | Write file to agent workspace (e.g. SOUL.md, MEMORY.md) |
+| `agents.files.get` | `{ agentId, path }` | `{ content: string }` | Read file from agent workspace |
+| `agents.files.list` | `{ agentId, path? }` | `string[]` | List files in agent workspace |
+
+**`agents.create` payload note:** `workspace` and `agentDir` are optional — if omitted, OpenClaw derives default paths from the agent `id`. Polly should always supply explicit paths in the format:
+- `workspace`: `~/.openclaw/workspace-{agentId}`
+- `agentDir`: `~/.openclaw/agents/{agentId}/agent`
+
+**SOUL.md write sequence:** `agents.create` registers the agent but does NOT write SOUL.md. Immediately after `agents.create` succeeds, call `agents.files.set` with `{ agentId, path: "SOUL.md", content: <personality + baseline> }` and `agents.files.set` with `{ agentId, path: "MEMORY.md", content: "# Memory\n" }`.
 
 ---
 
@@ -1412,7 +1432,7 @@ Accessible from a "Submolts" link in the Moltbook feed header.
 
 **Phase 1 scope:** Read-only feed browsing (no auth required). Agent participation (post/comment) deferred to Phase 2 when Moltbook skill is installable from Settings.
 
-**Moltbook API key:** Collected during agent registration UX and held temporarily in `expo-secure-store` key `"polly.moltbook.apiKey"`. On registration completion, forwarded to gateway via `config.set` and immediately purged from `expo-secure-store`. iOS does not hold the key after setup. Never logged, never sent to any domain other than `https://www.moltbook.com`.
+**Moltbook API key:** Collected during agent registration UX and held temporarily in `expo-secure-store` key `"polly.moltbook.apiKey"`. On registration completion, forwarded to gateway via `config.patch` and immediately purged from `expo-secure-store`. iOS does not hold the key after setup. Never logged, never sent to any domain other than `https://www.moltbook.com`.
 
 ---
 
@@ -1937,7 +1957,7 @@ Tapping an agent row from the agent list navigates to the agent detail view.
   - Google Workspace — "Gmail, Google Calendar, Drive, Contacts"
   - Notion API — "Create and manage Notion pages, databases, and blocks"
   - Exa Search API — "Neural/semantic search, deep research"
-- All keys forwarded to gateway via `config.set` on save; purged from local storage
+- All keys forwarded to gateway via `config.patch` on save; purged from local storage
 
 **Your Gateway →**
 - **STATUS** section (card):
@@ -3720,6 +3740,8 @@ If a `config.patch` call breaks the gateway connection (bad URL, invalid auth to
 ### 7.10 Open Infra Questions & Decisions
 
 1. **TLS for local (RESOLVED — @security_audit B2):** LAN connections (`ws://`) are permitted without TLS. Rationale: traffic is local-network only, not exposed to the internet, and iOS rejects self-signed certs by default without custom trust anchor configuration that adds significant setup friction. **Decision: `ws://` is acceptable for LAN and Tailscale (WireGuard-encrypted tunnel). `wss://` is required for all Cloudflare Tunnel connections.** §7.1 and §8.3 are authoritative on their respective paths. §8.3's "WSS required everywhere" applies only to internet-path connections. The security model is: trust the network perimeter for LAN/WireGuard; enforce TLS where the perimeter is the open internet.
+
+> **Note:** §8.3 supersedes this. Polly enforces WSS-only as an app-side policy regardless of gateway capability. ws:// is never used in Polly, even on LAN. The gateway accepts ws:// connections — Polly chooses not to make them.
 2. **Tailscale iOS SDK vs. standalone app:** Ship with standalone app dependency for Phase 1; revisit embedded SDK in Phase 3.
 3. **mDNS auto-discovery:** Phase 2 feature — don't block Phase 1 on it.
 4. **Push key management:** The APNs `.p8` key lives on the gateway Mac. User must configure path in `openclaw.json`. Gateway team (@backend) owns this config surface.
@@ -3799,14 +3821,15 @@ Polly App → aight.push.register(deviceId, apnsToken, platform: "ios", sandbox:
 ### 8.3 Transport Security
 
 #### Local Network (Home / Tailscale)
-- All gateway connections: **WSS (TLS 1.2+)**. Never fall back to `ws://` even on LAN.
-- Exception: explicit dev mode only, with a visible warning UI.
-- Tailscale provides end-to-end encryption at network layer (WireGuard). Even so, TLS must be maintained — defense in depth.
-- **Certificate handling for self-signed / local certs:** Gateway may present a self-signed cert on LAN. Options:
+> ✅ **Resolved — @security_audit B2, @infra Blocker 1 (March 24, 2026).** Decision: `ws://` is permitted for LAN (RFC 1918 addresses) and Tailscale (WireGuard-encrypted tunnel). `wss://` is required for all Cloudflare Tunnel / internet-path connections. See §7.10 for full rationale.
+
+- **LAN / Tailscale:** `ws://` permitted. Rationale: LAN traffic is local-perimeter only; Tailscale traffic is WireGuard-encrypted end-to-end. iOS rejects self-signed certs by default — requiring WSS on LAN would impose significant setup friction for self-hosted users with no meaningful security gain on a trusted perimeter.
+- **`NSAllowsLocalNetworking: true`** must be set in Info.plist ATS config to permit `ws://` on local IP ranges (see §3.14).
+- Tailscale provides end-to-end encryption at the network layer. No additional TLS required on this path.
+- **Certificate handling (LAN only, if user opts into `wss://` on LAN):**
   - Option A: User installs gateway CA cert via Settings profile (highest security, most friction).
-  - Option B: Pin to a known gateway fingerprint stored in Keychain after first verified connection ("trust on first use", TOFU). Display fingerprint in Settings for manual verification.
+  - Option B: TOFU — pin to gateway TLS fingerprint in Keychain after first verified connection. Display fingerprint in Settings → Security → Gateway Security for manual verification. **Default for users who configure LAN with `wss://`.**
   - Option C: Allow self-signed on `.local` / Tailscale IP ranges only, with explicit user acknowledgment.
-  - **Recommendation: Option B (TOFU) for v1**, with Option A upgrade path documented.
 - ATS (App Transport Security): configure `NSExceptionDomains` in `app.json` / `Info.plist` for the gateway host only if using self-signed cert. Never set `NSAllowsArbitraryLoads = true`.
 
 #### Remote / Away-from-home
@@ -3830,12 +3853,14 @@ Polly App → aight.push.register(deviceId, apnsToken, platform: "ios", sandbox:
 | APNs push token | `expo-secure-store` | iOS Keychain |
 | Gateway TLS fingerprint (TOFU) | `expo-secure-store` | iOS Keychain |
 | **Cloudflare Tunnel URL** | **`expo-secure-store`** | **iOS Keychain** |
-| **Tailscale gateway address** | **`expo-secure-store`** | **iOS Keychain** |
+| **Tailscale gateway address** | **MMKV** | **Standard iOS encryption (non-sensitive)** |
 | Session messages / transcripts | None — not cached on device in v1 | N/A |
 | User preferences (non-sensitive) | UserDefaults — gateway host label, UI prefs only | Standard iOS encryption |
 | API keys / secrets | Never stored on device — all stay on gateway | N/A |
 
 **No sensitive credential ever touches `UserDefaults`, `NSUserDefaults`, or flat files.**
+
+> Tailscale IP addresses are not sensitive credentials — they are network addresses with no auth value. §7.9 GatewayConfig is authoritative: tailscale address stored in MMKV, not Keychain. §8.4 table corrected accordingly.
 
 > **Cloudflare Tunnel URL storage note:** The tunnel URL (e.g. `wss://gateway.yourdomain.com`) is functionally a credential — anyone with it can reach your gateway. It must live in Keychain. The `GatewayConfig` struct in code may hold it in memory during an active session, but the persistence layer must write it to Keychain only, never to a plist or UserDefaults. The "gateway host label" (e.g. "My Home Gateway") shown in UI is non-sensitive and can live in UserDefaults.
 
@@ -3877,7 +3902,9 @@ Polly App → aight.push.register(deviceId, apnsToken, platform: "ios", sandbox:
 6. **OTA security policy (`expo-updates`):** OTA updates bypass App Store review — this is a supply chain risk if the EAS build pipeline is compromised. Required controls:
    - Use **Expo EAS code signing** — sign all OTA bundles; client verifies signature before applying.
    - OTA updates must **never touch auth/Keychain logic** without a full App Store release cycle (native modules can't be OTA'd anyway, but JS-layer auth code can be).
-   - Pin `expo-openclaw-chat` at a specific version (`0.2.2`); treat any upgrade as a security review item — it sits in the auth + WS critical path.
+   - Pin `expo-openclaw-chat` at a specific version (`0.2.3`); treat any upgrade as a security review item — it sits in the auth + WS critical path.
+
+> **Version pin:** Use `expo-openclaw-chat@0.2.3` (confirmed in package.json §14). The `0.2.2` reference elsewhere in the spec is a typo — `0.2.3` is correct. The adapter interface in §11.0 PollyGatewayAdapter defines the full passthrough surface; treat that as the spec, not the package's internal API.
    - Document a rollback procedure: if a bad OTA ships, `expo-updates` supports channel rollback via EAS dashboard.
 
 **🟡 Post-v1 / hardening sprints:**
@@ -4074,7 +4101,7 @@ OFF → [tap mic] → LISTENING → [tap or silence] → PROCESSING → SPEAKING
 
 These differentiate Polly from being a straight Aight clone. All features in this section are implemented **client-side only** or via the OpenClaw WebSocket — no direct Polly REST API calls from iOS.
 
-> **§11 scope clarification (@researcher B-R2):** "Client-side only" means no direct iOS→Polly REST API calls. It does NOT mean zero server involvement. §11.5 (Quick Capture) writes to the Obsidian vault via iCloud filesystem — that's local, not a server call. §19.5 (theme behavior injection) modifies the agent's system prompt on the gateway — that's a gateway write via `agents.update`. Neither contradicts the "no direct Polly REST API" principle. The constraint is specifically about the legacy Python backend; OpenClaw gateway calls are always in scope.
+> **§11 scope clarification (@researcher B-R2):** "Client-side only" means no direct iOS→Polly REST API calls. It does NOT mean zero server involvement. §11.5 (Quick Capture) writes to the Obsidian vault via iCloud filesystem — that's local, not a server call. §19.5 (theme behavior injection) modifies the gateway config via `config.patch` on key `polly.ios.aestheticStance` — that's a gateway write, not a per-agent update. Neither contradicts the "no direct Polly REST API" principle. The constraint is specifically about the legacy Python backend; OpenClaw gateway calls are always in scope.
 
 ### 11.0 The PollyEnhancement Layer
 
@@ -4111,7 +4138,7 @@ Multiple injection sources can be active simultaneously. Priority order and beha
 | Vault note (§11.1) | Message prefix (`<context>` block) | 📄 filename pill | Yes — one note per message |
 | Mental model (§11.3) | Message prefix (`<framing>` block) | 🧠 model name pill | Yes — one model per message |
 | Domain badge (§11.2) | Label only — not injected into message (Phase 1) | Colored domain pill | N/A — display only |
-| Theme behavior (§19.5) | Agent system prompt via `agents.update` — NOT the message | No pill (transparent) | Persistent, not per-message |
+| Theme behavior (§19.5) | Agent system prompt via `config.patch` — NOT the message | No pill (transparent) | Persistent, not per-message |
 
 **Stacking behavior:**
 - Vault note + mental model can both be active simultaneously. Both appear as pills. The augmented message is: `<context>` block + `<framing>` block + user text, in that order.
@@ -4136,7 +4163,9 @@ Each pill is tappable to remove before sending. After send, the augmentation con
 
 **`AugmentationContext` is stored in Zustand `chatStore.pendingAugmentation`** — cleared on send, cleared on agent switch. The pills row is conditionally rendered when `pendingAugmentation` is non-empty.
 
-> **Pill count constraint (§11.0 canonical rule):** In Phase 1–4, the input bar augmentation row may contain at most two pills simultaneously: one vault note pill (§11.1) and one mental model pill (§11.3). Both are message-scoped and dismissible. Theme behavior injection (§19.5) does not surface a pill — it is applied gateway-side via `agents.update` and is not part of the client-side augmentation assembly. Domain awareness injection (§11.2), if implemented in Phase 5, must also surface as a dismissible pill following the same pattern.
+> **Pill count constraint (§11.0 canonical rule):** In Phase 1–4, the input bar augmentation row may contain at most two pills simultaneously: one vault note pill (§11.1) and one mental model pill (§11.3). Both are message-scoped and dismissible. Theme behavior injection (§19.5) does not surface a pill — it is applied gateway-side via `config.patch` on the key `polly.ios.aestheticStance` and is not part of the client-side augmentation assembly. Domain awareness injection (§11.2), if implemented in Phase 5, must also surface as a dismissible pill following the same pattern.
+
+> Theme aesthetic stance is injected via `config.patch` on the key `polly.ios.aestheticStance` — NOT via `agents.update`. This is a global config value, not a per-agent setting. All agents read it from the shared config layer.
 
 **This is the model for Phase 1–5.** No Polly REST server, no agent-mediated retrieval round-trip, no two code paths. The vault is on the device; mental models are in MMKV. Augmentation is free, offline, instant.
 
@@ -4479,7 +4508,13 @@ app/
 │   ├── index.tsx                  // Settings home
 │   ├── integrations.tsx           // API key + OAuth config
 │   ├── advanced.tsx               // Danger zone, connection debug
-│   └── about.tsx                  // Version, licenses
+│   ├── about.tsx                  // Version, licenses
+│   ├── security.tsx               // §4.8 Security settings
+│   ├── vault.tsx                  // §4.8 Vault settings
+│   ├── models.tsx                 // §4.8 Model selection
+│   ├── sensibility.tsx            // §4.8 Sensibility / mental models
+│   ├── notifications.tsx          // §4.8 Notifications
+│   └── teams.tsx                  // §4.8 Teams management
 ├── agents/
 │   ├── _layout.tsx
 │   ├── index.tsx                  // Agent switcher / roster
@@ -4506,6 +4541,68 @@ src/
 └── store/
     └── ... (zustand state)
 ```
+
+---
+
+### §12.3 Zustand Store Definitions
+
+All global client state lives in Zustand stores. MMKV is used for persistence layer (via `zustand/middleware/persist` + MMKV adapter). Define stores before building components.
+
+#### `chatStore`
+```typescript
+interface ChatStore {
+  // Active adapter — one per open session
+  adapter: PollyGatewayAdapter | null;
+
+  // Augmentation context — cleared after each send
+  pendingAugmentation: AugmentationContext | null;
+
+  // Actions
+  setAdapter: (adapter: PollyGatewayAdapter | null) => void;
+  setPendingAugmentation: (ctx: AugmentationContext) => void;
+  clearAugmentation: () => void;
+}
+```
+
+#### `agentStore`
+```typescript
+interface AgentStore {
+  agents: AgentEntry[];           // Cached from agents.list
+  activeAgentId: string | null;
+  activeTeamId: string | null;
+
+  setAgents: (agents: AgentEntry[]) => void;
+  setActiveAgent: (agentId: string) => void;
+  setActiveTeam: (teamId: string) => void;
+}
+```
+
+#### `connectionStore`
+```typescript
+interface ConnectionStore {
+  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  gatewayUrl: string | null;
+  lastError: string | null;
+
+  setStatus: (status: ConnectionStore['status']) => void;
+  setGatewayUrl: (url: string) => void;
+  setError: (error: string | null) => void;
+}
+```
+
+#### `todayStore`
+```typescript
+interface TodayStore {
+  items: TodayItem[];              // Cached today_items from SQLite
+  lastSyncedAt: number | null;
+
+  setItems: (items: TodayItem[]) => void;
+  upsertItem: (item: TodayItem) => void;
+  removeItem: (id: string) => void;
+}
+```
+
+**Persistence:** `agentStore` and `connectionStore` persist to MMKV. `chatStore` is session-only (no persistence). `todayStore` syncs from SQLite on app foreground.
 
 **Deep link handling:**
 
@@ -4817,7 +4914,7 @@ https://www.googleapis.com/auth/drive.readonly  (optional, Phase 3)
 3. User authenticates in Safari/ASWebAuthenticationSession
 4. Access token + refresh token returned to app
 5. Tokens stored in `expo-secure-store`
-6. Tokens forwarded to gateway via `config.set` — gateway uses them for tool calls
+6. Tokens forwarded to gateway via `config.patch` — gateway uses them for tool calls
 7. Polly refreshes tokens proactively (access tokens expire in 1hr)
 
 **Token storage:**
@@ -4863,7 +4960,7 @@ interface NotionConfig {
 **Type:** API key  
 **What it does:** Neural/semantic search and deep research — not Amazon/Alexa. Exa is a semantic search engine for AI agents (`exa.ai`). Surfaces high-quality web content with full-text retrieval.
 **Priority for Polly:** Medium — useful for research-heavy agents  
-**Decision:** Include config slot; forward key to gateway via `config.set`.
+**Decision:** Include config slot; forward key to gateway via `config.patch`.
 
 ---
 
@@ -5027,16 +5124,16 @@ Settings → Integrations
 
 | Integration | Secret | Storage | Notes |
 |-------------|--------|---------|-------|
-| Brave Search | API key | Gateway (via `config.set`) | Not on device |
+| Brave Search | API key | Gateway (via `config.patch`) | Not on device |
 | ElevenLabs | API key | `expo-secure-store` | Client-side TTS — stays on device |
 | Google Workspace | OAuth tokens | `expo-secure-store` | Access + refresh tokens |
-| Notion | API key | Gateway (via `config.set`) | Not on device |
-| GitHub | PAT / OAuth | Gateway (via `config.set`) | Not on device |
+| Notion | API key | Gateway (via `config.patch`) | Not on device |
+| GitHub | PAT / OAuth | Gateway (via `config.patch`) | Not on device |
 | Obsidian | Vault path | MMKV | Not sensitive — just a file path |
-| Moltbook | API key | `expo-secure-store` (transient — purged after setup) | Held temporarily during registration UX only. On completion: `config.set` to gateway → `SecureStore.deleteItemAsync`. Gateway owns the key permanently; iOS never holds it after setup. |
+| Moltbook | API key | `expo-secure-store` (transient — purged after setup) | Held temporarily during registration UX only. On completion: `config.patch` to gateway → `SecureStore.deleteItemAsync`. Gateway owns the key permanently; iOS never holds it after setup. |
 | Apple EventKit | N/A | iOS system | No credential needed |
 
-**Rule:** Keys used only by the gateway live on the gateway (sent via `config.set` on save). Keys used client-side (ElevenLabs, Google OAuth) live in `expo-secure-store`. File paths and non-sensitive config live in MMKV.
+**Rule:** Keys used only by the gateway live on the gateway (sent via `config.patch` on save). Keys used client-side (ElevenLabs, Google OAuth) live in `expo-secure-store`. File paths and non-sensitive config live in MMKV.
 
 ---
 
@@ -5647,7 +5744,7 @@ const { tokens, activeTheme, setTheme } = useTheme();
 - [ ] Texture overlay assets (6 PNGs)
 - [ ] Jetset crop marks + light-mode status bar
 - [ ] Riley stripe-edge dividers
-- [ ] Behavior injection via `config.set` RPC on theme switch
+- [ ] Behavior injection via `config.patch` RPC on theme switch
 - [ ] MMKV persistence of active sensibility
 
 **Phase 4 — Composition (ship with Moltbook + Stats):**
@@ -5813,6 +5910,8 @@ Cold open
   → [Scan] [Enter manually]
   ↓
   [mDNS scan or manual URL entry → connection test]
+
+> **Phase 1:** Gateway discovery is manual entry only — URL field + "Test Connection" button. The "Scan for gateway" / mDNS auto-discovery option requires `react-native-zeroconf` which is a Phase 2 dependency. Remove the scan option from Phase 1 onboarding UI. @frontend: render only the manual URL input in Phase 1.
   ↓
   Polly: "Connected ✓. One last thing — paste your gateway auth token. 
           You'll find it in OpenClaw's settings under 'Security'."
@@ -5879,7 +5978,9 @@ When the user selects a team template (or completes "Start from scratch"), the a
 
 2. For each `group_chats` entry in the template:
    a. Generate a `groupId` client-side: kebab-case name + 6-char random hex (e.g. `sigils-a3f7c1`)
-   b. Call `sessions.create` with `{ sessionKey: "group-chat:{groupId}", members: [...agentIds] }`
+   b. Group chat sessions in OpenClaw do not require explicit creation. A session is implicitly initialized on first use. To pre-register a group chat with metadata before the first message:
+      - Use `sessions.patch` with `{ key: "group-chat:{groupId}", meta: { name, members: [...agentIds], purpose } }`
+      - If `sessions.patch` returns an error for a non-existent session, the session will be created implicitly on first `chat.send` — store the groupId in MMKV and the session will materialize on first use
    c. Store groupId in MMKV `"polly.teams.{teamId}.groups"` array
 
 3. Store team metadata in MMKV `"polly.teams.{teamId}"`:
@@ -5894,7 +5995,7 @@ When the user selects a team template (or completes "Start from scratch"), the a
 - Each step is independent and retried individually. If agent #6 of 9 fails to create, the provisioning continues with #7, #8, #9 — then surfaces a non-blocking warning: "2 agents couldn't be set up. You can retry in Settings → Teams → [Team] → Repair."
 - Partial provisioning is resumable. The `"polly.provisioned.{agentId}"` flag means re-running provisioning skips already-created agents.
 - SOUL.md write failure is non-fatal at provisioning time — agent will use default SOUL until repaired. Logged to MMKV `"polly.provisioningErrors"` for the Repair flow to surface.
-- If `sessions.create` for a group chat fails: group chat is omitted from the team's group list; user can recreate from Settings → Teams → [Team] → Group Chats → [+].
+- If `sessions.patch` pre-registration for a group chat fails: group chat is omitted from the team's group list; the session will still materialize implicitly on first `chat.send`. User can retry pre-registration from Settings → Teams → [Team] → Group Chats → [+].
 
 **Multi-team:** User can create additional teams at any time from Settings → Teams → [+]. No limit on team count.
 
