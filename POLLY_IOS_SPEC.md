@@ -3303,10 +3303,49 @@ When gateway is unreachable, Polly degrades gracefully:
 | Voice input | STT still works (on-device); just can't send |
 
 **Local cache:**
-- Today items (triggers, tasks, processes) cached to CoreData on every fetch
-- Last-known agent list cached to UserDefaults
-- Chat history: last 100 messages per session cached to CoreData
+- Today items (triggers, tasks, processes) cached via **`expo-sqlite`** on every fetch
+- Last-known agent list cached to MMKV (`"polly.agentList"`)
+- Chat history: last 100 messages per session cached to `expo-sqlite`
 - Cache TTL: 24 hours
+
+**Persistence layer: `expo-sqlite` (SQLite via Expo)**
+- Chosen over CoreData (Swift-only, no RN support), WatermelonDB (heavy, overkill for Phase 1), and raw MMKV (no relational queries)
+- Schema:
+
+```sql
+-- Sessions
+CREATE TABLE sessions (
+  session_key TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  title TEXT,
+  last_message_at INTEGER,  -- Unix ms
+  cached_at INTEGER          -- Unix ms
+);
+
+-- Messages (per session)
+CREATE TABLE messages (
+  id TEXT PRIMARY KEY,       -- runId or client-generated UUID
+  session_key TEXT NOT NULL,
+  role TEXT NOT NULL,        -- 'user' | 'assistant'
+  content_json TEXT NOT NULL, -- JSON-serialized ChatMessageContent[]
+  created_at INTEGER,
+  FOREIGN KEY (session_key) REFERENCES sessions(session_key)
+);
+
+-- Today items (cron jobs, tasks, triggers)
+CREATE TABLE today_items (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,        -- 'trigger' | 'item' | 'process'
+  payload_json TEXT NOT NULL,
+  cached_at INTEGER
+);
+```
+
+**Sync/reconciliation on reconnect:**
+1. App reconnects → sends `chat.history` RPC for each recently-active session (last 7 days)
+2. Server response is authoritative — overwrites local cache for returned sessions
+3. Sessions not in server response retain local cache until TTL expires
+4. Messages written locally during offline period are queued in MMKV (`"polly.offlineQueue"`) — replayed as WS sends on reconnect in order, then local copies replaced with server-echoed versions
 
 ---
 
@@ -3755,10 +3794,57 @@ Each pill is tappable to remove before sending. After send, the augmentation con
 
 **This is the model for Phase 1–5.** No Polly REST server, no agent-mediated retrieval round-trip, no two code paths. The vault is on the device; mental models are in MMKV. Augmentation is free, offline, instant.
 
+---
+
+#### PollyGatewayAdapter
+
+The `PollyEnhancement Layer` cannot call `ChatEngine.send()` directly — `expo-openclaw-chat`'s `ChatEngine` is not designed to be subclassed, and its `send()` may be sealed. Polly wraps it in a **`PollyGatewayAdapter`** — a thin facade that owns all outgoing message calls.
+
+```typescript
+// src/services/PollyGatewayAdapter.ts
+
+import { ChatEngine } from 'expo-openclaw-chat';
+import { augmentMessage } from './PollyEnhancement';
+import { useChatStore } from '../stores/chatStore';
+
+export class PollyGatewayAdapter {
+  private engine: ChatEngine;
+
+  constructor(engine: ChatEngine) {
+    this.engine = engine;
+  }
+
+  async send(text: string): Promise<void> {
+    // 1. Pull pending augmentation context from Zustand store
+    const ctx = useChatStore.getState().pendingAugmentation;
+
+    // 2. Run PollyEnhancement Layer — synchronous, no await
+    const augmented = augmentMessage(text, ctx ?? {});
+
+    // 3. Clear augmentation context before send (not after — avoids double-send edge case)
+    useChatStore.getState().clearAugmentation();
+
+    // 4. Delegate to ChatEngine
+    await this.engine.send(augmented);
+  }
+
+  // All other ChatEngine methods pass through directly
+  get messages() { return this.engine.messages; }
+  get isStreaming() { return this.engine.isStreaming; }
+  // ... etc
+}
+```
+
+**All send calls in the app go through `PollyGatewayAdapter.send()` — never `ChatEngine.send()` directly.** This is enforced by convention (ESLint rule: no direct `chatEngine.send` calls outside the adapter). The adapter is created once per session and stored in Zustand `chatStore.adapter`.
+
+**If `ChatEngine.send()` changes signature in a future `expo-openclaw-chat` version:** the adapter is the only place that needs updating. The rest of the app is insulated.
+
 ### 11.1 Vault Context Injection
 **Trigger:** User types `/` in chat input  
 **Behavior:** Slide-up sheet shows Obsidian vault file browser → select note → note content prepended to message as a context block before sending  
-**Implementation:** iOS reads the vault from the iCloud Drive path (`/var/mobile/Library/Mobile Documents/iCloud~md~obsidian/Documents/[VaultName]`). File tree rendered in a sheet. Selected note text wrapped in a context block and prepended to the outgoing message client-side. No server round-trip — the augmented message travels to OpenClaw as a single enriched user turn.  
+**Implementation:** Polly accesses the vault via a security-scoped bookmark (see §11 Access Strategy — `expo-document-picker`). On `/` trigger, calls `startAccessingSecurityScopedResource()` on the stored bookmark, renders the file tree in a sheet, reads the selected note, then calls `stopAccessingSecurityScopedResource()`. Selected note text is wrapped in a `<context>` block and prepended to the outgoing message client-side via `augmentMessage()`. No server round-trip — the augmented message travels to OpenClaw as a single enriched user turn.
+
+**Vault not connected:** If no bookmark is stored in `expo-secure-store`, the `/` sheet shows an empty state: "Connect your Obsidian vault in Settings → Vault to use note context." Tapping navigates to the vault connection screen.  
 **Constraint:** Requires Obsidian iOS + iCloud sync. Vault path configured in Settings.
 
 ### 11.2 Domain Awareness Badge
@@ -4000,6 +4086,100 @@ Per @ai_expert: Gateway-connected STT for Phase 1; on-device Whisper (`whisper.r
 
 ---
 
+### 12.1 File-Based Routing (expo-router)
+
+**Decision:** `expo-router` is the source of truth for navigation. File-based routing structure below.
+
+**Why expo-router:**
+- Deep link resolution for APNs tap-to-open (critical for Phase 2 push notifications)
+- File-based structure maps directly to screen hierarchy
+- Excellent TypeScript support
+- Custom drawer (§6.24) integrates cleanly on top via `@react-navigation/native` stack
+
+**Project structure:**
+
+```
+app/
+├── _layout.tsx                    // Root layout, DrawerPanel wrapper
+├── index.tsx                      // Chat view (default route)
+├── today.tsx                      // Today view
+├── shortcuts.tsx                  // Shortcuts view
+├── usage.tsx                      // Usage stats view
+├── moltbook.tsx                   // Moltbook social feed
+├── settings/
+│   ├── _layout.tsx
+│   ├── index.tsx                  // Settings home
+│   ├── integrations.tsx           // API key + OAuth config
+│   ├── advanced.tsx               // Danger zone, connection debug
+│   └── about.tsx                  // Version, licenses
+├── agents/
+│   ├── _layout.tsx
+│   ├── index.tsx                  // Agent switcher / roster
+│   └── [id].tsx                   // Individual agent detail
+├── vault-search.tsx               // Vault search modal
+└── onboarding/
+    ├── _layout.tsx
+    └── gateway-setup.tsx           // Pre-gateway-connection flow
+
+src/
+├── components/
+│   ├── ChatBubble.tsx
+│   ├── ChatView.tsx
+│   ├── VoiceButton.tsx
+│   ├── ChatInputBar.tsx
+│   ├── DrawerPanel.tsx
+│   └── ... (rest of component lib per §6)
+├── theme/
+│   ├── colors.ts
+│   └── index.ts
+├── utils/
+│   ├── gateway.ts                 // PollyGatewayAdapter
+│   └── ...
+└── store/
+    └── ... (zustand state)
+```
+
+**Deep link handling:**
+
+| Deep Link | Route | Purpose |
+|-----------|-------|---------|
+| `polly://chat/:sessionKey` | `index.tsx` with params | Open specific agent session |
+| `polly://group/:groupId` | `index.tsx` with group context | Open group chat |
+| `polly://today` | `today.tsx` | APNs notification tap → Today view |
+| `polly://onboarding` | `onboarding/gateway-setup.tsx` | First run or reset |
+
+APNs notification payloads include a deep link URL in the `interactiveData` field; `expo-router` automatically routes to the correct screen on tap.
+
+**Root layout (_layout.tsx):**
+
+```typescript
+export default function RootLayout() {
+  return (
+    <DrawerPanel>
+      <Stack
+        screenOptions={{
+          headerShown: false,  // Custom nav bars per screen
+          animationEnabled: false,
+        }}
+      >
+        <Stack.Screen name="index" options={{ title: "Chat" }} />
+        <Stack.Screen name="today" options={{ title: "Today" }} />
+        <Stack.Screen name="shortcuts" options={{ title: "Shortcuts" }} />
+        <Stack.Screen name="usage" options={{ title: "Usage" }} />
+        <Stack.Screen name="moltbook" options={{ title: "Moltbook" }} />
+        <Stack.Screen name="settings" options={{ title: "Settings" }} />
+        <Stack.Screen name="vault-search" options={{ presentation: "modal" }} />
+        <Stack.Screen name="onboarding" options={{ title: "Setup" }} />
+      </Stack>
+    </DrawerPanel>
+  );
+}
+```
+
+**Custom drawer is NOT managed by expo-router.** The `DrawerPanel` component (per §6.24) wraps the Stack and handles its own gesture-driven navigation. It reads the current route from the Stack and updates it on swipe/tap, but the drawer itself is a custom Animated View component, not a navigator.
+
+---
+
 ## 13. Phased Delivery Plan
 
 ### Phase 1 — Core Chat (MVP)
@@ -4112,6 +4292,12 @@ OpenClaw supports two APNs transport modes. Configured via `config.patch` on the
 }
 ```
 The relay handles APNs delivery on behalf of the gateway. No Apple Developer account keys needed.
+
+> **⚠️ Privacy tradeoff — relay mode vs. §1 principle (@design_eng):** Relay mode routes notification payloads through `relay.openclaw.dev` — third-party infrastructure operated by OpenClaw. This contradicts Polly's §1 principle: *"no data leaving your infrastructure."* The payload is minimal (session key + message preview if enabled), but it does leave your server.
+>
+> **Polly's recommendation:** Use **direct mode** for users who care about full data sovereignty. Use relay mode for users who want zero-config and accept the tradeoff. Polly's onboarding should default to relay mode with a visible disclosure: "Push notifications are routed through relay.openclaw.dev to reach your phone. No conversation content is included unless you enable message previews." Users who want full self-hosting should be directed to direct mode in Settings → Notifications.
+>
+> Message previews (the first N characters of a message shown in the notification) must be **disabled by default** and require explicit opt-in regardless of relay vs. direct mode.
 
 #### Direct mode (self-managed)
 Requires Apple Developer account with APNs key.
@@ -4320,11 +4506,22 @@ interface NotionConfig {
 **Runtime:** Client-side on iPhone (not gateway-side)  
 **What it does:** Deep integration with your Obsidian vault — the integration Aight doesn't have
 
-**Access strategy:**
-- Obsidian for iOS can sync vault to iCloud Drive (`/iCloud Drive/Obsidian/[vault-name]/`)
-- Polly reads from this path via standard iOS file APIs (no special permissions beyond Files access)
-- Write-back uses the same path — creates `.md` files directly in vault
-- Polly requests `UIFileSharingEnabled` + iCloud entitlement for file access
+**Access strategy — iOS sandbox constraints:**
+
+iOS app sandboxing prevents Polly from directly reading another app's iCloud container (e.g., Obsidian's `iCloud Drive/Obsidian/[vault]/`). Direct path access will silently fail or throw a permissions error. The correct mechanism is **security-scoped bookmarks** via `expo-document-picker`:
+
+1. **Initial vault selection:** User taps "Connect Obsidian Vault" in Settings → Polly calls `DocumentPicker.pickDirectory()` → user navigates to their Obsidian vault folder → iOS grants a security-scoped bookmark URL
+2. **Bookmark persistence:** The bookmark URL is serialized and stored in `expo-secure-store` key `"polly.vaultBookmark"` — security-scoped bookmarks persist across app launches
+3. **Runtime access:** On each vault access, Polly calls `startAccessingSecurityScopedResource()` on the bookmark URL, reads/writes, then calls `stopAccessingSecurityScopedResource()` — access is bounded to the operation
+4. **Write-back (Phase 3):** Same bookmark URL used for creating/appending `.md` files in vault — bookmark grants read+write to the selected directory and its children
+
+**Package:** `expo-document-picker` (already in Expo SDK, no extra install). The `pickDirectory()` API is available on iOS 14+ (our minimum is iOS 16 — fully supported).
+
+**Scope of granted access:** The bookmark grants access to the selected folder and all descendants — the full vault tree. User selects vault root once; Polly can traverse subdirectories freely within that grant.
+
+**iCloud sync requirement:** For remote access (when away from home), the vault must be synced to iCloud via Obsidian iOS + iCloud sync. This is a user setup requirement documented in onboarding. Polly cannot read vault files that aren't synced locally to the device.
+
+**Capture write-back (§11.5):** Uses the same bookmark to write new files to `_inbox/` inside the vault. If the bookmark has expired or been revoked, the capture sheet shows "Vault disconnected — reconnect in Settings" and saves to local Polly Inbox only.
 
 **Capabilities:**
 
@@ -4774,7 +4971,13 @@ It does not override explicit user instructions.
 **Albers:**
 > Define the constraint first; find what it allows. Begin from material observation — let ideas emerge from handling, not from concept. Document what the tool does before what you want from it. Complexity emerges from within constraint, never from breaking it. Voice: material-first.
 
-**Delivery mechanism:** The injection is set via `config.set` RPC on the gateway when the theme switches. The gateway key is `polly.ios.aestheticStance`. All agents read this as a shared ambient layer. Switching themes triggers a `config.set` with the new injection text; the change takes effect on the next message.
+**Delivery mechanism:** The injection is set via `config.patch` RPC on the gateway when the theme switches. The gateway key is `polly.ios.aestheticStance`. All agents read this as a shared ambient layer. Switching themes triggers a `config.patch` with the new injection text; the change takes effect on the next message.
+
+> **Multi-client conflict (@design_eng):** Theme injection writes to the gateway's shared config. If two clients are connected simultaneously (Aight + Polly, or two Polly devices), one device's theme change will overwrite the other's. **Decision: last-write-wins, with a session-local override option.**
+>
+> Phase 1 behavior: last-write-wins. No coordination. Documented in Settings → Themes: "Theme settings are shared across all connected clients. Changing themes on one device affects all devices connected to this gateway."
+>
+> Phase 2 behavior: Session-local theme override. The `config.patch` writes to a device-scoped key (`polly.ios.aestheticStance.[deviceId]`) rather than a shared key. Each client reads its own device-scoped key first, falling back to the shared key. This requires a gateway-side change to support per-device config scoping — tracked as a Phase 2 @backend item.
 
 ---
 
@@ -5214,6 +5417,8 @@ The free-tier bootstrap API key baked into the app bundle must have a finite TTL
 - At onboarding start, check `Date.now() < expiresAtMs` — if expired, bootstrap falls back to Manual mode (static screens); the free-tier AI guide is unavailable
 - This check is independent of any server call — no network required to enforce it
 - Note: the app bundle key rotation strategy (how expired keys get replaced) is an EAS OTA update — document this in release process, not the app UI
+
+> **⚠️ Bootstrap key IPA extraction risk:** The Gemini Flash API key baked into the JS bundle is extractable via IPA decompilation (Metro bundle is not encrypted; jailbroken tools can extract it in minutes). **Decision: accept this with mitigations.** The key is scoped to a dedicated Google AI Studio project with hard rate limits (requests/day, tokens/day) that make it economically useless for abuse at scale. The key's only purpose is onboarding assistance — it cannot be used to access any Polly user data. If the key is abused and rate-limited, onboarding falls back to Manual mode gracefully. This is documented as an accepted risk, not an oversight. Alternative (no baked key, always manual fallback) sacrifices onboarding quality for marginal security gain — not the right tradeoff for a personal productivity app.
 
 **Empty secure store on device restore:**
 If the app is reinstalled or restored to a new device and `expo-secure-store` is empty (Keychain not transferred):
