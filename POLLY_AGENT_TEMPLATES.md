@@ -1,6 +1,6 @@
 # POLLY AGENT TEMPLATES
-*31 templates across 6 categories + 2 pinned slots*
-*Last updated: 2026-03-24*
+*33 templates across 6 categories + 2 pinned slots + 10 agent stubs pending full templates*
+*Last updated: 2026-03-25*
 
 > **Phase deployment note (@researcher B-R4):** These templates are written to be fully functional as **solo agents in Phase 1**, not just as swarm participants. The `one_question_frame`, `soul`, and `suggested_models` fields are all meaningful in a single-agent conversation. Swarm-specific behavior (tag-based context injection, multi-agent turn protocols from §22/§23) is additive — it activates when a swarm is configured, but does not affect solo use. Any template that only makes sense in a swarm context is explicitly marked `swarm_only: true` in its metadata. All others are solo-first.
 
@@ -1362,3 +1362,315 @@ For quick lookup — which agents appear in which default teams:
 | The Liaison | — | — | — | — | — | — | — | — |
 
 > **Note:** The Liaison is not in any default team. Users add it manually when they have multiple teams configured. Its SOUL is dynamically populated with the user's team registry at creation time.
+
+---
+
+## New Team Templates (2026-03-25 idea dump)
+
+Eight new team templates added. Format matches existing team templates. New agents referenced but not yet fully templated are marked `# stub — template pending`.
+
+---
+
+### 🏠 Home Operations (`home-ops`)
+
+```yaml
+id: home-ops
+name: Home Operations
+emoji: 🏠
+tagline: Run your life without it running you.
+description: >
+  The logistics of everything outside work. Home projects, purchases,
+  travel, meal planning, bureaucracy. A Scheduler who keeps track of
+  timelines, a Researcher who finds options, an Analyst who compares
+  them, and an Estimator who tells you how long things actually take.
+agents:
+  - the-scheduler
+  - the-researcher
+  - the-analyst
+  - the-estimator        # stub — template pending
+  - ops-coordinator
+  - legal-thinker
+group_chats:
+  - name: "Command Center"
+    members: [the-scheduler, ops-coordinator, the-researcher]
+    purpose: "Weekly planning, open tasks, upcoming deadlines"
+liaison: the-scheduler
+```
+
+---
+
+### 🔬 Research Lab (`research-lab`)
+
+```yaml
+id: research-lab
+name: Research Lab
+emoji: 🔬
+tagline: Investigate, synthesize, know.
+description: >
+  For when you need to actually figure something out — not just
+  learn what others know, but develop your own position with evidence.
+  Literature review, argument construction, source evaluation,
+  methodology design. Best for: deep dives, paper writing, due diligence,
+  investigative work, forming your own informed opinion.
+agents:
+  - the-researcher
+  - the-philosopher
+  - the-analyst
+  - data-scientist
+  - the-contrarian
+  - the-writer
+  - the-librarian        # stub — template pending
+  - the-experimentalist  # stub — template pending
+group_chats:
+  - name: "Lab Bench"
+    members: [the-researcher, the-analyst, the-philosopher]
+    purpose: "Evidence gathering, source evaluation, argument testing"
+  - name: "Peer Review"
+    members: [the-contrarian, the-writer, the-philosopher]
+    purpose: "Stress-test findings before they become positions"
+liaison: the-researcher
+```
+
+> **Design note — "Peer Review":** Contrarian + Writer + Philosopher is a complete editorial pipeline: Contrarian challenges the argument, Philosopher examines reasoning structure, Writer asks whether the position is actually communicable. Sequential by intent — Peer Review runs after Lab Bench has produced a position worth testing.
+
+---
+
+### 🎭 Decision Theater (`decision-theater`)
+
+```yaml
+id: decision-theater
+name: Decision Theater
+emoji: 🎭
+tagline: Decide well, not just fast.
+description: >
+  For decisions that deserve more than a gut check. Career moves,
+  large purchases, relationship shifts, business pivots, ethical dilemmas.
+  The team frames the decision, explores alternatives you haven't considered,
+  stress-tests your leading option, and makes sure you're deciding the
+  right question — not just answering the first one that occurred to you.
+agents:
+  - the-strategist
+  - the-contrarian
+  - devils-advocate
+  - the-philosopher
+  - the-systems-thinker
+  - the-mirror           # stub — template pending
+  - the-mentor
+group_chats:
+  - name: "The Chamber"
+    members: [the-strategist, the-contrarian, the-philosopher]
+    purpose: "Frame the decision, explore the option space, identify what you're actually deciding"
+  - name: "Stress Test"
+    members: [devils-advocate, the-systems-thinker, the-contrarian]
+    purpose: "Attack the leading option — what kills it?"
+liaison: the-strategist
+```
+
+> **Design note — sequential structure:** The Chamber (upstream: frame the right question) → Stress Test (downstream: attack the leading option). The Strategist gates the handoff. Don't enter Stress Test until The Chamber has confirmed you're deciding the right question.
+>
+> **Design note — The Mirror here:** Reflects decision patterns back without judgment. "You've made 4 career pivots in 6 years. The ones you regretted all had one thing in common: you decided during periods of high external pressure." This is the Mirror's highest-value context — decision patterns are exactly where self-reflection is most valuable and most avoided.
+
+---
+
+### 🛠️ Maker's Bench (`makers-bench`)
+
+```yaml
+id: makers-bench
+name: Maker's Bench
+emoji: 🛠️
+tagline: Build things that exist in the world.
+description: >
+  Physical computing, electronics, audio hardware, workshop projects,
+  and the intersection of code with physical systems. The team that
+  understands schematics, signal flow, fabrication constraints, and
+  the difference between simulation and the real thing. Best for:
+  synth builds, embedded systems, home automation, instrument design,
+  anything where software meets the physical world.
+agents:
+  - code-architect
+  - audio-producer
+  - music-producer
+  - infra-engineer
+  - the-systems-thinker
+  - the-researcher
+  - design-engineer
+  - the-experimentalist  # stub — template pending
+group_chats:
+  - name: "The Bench"
+    members: [code-architect, audio-producer, infra-engineer]
+    purpose: "Design review, signal flow, build planning"
+  - name: "Sound Lab"
+    members: [audio-producer, music-producer, the-experimentalist]
+    purpose: "Synthesis experiments, patch design, sonic exploration"
+liaison: code-architect
+```
+
+> **Design note — Sound Lab:** No Contrarian, no Analyst. Intentional — generative divergence in patch design, not convergent critique. The Bench is where critique lives; Sound Lab is where experiments happen.
+>
+> **Note on agent references:** `code-architect` in team templates refers to the role — not a specific instance. Users' own Code Architect agent fills this slot.
+>
+> **Relationship to `signals-studio`:** Complementary, not redundant. Maker's Bench = physical systems + hardware. Signals Studio = sonic exploration + meaning. A user can belong to both.
+
+---
+
+### 🧘 Maintenance Crew (`maintenance-crew`)
+
+```yaml
+id: maintenance-crew
+name: Maintenance Crew
+emoji: 🧘
+tagline: Hold steady. That's enough.
+description: >
+  For the weeks when growth isn't the point — maintenance is.
+  Sustaining habits, managing energy, keeping systems running,
+  not breaking what's working. A team that doesn't push you forward
+  but makes sure you don't slide back. Best for: recovery periods,
+  high-stress stretches, chronic condition management, habit sustenance.
+agents:
+  - the-mentor
+  - the-scheduler
+  - the-janitor          # stub — template pending
+  - the-mirror           # stub — template pending
+  - the-generalist
+group_chats:
+  - name: "Check-In"
+    members: [the-mentor, the-scheduler, the-mirror]
+    purpose: "Weekly status — what's holding, what needs attention, what can wait"
+liaison: the-mentor
+```
+
+> **Design note:** No Contrarian, no Analyst, no pressure agents — by design. This is not a team for stress-testing. The Janitor keeps the system from accumulating cruft; the Mirror keeps you from losing sight of your patterns. Both are maintenance agents: neither pushes forward. The absence of growth-oriented agents is the spec.
+
+---
+
+### 📡 Signals Studio (`signals-studio`)
+
+```yaml
+id: signals-studio
+name: Signals Studio
+emoji: 📡
+tagline: Sound as a way of knowing.
+description: >
+  Synthesis, instrument design, live performance, audio programming.
+  Not content production — sonic exploration. The team understands
+  that an instrument is a knowledge transmission device, that constraints
+  create meaning in sound design, and that the patch is never finished.
+  Best for: norns/monome development, SuperCollider work, synth design,
+  live performance preparation, sound design, DSP.
+agents:
+  - audio-producer
+  - music-producer
+  - code-architect
+  - the-experimentalist  # stub — template pending
+  - design-engineer
+  - the-philosopher
+group_chats:
+  - name: "Patch Bay"
+    members: [audio-producer, code-architect, the-experimentalist]
+    purpose: "Synthesis programming, DSP architecture, instrument design"
+  - name: "Listening Room"
+    members: [music-producer, the-philosopher, audio-producer]
+    purpose: "Aesthetic review, compositional direction, what does this sound mean?"
+liaison: audio-producer
+```
+
+> **Design note — Listening Room:** "What does this sound mean?" is an interpretive question, not a task. Philosopher provides conceptual vocabulary, Music Producer has compositional judgment, Audio Producer has technical grounding. No one in that room is optimizing.
+>
+> **Relationship to `makers-bench`:** Complementary. Maker's Bench = physical systems. Signals Studio = sonic exploration and meaning. This team is the operational instantiation of the MONOME_LAYER.md thesis.
+
+---
+
+### 📐 Systems Design (`systems-design`)
+
+```yaml
+id: systems-design
+name: Systems Design
+emoji: 📐
+tagline: Design the interactions, not just the parts.
+description: >
+  For when you're building something with feedback loops, emergent
+  behavior, and failure modes. Not code architecture (Dev Squad does that)
+  — system architecture in the general sense. Home automation, workflows,
+  organizational design, curriculum structure, knowledge management systems.
+  The team thinks about interactions, incentives, and second-order effects.
+agents:
+  - the-systems-thinker
+  - the-strategist
+  - code-architect
+  - the-analyst
+  - the-contrarian
+  - infra-engineer
+  - the-cartographer
+  - the-experimentalist  # stub — template pending
+group_chats:
+  - name: "Whiteboard"
+    members: [the-systems-thinker, the-cartographer, the-strategist]
+    purpose: "Map the system, identify leverage points, trace feedback loops"
+  - name: "Failure Lab"
+    members: [the-contrarian, infra-engineer, the-experimentalist]
+    purpose: "How does this system fail? Where are the brittle points?"
+liaison: the-systems-thinker
+```
+
+> **Design note — Failure Lab:** Pre-mortem analysis with empirical rigor. Contrarian attacks assumptions, Infra Engineer knows where real systems break, Experimentalist asks "how would we test whether this failure mode is real?" Distinct from Decision Theater's Stress Test — Failure Lab probes structural brittleness, not decision quality.
+
+---
+
+### 🌍 Civic Workshop (`civic-workshop`)
+
+```yaml
+id: civic-workshop
+name: Civic Workshop
+emoji: 🌍
+tagline: Engage with the world you live in.
+description: >
+  For work that faces outward — community organizing, civic participation,
+  policy analysis, mutual aid coordination, public comment writing.
+  The team understands power dynamics, institutional language, collective
+  action problems, and the difference between what policy says and what
+  it does. Best for: local governance, advocacy, community projects,
+  grant writing, organizing.
+agents:
+  - the-researcher
+  - the-writer
+  - the-strategist
+  - legal-thinker
+  - the-philosopher
+  - the-analyst
+  - the-translator       # stub — template pending
+  - ops-coordinator
+group_chats:
+  - name: "Strategy Table"
+    members: [the-strategist, the-researcher, the-philosopher]
+    purpose: "Power mapping, stakeholder analysis, campaign strategy"
+  - name: "Drafting Desk"
+    members: [the-writer, legal-thinker, the-translator]
+    purpose: "Public comments, testimony, proposals, plain-language summaries"
+liaison: the-strategist
+```
+
+> **Design note — Drafting Desk:** Writer structures the argument, Legal Thinker checks institutional accuracy and flags landmines, Translator makes sure the output lands with its actual audience. Complete editorial pipeline for advocacy documents.
+>
+> **Design note — the-translator:** Register-shifting agent. Converts between institutional language (legal, bureaucratic, technical) and plain language, and vice versa. Does not create — converts. Distinct from the Writer.
+
+---
+
+## Agent Stubs — Templates Pending (2026-03-25)
+
+These agents are referenced in the new team templates above. Full SOUL templates to be written. Brief descriptions captured from idea dump context.
+
+| Agent ID | Emoji | work_character | Teams | Description |
+|----------|-------|---------------|-------|-------------|
+| `the-estimator` | 🧮 | estimation · calibration · forecasting · quantitative-judgment | home-ops, makers-bench, systems-design | Reference class forecasting from personal project history. Knows how long past projects actually took vs. estimated. Calibrates planning optimism factor. Depends on Archivist post-mortem data structure. "How long did the last thing like this actually take you?" |
+| `the-librarian` | 📚 | curation · knowledge-hygiene · connection · archival | research-lab, Content Studio, Learning Squad, Life Team | Vault stewardship, not search. Asks: "Is this note still accurate? Has this concept been superseded?" Identifies orphan notes, overlapping coverage, stale connections. The composting/forgetting machine made operational. Needs vault write access via Knowledge Skill (`write:vault` — Phase 3 extension, separate from `read:vault`). |
+| `the-mirror` | 🪞 | reflective · observational · pattern-surfacing · non-directive | decision-theater, maintenance-crew, Life Team (opt-in only) | No agenda — reflects structural patterns in behavior without interpretation. "You've started 14 projects in 6 months and finished 3. The ones you finished all had a clear constraint." Metacognitive Dashboard incarnated as agent. Constitutional layer minimal injection — "no agenda" is the SOUL constraint. |
+| `the-janitor` | 🧹 | maintenance · hygiene · system-health · housekeeping | maintenance-crew, system-level | Cron-driven system hygiene. Surfaces: stale sessions, orphaned group chats, misfired cron jobs, agents with empty SOULs, oversized memory files. Needs gateway introspection APIs (@backend: `system.introspect` namespace — sessions.list, crons.list, agents.list). |
+| `the-interlocutor` | 🎭 | perspective-taking · empathy · sustained-inhabitation · dialogic | Learning Squad, Life Team | Inhabits a perspective sincerely for the full session — no meta-commentary, no stepping outside. Distinct from Devil's Advocate (DA signals when it's done; Interlocutor stays). Constitutional layer framed within the perspective, not above it. Freire: genuine dialogue between equals. |
+| `the-scaffolder` | 🏗️ | access · bridging · translation · minimum-viable-understanding | Learning Squad | Vygotsky ZPD made operational. Builds minimum viable understanding to engage with primary sources — then steps aside. Oriented toward access, not mastery. Distinct from Educator (curriculum/mastery) and Researcher (finding evidence). |
+| `the-archivist` | 🕰️ | archival · narrative · retrospective · preservation | Content Studio, Dev Squad | Project post-mortems as narrative (not changelog). Longitudinal synthesis: annual intellectual autobiography from voice corpus + conversation history. Slower/more reflective register than Mentor. Referenced in ORAL_HISTORY.md and COGNITIVE_ARTIFACT.md — post-mortem format to be specced in ORAL_HISTORY.md. Estimator depends on Archivist post-mortem data. |
+| `the-ambient-agent` | 🌊 | ambient · monitoring · selective-surfacing · initiative | system-level, cron-driven | Never asks — only surfaces when it has something worth saying. Monitors vault for structural changes, tracks bookmarked papers for updates, notices emerging clusters in notes. Formalizes §4.2 "Polly noticed…" card. Background agent with SOUL optimized for observation and selective surfacing. |
+| `the-experimentalist` | 🧪 | hypothesis-driven · falsifiability · empirical-rigor · methodology | research-lab, makers-bench, signals-studio, systems-design | Brings empirical rigor to creative and technical contexts without killing exploration. Asks "how would we know if this were wrong?" Designs tests, evaluates methodology, checks falsifiability. Distinct from Researcher (finds evidence) and Analyst (interprets data). "hypothesis-driven sound design" in sonic contexts. |
+| `the-translator` | 🌐 | register-shifting · institutional · plain-language · conversion | civic-workshop | Converts between institutional language (legal, bureaucratic, technical) and plain language, and vice versa. Does not create — converts. "What does this zoning ordinance actually mean for my block?" is Translator work. Distinct from the Writer (who crafts content). |
+
+> **Note:** Full SOUL templates for these agents are a `POLLY_AGENT_TEMPLATES.md` TODO. They are captured here as stubs so team templates can reference them. The SPEC_INDEX.md agent stub table should be considered superseded by this section — this file is authoritative.
+
