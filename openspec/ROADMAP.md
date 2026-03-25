@@ -22,21 +22,22 @@ A native iOS app (React Native + Expo) connecting to a self-hosted OpenClaw gate
 |---|--------|--------|------|
 | 1 | `phase-1-ios-foundation` | 🔨 In progress | — |
 | 2 | `phase-1-agent-system` | 🔨 In progress | — |
-| 3 | `phase-2-knowledge-skill` | 📋 Planned | Phase 1 complete |
-| 4 | `phase-2-skills-marketplace` | 📋 Planned | Phase 1 complete |
-| 5 | `phase-2-push-security` | ⚠️ Required pre-production | Phase 1 complete |
-| 6 | `phase-2-lockdown-mode` | 📋 Planned | Phase 1 + architectural hooks set in Phase 1 |
-| 7 | `phase-2-cognitive-artifact` | 📋 Planned | Phase 1 agent system complete |
-| 8 | `phase-2-model-routing` | 📋 Planned | Phase 1 complete (@backend 3 gateway changes required) |
-| 9 | `phase-2-swarm-coordination` | 📋 Planned | Phase 1 group chat foundation (@backend 2 gateway changes required) |
-| 10 | `phase-2-sensibility-behavior` | 📋 Planned | Phase 1 sensibility foundation complete |
-| 11 | `phase-2-figma-integration` | 📋 Planned | Phase 1 complete (low priority) |
-| 12 | `phase-3-cognitive-features` | 💡 Specced | Phase 2 Knowledge Skill |
-| 13 | `phase-3-creative-systems` | 💡 Specced | Phase 2 Knowledge Skill |
-| 14 | `phase-3-rag-routing` | 💡 Specced | Phase 2 Knowledge Skill + Phase 2 model-routing |
-| 15 | `phase-3-swarm-structured` | 💡 Specced | Phase 2 swarm-coordination + Phase 1 agent system (Liaison SOUL) |
-| 16 | `phase-3-sensibility-picker` | 💡 Specced | Phase 2 sensibility-behavior complete |
-| 17 | `phase-4-federation` | 💡 Future | Phase 3 complete |
+| 3 | `phase-1-testing-infrastructure` | 📋 Planned | Must ship alongside Phase 1 features |
+| 4 | `phase-2-knowledge-skill` | 📋 Planned | Phase 1 complete |
+| 5 | `phase-2-skills-marketplace` | 📋 Planned | Phase 1 complete |
+| 6 | `phase-2-push-security` | ⚠️ Required pre-production | Phase 1 complete |
+| 7 | `phase-2-lockdown-mode` | 📋 Planned | Phase 1 + architectural hooks set in Phase 1 |
+| 8 | `phase-2-cognitive-artifact` | 📋 Planned | Phase 1 agent system complete |
+| 9 | `phase-2-model-routing` | 📋 Planned | Phase 1 complete (@backend 3 gateway changes required) |
+| 10 | `phase-2-swarm-coordination` | 📋 Planned | Phase 1 group chat foundation (@backend 2 gateway changes required) |
+| 11 | `phase-2-sensibility-behavior` | 📋 Planned | Phase 1 sensibility foundation complete |
+| 12 | `phase-2-figma-integration` | 📋 Planned | Phase 1 complete (low priority) |
+| 13 | `phase-3-cognitive-features` | 💡 Specced | Phase 2 Knowledge Skill |
+| 14 | `phase-3-creative-systems` | 💡 Specced | Phase 2 Knowledge Skill |
+| 15 | `phase-3-rag-routing` | 💡 Specced | Phase 2 Knowledge Skill + Phase 2 model-routing |
+| 16 | `phase-3-swarm-structured` | 💡 Specced | Phase 2 swarm-coordination + Phase 1 agent system (Liaison SOUL) |
+| 17 | `phase-3-sensibility-picker` | 💡 Specced | Phase 2 sensibility-behavior complete |
+| 18 | `phase-4-federation` | 💡 Future | Phase 3 complete |
 
 ## Domains (specs/)
 

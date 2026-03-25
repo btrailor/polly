@@ -285,7 +285,12 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 
 ### QA Gate
 - [ ] `VOICE_BEHAVIOR_TESTS.md` test suite (543 lines) — all passing
+- [ ] Protocol compliance tests (13/13) — TEST-PROTO-001 through 013
+- [ ] Security tests (9/9) — TEST-SEC-001 through 009 (TEST-SEC-003 in CI)
+- [ ] Coverage ≥60% statements, ≥50% branches
+- [ ] CI pipeline green on every push
 - [ ] @qa_guy sign-off
+- [ ] @security_audit: confirm TEST-SEC-003 (zero credential leaks) in CI
 
 ## iPad
 Phase 1 target is iPhone. iPad renders phone layout at full width — acceptable. Navigation architecture must not paint itself into a phone-only corner (split-view sidebar is Phase 2). Add `// TODO: iPad adaptive layout` markers at drawer and chat layout.
