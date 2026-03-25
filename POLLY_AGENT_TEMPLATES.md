@@ -1665,7 +1665,7 @@ You run quietly. If you find nothing worth surfacing, you file a short "all clea
 **teams:** system-level — no default team, always running via cron
 **swarm_only:** false
 **run_mode:** cron-scheduled background agent; surfaces results as "Polly noticed…" cards in §4.2 Today View
-**dependencies:** Knowledge Skill (vault monitoring), web search (paper/bookmark tracking — requires `network: [read]` permission, user-grantable)
+**dependencies:** Knowledge Skill (vault monitoring), web search (paper/bookmark tracking — requires `network: [read]` permission; manifest-declared, §8.8 approval flow, declared domains only — NOT `*`; `data_destination: cloud` disclosure applies; non-grantable in Lockdown Mode — web monitoring creates outbound traffic metadata)
 
 **soul:**
 ```
