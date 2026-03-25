@@ -2,7 +2,7 @@
 
 **Status:** 📋 Planned  
 **Gate:** Phase 1 iOS Foundation complete  
-**Spec source:** `SKILLS_MARKETPLACE.md`, `MCP_ADAPTER.md`  
+**Spec source:** `SKILLS_MARKETPLACE.md`, `MCP_ADAPTER.md`, `ASSET_STATE_MACHINE.md`  
 **Pre-ship gate:** @security_audit sign-off on both specs required
 
 ## Goal
@@ -27,6 +27,11 @@ Let users discover and install skills from ClawHub. First-party skills (Knowledg
 - [ ] Verified tier: cryptographic signature verification (Polly public key trust anchor)
 - [ ] Blocked tier: gateway-level rejection
 - [ ] Permission-adding update → full re-consent flow
+
+### Gateway — Asset State Machine (`ASSET_STATE_MACHINE.md`)
+- [ ] Asset lifecycle states: pending / active / stale / evicted
+- [ ] Cross-skill asset sharing default: no (locked per verbal agreement)
+- [ ] Asset eviction policy on skill uninstall
 
 ### iOS — ClawHub Browser
 - [ ] Skill discovery UI (Verified / Community filter)

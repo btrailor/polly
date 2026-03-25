@@ -21,6 +21,25 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 
 ## Tasks
 
+### Dependencies — Install Before Any Implementation
+- [ ] `expo-secure-store` — gateway credential storage
+- [ ] `react-native-mmkv` — fast local state persistence
+- [ ] `zustand` — state management
+- [ ] `@shopify/flash-list` — high-performance message list
+- [ ] `react-native-markdown-display` — markdown rendering in chat
+- [ ] `lucide-react-native` — icon system (design constitution)
+- [ ] `expo-keep-awake` — screen-on during voice recording
+- [ ] `expo-av` or `expo-audio` — real audio recording
+- [ ] `expo-document-picker` — vault security-scoped bookmarks
+- [ ] Gateway client library (`expo-openclaw-chat` or equivalent — confirm with @backend)
+
+### Lockdown Mode — Phase 1 Architectural Hooks (LOCKDOWN_MODE.md)
+*Full Lockdown Mode ships Phase 2, but these architectural decisions are not retrofittable. Must be designed now.*
+- [ ] File storage model: all session files use iOS `NSFileProtectionComplete` (Complete Protection class) — @backend + @frontend agree on path
+- [ ] Voice buffer policy: voice audio never written to disk — buffers memory-only only. `useVoiceRecording.ts` must enforce this from the start.
+- [ ] Secure Enclave key path: document where gateway encryption key will live (Secure Enclave vs. Keychain) — @backend decision, must be locked in Phase 1 before any credential storage is implemented
+- [ ] No APNs dependency for core functionality — gateway connection must work without push (polling fallback required)
+
 ### Gateway Connection (§3)
 - [ ] `expo-secure-store` integration — read/write gateway URL + auth token
 - [ ] Wire `app/index.tsx` gateway check to actual secure store (remove `isConfigured = false` hardcode)

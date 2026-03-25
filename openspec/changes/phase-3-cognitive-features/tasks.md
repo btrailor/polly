@@ -2,7 +2,7 @@
 
 **Status:** 💡 Specced  
 **Gate:** Phase 2 Knowledge Skill complete (shared FAISS index + conversation history adapter required)  
-**Spec sources:** `EPISTEMIC_IMMUNE_SYSTEM.md`, `METACOGNITIVE_DASHBOARD.md`, `TEMPORAL_INTELLIGENCE.md`, `STRUCTURAL_ANALOGY.md`, `DREAM_LOGIC.md`, `PRACTICE_LAYER.md`, `ORAL_HISTORY.md`
+**Spec sources:** `EPISTEMIC_IMMUNE_SYSTEM.md`, `METACOGNITIVE_DASHBOARD.md`, `TEMPORAL_INTELLIGENCE.md`, `STRUCTURAL_ANALOGY.md`, `DREAM_LOGIC.md`, `PRACTICE_LAYER.md`, `ORAL_HISTORY.md`, `CL4R1T4S_RESEARCH.md` (EIS pattern vocabulary), `ANTI_PRODUCTIVITY.md` (Practice Layer dormancy data)
 
 ## Goal
 
@@ -18,7 +18,7 @@ All features below require Phase 2 Knowledge Skill. Additional dependencies note
 Detects when rhetorical patterns that have bypassed Brett's critical faculties in the past recur in new contexts. Layer 6 prompt injection.
 
 - [ ] `rhetorical-structure-extractor` index hook registered at startup
-- [ ] Pattern library built from Contrarian session outcomes
+- [ ] Pattern library built from Contrarian session outcomes (starting vocabulary: `CL4R1T4S_RESEARCH.md`)
 - [ ] `polly.epistemic.flags` gateway config key (runtime-updated)
 - [ ] Layer 6 injection into prompt assembly (request-scoped — confirm with @backend)
 - [ ] Flag presentation: legible (show pattern + why), never blocks
@@ -68,7 +68,7 @@ Derives a map of the user's creative practices from vault structure and timestam
 - [ ] Derived from Knowledge Skill wikilink graph + file timestamps
 - [ ] Dormancy alert
 - [ ] Cross-pollination view
-- [ ] Feeds: Anti-Productivity, Conversation Architecture
+- [ ] Feeds: Anti-Productivity (`ANTI_PRODUCTIVITY.md`), Conversation Architecture
 
 ### Oral History
 Voice transcripts → longitudinal intellectual autobiography.

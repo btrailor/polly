@@ -2,7 +2,7 @@
 
 **Status:** 💡 Specced  
 **Gate:** Phase 2 Knowledge Skill complete  
-**Spec sources:** `CREATIVE_CONSTRAINT_ENGINE.md`, `CONVERSATION_ARCHITECTURE.md`, `CHORUS_MODE.md`, `SOMATIC_INTERFACE.md` (Phase 1 foundation, Phase 3 full feature), `DREAM_LOGIC.md`
+**Spec sources:** `CREATIVE_CONSTRAINT_ENGINE.md`, `CONVERSATION_ARCHITECTURE.md`, `CHORUS_MODE.md`, `SOMATIC_INTERFACE.md` (Phase 1 foundation, Phase 3 full feature), `DREAM_LOGIC.md`, `CREATIVE_CODE_SKILL.md`
 
 ## Goal
 
@@ -48,4 +48,12 @@ Phase 1 specced locks. Phase 3 full feature with Practice Layer + EIS integratio
 - [ ] Lockdown mode: prosodics disabled + non-toggleable (behavioral metadata = potential evidence)
 
 ## Done when
-All features shipped. Chorus grid rendering on iPad. Creative Constraint Engine modes activatable by user. Conversation Architecture topology library in Liaison.
+All features shipped. Chorus grid rendering on iPad. Creative Constraint Engine modes activatable by user. Conversation Architecture topology library in Liaison. Creative Code Skill sandboxed execution working.
+
+### Creative Code Skill (`CREATIVE_CODE_SKILL.md`)
+Sandboxed generative code execution — agents can write and run code as part of a creative workflow.
+
+- [ ] Depends on: skill runner (phase-2-skills-marketplace) + token schema
+- [ ] Sandboxed execution environment (sandbox-exec, stdio-only IPC)
+- [ ] Token schema for structured code output
+- [ ] Agent manifest `allowed_modes` entry for code execution
