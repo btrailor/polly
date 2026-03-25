@@ -49,7 +49,7 @@ The skill runs entirely on the gateway machine. All embeddings are computed loca
 Obsidian notes are fragments, not documents. A note might be 3 bullet points, a half-finished idea, a name and phone number, or a project title with no body. Dense retrieval alone (semantic similarity) fails on short/sparse content — not enough signal. Sparse (keyword) retrieval handles those cases. Hybrid covers both.
 
 **Stack:**
-- **Dense:** FAISS index with SBERT embeddings (`BAAI/bge-large-en` — top MTEB benchmark, 1024-dim, Apache-2.0; lightweight alternative: `all-MiniLM-L6-v2` 384-dim, configurable)
+- **Dense:** FAISS HNSW index (`IndexHNSWFlat` — faster at scale than flat L2, minimal accuracy loss) with embeddings from `BAAI/bge-large-en` (1024-dim, top MTEB benchmark, Apache-2.0). Lightweight alternative: `Qwen/Qwen3-Embedding-0.6B` (compact, competitive). Configurable.
 - **Sparse:** SBERT Sparse Encoder (unified with dense pipeline — one library handles both legs of hybrid retrieval)
 - **Fusion:** Reciprocal Rank Fusion (RRF) — combines dense and sparse rankings without requiring score normalization
 
@@ -85,6 +85,10 @@ This enables relationship queries that FAISS cannot answer:
 - "Show me everything linked from my weekly review for March 10"
 
 GraphRAG (microsoft/graphrag) is the reference implementation for this layer. Due to its indexing cost, the graph layer is **opt-in** — users with large, well-linked vaults can enable it. Default install uses FAISS + SBERT sparse only.
+
+### Optional: Query Expansion
+
+Before retrieval, ask the LLM to rewrite the user's query to improve recall — expanding abbreviations, adding synonyms, clarifying intent. Adds one LLM call (~100ms) but meaningfully improves retrieval on short or ambiguous queries. Default: off (adds latency on fast lookups); user-configurable.
 
 ### Optional: Re-ranking
 
