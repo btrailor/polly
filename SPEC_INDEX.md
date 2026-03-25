@@ -28,6 +28,7 @@ Single source of truth for all spec documents. A spec doesn't officially exist u
 | `AGENT_BOOTSTRAP_DEV.md` | 1 | 💡 Idea | Dev group chat SOUL override — git state verification, PROJECT_STATUS read, spec file existence check |
 | `TREE_OF_THOUGHTS.md` | 3 | 💡 Idea | ToT as activatable reasoning mode under §11 (mental models); secondary hook: plan-space search/goal decomposition. Composable with existing cognitive lenses. Ref: https://github.com/kyegomez/tree-of-thoughts |
 | `KNOWLEDGE_SKILL.md` | 2 | 📋 Planned | Unified knowledge skill — pluggable adapter architecture. Obsidian vault + BookLore/EPUB sources. FAISS HNSW + SBERT sparse + RRF + cross-encoder re-ranking. Single install, source cards UI, filter chips in chat. @security_audit gate required. Supersedes `VAULT_RAG_SKILL.md`. |
+| `MCP_ADAPTER.md` | 2 | 💡 Idea | MCP (Model Context Protocol) transport adapter for OpenClaw skill runner. Wraps any MCP server as a native skill — preserves §8.8 permission model, unlocks 20+ pre-built integrations (GitHub, Slack, Postgres, Brave Search, etc.). Decision: MCP as adapter layer, NOT as replacement for our manifest format. Ref: https://github.com/modelcontextprotocol/servers |
 
 ---
 
