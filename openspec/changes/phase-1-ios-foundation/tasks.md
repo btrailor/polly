@@ -171,10 +171,12 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] Replace 🎤 emoji with Lucide `Mic` icon in `VoiceMicButton.tsx` line 269
 - [ ] Remove Swift `UIApplication.shared.isIdleTimerDisabled` from `VOICE_INTERACTION.md` REQ-VOICE-01 spec (use `expo-keep-awake`)
 
-### Vault Quick Capture (§10)
+### Vault Quick Capture (§10 + KNOWLEDGE_WRITE_PATH.md §3.1)
 - [ ] `expo-document-picker` security-scoped bookmark for Obsidian vault
-- [ ] Write to `_inbox/` on capture
+- [ ] Write to `_inbox/YYYY-MM-DD-HHmm-{slug}.md` using standard frontmatter (KNOWLEDGE_WRITE_PATH.md §2)
 - [ ] Quick capture entry point in chat screen or home
+- [ ] **Offline degradation**: if gateway unavailable at capture time, write with `domain: null` and `tags: []` — no silent failures, deferred enrichment at promotion
+- [ ] Fallback destination: `~/.polly/inbox/` on gateway if no vault configured; sync when vault connected
 
 ### Mental Models (§11)
 - [ ] Mental model data definitions (12 built-in models)

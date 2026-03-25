@@ -344,6 +344,73 @@ Each Phase 3 feature that consumes Knowledge Service data must declare its depen
 
 ---
 
+## 6.1 `knowledge_dedup` (Phase 2)
+
+Checks for semantically similar content before a vault write. Called by the write pipeline before committing any note. Never blocks silently — always surfaces warnings for user resolution.
+
+```json
+{
+  "name": "knowledge_dedup",
+  "description": "Check if similar content already exists in the knowledge base. Returns similar notes and a recommendation. Called before every vault write.",
+  "parameters": {
+    "content": "string — note body (or first 500 chars for performance)",
+    "threshold": "float — similarity threshold 0.0–1.0 (see recommended defaults below)"
+  },
+  "returns": {
+    "similar_notes": "[{ title: string, path: string, similarity_score: float, preview: string }]",
+    "recommendation": "\"create\" | \"merge\" | \"skip\""
+  }
+}
+```
+
+**Recommended thresholds by write origin (locked 2026-03-25, @backend):**
+
+| Origin | Default Threshold |
+|--------|-----------------|
+| `quick-capture` | 0.85 |
+| `share-extension` | 0.85 |
+| `promotion` | 0.80 |
+| `conversation-save` | 0.75 |
+| `write-back` | 0.70 (matches `core/notes_dedup.py` default) |
+
+```
+Consumers: write pipeline (all Phase 2+ write paths)
+Access: read-only (does not write anything)
+Phase: 2+
+SLA: p95 < 200ms (500-char truncated input)
+Degradation: if index unavailable → return recommendation: "create", similar_notes: [] — never block a write
+```
+
+---
+
+## 6.2 `vault.write_complete` Event (Phase 1)
+
+The gateway write path emits this event after every successful vault write, regardless of backend (Obsidian or Notion). The Knowledge Skill subscribes and triggers an incremental index update. This decouples indexing from the file watcher (which misses Notion writes and can lag on Obsidian).
+
+```json
+{
+  "event": "vault.write_complete",
+  "payload": {
+    "path": "string — vault-relative path (Obsidian) or Notion page ID",
+    "backend": "\"obsidian\" | \"notion\"",
+    "operation": "\"create\" | \"update\" | \"delete\"",
+    "metadata": {
+      "source": "\"capture\" | \"agent\" | \"promotion\" | \"conversation\" | \"import\"",
+      "domain": "string | null",
+      "maturity": "string"
+    }
+  }
+}
+```
+
+**Subscribers:**
+- Knowledge Skill — incremental index update on every `create` or `update`
+- Practice Layer (Phase 3) — engagement tracking on `create`
+
+**Owner:** @backend — gateway write path emits this event. Knowledge Skill subscribes via internal event bus.
+
+---
+
 ## 7. Open Questions
 
 **Resolved:**

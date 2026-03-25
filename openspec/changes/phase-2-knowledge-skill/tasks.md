@@ -89,5 +89,14 @@ Single service model. One FAISS HNSW index. All Phase 3 features consume via too
 - [ ] [BLOCKED: @backend §4 review] Finalize config read path caching (session vs. request scoped, Layer 5/6)
 - [ ] `manifest.json` Phase 1 export hook (@backend owns — `COGNITIVE_ARTIFACT.md §4`)
 
+### Write Path Integration (KNOWLEDGE_WRITE_PATH.md Phase 2)
+- [ ] Promotion pipeline: inbox → organized note (promotion sheet UI: title, domain, tags, folder, maturity, links, preview)
+- [ ] `knowledge_dedup` tool implementation — semantic similarity check before write (see contracts §6.1)
+- [ ] Dedup defaults: quick-capture/share=0.85, promotion=0.80, conversation-save=0.75, write-back=0.70
+- [ ] Wikilink suggestions at promotion time: simple title matching against `knowledge_graph` note index
+- [ ] "Save conversation to vault" write path (long-press → Save to Vault)
+- [ ] `vault.write_complete` event emission from gateway write path — Knowledge Skill subscribes for incremental index (see contracts §6.2)
+- [ ] @backend: implement `vault.write_complete` event in gateway write path
+
 ## Done when
-All tasks checked. @security_audit sign-off. Filter chips working in chat. Vault + BookLore indexing on device.
+All tasks checked. @security_audit sign-off. Filter chips working in chat. Vault + BookLore indexing on device. Promotion pipeline functional. Dedup tool live.

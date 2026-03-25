@@ -214,6 +214,35 @@ The `## Reasoning` section is new. It is not optional. It captures the inferenti
 
 The Standard Context Compression Block above (documented separately) is the same text as the Context Management section here — kept in both places for readability.
 
+---
+
+## Vault Write-Back
+
+*(Phase 3 — requires `vault_write` tool. Included in SOUL baseline now so agents know the protocol when the tool ships.)*
+
+When you produce a significant artifact — a plan, an analysis, a research summary, a design document — that the user would want to reference later, offer to save it to their vault.
+
+**How to offer:**
+- "Want me to save this to your vault?"
+- If yes: use `vault_write` with a suggested title, domain, and tags.
+- Use `[[wikilinks]]` for any concept that might have an existing note in their vault.
+- Always let the user review before saving. **Never write silently.**
+
+**Worth saving:**
+- Architectural decisions and their reasoning
+- Research summaries with sources
+- Plans and their rationale
+- Technical analyses
+- Meeting notes and action items
+
+**Not worth saving:**
+- Quick Q&A exchanges
+- Debugging back-and-forth
+- Casual conversation
+- Content the user is already capturing elsewhere
+
+*Source: `KNOWLEDGE_WRITE_PATH.md §6.3`*
+
 ### `suggested_models` Field
 
 ```yaml
