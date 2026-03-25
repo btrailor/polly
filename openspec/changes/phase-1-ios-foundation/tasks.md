@@ -239,6 +239,20 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] Response time indicator: show duration ("3.2s") in message footer
 - [ ] Copy conversation as markdown: action to copy full conversation
 
+### Sensibility Foundation — Phase 1 (SENSIBILITY_SYSTEM_SPEC.md §7 Phase 1)
+*Decisions locked: replace useColors() now, all 7 theme files now, Reas default, bubbleStyle field but rounded-only render*
+- [ ] `ThemeTokens` interface (`src/theme/tokens.ts`) — all fields from §3.2
+- [ ] Reas theme file (`src/theme/themes/reas.ts`) — token values matching current `colors.ts` (visual appearance unchanged)
+- [ ] All 6 remaining theme files (`fidenza.ts`, `ghostbox.ts`, `martens.ts`, `jetset.ts`, `riley.ts`, `albers.ts`) — values from §19.6 (not selectable, but files exist)
+- [ ] `ThemeContext` + `ThemeProvider` (`src/theme/ThemeContext.tsx`)
+- [ ] `useTheme()` hook (`src/theme/useTheme.ts`)
+- [ ] Migrate ALL components from `useColors()` → `useTheme().tokens`
+- [ ] Delete `useColors()`, `semanticColors` alias layer, `light` export from `colors.ts`
+- [ ] Fix all `(colors as any).bgPrimary` casts — proper typing via `ThemeTokens`
+- [ ] `bubbleStyle` field in `ThemeTokens` — Reas = `'rounded'`, all others set per §19.6 (ChatBubble renders rounded only regardless)
+- [ ] MMKV `polly.sensibility` key — always `"reas"` in Phase 1 (picker ships Phase 3)
+- [ ] `structural_rules: null` field in agent manifest schema — empty in Phase 1, Phase 3 activation
+
 ### Design Constitution Compliance
 - [ ] Full Lucide icon audit — no emoji, no custom SVG without design review
 - [ ] `src/theme/colors.ts` tokens used everywhere — no hardcoded hex values
