@@ -49,7 +49,7 @@ The skill runs entirely on the gateway machine. All embeddings are computed loca
 Obsidian notes are fragments, not documents. A note might be 3 bullet points, a half-finished idea, a name and phone number, or a project title with no body. Dense retrieval alone (semantic similarity) fails on short/sparse content — not enough signal. Sparse (keyword) retrieval handles those cases. Hybrid covers both.
 
 **Stack:**
-- **Dense:** FAISS index with SBERT embeddings (`all-MiniLM-L6-v2` — fast, small, local)
+- **Dense:** FAISS index with SBERT embeddings (`BAAI/bge-large-en` — top MTEB benchmark, 1024-dim, Apache-2.0; lightweight alternative: `all-MiniLM-L6-v2` 384-dim, configurable)
 - **Sparse:** SBERT Sparse Encoder (unified with dense pipeline — one library handles both legs of hybrid retrieval)
 - **Fusion:** Reciprocal Rank Fusion (RRF) — combines dense and sparse rankings without requiring score normalization
 
@@ -85,6 +85,12 @@ This enables relationship queries that FAISS cannot answer:
 - "Show me everything linked from my weekly review for March 10"
 
 GraphRAG (microsoft/graphrag) is the reference implementation for this layer. Due to its indexing cost, the graph layer is **opt-in** — users with large, well-linked vaults can enable it. Default install uses FAISS + SBERT sparse only.
+
+### Optional: Re-ranking
+
+After initial FAISS retrieval (top-N candidates), run a Cross-Encoder re-ranker to re-score and re-order results for precision before passing to the agent. Cross-Encoders are slower than bi-encoders but more accurate for final ranking — the two-stage approach (fast retrieval → precise re-rank) is the standard production pattern.
+
+Default: re-ranking on, top-20 retrieved, top-5 returned after re-rank.
 
 ### Optional: HyDE (Hypothetical Document Embeddings)
 
