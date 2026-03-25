@@ -361,8 +361,11 @@ Any update adding permissions triggers full re-approval flow with new permission
 - [ ] Query expansion (opt-in)
 - [ ] FLARE (forward-looking active retrieval — per FlashRAG benchmarks, arXiv:2405.13576)
 - [ ] Iter-RetGen (iterative retrieval-generation — multi-hop queries)
-- [ ] Notion adapter
-- [ ] PDF folder adapter
+- [ ] Notion adapter (evaluate LlamaHub Notion loader first — check freshness, incremental indexing support, metadata fidelity before adopting)
+- [ ] PDF folder adapter (evaluate LlamaHub PDF loader)
+- [ ] Google Drive adapter (LlamaHub loader maintained by Google — higher trust)
+- [ ] YouTube transcript adapter
+> **LlamaHub note:** Loaders vary in maintenance quality. Before adopting any as a dependency: check last commit date, open issues, and LlamaIndex API version compatibility (v0.x vs v0.10+ — breaking change). Ref: https://llamahub.ai
 - [ ] Multi-vault support (multiple Obsidian vaults)
 - [ ] Domain-aware retrieval (filter by domain tags configured in §11.2)
 
