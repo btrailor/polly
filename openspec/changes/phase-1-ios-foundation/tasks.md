@@ -31,6 +31,8 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] `expo-keep-awake` — screen-on during voice recording
 - [ ] `expo-av` or `expo-audio` — real audio recording
 - [ ] `expo-document-picker` — vault security-scoped bookmarks
+- [ ] `expo-haptics` — haptic feedback throughout app
+- [ ] `expo-sqlite` — local message cache (offline support)
 - [ ] Gateway client library (`expo-openclaw-chat` or equivalent — confirm with @backend)
 
 ### Lockdown Mode — Phase 1 Architectural Hooks (LOCKDOWN_MODE.md)
@@ -47,6 +49,10 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] Reconnect logic with exponential backoff
 - [ ] Connection state store (Zustand or MMKV): connected/reconnecting/failed
 - [ ] Gateway health indicator in UI
+- [ ] Per-agent session key construction: `agent:<agentId>:main` format (§3.7)
+- [ ] Idempotency key on every send — prevents duplicate messages on retry (§3.5)
+- [ ] `NO_REPLY` / `HEARTBEAT_OK` silent reply filtering — never render these in chat (§3.6)
+- [ ] `NSAllowsLocalNetworking` in `Info.plist` — required for LAN WebSocket (§3.14)
 
 ### Onboarding Flow (§5)
 - [ ] Gateway URL input field with validation
@@ -57,30 +63,85 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] Agent roster seeded from selected team template
 - [ ] Onboarding → main app navigation on completion
 
-### State Management
+### State Management (§12)
 - [ ] Agent/team store (current team, agent list, active agent)
 - [ ] Session store (current session ID, message history)
 - [ ] Settings store (gateway URL, model selection, appearance)
+- [ ] Unread store — per-session unread counts, clear on session focus
 - [ ] Persistence layer (MMKV for non-sensitive, expo-secure-store for credentials)
+- [ ] `lastActiveSessionKey` — persist in MMKV, restore on launch
+- [ ] `draftText.[sessionKey]` — persist unsent input text per session across restarts
 
 ### Navigation + Layout (§6)
 - [ ] `DrawerPanel` component — custom animated drawer (§6.24: Animated + PanGestureHandler, NOT @react-navigation/drawer)
 - [ ] Mount DrawerPanel as overlay in `MainLayout` (remove TODO comment)
 - [ ] Agent list inside drawer, team-scoped
 - [ ] Team switcher in drawer
+- [ ] Session list in drawer TODAY section (sessions.list integration)
+- [ ] Swipe-left on session row → delete (with confirmation)
+- [ ] Long-press on session row → rename / delete / pin
+- [ ] Unread badge dot on hamburger icon when any session has unread > 0
 - [ ] Bottom tab bar or equivalent navigation between main surfaces
+
+### Chat Screen — Input Bar (§4)
+- [ ] Mic/Send toggle: right button shows `Mic` (Lucide) when input empty, `SendHorizontal` (Lucide) when text present — crossfade ~150ms
+- [ ] Send button: disabled (muted) when empty, enabled (accent) when text present
+- [ ] `[+]` attachment button left of input — opens bottom sheet with: Vault Note, Mental Model, Quick Capture; Photo + File slots shown as "Phase 2" disabled
+- [ ] Send on Enter (hardware keyboard — iPad, Bluetooth); Shift+Enter for newline
+- [ ] Send haptic: light impact on send
+- [ ] `keyboardDismissMode="interactive"` on message FlatList (keyboard follows finger like iMessage)
+- [ ] Stop generation button: during streaming, right button becomes filled square (Lucide `Square`); taps call `chat.abort`
+- [ ] Slash command palette: typing `/` as first character opens command list for active agent; filters as user types; tapping populates or executes
 
 ### Chat Screen — Core (§4)
 - [ ] WebSocket message send (text input → gateway)
 - [ ] Streaming message receive (gateway → render)
-- [ ] Message list (FlatList, inverted, scrolls to bottom on new message)
+- [ ] Message list (FlashList, inverted, scrolls to bottom on new message)
+- [ ] `keyboardShouldPersistTaps="handled"` on message list
 - [ ] Message bubbles: user vs. agent distinction
 - [ ] Agent name + avatar in message header
 - [ ] Markdown rendering (`react-native-markdown-display`)
+- [ ] Code block: copy button top-right (clipboard icon → checkmark, resets 2s), language label, horizontal scroll on long lines
+- [ ] Thinking/reasoning panel: collapsible (for extended thinking models) (§3.6, §6.1)
+- [ ] Tool call display: collapsible "Searching..." block shown during tool use (§4.1)
 - [ ] Typing indicator while streaming
+- [ ] Scroll-to-bottom floating button: appears when >200pt from bottom; shows unread count badge; tapping scrolls to bottom
+- [ ] Regenerate response: button below completed assistant messages (muted "↻ Regenerate") or in long-press menu; re-sends last user message
+- [ ] Long-press message → context menu: Copy, Regenerate, Share (iOS share sheet), Reply/quote
+- [ ] Date separators between messages from different days ("Today", "Yesterday", "March 23")
+- [ ] "Conversation started [date]" marker at top of loaded history
+- [ ] chat.history → pull-to-load older messages (§4.1)
 - [ ] Session continuity (reconnect resumes correct session)
+- [ ] Error states: disconnected banner ("Disconnected — [Retry]"), failed message retry icon, token-limit error in bubble, session-expired auto-recreate
+- [ ] Local message cache (expo-sqlite): persist last N messages per session; render cached messages on launch before gateway connects
 
-### Chat Screen — Group Chats (§22)
+### Chat Screen — Empty State / Cold Start
+- [ ] Suggested prompts: when session is empty, show 3–4 tappable prompt chips
+- [ ] Agent `suggested_prompts: string[]` field in template (3–4 items per agent)
+- [ ] Tapping a suggestion populates input and sends immediately
+- [ ] Agent `one_question_frame` as subtitle below agent name in empty state
+
+### Offline + Disconnected (§4)
+- [ ] On app open with no network: render cached messages, input bar disabled with "No connection" state
+- [ ] Network drops mid-conversation: queue unsent messages, show "Sending..." state, auto-retry on reconnect
+- [ ] Distinguish "gateway offline" from "no internet" in error messaging
+- [ ] Offline vault access: vault notes browsable offline; quick capture writes to local queue, syncs on connect
+
+### Loading States
+- [ ] `SkeletonLoader` component — pulsing gray rectangles matching content layout
+- [ ] Use SkeletonLoader on: chat history load, agent list, Today, Settings, session list
+- [ ] Full-screen connection state on first launch while handshake in progress
+
+### Haptics Policy (expo-haptics)
+- [ ] Send message — light impact
+- [ ] Receive first streaming token — soft notification
+- [ ] Long-press context menu open — medium impact
+- [ ] Swipe delete threshold cross — light impact
+- [ ] Error states — error notification
+
+### In-App Notifications
+- [ ] Badge dot on drawer hamburger icon when any non-active session has unread > 0
+- [ ] In-app toast banner when non-active agent posts (brief, dismissible, tappable to navigate)
 - [ ] Multi-agent session support
 - [ ] Agent header shows active participants
 - [ ] Message routing to correct agent
@@ -117,11 +178,18 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] `settings/integrations.tsx` — integration list (currently 6-line stub)
 
 ### Today Screen (§8)
-- [ ] Reminders list
+- [ ] Reminders list (cron.list integration)
 - [ ] Tasks list
 - [ ] Deadlines
 - [ ] Background process indicators
 - [ ] `aight_item` creation path (trigger, item, process types)
+
+### P2 — Nice to Have (don't block Phase 1 completion)
+- [ ] Edit and resend: long-press user message → Edit → populates input → resend replaces history from that point
+- [ ] Conversation export to vault: one tap saves conversation as Obsidian note
+- [ ] Swipe between agents: swipe left/right on chat view to switch recent agents
+- [ ] Response time indicator: show duration ("3.2s") in message footer
+- [ ] Copy conversation as markdown: action to copy full conversation
 
 ### Design Constitution Compliance
 - [ ] Full Lucide icon audit — no emoji, no custom SVG without design review
@@ -133,5 +201,8 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] `VOICE_BEHAVIOR_TESTS.md` test suite (543 lines) — all passing
 - [ ] @qa_guy sign-off
 
+## iPad
+Phase 1 target is iPhone. iPad renders phone layout at full width — acceptable. Navigation architecture must not paint itself into a phone-only corner (split-view sidebar is Phase 2). Add `// TODO: iPad adaptive layout` markers at drawer and chat layout.
+
 ## Done when
-App is functionally usable end-to-end: gateway connects, onboarding works, chat sends/receives messages with streaming, voice records real audio, drawer navigation works, Today view shows items. @qa_guy sign-off.
+All P0 tasks checked. App is functionally usable end-to-end: gateway connects, onboarding works, chat sends/receives with streaming, stop generation works, cached messages load offline, voice records real audio, drawer navigation works, Today view shows items. @qa_guy sign-off.

@@ -30,6 +30,7 @@
 - [x] Agent manifest schema defined (`id`, `category`, `allowed_modes`)
 - [x] Sensibility schema defined (`aesthetic` layer + `structural_rules` stub)
 - [ ] `allowed_modes` field written per-agent for all 43 agents (currently only documented in schema section, not on individual agents)
+- [ ] `suggested_prompts: string[]` field added to all 43 agent templates (3–4 items each) — feeds cold start empty state UI
 
 ### Agent SOULs — 33 Established Agents
 - [x] All 6 Builder agents (full SOUL + Prosodic Sensitivity)
