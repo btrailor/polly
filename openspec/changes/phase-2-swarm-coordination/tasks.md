@@ -11,14 +11,22 @@ Group chats go from conversations to coordinated work sessions. Agents can be as
 
 ## Tasks
 
-### @backend — Gateway Questions (prerequisite; 7 questions in SWARM_COORDINATION_SPEC.md §8)
-- [ ] [BLOCKED: @backend] Confirm injection format for cross-agent responses (system message? attributed assistant message?)
-- [ ] [BLOCKED: @backend] Is `chat.typing` event per-agent in groups? (needed for Phase 1 thinking toasts — if not, unblock from Phase 1 to here)
-- [ ] [BLOCKED: @backend] Can activation mode be set per-agent per-group or is it global?
-- [ ] [BLOCKED: @backend] What happens on `agent` RPC to a group where one member is deleted?
-- [ ] [BLOCKED: @backend] Does `agent` RPC support `targetAgentIds` param for selective dispatch?
-- [ ] [BLOCKED: @backend] Maximum concurrent agent runs per group?
-- [ ] [BLOCKED: @backend] Can `agents.files.set` write to another agent's workspace?
+### @backend — Gateway Status (updated 2026-03-25)
+
+**Confirmed (Q2–Q7):**
+- ✅ Q2: `chat.typing` carries `sessionKey` → `agentId` extractable → Phase 1 per-agent thinking toasts unblocked
+- ✅ Q3: Activation mode currently **global** — per-agent-per-group = Phase 2 gateway change (@backend owns)
+- ✅ Q4: Deleted agent → per-agent error, fan-out continues → @frontend: "This agent is no longer available" error bubble
+- ✅ Q5: `targetAgentIds` **not supported** — Phase 2 gateway change (@backend owns); unblocks structured conversations
+- ✅ Q6: No hard cap; Phase 2 soft cap 8 + queue pending load validation
+- ✅ Q7: Write isolated per-workspace; cross-workspace read only; `swarm_update` tool design confirmed correct
+
+**Pending:**
+- [ ] [BLOCKED: @backend] Q1: Confirm exact injection format from actual group chat session JSONL (expected: `user` role + `[Agent: {agentId}]:` header)
+
+**Phase 2 gateway changes @backend owns (add to @backend queue):**
+- [ ] [@backend] `targetAgentIds` param on `agent` RPC — selective fan-out
+- [ ] [@backend] Per-agent-per-group `activationMode` override field on group membership record
 
 ### `swarm_update` Tool
 - [ ] Tool spec finalized (SWARM_COORDINATION_SPEC.md §5.1)

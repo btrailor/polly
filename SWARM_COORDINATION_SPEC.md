@@ -65,7 +65,7 @@ This is the foundational constraint. Every coordination model has to work within
 
 Each agent in a group chat maintains its own session. For Agent A to see Agent B's response, B's response must be injected into A's session.
 
-**How Aight handles this (from live observation):** The gateway injects other agents' responses into each agent's session as assistant messages with agent attribution. Each agent sees a composite conversation thread.
+**How Aight handles this (from live observation):** Agent B's responses are injected into Agent A's session as `user` role messages with an attribution header — e.g., `[Agent: frontend-developer]: <response text>`. Not system messages, not assistant messages. This preserves each agent's ability to respond to them naturally. **⚠️ @backend to confirm:** exact role and attribution format from actual group chat session JSONL before §8 Q1 is locked. Do not treat as resolved yet.
 
 **The cost implication:** Every agent response gets injected into every other agent's context. In a 5-agent group with 20 exchanges, each agent's context contains ~100 messages. At ~500 tokens per response, that's 50k tokens per agent. Five agents = 250k tokens of context. Grows quadratically.
 
@@ -318,15 +318,21 @@ This becomes the "where did we leave off?" document for the next session. Plans 
 
 ## 8. Gateway Questions — @backend
 
-| Question | Impact |
-|----------|--------|
-| When Agent A's response is injected into Agent B's session, what format? System message? Assistant message with attribution? | Determines how agents perceive each other's responses |
-| Is there a `chat.typing` event with agent identity for groups? | Required for per-agent thinking toasts |
-| Can activation mode (`mention` vs `always`) be set per-agent per-group, or is it a global agent setting? | Determines whether activation modes are group-configurable |
-| What happens if `agent` RPC is sent to a group where one member has been deleted? | Error handling for group membership changes |
-| Does `agent` RPC support a `targetAgentIds` param to selectively dispatch to a subset of group members? | Would enable phase-managed dispatch without client-side session juggling |
-| Maximum concurrent agent runs per group? | Determines whether 8-agent groups can all fire simultaneously or are queued |
-| Can `agents.files.set` write to another agent's workspace? Or only read cross-workspace? | Determines coordinator task definition write isolation |
+**Answered 2026-03-25 (Q2–Q7 confirmed; Q1 pending JSONL verification):**
+
+| Q | Question | Answer |
+|---|----------|--------|
+| 1 | When Agent A's response is injected into Agent B's session, what format? | ⚠️ **Pending** — expected: `user` role with `[Agent: {agentId}]: <text>` attribution header. @backend to confirm from actual session JSONL before locked. |
+| 2 | Is there a `chat.typing` event with agent identity for groups? | ✅ Yes — typing/thinking event carries `sessionKey` encoding `agentId`. @frontend extracts `agentId` from `sessionKey` for per-agent toast. |
+| 3 | Can activation mode be set per-agent per-group, or is it a global agent setting? | ✅ Currently **global**. Per-agent-per-group requires group membership record `activationMode` override. **@backend Phase 2 gateway change.** |
+| 4 | What happens on `agent` RPC to a group where one member is deleted? | ✅ Per-agent error for deleted agent, fan-out continues. @frontend: render error bubble "This agent is no longer available." |
+| 5 | Does `agent` RPC support `targetAgentIds` for selective dispatch? | ✅ **Not currently supported.** Fan-out is all-or-nothing. **@backend Phase 2 gateway change** — unblocks structured conversations + cost-aware partial fan-out. |
+| 6 | Maximum concurrent agent runs per group? | ✅ No hard cap. All agents fire simultaneously. Phase 2: soft cap of 8 with queue recommended, pending load validation. |
+| 7 | Can `agents.files.set` write to another agent's workspace? | ✅ **Write isolated.** Read is cross-workspace. Coordinator writes to own workspace; members read cross-workspace. `swarm_update` tool (§5.1) is correct. |
+
+**Phase 2 gateway changes @backend owns:**
+- `targetAgentIds` param on `agent` RPC (selective fan-out)
+- Per-agent-per-group `activationMode` override field on group membership record
 
 ---
 
@@ -336,7 +342,9 @@ This becomes the "where did we leave off?" document for the next session. Plans 
 interface GroupRoutingConfig {
   groupDailyTokenLimit?: number;       // per-group budget cap
   fanOutPolicy: 'all' | 'mention-only' | 'coordinator';
-  groupTierCap?: number;               // e.g., 1 = never route group messages above Tier 1
+  // Default: 2 for groups > 3 agents (@backend 2026-03-25 — prevents always-mode groups
+  // burning Tier 3 budget at 5× rate; user can raise explicitly)
+  groupTierCap?: number;               // default: 2 (for groups > 3), undefined (for ≤ 3)
   showCostEstimate: boolean;           // default true for groups > 3 agents
 }
 ```
