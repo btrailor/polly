@@ -198,7 +198,7 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 ### Model Routing — Phase 1 (MODEL_ROUTING_SPEC.md)
 *Phase 1 = manual selection only. No auto-routing. User chooses.*
 - [ ] `ModelEntry` type + MMKV model registry (populated from `models.list`)
-- [ ] `RoutingProfile` type + MMKV storage (`polly.routing.profiles`)
+- [ ] `RoutingProfile` type + gateway config storage (`config.patch polly.routing.profiles` — @backend confirmed `config.patch` supports arbitrary keys; gateway is source of truth not MMKV)
 - [ ] `OverrideEvaluator` only — check `pinnedModel` before every send
 - [ ] Model picker component (used in: agent creation, agent detail, chat nav bar)
 - [ ] "Always use this model" toggle in agent creation + agent detail → sets `pinnedModel`

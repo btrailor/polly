@@ -142,13 +142,18 @@ type RoutingReason =
 
 ### 3.4 Storage Locations
 
-| Data | Phase 1 | Phase 2+ |
-|------|---------|---------|
-| Routing profiles | MMKV `polly.routing.profiles` | Gateway config via `config.patch polly.routing.profiles` |
-| Model registry | `models.list` response + user annotations in MMKV | Same |
-| Routing decisions | MMKV `polly.routing.history` (ring buffer, last 100) | SQLite `~/.polly/routing_decisions.db` |
-| Per-agent model override | `agents.update({ agentId, model })` | Same |
-| Budget tracking | MMKV | Gateway config `polly.routing.budget.{tier}.used` |
+**Architectural decision (2026-03-25, @backend):** Routing profiles live in gateway config from day one — `config.patch polly.routing.profiles`. Not MMKV. MMKV is device-local; re-install or second device would wipe profiles. Gateway config is persistent and device-agnostic. iOS reads and renders, but gateway is source of truth. Cost is near-zero — `config.patch` already supports arbitrary namespaces.
+
+| Data | Storage | Phase |
+|------|---------|-------|
+| Routing profiles | Gateway config `polly.routing.profiles` via `config.patch` | Phase 1+ |
+| Model registry | `models.list` response + hardcoded capability table (Phase 1) | Phase 1 |
+| Model registry capabilities | `models.list` extended response (context window + strength tags — @backend Phase 2 gateway change) | Phase 2 |
+| Routing decisions | MMKV `polly.routing.history` (ring buffer, last 100) | Phase 1 |
+| Routing decisions | SQLite `~/.polly/routing_decisions.db` | Phase 2 |
+| Per-agent model override | `agents.update({ agentId, model })` on gateway | Phase 1 |
+| Budget tracking | MMKV | Phase 1 |
+| Budget tracking | Gateway config `polly.routing.budget.{tier}.used` | Phase 2 |
 
 ---
 
@@ -334,14 +339,21 @@ RAG results injected at Layer 2 (domain context) in the 7-layer injection hierar
 
 ## 9. Open Questions for @backend
 
-| Question | Impact |
+**Answered 2026-03-25:**
+
+| Question | Answer |
 |----------|--------|
-| Does `sessions.patch` accept a `model` field? | Determines Phase 2 routing insertion point (Option B) |
-| Does `agents.update` apply immediately or only to new messages? | Race condition severity for Option A |
-| Does `chat` event payload include the model that was actually used? | Required for model attribution in chat bubbles |
-| Can `models.list` return context window size per model? | Auto-populates model registry without manual entry |
-| Is there a usage event per-message with token counts? | Required for budget tracking |
-| Can `config.patch` write to arbitrary keys (`polly.routing.profiles`)? | Determines Phase 2+ routing config storage |
+| Does `sessions.patch` accept a `model` field? | Not currently — session bound to agent model at creation. @backend will verify and add if not present (worth gateway work to eliminate Phase 2 race condition). |
+| Does `agents.update` apply immediately or only to new messages? | New messages only, not in-flight. Phase 1 race condition (Option A) is real but low-risk with single client. Revisit Phase 2. |
+| Does `chat` event payload include the model used? | Yes — response event includes agent's configured model at dispatch time. @backend to confirm field name in payload schema. |
+| Can `models.list` return context window size? | Not currently. Phase 1: hardcode capability table for known models. Phase 2 gateway change: @backend adds context window + strength tags to `models.list`. |
+| Is there a per-message usage event with token counts? | Yes — completion event fires when response finishes; token counts included. @backend to confirm field names and ensure they're exposed to iOS client (not just server-side logged). |
+| Does `config.patch` support arbitrary keys (`polly.routing.profiles`)? | Yes — supports arbitrary key paths under user-defined namespaces. Same mechanism as `polly.ios.aestheticStance`. |
+
+**Gateway changes needed before Phase 2 routing ships (owned by @backend):**
+1. `sessions.patch` model scope — add `model` field to session patch params
+2. `models.list` capability extension — add `contextWindow` + `strengths[]` to response
+3. Completion event field names — confirm and document for iOS consumption
 
 ---
 
