@@ -277,7 +277,7 @@ Lazy re-encryption on next rebuild. Immediate re-encryption of a large FAISS ind
 - macOS Secure Enclave key management (@backend)
 - Gateway network layer enforcement (@backend, @infra)
 - Skill runner Lockdown Mode gate (@backend)
-- Duress PIN implementation (@security_audit, @backend — implementation path TBD)
+- Duress PIN implementation (@backend — PBKDF2 + Secure Enclave key slot deletion on iOS; SecItemDelete on macOS gateway; no escrow, no recovery)
 - PUSH_SECURITY_FIX.md — APNs architecture (must be consistent with Lockdown Mode APNs block)
 - SOMATIC_INTERFACE.md — prosodic extraction disabled in Lockdown Mode (gateway-enforced)
 - EPISTEMIC_IMMUNE_SYSTEM.md — pattern library encrypted under separate key
