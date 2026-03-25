@@ -22,6 +22,8 @@ The key used to authorize push sends is stored unencrypted on disk.
 - [ ] C1: Require authenticated session to register push token — @backend
 - [ ] C2: Move `sendKey` to macOS Keychain — @backend
 - [ ] C2: Remove `devices.json` cleartext key storage — @backend
+- [ ] `polly.security.protectionLevel: "standard"` config key initialized on gateway at startup — @backend
+- [ ] Gateway scrubs API keys from config change logs (prevents keys leaking to gateway log files) — @backend
 - [ ] @security_audit review + sign-off
 
 ## Done when

@@ -69,6 +69,30 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] `NO_REPLY` / `HEARTBEAT_OK` silent reply filtering — never render these in chat (§3.6)
 - [ ] `NSAllowsLocalNetworking` in `Info.plist` — required for LAN WebSocket (§3.14)
 
+### Authentication + Credential Security (SECURITY_IMPLEMENTATION_SPEC.md §8 Phase 1)
+- [ ] Install `@noble/ed25519` and `@noble/hashes` (in addition to expo-secure-store)
+- [ ] Ed25519 keypair generation on first launch (silent, before onboarding screen)
+- [ ] deviceId derivation: SHA-256 of public key
+- [ ] Challenge-response signing for WebSocket auth (§3.3.1)
+- [ ] deviceToken storage + rotation via expo-secure-store (key: `polly.device.token`)
+- [ ] Static auth token storage in expo-secure-store (key: `polly.gateway.token`)
+- [ ] TOFU cert pinning: store TLS fingerprint on first verified connect (key: `polly.gateway.tlsFingerprint`)
+- [ ] WSS enforcement for Cloudflare Tunnel connections (never ws:// through tunnel)
+- [ ] EAS code signing enabled in `eas.json`
+- [ ] Version-pin `expo-openclaw-chat@0.2.3` (no caret)
+- [ ] `SECURE_STORE_KEYS` constant — enumerated, typed (SECURITY_IMPLEMENTATION_SPEC.md §4.1)
+- [ ] `sanitizeForLog()` function — strips credentials before any console.log or crash dump (§6.1)
+- [ ] Sign-out function with complete key inventory + MMKV clear + SQLite clear (§4.1)
+- [ ] Sign-out action in Settings → Your Gateway (separate from Reset — §4.2)
+- [ ] Deep link parameter validation (session keys, onboarding deep links — §6.4)
+- [ ] `polly.security.protectionLevel: "standard"` in initial config.patch (@backend task #14)
+
+### Lockdown Mode Phase 1 Hooks (SECURITY_IMPLEMENTATION_SPEC.md §3 — not retrofittable)
+- [ ] Investigate `NSFileProtectionComplete` support for MMKV + expo-sqlite (document findings)
+- [ ] Set file protection class `NSFileProtectionComplete` on all data directories at app init
+- [ ] Voice audio: confirm memory-only buffer in chosen audio library — no temp file writes (§3.2)
+- [ ] `persistent: boolean` field on SessionRecord and message cache schema (default `true`) (§3.3)
+
 ### Onboarding Flow (§5)
 - [ ] Gateway URL input field with validation
 - [ ] Test connection — WebSocket handshake, success/failure feedback
