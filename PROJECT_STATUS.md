@@ -71,6 +71,12 @@
 | MCP_ADAPTER.md §12 Q1: Linux sandbox equivalent to sandbox-exec | @infra | Blocking non-macOS gateway support |
 | MCP_ADAPTER.md §12 Q2: static manifest inspection vs dry-run | @backend | Affects install-time linting path |
 | ASSET_STATE_MACHINE.md Q3: cross-skill asset sharing default | @backend | Minor, default=no agreed verbally |
+| **`useVoiceRecording` hook is scaffolded only** — no real audio recording | @frontend | VOICE_BEHAVIOR_TESTS.md (543 lines) can't run. Voice QA is blocked until real impl. |
+| **VOICE_INTERACTION.md REQ-VOICE-01 uses Swift APIs** (`UIApplication.shared.isIdleTimerDisabled`) | @frontend | Must be replaced with `expo-keep-awake`. Spec needs correction too. |
+| **`VoiceMicButton.tsx` line 269 uses emoji 🎤** instead of Lucide `Mic` icon | @frontend | Violates §18.3 Design Constitution. Will ship as emoji if not fixed. |
+| **`polly-ios/src/colors.ts` is a duplicate** of `src/theme/colors.ts` | @frontend | Maintenance hazard — wrong file will be edited. Delete `src/colors.ts`. |
+| **`PROFESSOR_STUDIES_MODE.md`** referenced in `chat.tsx` header but doesn't exist | Brett to confirm | Is this a planned spec or stale reference? |
+| **Vault access duality unspecced** — Phase 1 uses iOS expo-document-picker bookmarks; Phase 2 Knowledge Skill uses gateway filesystem reads. Separate vault paths, not acknowledged in spec. | @backend + @code_architect | Knowledge Skill spec needs a section on gateway vault path config. |
 
 ---
 
