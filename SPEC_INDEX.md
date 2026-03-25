@@ -24,6 +24,10 @@ Single source of truth for all spec documents. A spec doesn't officially exist u
 | `COPY_VOICE.md` | 1 | 🔨 In progress | Voice design tokens, state machine, copy patterns, accessibility |
 | `VOICE_BEHAVIOR_TESTS.md` | 1 | 🔨 In progress | QA test suite for voice interaction |
 | `FIGMA_INTEGRATION.md` | 2 | 📋 Planned | Figma link-surfacing in chat; deep-link to boards from spec context |
+| `PROJECT_STATUS.md` | 1 | 💡 Idea | Living project status doc — cross-conversation memory for the dev team |
+| `AGENT_BOOTSTRAP_DEV.md` | 1 | 💡 Idea | Dev group chat SOUL override — git state verification, PROJECT_STATUS read, spec file existence check |
+| `TREE_OF_THOUGHTS.md` | 3 | 💡 Idea | ToT as activatable reasoning mode under §11 (mental models); secondary hook: plan-space search/goal decomposition. Composable with existing cognitive lenses. Ref: https://github.com/kyegomez/tree-of-thoughts |
+| `VAULT_RAG_SKILL.md` | 2 | 📋 Planned | Gateway-side RAG over Obsidian vault. FAISS + BM25 + RRF fusion, structure-aware chunking, wikilink graph layer, incremental index. OpenClaw skill, no cloud, no Python server. @security_audit gate required. |
 
 ---
 

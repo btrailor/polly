@@ -31,6 +31,7 @@ For full feature specs, see `POLLY_IOS_SPEC.md`. For agent/team definitions, see
 | Area | What ships |
 |------|-----------|
 | Figma integration | Link surfacing in chat, deep-link to boards (`FIGMA_INTEGRATION.md`) |
+| Vault RAG Skill | Semantic search over Obsidian vault as an OpenClaw skill — FAISS + BM25 + wikilink graph, local, no cloud (`VAULT_RAG_SKILL.md`) |
 | Skills Marketplace | ClawHub browser, install flow, §8.8 security model enforcement |
 | Push notifications | APNs relay, `sendKey` hardening, push registration security fix |
 | Image attachments | Photo/file attach in chat |
