@@ -2,7 +2,7 @@
 
 **Status:** 🔨 In progress — early scaffold  
 **Gate:** None — first phase  
-**Spec source:** `POLLY_IOS_SPEC.md`, `VOICE_INTERACTION.md`, `COPY_VOICE.md`, `VOICE_BEHAVIOR_TESTS.md`
+**Spec source:** `POLLY_IOS_SPEC.md`, `VOICE_INTERACTION.md`, `COPY_VOICE.md`, `VOICE_BEHAVIOR_TESTS.md`, `ONBOARDING_SPEC.md`
 
 ## What Actually Exists Right Now
 
@@ -42,7 +42,22 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] Secure Enclave key path: document where gateway encryption key will live (Secure Enclave vs. Keychain) — @backend decision, must be locked in Phase 1 before any credential storage is implemented
 - [ ] No APNs dependency for core functionality — gateway connection must work without push (polling fallback required)
 
-### Gateway Connection (§3)
+### Developer Bootstrap
+- [ ] `setup.sh` at repo root — prerequisite checks, dep install, gateway verify, .env.local creation (P0 — blocks all dev work)
+- [ ] `polly-ios/package.json` updated with full Phase 1 dependency set (see `ONBOARDING_SPEC.md §2.2` for complete list)
+
+### Onboarding — State Machine + Flow (`ONBOARDING_SPEC.md`)
+- [ ] `OnboardingState` interface + MMKV persistence (11 phases: welcome → complete)
+- [ ] App launch gate: if `phase === 'complete'` → skip to main; if `phase === 'provisioning'` → resume from `currentIndex`; earlier phase → resume from that step
+- [ ] Silent initialization on cold start: expo-sqlite message cache, MMKV setup, default prefs, pre-populate 12 mental models
+- [ ] Post-connection gateway verification: `models.list` check before team selection — **block if zero models** with actionable message (P0 — critical gap)
+- [ ] Post-connection gateway verification: `health` check → degraded warning with continue/retry
+- [ ] Post-connection: `config.get` → store gateway version + capabilities in MMKV
+- [ ] Provisioning progress UI: progress bar + per-agent status (✅ created, ⏳ in progress, ⚠️ failed, ○ pending)
+- [ ] Provisioning crash recovery: resume from `provisioningProgress.currentIndex` on relaunch
+- [ ] Permissions timing: contextual only — never upfront, never multiple at once (mic on first voice tap, notifications on first cron, Face ID on first App Lock enable)
+
+
 - [ ] `expo-secure-store` integration — read/write gateway URL + auth token
 - [ ] Wire `app/index.tsx` gateway check to actual secure store (remove `isConfigured = false` hardcode)
 - [ ] WebSocket client: connect, authenticate, session management
