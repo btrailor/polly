@@ -250,13 +250,24 @@ Architecture cannot enforce everything. The user must understand:
 
 ---
 
-## 12. Open Questions
+## 12. Resolved Decisions
 
-**Q1 — Duress PIN iOS implementation:** Secure Enclave key deletion on arbitrary PIN entry requires gateway-side key custody rather than iOS keychain. @security_audit to specify implementation path. Blocking for Phase 2 implementation.
+**Q1 — Duress PIN iOS implementation (RESOLVED):**
+Gateway-side key custody. Implementation path:
+- iOS: duress PIN entry derives a PBKDF2 key, uses it to delete the Secure Enclave key slot (not decrypt). Data becomes permanently unrecoverable.
+- Gateway (macOS): `SecItemDelete` removes the Keychain item holding the encryption key. No escrow, no recovery path.
+- The app does not expose a "forgot duress PIN" path. Loss of the PIN = loss of the ability to trigger wipe, but does not affect normal operation.
 
-**Q2 — Tailscale in Lockdown Mode:** Tailscale is currently recommended but not enforced. Should Lockdown Mode enforce Tailscale-or-LAN-only at the gateway network layer? Recommend yes; @infra to evaluate.
+**Q2 — Tailscale/LAN enforcement at network layer (RESOLVED):**
+Hard-enforced at the gateway network layer. On each incoming WebSocket connection, gateway checks source IP:
+- RFC 1918 (10.x, 172.16–31.x, 192.168.x) → allowed (LAN)
+- 100.64.0.0/10 CGNAT range → allowed (Tailscale)
+- All other source IPs → refused immediately, before any auth handshake
+- Reverse proxy / localhost source IP in Lockdown Mode → refused entirely. Lockdown Mode is incompatible with reverse proxy deployments. This is by design.
+- @infra owns the IP-range enforcement implementation.
 
-**Q3 — Knowledge Skill index in Lockdown Mode:** The FAISS index is large (potentially GBs). Re-encrypting it on Lockdown Mode activation is slow. Does Lockdown Mode activate the encryption constraint on next index rebuild rather than immediately? TBD.
+**Q3 — Knowledge Skill index re-encryption (RESOLVED):**
+Lazy re-encryption on next rebuild. Immediate re-encryption of a large FAISS index is poor UX and an unnecessary activation gate. On Lockdown Mode activation, user is shown: "Your Knowledge index will be re-encrypted on next sync." The index remains readable (encrypted at rest under existing key) until the next rebuild completes under the lockdown key hierarchy.
 
 ---
 
