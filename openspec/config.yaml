@@ -1,0 +1,49 @@
+schema: spec-driven
+
+context: |
+  Project: Polly — AI companion iOS app backed by OpenClaw gateway running on user's machine.
+  
+  Stack:
+  - iOS client: React Native (Expo), TypeScript, MMKV for local storage
+  - Gateway: OpenClaw (macOS), Python skills, SQLite, FAISS for vector search
+  - Agents: Markdown-driven SOUL files, OpenClaw agent runner
+  - LLM: Anthropic Claude (configurable per agent)
+  
+  Repo layout:
+  - ~/polly/polly-ios/ — React Native iOS client
+  - ~/polly/src/ — Gateway/skill code
+  - ~/polly/openspec/ — This OpenSpec directory (source of truth)
+  - ~/polly/*.md — Legacy spec files (being migrated here)
+  
+  Branch: development (main production branch)
+  Phase: Phase 1 (iOS + agent system). Phase 2 (Knowledge Skill) in planning.
+  
+  Key decisions locked:
+  - Knowledge Skill: single service model, shared FAISS index
+  - Prompt injection: 7-layer hierarchy (gateway owns 3-7, iOS client owns 1-2)
+  - Agent SOUL baseline: 5 non-negotiable blocks including Epistemological Commitments (Layer 7)
+  - Retrieval classification: DIRECT / ADJACENT / ABSENT tiers
+  
+  Conventions:
+  - Spec decisions use MUST/SHALL/SHOULD (RFC 2119)
+  - Phase gates are explicit — nothing ships before its declared dependencies
+  - Security acceptance criteria required for all skill/network features (@security_audit)
+  - All data local-only by default; network features opt-in with explicit manifest permissions
+
+rules:
+  proposal:
+    - State which phase this change targets
+    - List any specs this change modifies or depends on
+    - Note if @security_audit, @backend, or @design_eng review is required before implementation
+  specs:
+    - Use Given/When/Then format for behavioral scenarios
+    - Use MUST/SHALL/SHOULD/MAY per RFC 2119
+    - Include explicit phase gating if feature depends on another feature
+  design:
+    - Include component/data flow diagram where applicable
+    - Call out any schema or API changes that affect other features (cross-feature contracts)
+    - Reference KNOWLEDGE_SERVICE_CONTRACTS.md for any Knowledge Skill consumer
+  tasks:
+    - Group by component/layer (e.g., Gateway, iOS Client, Skill, Agent Templates)
+    - Mark tasks that require @security_audit review
+    - Mark tasks blocked on another change with [BLOCKED: change-name]
