@@ -195,19 +195,46 @@ Skill is functional for already-indexed content immediately.
 
 ## Tool Interface
 
+Four tools ship with the Knowledge Skill. `knowledge_search` and `knowledge_graph` are Phase 2. `knowledge_analogy` and `knowledge_dream` are Phase 3.
+
+Agent access to `knowledge_analogy` and `knowledge_dream` is governed by the `allowed_modes` field in each agent's manifest. See `DREAM_LOGIC.md` §5 for the selectivity spec.
+
+---
+
 ### `knowledge_search`
+
+Hybrid retrieval (dense + sparse + RRF fusion). The primary tool — covers the majority of agent retrieval needs.
 
 ```json
 {
   "name": "knowledge_search",
-  "description": "Search the user's knowledge base (Obsidian vault, BookLore library, and other connected sources) for content relevant to a query.",
+  "description": "Search the user's knowledge base (Obsidian vault, BookLore library, and other connected sources) for content relevant to a query. Uses hybrid dense+sparse retrieval with RRF fusion and optional cross-encoder re-ranking.",
   "parameters": {
     "query": "string — the search query",
-    "limit": "integer — max results (default: 5, max: 20)",
-    "sources": "string[] — optional: filter to specific sources ['vault', 'booklore']",
-    "tags": "string[] — optional: filter by tags (vault source only)",
-    "use_hyde": "boolean — optional: use HyDE for conceptual queries (default: false)"
+    "limit": "integer (optional) — max results (default: 5, max: 20)",
+    "sources": "string[] (optional) — filter to specific sources: ['vault', 'booklore']",
+    "tags": "string[] (optional) — filter by tags (vault source only)",
+    "use_hyde": "boolean (optional) — use HyDE (Hypothetical Document Embeddings) for deep conceptual queries; adds ~500ms (default: false)"
+  },
+  "returns": {
+    "results": "SearchResult[]"
   }
+}
+```
+
+**`SearchResult` schema:**
+```json
+{
+  "chunk_id": "string",
+  "source": "string — 'vault' | 'booklore'",
+  "title": "string — note or book title",
+  "path": "string — filesystem path",
+  "section": "string (vault only) — header section the chunk is from",
+  "chapter": "string (booklore only) — chapter the chunk is from",
+  "tags": "string[] (vault only)",
+  "author": "string (booklore only)",
+  "text": "string — chunk content",
+  "score": "float — RRF fusion score (higher = more relevant)"
 }
 ```
 
@@ -216,13 +243,87 @@ Skill is functional for already-indexed content immediately.
 ```json
 {
   "name": "knowledge_graph",
-  "description": "Traverse the wikilink graph from a starting vault note.",
+  "description": "Traverse the wikilink graph from a starting vault note. Vault source only; requires wikilink graph layer (opt-in).",
   "parameters": {
-    "note_path": "string — path to the starting note",
+    "note_path": "string — path to the starting note (e.g. '~/Documents/MyVault/Projects/Polly.md')",
     "hops": "integer — traversal depth (default: 1, max: 3)"
+  },
+  "returns": {
+    "nodes": "NoteNode[] — each node: { note_id, note_title, path, tags, domain }",
+    "edges": "WikilinkEdge[] — each edge: { from_id, to_id, link_text }",
+    "root": "string — note_id of the starting note"
   }
 }
 ```
+
+### `knowledge_analogy`
+
+Structural analogy retrieval — finds notes whose *relational structure* matches the current context, not surface vocabulary. LLM-based structural pattern classification at index time; vocabulary mapping generated at retrieval time. Phase 3 feature. See `STRUCTURAL_ANALOGY.md` for full architecture.
+
+```json
+{
+  "name": "knowledge_analogy",
+  "description": "Find notes from the vault that share structural patterns with the current context — cross-domain analogies based on relational shape, not vocabulary. Uses LLM-classified structural pattern tags. Only available to agents with 'analogy' in allowed_modes.",
+  "parameters": {
+    "context": "string — the problem or situation currently being worked on",
+    "source_domain": "string (optional) — constrain source to this domain (Practice Layer taxonomy)",
+    "target_domain": "string (optional) — constrain target to this domain",
+    "patterns": "string[] (optional) — filter to specific structural pattern IDs (e.g. ['feedback-loop', 'threshold-behavior'])",
+    "limit": "integer (optional) — max results (default: 3)"
+  },
+  "returns": {
+    "results": "AnalogyResult[]"
+  }
+}
+```
+
+**`AnalogyResult` schema:**
+```json
+{
+  "note_id": "string",
+  "note_title": "string",
+  "domain": "string — Practice Layer domain label",
+  "matched_patterns": "string[] — structural pattern IDs that drove the match",
+  "pattern_confidence": "float — confidence that the matched patterns apply (0.0–1.0)",
+  "vocabulary_mapping": "string[] — cross-domain term mappings, format: 'Your [source concept] = their [target concept]'",
+  "mapping_confidence": "float — confidence that the vocabulary mapping holds (0.0–1.0)"
+}
+```
+
+### `knowledge_dream`
+
+Structured misretrieval — deliberately targets the FAISS distance band 0.5–0.7, the uncanny valley between obvious relevance and noise. Returns connections that exist but have not yet been named. Agent behavior is **inverted**: results are surfaced *without* explanation. See `DREAM_LOGIC.md` for full architecture and agent selectivity rules.
+
+```json
+{
+  "name": "knowledge_dream",
+  "description": "Retrieve notes in the FAISS distance band 0.5–0.7 relative to the current context — non-arbitrary connections that haven't been consciously made. The agent MUST NOT explain why results are relevant. Surface the collision and stop. Only available to agents with 'dream' in allowed_modes.",
+  "parameters": {
+    "context": "string — what is currently being thought about (anchors the distance band)",
+    "distance_min": "float (optional) — lower bound of distance band (default: 0.5)",
+    "distance_max": "float (optional) — upper bound of distance band (default: 0.7)",
+    "exclude_domain": "string (optional) — exclude results from this domain (Practice Layer taxonomy) to force cross-domain collisions",
+    "limit": "integer (optional) — max results (default: 3, spec maximum — Dream Logic is a collision generator, not a result list)"
+  },
+  "returns": {
+    "results": "DreamResult[]"
+  }
+}
+```
+
+**`DreamResult` schema:**
+```json
+{
+  "note_id": "string",
+  "note_title": "string",
+  "domain": "string — Practice Layer domain label",
+  "distance": "float — FAISS distance score (will be in range [distance_min, distance_max])",
+  "collision_context": "null — always null; the agent does not generate explanation"
+}
+```
+
+**Agent behavior contract for `knowledge_dream`:**
+The calling agent MUST present the result title and a brief excerpt, prefaced with something equivalent to: *"I don't know why this is relevant. Do you?"* The agent does not explain. The agent does not withhold an explanation it has — it genuinely has none to give. Interpretation belongs to Brett. An agent that explains a dream result has defeated the purpose of Dream Logic.
 
 ---
 
@@ -359,6 +460,17 @@ Any update adding permissions triggers full re-approval flow with new permission
 
 - [ ] HyDE mode
 - [ ] Query expansion (opt-in)
+- [ ] `knowledge_analogy` tool
+  - [ ] Structural pattern taxonomy (~15 core patterns)
+  - [ ] LLM classification pass at index time (async, dirty-flag schedule)
+  - [ ] Domain label derivation from wikilink cluster
+  - [ ] Vocabulary mapping generation at retrieval time
+  - [ ] `allowed_modes: ['analogy']` gating in agent manifest schema
+- [ ] `knowledge_dream` tool
+  - [ ] FAISS distance-band query (k=200 initial search, filter to 0.5–0.7 band)
+  - [ ] Domain exclusion (`exclude_domain` filter)
+  - [ ] `allowed_modes: ['dream']` gating in agent manifest schema
+  - [ ] Agent behavior contract enforcement: no explanation, collision only
 - [ ] FLARE (forward-looking active retrieval — per FlashRAG benchmarks, arXiv:2405.13576)
 - [ ] Iter-RetGen (iterative retrieval-generation — multi-hop queries)
 - [ ] Notion adapter (evaluate LlamaHub Notion loader first — check freshness, incremental indexing support, metadata fidelity before adopting)
