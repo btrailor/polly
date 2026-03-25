@@ -218,6 +218,20 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] Background process indicators
 - [ ] `aight_item` creation path (trigger, item, process types)
 
+### Group Chat — Phase 1 Foundation (SWARM_COORDINATION_SPEC.md §7 Phase 1)
+- [ ] Group creation UI (name + member selection)
+- [ ] Fan-out via `agent` RPC with `groupId`
+- [ ] Multi-agent message rendering: agent label, accent color, @mention highlighting
+- [ ] `defaultResponder` for messages with no @mention
+- [ ] `mention` and `always` activation modes per agent (set at group creation)
+- [ ] Per-agent thinking toast (requires `chat.typing` event with agent identity — @backend §8 Q2)
+- [ ] Group sessions in drawer (grouped under group name)
+- [ ] `GroupStreamState` in Zustand: key by `${agentId}:${runId}`, multiple bubbles streaming simultaneously
+- [ ] Auto-scroll follows most recently updated bubble; scroll lock per-bubble-cluster (not per-bubble)
+- [ ] **Forward-compatible data model additions (required Phase 1 — not deferrable):**
+  - [ ] `topology` field on message objects: `"chat"` (default), `"chorus"`, `"architecture"` — unused in Phase 1 but must exist
+  - [ ] `chorus_position: null` nullable field on message objects
+
 ### P2 — Nice to Have (don't block Phase 1 completion)
 - [ ] Edit and resend: long-press user message → Edit → populates input → resend replaces history from that point
 - [ ] Conversation export to vault: one tap saves conversation as Obsidian note
