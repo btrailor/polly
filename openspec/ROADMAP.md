@@ -27,10 +27,12 @@ A native iOS app (React Native + Expo) connecting to a self-hosted OpenClaw gate
 | 5 | `phase-2-push-security` | ⚠️ Required pre-production | Phase 1 complete |
 | 6 | `phase-2-lockdown-mode` | 📋 Planned | Phase 1 + architectural hooks set in Phase 1 |
 | 7 | `phase-2-cognitive-artifact` | 📋 Planned | Phase 1 agent system complete |
-| 8 | `phase-2-figma-integration` | 📋 Planned | Phase 1 complete (low priority) |
-| 9 | `phase-3-cognitive-features` | 💡 Specced | Phase 2 Knowledge Skill |
-| 10 | `phase-3-creative-systems` | 💡 Specced | Phase 2 Knowledge Skill |
-| 11 | `phase-4-federation` | 💡 Future | Phase 3 complete |
+| 8 | `phase-2-model-routing` | 📋 Planned | Phase 1 complete (@backend questions answered) |
+| 9 | `phase-2-figma-integration` | 📋 Planned | Phase 1 complete (low priority) |
+| 10 | `phase-3-cognitive-features` | 💡 Specced | Phase 2 Knowledge Skill |
+| 11 | `phase-3-creative-systems` | 💡 Specced | Phase 2 Knowledge Skill |
+| 12 | `phase-3-rag-routing` | 💡 Specced | Phase 2 Knowledge Skill + Phase 2 model-routing |
+| 13 | `phase-4-federation` | 💡 Future | Phase 3 complete |
 
 ## Domains (specs/)
 

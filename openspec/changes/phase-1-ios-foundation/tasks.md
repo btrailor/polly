@@ -188,9 +188,26 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 
 ### Settings Screen (§9)
 - [ ] Gateway URL settings (change/reconnect)
-- [ ] Model selection per agent
 - [ ] Appearance (theme selection)
 - [ ] `settings/integrations.tsx` — integration list (currently 6-line stub)
+- [ ] Settings → Models → Routing screen (MODEL_ROUTING_SPEC.md §6):
+  - [ ] `models.list` RPC call → populate model list grouped by tier
+  - [ ] Routing policy selector (Token Saver / Balanced / Quality First)
+  - [ ] Per-agent overrides list (pinned model or domain routing per agent)
+
+### Model Routing — Phase 1 (MODEL_ROUTING_SPEC.md)
+*Phase 1 = manual selection only. No auto-routing. User chooses.*
+- [ ] `ModelEntry` type + MMKV model registry (populated from `models.list`)
+- [ ] `RoutingProfile` type + MMKV storage (`polly.routing.profiles`)
+- [ ] `OverrideEvaluator` only — check `pinnedModel` before every send
+- [ ] Model picker component (used in: agent creation, agent detail, chat nav bar)
+- [ ] "Always use this model" toggle in agent creation + agent detail → sets `pinnedModel`
+- [ ] Dynamic `agents.update` before `chat.send` when override is active (Option A — accept race condition, document it)
+- [ ] Model attribution in chat bubble footer ("via llama3.1:8b")
+- [ ] Model pill in chat nav bar (shows active model for session)
+- [ ] `RoutingReason` enum — start with: `pinned_model`, `user_override`, `default`, `fallback`
+- [ ] `RoutingDecision` type — log to MMKV ring buffer (last 100)
+- [ ] @backend: confirm 6 open questions in `MODEL_ROUTING_SPEC.md §9` before Phase 2
 
 ### Today Screen (§8)
 - [ ] Reminders list (cron.list integration)
