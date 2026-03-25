@@ -1,33 +1,48 @@
-# iOS App — Spec Domain
+# iOS App — Current State
 
-The iOS App domain covers the Polly iOS client — the React Native (Expo) app that is the primary user-facing surface of the system.
+*What is built and running as of Phase 1.*
 
-## Specs in this domain
+## Stack
 
-| File | What it covers | Status |
-|------|---------------|--------|
-| `ios-spec.md` | Master iOS spec (6972 lines) — all screens, flows, components, skill integration, agent management, themes, group chats, Today view, swarm mode, voice, mental models, domain system | Active — canonical |
-| `voice-interaction.md` | Voice mode: STT/TTS pipeline, wake-word, push-to-talk, conversation mode, voice-native UX | Active |
-| `voice-behavior-tests.md` | Behavioral test suite for voice mode | Active |
-| `copy-voice.md` | Copy and microcopy guidelines — Polly's voice, tone, empty states, onboarding | Active |
-| `asset-state-machine.md` | State machine for asset loading/error/empty states across the app | Active |
-| `figma-integration.md` | Figma → iOS component handoff spec | Active |
-| `influence-guide.md` | Design influence references — motion, spatial audio, material, interaction models | Active |
+- React Native + Expo (TypeScript)
+- MMKV for local storage
+- WebSocket connection to OpenClaw gateway
+- `react-native-markdown-display` for chat rendering
+- `src/theme/colors.ts` — design token source of truth (do not use `src/colors.ts` — duplicate, to be deleted)
 
-## Key decisions locked
+## Screens + Features Shipped
 
-- Aight is the iOS app name. OpenClaw is the gateway.
-- Voice: STT/TTS handled client-side. Never use TTS tool from gateway — causes playback issues.
-- Today view: personal dashboard for reminders, tasks, deadlines, background processes.
-- Domain system: user-declared domains (name, color, icon, keywords) stored in MMKV `polly.domains`, synced to gateway as `polly.knowledge.domain_seeds`.
-- Theme behavior: `polly.ios.aestheticStance` config key, Layer 5 in prompt injection hierarchy.
-- Mental model framing: Layer 1 (closest to message), client-side, `<framing>` block.
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Gateway WebSocket auth + reconnect | ✅ Shipped | Session management |
+| Onboarding flow | ✅ Shipped | Gateway setup, team selection (8 templates) |
+| Team drawer + agent list | ✅ Shipped | Team-scoped sessions |
+| Chat (streaming, markdown) | ✅ Shipped | `react-native-markdown-display` |
+| Group chats | ✅ Shipped | Multi-agent |
+| Voice mic button | ✅ Scaffolded | `VoiceMicButton.tsx`, `VoiceButtonActive`, `VoiceButtonIdle` |
+| Voice recording hook | ⚠️ Scaffolded only | `useVoiceRecording.ts` — no real audio recording yet |
+| Vault quick capture | ✅ Shipped | `_inbox/` via expo-document-picker security-scoped bookmarks |
+| Mental models (12 built-in) | ✅ Shipped | Tap-to-apply lens system |
+| Settings | ✅ Shipped | Security, appearance, model selection |
+| Design system | ✅ Shipped | `src/theme/colors.ts` tokens |
 
-## Cross-domain dependencies
+## Known Issues (open)
 
-- Domain seeds → Knowledge Skill domain taxonomy (`knowledge/knowledge-skill.md`)
-- Theme config key → Prompt injection Layer 5 (`knowledge/service-contracts.md §4`)
-- Somatic/prosodic state detection → Agent Somatic Interface (`agent-system/somatic-interface.md`)
-- Ambient Agent "Polly noticed…" card → Ambient Agent behavioral spec (`cognitive-features/`)
-- Mental model framing → Knowledge Skill `knowledge_search` (vault note injection at Layer 1)
-- export/manifest.json → Cognitive Artifact spec (`knowledge/cognitive-artifact.md`)
+- `VoiceMicButton.tsx` line 269: uses 🎤 emoji — must be replaced with Lucide `Mic` icon (§18.3)
+- `useVoiceRecording.ts`: scaffolded, no real audio — `VOICE_BEHAVIOR_TESTS.md` (543 lines) cannot run until fixed
+- `VOICE_INTERACTION.md` REQ-VOICE-01: references Swift `UIApplication.shared.isIdleTimerDisabled` — must use `expo-keep-awake`
+- `polly-ios/src/colors.ts`: duplicate of `src/theme/colors.ts` — delete
+- `PROFESSOR_STUDIES_MODE.md` referenced in `chat.tsx` header but file doesn't exist — Brett to confirm
+
+## Voice Architecture (Phase 1)
+
+- STT/TTS: client-side only. Gateway never handles audio.
+- Gateway receives text only; responds with text only.
+- Never call a TTS tool from the gateway — playback issues.
+- Specs: `VOICE_INTERACTION.md`, `COPY_VOICE.md`, `VOICE_BEHAVIOR_TESTS.md`
+
+## Design Constitution (non-negotiable, §18.3)
+
+- Icons: Lucide only (`lucide-react-native`) — no emoji, no custom SVG without design review
+- Colors: `src/theme/colors.ts` tokens only
+- Typography: system font stack only
