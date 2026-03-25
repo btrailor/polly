@@ -27,7 +27,7 @@ Single source of truth for all spec documents. A spec doesn't officially exist u
 | `PROJECT_STATUS.md` | 1 | 💡 Idea | Living project status doc — cross-conversation memory for the dev team |
 | `AGENT_BOOTSTRAP_DEV.md` | 1 | 💡 Idea | Dev group chat SOUL override — git state verification, PROJECT_STATUS read, spec file existence check |
 | `TREE_OF_THOUGHTS.md` | 3 | 💡 Idea | ToT as activatable reasoning mode under §11 (mental models); secondary hook: plan-space search/goal decomposition. Composable with existing cognitive lenses. Ref: https://github.com/kyegomez/tree-of-thoughts |
-| `VAULT_RAG_SKILL.md` | 2 | 📋 Planned | Gateway-side RAG over Obsidian vault. FAISS + BM25 + RRF fusion, structure-aware chunking, wikilink graph layer, incremental index. OpenClaw skill, no cloud, no Python server. @security_audit gate required. |
+| `KNOWLEDGE_SKILL.md` | 2 | 📋 Planned | Unified knowledge skill — pluggable adapter architecture. Obsidian vault + BookLore/EPUB sources. FAISS HNSW + SBERT sparse + RRF + cross-encoder re-ranking. Single install, source cards UI, filter chips in chat. @security_audit gate required. Supersedes `VAULT_RAG_SKILL.md`. |
 
 ---
 
