@@ -43,7 +43,7 @@ tags: [norns, synthesis, idea]
 maturity: 30-ideas | 20-active | 10-archive
 polly:
   origin: quick-capture | share-extension | write-back | promotion | conversation-save | export
-  session_key: null          # TODO: @backend to confirm canonical session key format
+  session_key: null          # format: agent:{agentId}:{chatType}:{chatId} — e.g. agent:code-architect:direct:26fd2655-122c-4888-b6bd-a56a8321eca9
   promoted_from: null        # _inbox/path.md if promoted (nullable)
   confidence: null           # RAG confidence of source material (nullable, Phase 2+)
 ---
@@ -64,7 +64,7 @@ polly:
 | `tags` | No | string[] | Free-form, Obsidian-compatible. `[]` if gateway unavailable (see §3.1). |
 | `maturity` | Yes | enum | `30-ideas` (raw), `20-active` (working), `10-archive` (reference). Captures start at `30-ideas`. |
 | `polly.origin` | No | enum | Specific creation path. |
-| `polly.session_key` | No | string | Which conversation this note came from. **Format TBD — @backend to confirm canonical gateway session key pattern.** |
+| `polly.session_key` | No | string | Which conversation this note came from. Format: `agent:{agentId}:{chatType}:{chatId}`. Chat types: `direct`, `group-chat`. Example: `agent:code-architect:direct:26fd2655-122c-4888-b6bd-a56a8321eca9`. Confirmed by @backend 2026-03-25. |
 | `polly.promoted_from` | No | string | Original inbox path if promoted. |
 | `polly.confidence` | No | float | RAG retrieval confidence if content came from augmented generation. Phase 2+. |
 
@@ -130,7 +130,7 @@ tags: [architecture, retry, rag-pipeline, polly-generated]
 maturity: 20-active
 polly:
   origin: write-back
-  session_key: null   # @backend to confirm format
+  session_key: null   # format: agent:{agentId}:{chatType}:{chatId}
 ---
 
 ## Summary
@@ -421,6 +421,6 @@ Not worth saving:
 
 | Item | Status |
 |------|--------|
-| `polly.session_key` canonical format | **@backend to confirm** — using `agent:the-researcher:main` as placeholder; needs to match actual gateway session key schema |
+| `polly.session_key` canonical format | ✅ Confirmed by @backend 2026-03-25 — `agent:{agentId}:{chatType}:{chatId}`, chat types: `direct`, `group-chat` |
 | Readwise highlights integration | Phase 3 — `source: import`, standard frontmatter |
 | Full offline write queue design (Notion) | Phase 3 — Notion requires API; queue locally, sync when connected |
