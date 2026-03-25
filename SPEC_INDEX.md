@@ -51,6 +51,25 @@ Single source of truth for all spec documents. A spec doesn't officially exist u
 
 ---
 
+## Agent Template Additions (pending → `POLLY_AGENT_TEMPLATES.md`)
+
+Nine agents proposed 2026-03-25. Not new specs — additions to `POLLY_AGENT_TEMPLATES.md`. Captured here until written.
+
+| Agent | Emoji | work_character | Teams | Key dependencies / notes |
+|-------|-------|---------------|-------|--------------------------|
+| The Librarian | 📚 | curation · knowledge-hygiene · connection · archival | Content Studio, Learning Squad, Life Team | Needs vault write access via Knowledge Skill (currently read-only); uses `knowledge_graph` |
+| The Mirror | 🪞 | reflective · observational · pattern-surfacing · non-directive | Life Team (opt-in only, no default) | Metacognitive Dashboard + Practice Layer incarnated as agent. "No agenda" is the hard SOUL constraint |
+| The Janitor | 🧹 | maintenance · hygiene · system-health · housekeeping | System-level, no default team | Needs gateway introspection APIs (@backend): session list, cron job list, agent manifest list |
+| The Interlocutor | 🎭 | perspective-taking · empathy · sustained-inhabitation · dialogic | Learning Squad, Life Team | "Stay in perspective until session ends, no meta-commentary" is the hard SOUL rule. Distinct from Devil's Advocate |
+| The Scaffolder | 🏗️ | access · bridging · translation · minimum-viable-understanding | Learning Squad | Vygotsky ZPD. Oriented toward access, not mastery. Knows when to step aside |
+| The Archivist | 🕰️ | archival · narrative · retrospective · preservation | Content Studio, Dev Squad | Already referenced in ORAL_HISTORY.md + COGNITIVE_ARTIFACT.md. Post-mortem format spec needed in ORAL_HISTORY.md |
+| The Ambient Agent | 🌊 | ambient · monitoring · selective-surfacing · initiative | System-level, cron-driven | Formalizes §4.2 "Polly noticed…" card. Never asks — surfaces only when worth surfacing |
+| The Estimator | 🧮 | estimation · calibration · forecasting · quantitative-judgment | Dev Squad, Startup Team, App Launch | Reference class forecasting. Depends on Archivist post-mortem data structure |
+
+**@backend flag:** The Janitor needs gateway introspection APIs that don't exist yet: `sessions.list(filter: {inactive_days: 90})`, `crons.list(filter: {unfired_days: 42})`, `agents.list(filter: {soul_empty: true})`. Not needed until Phase 2+, but worth noting for gateway API design.
+
+---
+
 ## Reference Docs
 
 Not directly implemented — inform design and agent behavior decisions.
