@@ -65,7 +65,7 @@ This is the foundational constraint. Every coordination model has to work within
 
 Each agent in a group chat maintains its own session. For Agent A to see Agent B's response, B's response must be injected into A's session.
 
-**How Aight handles this (from live observation):** Agent B's responses are injected into Agent A's session as `user` role messages with an attribution header — e.g., `[Agent: frontend-developer]: <response text>`. Not system messages, not assistant messages. This preserves each agent's ability to respond to them naturally. **⚠️ @backend to confirm:** exact role and attribution format from actual group chat session JSONL before §8 Q1 is locked. Do not treat as resolved yet.
+**How Aight handles this (confirmed from live session JSONL, @backend 2026-03-25):** Other agents' responses are **not** injected as separate messages. They appear embedded in the `user` turn's `[Recent messages]` context block, formatted as `**@agentname:** text`. The Aight client composes this header on every `agent` RPC send. Each agent's own prior messages are stubbed as `[your message at HH:MM]`. There is no gateway-level injection — it's all `user` role, narrative context. Agents perceive other agents' messages as conversation history, not as distinct system or assistant signals.
 
 **The cost implication:** Every agent response gets injected into every other agent's context. In a 5-agent group with 20 exchanges, each agent's context contains ~100 messages. At ~500 tokens per response, that's 50k tokens per agent. Five agents = 250k tokens of context. Grows quadratically.
 
@@ -322,7 +322,7 @@ This becomes the "where did we leave off?" document for the next session. Plans 
 
 | Q | Question | Answer |
 |---|----------|--------|
-| 1 | When Agent A's response is injected into Agent B's session, what format? | ⚠️ **Pending** — expected: `user` role with `[Agent: {agentId}]: <text>` attribution header. @backend to confirm from actual session JSONL before locked. |
+| 1 | When Agent A's response is injected into Agent B's session, what format? | ✅ **Not injected as separate messages.** Embedded in the `user` role `[Recent messages]` context block as `**@agentname:** text`. Aight client composes this header on every send. No gateway-level injection — it's all `user` role, narrative context. Agent's own prior messages stubbed as `[your message at HH:MM]`. Confirmed from live session JSONL, @backend 2026-03-25. |
 | 2 | Is there a `chat.typing` event with agent identity for groups? | ✅ Yes — typing/thinking event carries `sessionKey` encoding `agentId`. @frontend extracts `agentId` from `sessionKey` for per-agent toast. |
 | 3 | Can activation mode be set per-agent per-group, or is it a global agent setting? | ✅ Currently **global**. Per-agent-per-group requires group membership record `activationMode` override. **@backend Phase 2 gateway change.** |
 | 4 | What happens on `agent` RPC to a group where one member is deleted? | ✅ Per-agent error for deleted agent, fan-out continues. @frontend: render error bubble "This agent is no longer available." |
