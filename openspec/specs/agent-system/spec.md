@@ -55,16 +55,18 @@ Every agent SOUL has a `## Prosodic Sensitivity` section covering 4 states: conf
 
 ## Agent Roster
 
-43 agents defined in `POLLY_AGENT_TEMPLATES.md`. See source file for full SOUL templates.
+43 agents defined in `POLLY_AGENT_TEMPLATES.md`. **33 have full SOUL templates written. 10 are stubs pending full templates** — see `phase-1-agent-system` change tasks.
 
-### Categories
-- **Builders:** Code Architect, Frontend Developer, Backend Architect, QA Engineer, Security Auditor, Infra Engineer
-- **Thinkers:** Design Engineer, Product Thinker, The Analyst, The Strategist, The Researcher, The Contrarian, The AI Expert, The Systems Thinker, The Futurist
-- **Creators:** The Writer, The Editor, Narrative Architect, The Cartographer, Audio Producer, Music Producer
-- **Operators:** Ops Coordinator, The Scheduler, The Generalist
-- **Specialists:** Legal Thinker, Data Scientist, The Philosopher, The Educator
-- **Wildcards:** Devil's Advocate, The Mentor, The Mirror, The Interlocutor, The Experimentalist, The Translator, The Librarian, The Scaffolder, The Estimator, The Archivist
-- **System:** The Janitor, The Ambient Agent, The Liaison
+### Full SOUL Templates Written (33)
+- **Builders (6):** Code Architect, Frontend Developer, Backend Architect, QA Engineer, Security Auditor, Infra Engineer
+- **Thinkers (9):** Design Engineer, Product Thinker, The Analyst, The Strategist, The Researcher, The Contrarian, The AI Expert, The Systems Thinker, The Futurist
+- **Creators (6):** The Writer, The Editor, Narrative Architect, The Cartographer, Audio Producer, Music Producer
+- **Operators (3):** Ops Coordinator, The Scheduler, The Generalist
+- **Specialists (4):** Legal Thinker, Data Scientist, The Philosopher, The Educator
+- **Wildcards (5):** Devil's Advocate, The Mentor, + 3 others
+
+### Stubs Only — Full Templates Pending (10)
+Estimator, Librarian, Mirror, Janitor, Interlocutor, Scaffolder, Archivist, Ambient Agent, Experimentalist, Translator
 
 ## Team Templates (16 total)
 

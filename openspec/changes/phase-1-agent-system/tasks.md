@@ -4,9 +4,18 @@
 **Gate:** None — runs parallel to iOS Foundation  
 **Spec source:** `POLLY_AGENT_TEMPLATES.md`, `SOMATIC_INTERFACE.md`, `AGENT_BOOTSTRAP_DEV.md`
 
-## Goal
+## What Actually Exists Right Now
 
-Complete agent template system ready for implementation: all 43 SOULs, team rosters, schema definitions, and the Standard SOUL Baseline that every agent inherits.
+- `POLLY_AGENT_TEMPLATES.md` — large file with substantial spec content, but mixed state:
+  - Standard SOUL Baseline: written and complete (5 blocks)
+  - Agent manifest + Sensibility schemas: defined in prose/JSON snippets, not per-agent fields
+  - 33 "established" agents: have full SOUL templates with Prosodic Sensitivity sections
+  - 10 new agents (Estimator, Librarian, Mirror, Janitor, Interlocutor, Scaffolder, Archivist, Ambient, Experimentalist, Translator): exist only as stubs in `## Agent Stubs — Templates Pending` section — no SOUL templates written
+  - `allowed_modes`: documented in schema section only — not written per-agent in any manifest block
+  - Team Membership table: 16 teams × all 43 agents — complete
+- `SOMATIC_INTERFACE.md` — prosodic engagement state spec: written
+- `AGENT_BOOTSTRAP_DEV.md` — bootstrap sequence and hard rules: written
+- `PROJECT_STATUS.md` — exists but was aspirational, not accurate
 
 ## Tasks
 
@@ -18,32 +27,43 @@ Complete agent template system ready for implementation: all 43 SOULs, team rost
 - [x] Epistemological Commitments block (Layer 7 — cui bono, material-first, scapegoat suspicion, defamiliarization, second-order honesty)
 
 ### Agent Schema
-- [x] Agent manifest schema (`id`, `category`, `allowed_modes`)
-- [x] Sensibility schema (`aesthetic` layer + `structural_rules` stub for Phase 3)
+- [x] Agent manifest schema defined (`id`, `category`, `allowed_modes`)
+- [x] Sensibility schema defined (`aesthetic` layer + `structural_rules` stub)
+- [ ] `allowed_modes` field written per-agent for all 43 agents (currently only documented in schema section, not on individual agents)
 
-### Agent SOULs — All 43
-- [x] All 6 Builder agents
-- [x] All 9 Thinker agents
-- [x] All 6 Creator agents
-- [x] All 3 Operator agents
-- [x] All 4 Specialist agents
-- [x] All 10 Wildcard agents
-- [x] All 3 System agents (Janitor, Ambient, Liaison)
-- [x] `## Prosodic Sensitivity` section on all 43 SOULs
+### Agent SOULs — 33 Established Agents
+- [x] All 6 Builder agents (full SOUL + Prosodic Sensitivity)
+- [x] All 9 Thinker agents (full SOUL + Prosodic Sensitivity)
+- [x] All 6 Creator agents (full SOUL + Prosodic Sensitivity)
+- [x] All 3 Operator agents (full SOUL + Prosodic Sensitivity)
+- [x] All 4 Specialist agents (full SOUL + Prosodic Sensitivity)
+- [x] 5 of 10 Wildcard agents (Devil's Advocate, Mentor, Mirror-stub — partial)
+
+### Agent SOULs — 10 New Agent Stubs (need full templates)
+- [ ] The Estimator — write full SOUL template + Prosodic Sensitivity
+- [ ] The Librarian — write full SOUL template + Prosodic Sensitivity
+- [ ] The Mirror — write full SOUL template + Prosodic Sensitivity
+- [ ] The Janitor — write full SOUL template + Prosodic Sensitivity
+- [ ] The Interlocutor — write full SOUL template + Prosodic Sensitivity
+- [ ] The Scaffolder — write full SOUL template + Prosodic Sensitivity
+- [ ] The Archivist — write full SOUL template + Prosodic Sensitivity
+- [ ] The Ambient Agent — write full SOUL template + Prosodic Sensitivity (or document explicitly as non-conversational/no-Prosodic-profile)
+- [ ] The Experimentalist — write full SOUL template + Prosodic Sensitivity
+- [ ] The Translator — write full SOUL template + Prosodic Sensitivity
 
 ### Team Rosters
 - [x] 16 team templates defined
-- [x] Agent → Team Membership table (authoritative, all 16 teams × all 43 agents)
+- [x] Agent → Team Membership table (16 teams × all 43 agents)
 
 ### Somatic Interface
 - [x] Prosodic engagement state spec locked (`SOMATIC_INTERFACE.md`)
 - [ ] Gateway: `prosodics` nullable field on ALL message objects (not voice-gated) — @backend
-- [ ] iOS: client-side prosodic signal extraction from audio buffer — @frontend Phase 1 deliverable
+- [ ] iOS: client-side prosodic signal extraction from audio buffer — @frontend (Phase 1 deliverable, blocked on real audio recording)
 - [ ] iOS: `MultiPanelChatLayout` with topology-aware message data model — @frontend
 
 ### Bootstrap + Ops
 - [x] `AGENT_BOOTSTRAP_DEV.md` — 5-step bootstrap sequence, hard rules
-- [x] `PROJECT_STATUS.md` — living cross-session state doc
+- [ ] `PROJECT_STATUS.md` — needs to be rewritten to reflect actual state (currently aspirational)
 
 ## Done when
-All agent SOULs finalized. Somatic interface gateway field shipped. @backend confirms message schema. Ready to hand off to implementation.
+All 43 agent SOUL templates complete. `allowed_modes` written per-agent. Somatic interface gateway field shipped. @backend confirms message schema.

@@ -25,7 +25,7 @@ Liaison designs cognitive structures before conversations begin.
 - [ ] Topology library: diverge-converge, steelman-then-decide, pre-mortem, Socratic, layered inquiry, devil's advocate sprint
 - [ ] Liaison SOUL: conversation architect mode (pre-conversation brief)
 - [ ] Personalization via Metacognitive Dashboard
-- [ ] Depends on: group chats (Phase 1 ✅) + Liaison agent SOUL (Phase 1 ✅) + Metacognitive Dashboard
+- [ ] Depends on: group chats (Phase 1 — not yet built) + Liaison agent SOUL (Phase 1 — stub only) + Metacognitive Dashboard
 
 ### Chorus Mode
 Parallel agent dispatch, no shared context, grid UI.
