@@ -1,254 +1,277 @@
 # LOCKDOWN_MODE.md
-
-**Status:** Draft  
-**Phase:** 3  
-**Owner:** @security_audit (threat model), @code_architect (spec structure)  
-**Created:** 2026-03-25  
-**Depends on:** `SKILLS_MARKETPLACE.md`, `MCP_ADAPTER.md`, `SOMATIC_INTERFACE.md`, §8.8 skill manifest system  
-**Blocks:** nothing (Phase 3)  
-**Note:** Architectural decisions made here must inform Phase 1 and Phase 2 design to avoid retrofitting.
+*Phase 2 — High-Stakes Privacy Mode*
+*Status: Planned*
+*Owners: @security_audit (threat model, encryption spec, duress path), @code_architect (mode architecture), @backend (gateway enforcement), @frontend (invisible UI constraint)*
+*Last updated: 2026-03-25*
+*Co-authored with @security_audit*
 
 ---
 
-## 1. Purpose
+## 1. Who This Is For
 
-Lockdown Mode is a hardened operational posture for users whose threat model includes device seizure, legal process, hostile personal actors, and network-level surveillance. It is not a separate product — it is the same gateway, the same agents, the same iOS app, with constraints silently enforced.
+Journalist with sensitive sources. Domestic abuse survivor. Political organizer in a hostile jurisdiction. IRB-bound researcher with confidential participant data.
 
-The framing shift:
+The common thread: **the device or gateway may be seized, and the data on it may be used as evidence or to identify others.**
 
-- **Standard mode:** "We don't collect your data" (policy — about Polly's behavior)
-- **Lockdown mode:** "Your data provably cannot leave your control" (architecture — about what the system makes *impossible*)
-
-A journalist does not need to trust Polly. They need a system where betrayal is structurally impossible.
+This is not a paranoid edge case. It is the primary design requirement for this document. Every decision in this spec is anchored to it.
 
 ---
 
-## 2. Target Users
+## 2. Threat Model
 
-These are not edge cases. They are the users for whom the privacy architecture *actually matters*. All other users benefit incidentally.
+### 2.1 Threat Actors
 
-- **Journalists with sources** — need deniability that no data transited any server they don't control
-- **Domestic abuse survivors** — need an AI assistant an abuser cannot subpoena, access via cloud sync, or detect via network traffic
-- **Political organizers in hostile environments** — need communication that creates no metadata trails on third-party infrastructure
-- **IRB-bound researchers** — need to demonstrate to ethics boards that data never left a controlled environment
+| Actor | Attack Surface |
+|-------|---------------|
+| Law enforcement with legal process | Subpoena, warrant, border search — physical device access + third-party data requests |
+| Hostile personal actor | Abusive partner or adversary with physical access to unlocked device |
+| Network-level adversary | Traffic metadata monitoring on same network (coffee shop, border checkpoint, shared infrastructure) |
+| Compromised third-party infrastructure | Any relay, tunnel, or push service that transits data from gateway to device |
 
----
-
-## 3. Threat Model
-
-### 3.1 Threat Actors
-
-| Actor | Vector | Goal |
-|-------|--------|------|
-| Law enforcement with legal process | Subpoena, warrant, border device search | Access conversation history, source identities, session content |
-| Hostile personal actor | Physical device access (abusive partner, employer) | Read memory, monitor usage, identify contacts |
-| Network-level adversary | Traffic metadata analysis on shared network | Infer usage patterns, connection endpoints, session timing |
-| Compromised third-party infrastructure | Any relay, tunnel, or push service | Intercept or log traffic in transit |
-
-### 3.2 Threat/Mitigation Table
+### 2.2 Threat/Mitigation Table
 
 | Threat | Mitigation |
 |--------|------------|
-| Seized device → readable data | iOS Complete Protection class on all files; gateway data encrypted with Secure Enclave-backed key |
-| Seized device → behavioral metadata | Prosodic extraction disabled and non-toggleable; voice audio never written to disk; memory-only processing, zeroed on session end |
-| Seized device → session history | Session memory non-persistent by default; explicit user action required to enable persistence |
-| Network monitoring → usage patterns | No APNs push (polling only over local connection); Cloudflare Tunnel disabled; relay mode disabled; Tailscale or direct LAN only |
-| Third-party subpoena | Nothing on Apple/Cloudflare/any relay servers to subpoena — architecture makes it impossible, not policy |
-| Forced unlock under duress | Duress path → immediate Secure Enclave key wipe; data permanently unrecoverable, no escrow |
-| Malicious skill data exfiltration | Community skills disabled; only Verified + local skills; `network: [read]` non-grantable; `data_destination: cloud` skills blocked |
-| Ambient metadata accumulation | Zero extraction posture; no analytics; no telemetry; no crash reporting in lockdown mode |
-| Lockdown mode itself as evidence | Mode is invisible — no visible indicator that lockdown is active (see §5) |
+| Seized device → readable data | iOS Complete Protection class on all files; gateway data encrypted with Secure Enclave-derived key |
+| Seized device → behavioral metadata | Prosodic extraction disabled and non-toggleable; voice audio never written to disk |
+| Network monitoring → usage patterns | APNs (push) disabled; polling only; no Cloudflare tunnel; no relay; Tailscale or LAN only |
+| Third-party subpoena | Nothing on Apple/Cloudflare/any relay to subpoena — zero data at third parties |
+| Forced unlock under duress | Duress PIN triggers immediate key wipe; data permanently unrecoverable |
+| Malicious skill exfiltrating data | Community skills disabled; Verified + local only; `network: [read]` non-grantable for any skill |
+| Ambient metadata accumulation | Session memory non-persistent by default; zero extraction posture |
 
 ---
 
-## 4. Constraints Enforced in Lockdown Mode
+## 3. Stealth Design (Invisible Mode)
 
-### 4.1 Network
+**Lockdown Mode is invisible by default.** There is no "LOCKDOWN MODE" banner, no lock icon in the status bar, no visual indicator that constraints are in force.
 
-| Connection Path | Standard Mode | Lockdown Mode |
-|-----------------|---------------|---------------|
-| Direct LAN | ✅ Available | ✅ Only allowed local path |
-| Tailscale | ✅ Available | ✅ Only allowed remote path |
-| Cloudflare Tunnel | ✅ Available | ❌ Hard-blocked — reveals hostname to Cloudflare |
-| Relay mode | ✅ Available | ❌ Hard-blocked — relay sees traffic metadata |
-| APNs push | ✅ Available | ❌ Disabled — transits Apple infrastructure; polling only |
-| mDNS discovery | ✅ Available | ❌ Disabled — broadcasts device presence on LAN |
+**Rationale:** A visible lockdown indicator is itself metadata. "This person activated lockdown mode before crossing the border" is information an adversary can use. The constraints must be identical whether the user is in front of an adversary or alone. If the mode looks different, the mode is detectable.
 
-"Hard-blocked" means enforced at the gateway layer, not hidden in UI. The UI reflects the constraint, but removing the UI element would not re-enable the path.
+**Status access:** Settings → Privacy → Advanced → Protection Level. Three taps minimum. Displays current protection level without using the words "lockdown" or "restricted." Label: "Enhanced Protection: On."
 
-### 4.2 Data at Rest
-
-**iOS client:**
-- All session files, MEMORY.md equivalents, and cached content must use `NSFileProtectionComplete` (Complete Protection class)
-- This means: data encrypted with a key derived from the user's passcode, key discarded from memory when device locks
-- A locked, seized device reveals nothing — not to forensic tools, not to a court order served to Apple
-- Default iOS protection (`NSFileProtectionCompleteUntilFirstUserAuthentication`) is NOT acceptable in lockdown mode
-
-**Gateway (macOS):**
-- All session data, memory files, and conversation logs encrypted at rest
-- Encryption key stored in macOS Secure Enclave (T2/M-series) or Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
-- Plaintext `devices.json`, plaintext `MEMORY.md` not acceptable in lockdown mode
-- If Secure Enclave is unavailable (older hardware), warn user that hardware-backed encryption is not available
-
-### 4.3 Voice and Prosodic Data
-
-- Prosodic extraction: **disabled, non-toggleable**
-- Voice audio: **never written to disk** — memory-only processing only
-- Voice buffer: **zeroed on session end** (explicit memory zero, not just deallocation)
-- Rationale: extracted behavioral metadata (pace, energy, confidence) is potential evidence on a seized device regardless of where it's stored. "Never leaves the device" is insufficient when the device is the threat vector.
-
-### 4.4 Skills
-
-- Community tier skills: **disabled**
-- Verified + local skills only: **enforced at skill runner level**
-- `network: [read]` permission: **non-grantable** (web monitoring creates outbound traffic metadata)
-- `data_destination: cloud` skills: **blocked** regardless of trust tier
-- Skill install in lockdown mode: only Verified + local skills appear in marketplace browse view; others hidden entirely
-
-### 4.5 Memory and Session History
-
-- Cross-session memory persistence: **off by default**
-- Session end behavior: all ephemeral session data zeroed, not just deleted
-- Persistent memory: requires explicit user opt-in with a clear warning ("This data will be stored on device and may be accessible if the device is seized")
-- Agent MEMORY.md files: encrypted at rest per §4.2; not written if persistence is disabled
-
-### 4.6 Analytics and Telemetry
-
-- All analytics: **hardcoded off**
-- Crash reporting: **disabled** (crash reports may contain session context)
-- No opt-in UI present in lockdown mode — these settings do not exist
+**Power users:** The buried settings screen shows exactly which constraints are in force. No mystery — full transparency for the user. Invisible to external observation only.
 
 ---
 
-## 5. Stealth Mode (Invisible Lockdown)
+## 4. Activation Model
 
-**Decision: Lockdown mode is invisible by default.**
+### 4.1 Entering Lockdown Mode
 
-Rationale: A visible "LOCKDOWN MODE" indicator is itself metadata. In a border search or abusive partner scenario, an adversary seeing that lockdown is active reveals that the user has something to protect — which may be the most dangerous information of all.
+Activation path: Settings → Privacy → Advanced → Protection Level → Enhanced
 
-**Implementation:**
-- Identical UI to standard mode — no banners, no badges, no color changes
-- No "Lockdown Mode" label anywhere in the main interface
-- Status accessible only via: Settings → Privacy → Advanced → Connection Mode
-- That settings path itself uses an innocuous label (e.g., "Privacy Posture" or "Connection Settings") — not "Lockdown Mode"
-- The status screen shows current constraints in plain language without alarming framing
+**On activation, in order:**
+1. All in-flight network connections terminated
+2. Session memory cleared (existing sessions zeroed)
+3. Skill network permissions revoked (all `network: [read]` grants suspended)
+4. APNs token deregistered (gateway switches to polling connection)
+5. Prosodic extraction disabled (gateway-enforced, not client-side toggle)
+6. Confirmation: "Enhanced Protection enabled. Existing session data cleared."
 
-**The user knows they enabled it. No one else needs to.**
+**What is NOT cleared on activation:**
+- The Knowledge Skill index (vault content) — not cleared, but encrypted at rest under the same key hierarchy
+- Agent SOULs and configuration — not cleared
+- The activation itself is not logged to any external service
 
----
+### 4.2 Exiting Lockdown Mode
 
-## 6. Duress Path
+**Exiting requires the same passcode used to enter** (or device biometric + confirmation prompt). There is no one-tap disable.
 
-A duress mechanism allows the user to permanently destroy all encrypted data — making it unrecoverable — in a high-pressure situation (border crossing, arrest, confrontation).
+On exit:
+- Constraints lifted
+- APNs re-registration offered (not automatic — user choice)
+- Skill permissions remain revoked until user re-grants individually
+- Session data does not restore (what was cleared stays cleared)
 
-**Mechanism:**
-- A secondary "duress PIN" distinct from the device passcode
-- Entering the duress PIN at the app's authentication screen triggers: immediate Secure Enclave key wipe for all lockdown-mode encrypted data
-- After key wipe: all session history, memory files, and cached content are permanently unrecoverable (the ciphertext remains but the key is gone)
-- The app continues to function — it opens to a blank state, as if newly installed
-- No confirmation dialog — the wipe is immediate and irreversible by design
+### 4.3 Persistence
 
-**What survives a duress wipe:**
-- App installation (the app remains installed)
-- User account credentials (unless stored in lockdown-encrypted storage)
-- Nothing from sessions conducted in lockdown mode
-
-**iOS existing mechanism:**
-- iOS already supports auto-wipe after 10 failed passcode attempts
-- Lockdown mode settings should surface this option prominently and recommend enabling it
-- The duress PIN is an addition to, not a replacement for, the iOS auto-wipe mechanism
+Lockdown Mode persists across app restarts, device reboots, and app updates. It does not disable automatically after a time period. The user must explicitly exit.
 
 ---
 
-## 7. Activation and Transition
+## 5. Encryption at Rest
 
-### 7.1 Entering Lockdown Mode
+### 5.1 iOS Layer
 
-1. User navigates to Settings → Privacy → Advanced → Connection Mode
-2. Selects hardened posture (label TBD — not "Lockdown Mode" in UI per §5)
-3. Shown a plain-language summary of what changes
-4. Biometric confirmation required to activate
-5. Existing session data: user presented with choice — encrypt existing data in place, or wipe and start fresh. No silent migration.
-6. Mode activates. UI returns to normal appearance.
+All Polly data files must use **iOS Data Protection Complete Protection** (`NSFileProtectionComplete`):
+- Files inaccessible when device is locked
+- Key derived from device passcode + hardware UID
+- If device is seized while locked, files are unreadable
 
-### 7.2 Exiting Lockdown Mode
+This applies to: session files, memory files, Knowledge Skill index, Epistemic Immune System pattern library, Metacognitive Dashboard data, oral history corpus.
 
-1. Same settings path
-2. Biometric confirmation required
-3. Warning: "Exiting this mode will re-enable standard connection options. Your existing encrypted data will remain encrypted."
-4. Mode deactivates. Previously-blocked connection paths become available.
+**@backend + @frontend:** All file writes must specify `NSFileProtectionComplete`. This is not the default on iOS — it must be set explicitly per file or per directory. Audit required.
 
-**Lockdown mode state must survive app restarts and device reboots.** It is not a per-session setting.
+### 5.2 Gateway Layer
 
----
+The gateway stores data on the user's own hardware. In Lockdown Mode:
 
-## 8. Audit Log
+- Session files encrypted with a key derived from a user-set gateway passphrase
+- Epistemic Immune System pattern library encrypted separately (see §5.3)
+- Key stored in macOS Secure Enclave (T2 chip / Apple Silicon) — not in the filesystem
+- Gateway passphrase required on every gateway restart when Lockdown Mode is active
 
-The gateway maintains an activity log (tool calls, skill invocations, connection events). In lockdown mode:
+**Key hierarchy:**
+```
+Device passcode → iOS Complete Protection key (iOS-managed)
+Gateway passphrase → gateway root key (Secure Enclave)
+  ├── session_key (per-session, derived)
+  ├── pattern_library_key (Epistemic Immune System)
+  └── dashboard_key (Metacognitive Dashboard)
+```
 
-- **The log is encrypted at rest** per §4.2
-- **The log is tamper-evident** — each entry is chained (hash of previous entry included), so deletion or modification is detectable
-- **Retention policy:** 7 days by default in lockdown mode (shorter than standard). User can reduce to session-only (log wiped on session end). Log cannot be extended beyond 30 days in lockdown mode.
-- **The log itself may become evidence** — users should be informed of this. The settings screen for lockdown mode includes: "Activity logs are stored locally and encrypted. They may be accessible if this device is unlocked."
-- **Log wipe is included in duress wipe** (§6)
+### 5.3 Sensitive Data Layers (Double-Encrypted)
 
----
+Two layers of the cognitive artifact contain uniquely sensitive data and receive separate encryption:
 
-## 9. User Guidance (Operational Security)
+| Layer | Why separate key |
+|-------|-----------------|
+| Epistemic Immune System pattern library | Map of rhetorical vulnerabilities — usable for manipulation |
+| Metacognitive Dashboard | Detailed model of reasoning patterns |
 
-Architecture cannot enforce all of this. Users must be informed. This section surfaces in the lockdown mode setup flow and in a persistent "Security Guidance" screen in settings.
-
-### Required device configuration (shown at activation):
-- [ ] Use a strong alphanumeric passcode (not a 6-digit PIN)
-- [ ] Enable Face ID / Touch ID
-- [ ] Enable "Erase Data" after 10 failed passcode attempts (Settings → Face ID & Passcode)
-- [ ] Keep iOS updated
-
-### Network guidance:
-- Avoid activating or using Polly on untrusted public networks
-- On Tailscale: ensure your Tailscale network uses MagicDNS and has no exit node that routes through untrusted infrastructure
-- Physical network separation (dedicated VLAN for the gateway machine) adds a meaningful layer
-
-### Physical security:
-- The strongest encryption is defeated by an unlocked device. Lock your device before any high-risk situation.
-- Consider whether the device itself should be present in high-risk situations
-
-### Legal context (shown as a note, not legal advice):
-- In most jurisdictions, a properly encrypted locked device cannot be compelled to produce its contents without the passcode
-- The architecture of lockdown mode is designed to ensure Polly holds nothing that can be produced by subpoena to third parties
-- Consult legal counsel for jurisdiction-specific guidance
+Both layers are encrypted under their own keys even when Lockdown Mode is off. In Lockdown Mode, keys additionally require gateway passphrase to unlock.
 
 ---
 
-## 10. Relationship to Other Specs
+## 6. Network Constraint Enforcement
 
-| Spec | Relationship |
-|------|-------------|
-| `SKILLS_MARKETPLACE.md` | Lockdown mode enforces a subset of the trust tier model: Verified + local only; `data_destination: cloud` blocked |
-| `MCP_ADAPTER.md` | MCP skills using cloud transport are blocked in lockdown mode; local stdio MCP skills from Verified tier are allowed |
-| `SOMATIC_INTERFACE.md` | Prosodic extraction disabled and non-toggleable in lockdown mode |
-| `PUSH_SECURITY_FIX.md` | APNs push disabled in lockdown mode; polling only |
-| `DISTRIBUTED_NODES.md` | PicoClaw nodes: TOFU pairing requires same-subnet check; `network: [read]` non-grantable; inter-node traffic over Tailscale only in lockdown mode |
-| `AMBIENT_AGENT SOUL` | `network: [read]` permission non-grantable in lockdown mode |
+These are **hard blocks at the gateway level**, not UI toggles:
 
----
+| Connection type | Normal mode | Lockdown Mode |
+|----------------|-------------|---------------|
+| Direct LAN (iOS → gateway, same network) | ✅ Allowed | ✅ Allowed |
+| Tailscale (end-to-end encrypted WireGuard) | ✅ Allowed | ✅ Allowed |
+| APNs / push notifications | ✅ Allowed | ❌ Hard-blocked |
+| Cloudflare Tunnel | ✅ Allowed | ❌ Hard-blocked |
+| Any other relay / proxy | User-configurable | ❌ Hard-blocked |
+| Skill `network: [read]` | Grantable | ❌ Non-grantable |
 
-## 11. Implementation Notes (Phase 3 Gates)
+**Enforcement point:** The gateway refuses to register APNs tokens or establish relay connections when Lockdown Mode is active. The iOS client cannot override this — the constraint is gateway-side.
 
-Before lockdown mode ships:
-
-- [ ] iOS `NSFileProtectionComplete` applied to all Polly-written files (verify with `ls -l@` entitlement check)
-- [ ] Gateway encryption at rest implemented with Secure Enclave key storage
-- [ ] APNs push path gated behind lockdown check
-- [ ] Cloudflare Tunnel and relay mode gated behind lockdown check
-- [ ] Skill runner enforces Verified-only + local-only in lockdown mode
-- [ ] Prosodic extraction gated behind lockdown check
-- [ ] Voice buffer zero-on-session-end implemented
-- [ ] Duress PIN mechanism implemented and tested
-- [ ] Audit log chaining implemented
-- [ ] Stealth UI verified (no visible indicator in standard views)
-- [ ] @security_audit sign-off on all gates above before Phase 3 lockdown work begins
+**Why APNs is blocked:** Push notifications require an Apple server to hold a device token and route messages. Apple is a subpoenable third party. In Lockdown Mode, the gateway polls on a configurable interval instead.
 
 ---
 
-*This spec was authored by @security_audit (threat model, constraints, duress path, user guidance) with structural collaboration from @code_architect. Any changes to the threat model section require @security_audit review.*
+## 7. Skill Restrictions
+
+In Lockdown Mode:
+
+- **Community skills:** Disabled. Cannot be installed or activated.
+- **Verified skills:** Available but re-audited at next startup (checksums verified).
+- **Local skills:** Available without restriction.
+- **`network: [read]`:** Non-grantable for any skill, regardless of trust tier or prior grants.
+- **`data_destination: cloud`:** All skills with this manifest field are disabled.
+
+**Enforcement:** The skill runner checks Lockdown Mode status before executing any skill invocation. This is a gateway-level gate — a client-side skill bypass cannot circumvent it.
+
+---
+
+## 8. Memory and Session Handling
+
+### 8.1 Non-Persistent Default
+
+In Lockdown Mode, session memory is non-persistent by default:
+- Sessions do not write to disk until explicitly saved by the user
+- "Save this session" is a deliberate user action, not automatic
+- Unsaved sessions are zeroed on session end (overwrite, not just delete)
+
+### 8.2 Voice and Prosodics
+
+- Voice audio: never written to disk in any mode. In Lockdown Mode, this is enforced at the gateway transcription endpoint — no audio buffer retention.
+- Prosodic extraction: disabled and non-toggleable. The gateway ignores prosodic metadata fields even if the client sends them.
+
+### 8.3 Zeroing Protocol
+
+"Deleted" data in Lockdown Mode is not just unlinked — it is overwritten. Single-pass zero overwrite on:
+- Session files on session end (if not explicitly saved)
+- Temporary files (transcription buffers, intermediate outputs)
+- Log files older than the configurable retention window
+
+---
+
+## 9. Duress Path
+
+**A duress PIN is a separate numeric code that, when entered instead of the device passcode, triggers immediate key wipe.**
+
+On duress PIN entry:
+1. Gateway root key deleted from Secure Enclave immediately
+2. All derived session, pattern library, and dashboard keys become unrecoverable
+3. iOS requests data protection key deletion (best-effort — iOS controls the actual operation)
+4. App exits
+5. No confirmation prompt. No "are you sure." Immediate and irreversible.
+
+**What survives key wipe:**
+- Encrypted ciphertext files (now permanently unreadable without the key)
+- App binary (no user data)
+- Nothing else
+
+**What does not survive:**
+- All session data
+- Knowledge Skill index (accessible ciphertext remains but key is gone)
+- Epistemic Immune System pattern library
+- Metacognitive Dashboard data
+
+**Duress PIN setup:** Settings → Privacy → Advanced → Duress Code. Requires current passcode to set. Duress code must differ from primary passcode by at least 2 digits.
+
+**@security_audit:** Duress PIN iOS implementation requires evaluation — iOS doesn't expose a direct "delete Secure Enclave key on PIN entry" API. Implementation path TBD; may require gateway-side key management rather than iOS keychain. Flag for implementation review.
+
+---
+
+## 10. Audit Log Integrity and Retention
+
+### 10.1 Tamper-Evident Log
+
+The gateway maintains a tamper-evident audit log of: skill invocations, network connections made, file writes, mode changes (Lockdown Mode enter/exit).
+
+Log entries are chained (each entry includes hash of previous entry). Tampering is detectable.
+
+### 10.2 The Audit Log as Evidence Problem
+
+The audit log itself may be subpoenable and may contain incriminating metadata. Two options:
+
+**Option A — Short retention with configurable window:** Default 7-day retention; auto-deleted after window. User can set 1-day minimum. Audit log is always present but short.
+
+**Option B — Lockdown Mode zeroes audit log on activation:** When entering Lockdown Mode, the audit log prior to activation is wiped. Only post-activation activity is logged.
+
+**Decision: Option B for Lockdown Mode + Option A for normal mode.** On Lockdown Mode activation, historical audit log is wiped. Post-activation audit log uses 7-day default with user-configurable window. The user chose enhanced protection — that choice should extend to prior activity.
+
+---
+
+## 11. Operational Security Guidance
+
+Architecture cannot enforce everything. The user must understand:
+
+1. **Strong passcode required.** 6-digit PIN is not enough. 12+ character alphanumeric passcode + biometric enabled.
+2. **Auto-wipe after 10 failed attempts.** Enable in iOS Settings → Face ID & Passcode → Erase Data.
+3. **Gateway machine physical security.** If the gateway Mac is unlocked and unattended, no software protection is adequate. Screen lock timeout: 1 minute maximum when Lockdown Mode is active on clients.
+4. **Tailscale exit node risks.** If using Tailscale with an exit node, exit node traffic may be logged by the exit node operator. LAN-only or direct Tailscale (no exit node) is the correct configuration in Lockdown Mode.
+5. **Duress PIN is permanent.** Test with a fresh gateway instance before relying on it. There is no recovery.
+6. **Metadata is also evidence.** Even with all data encrypted, the *fact of communication* (timestamps, duration) may be visible on the network. This requires operational security beyond what Polly can provide.
+
+---
+
+## 12. Open Questions
+
+**Q1 — Duress PIN iOS implementation:** Secure Enclave key deletion on arbitrary PIN entry requires gateway-side key custody rather than iOS keychain. @security_audit to specify implementation path. Blocking for Phase 2 implementation.
+
+**Q2 — Tailscale in Lockdown Mode:** Tailscale is currently recommended but not enforced. Should Lockdown Mode enforce Tailscale-or-LAN-only at the gateway network layer? Recommend yes; @infra to evaluate.
+
+**Q3 — Knowledge Skill index in Lockdown Mode:** The FAISS index is large (potentially GBs). Re-encrypting it on Lockdown Mode activation is slow. Does Lockdown Mode activate the encryption constraint on next index rebuild rather than immediately? TBD.
+
+---
+
+## 13. Dependencies
+
+- iOS Data Protection Complete Protection — all file writes must specify `NSFileProtectionComplete` (@frontend, @backend)
+- macOS Secure Enclave key management (@backend)
+- Gateway network layer enforcement (@backend, @infra)
+- Skill runner Lockdown Mode gate (@backend)
+- Duress PIN implementation (@security_audit, @backend — implementation path TBD)
+- PUSH_SECURITY_FIX.md — APNs architecture (must be consistent with Lockdown Mode APNs block)
+- SOMATIC_INTERFACE.md — prosodic extraction disabled in Lockdown Mode (gateway-enforced)
+- EPISTEMIC_IMMUNE_SYSTEM.md — pattern library encrypted under separate key
+- METACOGNITIVE_DASHBOARD.md — dashboard data encrypted under separate key
+
+---
+
+*Cross-references: PUSH_SECURITY_FIX.md, SOMATIC_INTERFACE.md, SKILLS_MARKETPLACE.md, EPISTEMIC_IMMUNE_SYSTEM.md, METACOGNITIVE_DASHBOARD.md, POLLY_IOS_SPEC.md §8.8*
