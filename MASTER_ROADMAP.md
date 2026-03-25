@@ -2,7 +2,7 @@
 
 **Polly** is a native iOS app (React Native + Expo) that connects to a self-hosted OpenClaw gateway, giving you a team of intelligent agents that know your work, your Obsidian vault, and your mental models.
 
-For full feature specs, see `POLLY_IOS_SPEC.md`. For agent/team definitions, see `POLLY_AGENT_TEMPLATES.md`.
+For full feature specs, see `POLLY_IOS_SPEC.md`. For agent/team definitions, see `POLLY_AGENT_TEMPLATES.md`. For all active specs and their status, see `SPEC_INDEX.md`.
 
 ---
 
@@ -19,6 +19,7 @@ For full feature specs, see `POLLY_IOS_SPEC.md`. For agent/team definitions, see
 | Vault | Quick capture → `_inbox/`, security-scoped Obsidian bookmark |
 | Mental models | 12 built-in models, tap-to-apply lens system |
 | Settings | Security, appearance, model selection |
+| Voice interaction | Mic button, waveform, idle timer suppression, interruption recovery (`VOICE_INTERACTION.md`, `COPY_VOICE.md`) |
 | Design system | `src/theme/colors.ts` tokens, `react-native-markdown-display` |
 
 **Not in Phase 1:** Skills marketplace, model routing tiers, plans layer, Moltbook, full accessibility audit.
@@ -29,6 +30,7 @@ For full feature specs, see `POLLY_IOS_SPEC.md`. For agent/team definitions, see
 
 | Area | What ships |
 |------|-----------|
+| Figma integration | Link surfacing in chat, deep-link to boards (`FIGMA_INTEGRATION.md`) |
 | Skills Marketplace | ClawHub browser, install flow, §8.8 security model enforcement |
 | Push notifications | APNs relay, `sendKey` hardening, push registration security fix |
 | Image attachments | Photo/file attach in chat |
