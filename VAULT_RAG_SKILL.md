@@ -50,7 +50,7 @@ Obsidian notes are fragments, not documents. A note might be 3 bullet points, a 
 
 **Stack:**
 - **Dense:** FAISS index with SBERT embeddings (`all-MiniLM-L6-v2` — fast, small, local)
-- **Sparse:** BM25 via `rank_bm25` (pure Python, zero additional dependencies)
+- **Sparse:** SBERT Sparse Encoder (unified with dense pipeline — one library handles both legs of hybrid retrieval)
 - **Fusion:** Reciprocal Rank Fusion (RRF) — combines dense and sparse rankings without requiring score normalization
 
 ```python
@@ -84,7 +84,7 @@ This enables relationship queries that FAISS cannot answer:
 - "What is this note part of?"
 - "Show me everything linked from my weekly review for March 10"
 
-GraphRAG (microsoft/graphrag) is the reference implementation for this layer. Due to its indexing cost, the graph layer is **opt-in** — users with large, well-linked vaults can enable it. Default install uses FAISS + BM25 only.
+GraphRAG (microsoft/graphrag) is the reference implementation for this layer. Due to its indexing cost, the graph layer is **opt-in** — users with large, well-linked vaults can enable it. Default install uses FAISS + SBERT sparse only.
 
 ### Optional: HyDE (Hypothetical Document Embeddings)
 
@@ -106,7 +106,7 @@ The skill registers a filesystem watcher on the vault root on startup. Events:
 |-------|--------|
 | File created | Add to index queue |
 | File modified | Mark as dirty, re-index on next cycle |
-| File deleted | Remove from FAISS index + BM25 corpus |
+| File deleted | Remove from FAISS index + sparse index |
 | File renamed | Remove old, add new |
 
 ### Incremental Updates (Not Full Rebuilds)
@@ -192,7 +192,7 @@ Per §8.8 and @security_audit review:
 The skill runner enforces that `read:vault` means files within the declared vault directory only. Path traversal (`../../etc/passwd`) and symlink escapes are blocked at the gateway layer. The skill cannot read outside the approved root regardless of what the skill code requests.
 
 ### Index File Security
-The FAISS index and BM25 corpus are stored in `~/.openclaw/skills/vault-rag/index/` — sandboxed workspace, not readable by other skills. The index is treated as vault-sensitivity content.
+The FAISS dense index and SBERT sparse index are stored in `~/.openclaw/skills/vault-rag/index/` — sandboxed workspace, not readable by other skills. The index is treated as vault-sensitivity content.
 
 ### Network Sandboxing Gate
 **The vault RAG skill cannot be released until gateway-level network sandboxing is verified.** A skill with `network: []` that can make outbound calls anyway is a silent data-exfil risk. @security_audit sign-off required before this skill ships.
@@ -218,7 +218,7 @@ Any skill update that adds permissions (e.g., adding a `network` domain) trigger
 - [ ] Structure-aware chunker (frontmatter, headers, wikilinks, tags)
 - [ ] SBERT embedding pipeline (local, `all-MiniLM-L6-v2`)
 - [ ] FAISS index (incremental add/remove)
-- [ ] BM25 corpus (`rank_bm25`)
+- [ ] SBERT sparse encoder index (unified with dense pipeline)
 - [ ] RRF fusion
 - [ ] `vault_search` tool
 - [ ] File watcher + dirty-flag incremental updates
@@ -234,6 +234,8 @@ Any skill update that adds permissions (e.g., adding a `network` domain) trigger
 ### Phase 3 — Enhancements
 
 - [ ] HyDE mode for conceptual queries
+- [ ] FLARE (Forward-Looking Active Retrieval) — retrieves when the model detects it needs more context mid-generation, rather than upfront. Better for "answer questions about Brett's work" use case. Informed by FlashRAG benchmarks (arXiv:2405.13576).
+- [ ] Iter-RetGen (Iterative Retrieval-Generation) — interleaves retrieval and generation across multiple passes. Stronger on complex multi-hop queries. Also from FlashRAG benchmark results.
 - [ ] Notion vault backend (alternative to Obsidian filesystem)
 - [ ] PDF ingestion via `boof` skill integration
 - [ ] Domain-aware retrieval (filter by domain tags configured in §11.2)
