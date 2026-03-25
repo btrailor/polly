@@ -1,5 +1,5 @@
 # Knowledge Skill
-## Polly Spec | Last updated: 2026-03-25
+## Polly Spec | Status: Planned | Last updated: 2026-03-25 | @security_audit path-permission sign-off: ✅
 
 > *Polly's identity is "AI that knows your work." Without this skill, agents are generic chat. With it, they're operating on your actual knowledge — your notes, your books, your reading.*
 
@@ -304,11 +304,16 @@ Any update adding permissions triggers full re-approval flow with new permission
 ### Security Acceptance Criteria
 - [ ] Vault path confinement verified with path traversal test suite
 - [ ] BookLore path confinement verified (arbitrary user-configured path)
+- [ ] **Arbitrary path permissions — five constraints (@security_audit sign-off 2026-03-25):**
+  - [ ] Paths normalized to absolute at install time, stored as resolved
+  - [ ] Prefix-strict enforcement with trailing slash — no parent-path reads
+  - [ ] Path change = new permission grant, biometric re-auth required
+  - [ ] Plain-language path display in UI ("You chose this location")
+  - [ ] Freeform manual path entry shows explicit warning callout
 - [ ] Index sandboxed and not accessible to other skills
 - [ ] `network: []` enforcement verified — no outbound calls possible
-- [ ] Arbitrary filesystem path permission declarations handled gracefully in UI
 - [ ] Permission-expanding update flow tested
-- [ ] @security_audit sign-off
+- [ ] @security_audit final sign-off
 
 ---
 
@@ -365,9 +370,11 @@ Any update adding permissions triggers full re-approval flow with new permission
 
 ## Open Questions
 
-1. **Embedding model as skill setting?** BGE-large-en default (quality), Qwen3-Embedding-0.6B alternative (speed). Yes — expose as a skill setting.
-2. **Large vault/library warning?** Warn users with >10k notes or large EPUB libraries about initial build time. Yes.
-3. **BookLore API vs filesystem?** BookLore exposes an API. Filesystem watch is simpler and avoids auth complexity. Phase 2: filesystem. Phase 3: evaluate API adapter if BookLore changes structure.
+All resolved:
+
+1. **Embedding model as skill setting** — Yes. BGE-large-en default (quality), Qwen3-Embedding-0.6B as lightweight option. Exposed as a skill setting.
+2. **Large vault/library build time warning** — Yes. Warn users with >10k notes or large EPUB libraries about expected initial build time.
+3. **BookLore filesystem vs API** — Filesystem for Phase 2. Simpler, no outbound calls, fits zero-network trust model. API adapter deferred to Phase 3+.
 
 ---
 
