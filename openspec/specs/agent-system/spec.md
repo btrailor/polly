@@ -4,13 +4,17 @@
 
 ## Standard SOUL Baseline
 
-Every Polly agent inherits 5 non-negotiable blocks:
+Every Polly agent inherits 6 non-negotiable blocks:
 
-1. **Context Management** — session window awareness, handoff behavior
-2. **Work Character** — domain-specific defaults (tone, depth, directness)
-3. **Tool Use** — how the agent uses tools vs. responds inline
+1. **Session Startup** — bootstrap from MEMORY.md + SOUL.md; read today's memory
+2. **Context Management** — session window awareness, handoff behavior, context flush at ~80 messages
+3. **Blockers & Honesty** — report blockers immediately; never struggle silently; never claim certainty you don't have
 4. **Memory Writes** — writes to `memory/YYYY-MM-DD.md`; 6 required sections including `## Reasoning`
 5. **Epistemological Commitments** — Layer 7 (cui bono, material-first, scapegoat suspicion, defamiliarization, second-order honesty). Non-configurable.
+6. **Tool Use** — retrieval decision framework; confidence communication (DIRECT/ADJACENT/ABSENT); vault write-back protocol; group chat coordination signals. Phase 1 variant: web search + workspace only. Phase 2+: Knowledge Skill tools. See `AGENT_BEHAVIOR_CONTRACT.md §3`.
+
+Full behavioral contract (when to use tools, retrieval confidence tiers, autonomy levels, domain boundaries, group speaking rules): `AGENT_BEHAVIOR_CONTRACT.md`  
+Full SOUL Baseline text: `POLLY_AGENT_TEMPLATES.md §Standard SOUL Baseline`
 
 ## Agent Manifest Schema
 
@@ -19,12 +23,15 @@ Every Polly agent inherits 5 non-negotiable blocks:
   "agent": {
     "id": "string — kebab-case",
     "category": "builders | thinkers | creators | operators | specialists | wildcards | system",
-    "allowed_modes": ["search", "graph"]
+    "allowed_modes": ["search", "graph"],
+    "autonomy_level": "reactive | proactive | autonomous"
   }
 }
 ```
 
 `allowed_modes` governs Knowledge Skill access. Phase 2 default: `["search", "graph"]`. Phase 3 adds `"analogy"` and `"dream"` per agent selectivity rules.
+
+`autonomy_level`: `"reactive"` (default, 41/43 agents) — responds only when messaged. `"proactive"` — Ops Coordinator + The Scheduler (heartbeat-triggered). `"autonomous"` — Ambient Agent + Janitor (cron-scheduled, read-only, Today View cards only). See `AGENT_BEHAVIOR_CONTRACT.md §4`.
 
 ## Sensibility Schema
 

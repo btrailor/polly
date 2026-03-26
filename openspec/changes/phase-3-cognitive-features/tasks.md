@@ -2,7 +2,7 @@
 
 **Status:** 💡 Specced  
 **Gate:** Phase 2 Knowledge Skill complete (shared FAISS index + conversation history adapter required)  
-**Spec sources:** `EPISTEMIC_IMMUNE_SYSTEM.md`, `METACOGNITIVE_DASHBOARD.md`, `TEMPORAL_INTELLIGENCE.md`, `STRUCTURAL_ANALOGY.md`, `DREAM_LOGIC.md`, `PRACTICE_LAYER.md`, `ORAL_HISTORY.md`, `CL4R1T4S_RESEARCH.md` (EIS pattern vocabulary), `ANTI_PRODUCTIVITY.md` (Practice Layer dormancy data)
+**Spec sources:** `EPISTEMIC_IMMUNE_SYSTEM.md`, `METACOGNITIVE_DASHBOARD.md`, `TEMPORAL_INTELLIGENCE.md`, `STRUCTURAL_ANALOGY.md`, `DREAM_LOGIC.md`, `TREE_OF_THOUGHTS.md`, `PRACTICE_LAYER.md`, `ORAL_HISTORY.md`, `CL4R1T4S_RESEARCH.md` (EIS pattern vocabulary), `ANTI_PRODUCTIVITY.md` (Practice Layer dormancy data)
 
 ## Goal
 
@@ -41,6 +41,15 @@ Tracks how intellectual positions change over time. Drift detection + Drift view
 - [ ] Topic ontology: emergent from cluster analysis, not fixed taxonomy
 - [ ] Drift view: topic map with time axis
 - [ ] Dialogic agent prompt on detected drift
+
+### Tree of Thoughts (`TREE_OF_THOUGHTS.md`)
+Explicit multi-path reasoning mode. Agent generates a tree of candidate reasoning paths, evaluates them, and selects the best — surfacing the reasoning tree to the user rather than hiding the deliberation.
+
+- [ ] Tree of Thoughts reasoning mode implementation in agent SOUL baseline (Phase 3 activation)
+- [ ] `allowed_modes: ["tree_of_thoughts"]` gating — analytical agents (Code Architect, Strategist, Analyst, Data Scientist) + any agent where user explicitly enables
+- [ ] Routing integration: routing engine can request tree-of-thoughts mode for high-complexity queries (Tier 3+)
+- [ ] UI: collapsible reasoning tree display in chat bubble (shows candidate paths + evaluation) — @frontend
+- [ ] Coordination with Metacognitive Dashboard: tree depth + branching factor logged as complexity signal
 
 ### Structural Analogy (`knowledge_analogy` tool)
 Cross-domain structural transfer — finds notes with matching relational structure, not vocabulary.

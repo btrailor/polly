@@ -9,7 +9,7 @@
  *              ↓ (background/interruption)
  *           draft saved → VoiceDraftPrompt on return
  *
- * Specs: VOICE_INTERACTION.md, COPY_VOICE.md, PROFESSOR_STUDIES_MODE.md
+ * Specs: VOICE_INTERACTION.md, COPY_VOICE.md, VOICE_BEHAVIOR_TESTS.md
  */
 
 import React, { useState, useCallback } from 'react';
