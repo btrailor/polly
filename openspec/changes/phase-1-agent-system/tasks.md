@@ -66,5 +66,11 @@
 - [x] `AGENT_BOOTSTRAP_DEV.md` — 5-step bootstrap sequence, hard rules
 - [ ] `PROJECT_STATUS.md` — needs to be rewritten to reflect actual state (currently aspirational)
 
+### Agent Behavior Contract (AGENT_BEHAVIOR_CONTRACT.md §8–9 Phase 1 tasks)
+- [ ] Add domain boundary protocol (§5.1) to SOUL Baseline footer or per-agent SOULs in `POLLY_AGENT_TEMPLATES.md`
+- [ ] Write `autonomy_level` value for all 43 agents in agent manifest — default `reactive`; exceptions: Ops Coordinator + Scheduler = `proactive`; Ambient Agent + Janitor = `autonomous`
+- [ ] Write `allowed_modes` for all 43 agents (schema exists; values not written yet — see Phase 3 selectivity rules in `POLLY_AGENT_TEMPLATES.md`)
+- [ ] Document iOS client boundaries in agent development guide (what agents describe vs. what iOS client does — §5.2)
+
 ## Done when
-All 43 agent SOUL templates complete. `allowed_modes` written per-agent. Somatic interface gateway field shipped. @backend confirms message schema.
+All 43 agent SOUL templates complete. `allowed_modes` written per-agent. `autonomy_level` written per-agent. Somatic interface gateway field shipped. @backend confirms message schema.

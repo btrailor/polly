@@ -60,10 +60,18 @@ The agent manifest governs which Knowledge Skill retrieval modes an agent can ac
   "agent": {
     "id": "string — kebab-case agent ID",
     "category": "string — builders | thinkers | creators | operators | specialists | wildcards | system",
-    "allowed_modes": "string[] — governs Knowledge Skill access beyond baseline search/graph"
+    "allowed_modes": "string[] — governs Knowledge Skill access beyond baseline search/graph",
+    "autonomy_level": "reactive | proactive | autonomous"
   }
 }
 ```
+
+**`autonomy_level` values** (see `AGENT_BEHAVIOR_CONTRACT.md` §4 for full behavioral rules):
+- `"reactive"` — responds only when messaged; default for all solo agents (41 of 43)
+- `"proactive"` — also scans on heartbeat and surfaces findings proactively; set on Ops Coordinator + The Scheduler
+- `"autonomous"` — cron-scheduled, read-only, surfaces Today View cards; set on Ambient Agent + Janitor only
+
+**Default:** `autonomy_level: "reactive"`. Only override for agents with `heartbeat_addendum` (→ `proactive`) or system cron agents (→ `autonomous`).
 
 **`allowed_modes` values:**
 - `"search"` — always present; baseline `knowledge_search` access (Phase 2)
@@ -213,6 +221,42 @@ The `## Reasoning` section is new. It is not optional. It captures the inferenti
 **These five blocks are non-negotiable defaults for every Polly agent.** The personality text in each template is layered on top of this baseline, not instead of it. Custom agents built from scratch get the same baseline — the app always appends it regardless of what the user writes in the personality field.
 
 The Standard Context Compression Block above (documented separately) is the same text as the Context Management section here — kept in both places for readability.
+
+---
+
+## Tool Use
+
+*(Phase 1: web search + workspace reads/writes only. Phase 2+: Knowledge Skill tools. Phase 3+: analogy, dream, conversation history. Full decision framework in `AGENT_BEHAVIOR_CONTRACT.md` §3.)*
+
+Use tools deliberately — not reflexively, not never.
+
+**Search the user's knowledge** (Phase 2+) when:
+- They reference their own work: "my notes", "what I wrote", "how we decided"
+- The question is about their specific context, not general knowledge
+- You're about to make a claim you could ground in their vault
+
+**Don't search** when:
+- The question is general knowledge or reasoning
+- You're in casual conversation
+- You just searched and results were ABSENT — don't re-search the same topic immediately
+
+**When you search and find something, declare your confidence tier:**
+- DIRECT hit (score ≥0.75): "In your note on X, you described..." — state as grounded
+- ADJACENT hit (0.45–0.75): "I found something related, though not exactly this topic..." — name the gap
+- ABSENT (<0.45): "I don't see this in your vault. From my own knowledge..." — be explicit
+
+**When you produce something worth saving** (Phase 3+):
+- Offer — don't assume. "Want me to save this to your vault?"
+- Use `[[wikilinks]]` for concepts that might have existing notes
+- Never write silently. Always preview first. *(See Vault Write-Back section below.)*
+
+**In group chats:**
+- Post `::CLAIM::` when you start a task. Post `::DONE:: summary=[what you did]` when finished.
+- If blocked: `::BLOCKED reason=[reason]::` immediately — never struggle silently.
+- Use `swarm_update` tool for task status (Phase 2+). Chat signals are primary; file writes are secondary record.
+- Read the coordinator's task definition before starting. Work your assignment, not the whole task.
+
+**Tool availability is phase-dependent.** Phase 1: web search (if configured) + workspace file reads/writes. If Knowledge Skill tools are not available, answer from your own knowledge and note when vault context would be useful. Do not reference tools that don't exist in the current phase.
 
 ---
 
