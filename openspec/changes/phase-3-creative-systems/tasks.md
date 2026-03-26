@@ -54,25 +54,67 @@ All features shipped. Chorus grid rendering on iPad. Creative Constraint Engine 
 ### Creative Code Skill (`CREATIVE_CODE_SKILL.md`)
 Sandboxed generative code execution — agents can write and run code as part of a creative workflow.
 
-**Hard-blocker dependency chain — these are sequential gates, not advisory ordering. A step cannot start until the prior step is in done/approved state. No exceptions under schedule pressure:**
+**Hard-blocker dependency chain — sequential gates, not advisory ordering. A task cannot enter "in progress" until all tasks it is blocked by are in done/approved state. No exceptions under schedule pressure.**
 
-1. **[HARD GATE] `security-design-doc`** — @security_audit writes sandbox security design doc: boundary model, capability scope (filesystem, network, runtime), I/O handling spec. No implementation begins until this exists.
-2. **[HARD GATE] `security-review-signoff`** — @security_audit reviews sandbox implementation design and signs off in writing. Blocks step 3.
-3. **[HARD GATE] `qa-containment-validation`** — @qa_guy validates observable failure modes (see below). **Cannot enter "in progress" until `security-review-signoff` is approved.** Blocks step 4. @infra must be looped in for signal/observability section.
-4. **[SHIP GATE]** Implementation eligible only after steps 1–3 complete.
+```
+security-design-doc (@security_audit)
+  → security-review-signoff (@security_audit)
+  → infra-observability-spec (@infra)        ← parallel with security review; unblocks QA plan
+  → qa-containment-validation-plan (@qa_guy) ← blocked on BOTH security-review-signoff AND infra-observability-spec
+  → implementation (@backend)
+  → qa-containment-validation-execution (@qa_guy)
+  → ship gate
+```
 
-**Containment Validation Requirements (@qa_guy scope — gateway-changes #21 prerequisite):**
-- Sandbox escape attempt → must produce distinct, named error signal (not a generic 500)
-- Resource exhaustion (CPU/memory ceiling hit) → must produce graceful degradation signal, not a hung request
-- Timeout breach → must produce explicit timeout signal with context, not a swallowed exception
-- Input rejection at sandbox boundary → must produce rejection signal distinguishable from execution failure
-- **Silent failures are a defect:** if two different failure modes produce the same observable output, that's an observability defect, not a logging gap — must be fixed before QA sign-off
-- @infra loop-in required for signal/observability spec section — "is this detectable" is only answerable knowing what instrumentation the gateway surfaces
+**Task 1: `security-design-doc` — @security_audit**
+- [ ] Sandbox boundary model: what the sandbox can and cannot access
+- [ ] Capability scope: filesystem (workspace-only), network (none), runtime (explicit memory + CPU ceilings)
+- [ ] I/O handling spec: input sanitization, output escaping, stdio-only IPC
+- [ ] **Audit logging spec** (required for sign-off — design doc without this will not be approved):
+  - Audit log is write-only from sandbox's perspective — sandbox process cannot suppress or modify its own entries
+  - Separate write path from application logging; separate retention policy; not rotated on standard log schedule
+  - Audit entry fields per signal type: timestamp, input hash, agent ID, execution context
+  - `SANDBOX_ESCAPE` entries: logged before error is returned to caller; caller signal may be generic; audit entry must not be
+  - `RESOURCE_EXHAUSTED` entries: log agent ID + input; repeated exhaustion from same agent = detectable pattern
+  - `INPUT_REJECTED` entries: log rejection reason + input fingerprint; flood of rejections = buggy client or boundary probing
+  - `EXECUTION_TIMEOUT` entries: log with agent context for abuse pattern detection
+- [ ] Violation event routing: who receives each signal type — skill caller, operator, or both? (determines @qa_guy test architecture — if operator-only, QA needs gateway-level test hooks, not skill API assertions)
 
-**Implementation tasks (start only after all 3 gates pass):**
+**Task 2: `security-review-signoff` — @security_audit**
+- [ ] Review implementation design against security-design-doc
+- [ ] Written sign-off confirming sandbox is architecturally sound, capabilities correctly scoped, I/O handling safe
+- [ ] Blocks: infra-observability-spec start (parallel), qa-containment-validation-plan start
+
+**Task 3: `infra-observability-spec` — @infra**
+- [ ] Runs parallel to or immediately after security-review-signoff
+- [ ] Four typed error responses (not generic 500s): `SANDBOX_ESCAPE`, `RESOURCE_EXHAUSTED`, `EXECUTION_TIMEOUT`, `INPUT_REJECTED`
+- [ ] Structured log entry schema for each signal: exact field names, types, required vs. optional
+- [ ] Metric counter definitions: increment on each failure mode
+- [ ] Health surface: sandbox process health check endpoint + format
+- [ ] Named deliverable — @qa_guy cannot write executable test cases until actual signal names, log field schemas, and metric counters are confirmed here; implicit assumptions = useless test suites
+
+**Task 4: `qa-containment-validation-plan` — @qa_guy**
+- [ ] **BLOCKED on: security-review-signoff (Task 2) AND infra-observability-spec (Task 3) — both required**
+- [ ] Test cases against the four named signals; assertions bound to actual field names from observability spec
+- [ ] Silent failure test: two different failure modes must produce different observable outputs — any overlap = observability defect, must be fixed before plan advances
+- [ ] Test architecture decision (depends on Task 1 violation routing answer): skill API assertions vs. gateway-level test hooks vs. log assertions
+- [ ] Abuse pattern detection tests: repeated `RESOURCE_EXHAUSTED` from same agent ID; flood of `INPUT_REJECTED`
+
+**Task 5: Implementation — @backend**
+- [ ] **BLOCKED on: qa-containment-validation-plan (Task 4)**
 - [ ] Sandboxed execution environment (sandbox-exec, stdio-only IPC)
 - [ ] Capability scope: no network, no filesystem outside workspace, explicit memory ceiling
-- [ ] Four distinct named error signals: `SANDBOX_ESCAPE`, `RESOURCE_EXHAUSTED`, `EXECUTION_TIMEOUT`, `INPUT_REJECTED`
+- [ ] Four distinct named error signals per spec: `SANDBOX_ESCAPE`, `RESOURCE_EXHAUSTED`, `EXECUTION_TIMEOUT`, `INPUT_REJECTED`
+- [ ] Audit log write path (separate from application logs, write-only from sandbox, correct retention policy)
 - [ ] Token schema for structured code output
 - [ ] Agent manifest `allowed_modes` entry for code execution
-- [ ] Depends on: skill runner (phase-2-skills-marketplace) + token schema + gateway-changes #21
+- [ ] Depends on: skill runner (phase-2-skills-marketplace) + gateway-changes #21
+
+**Task 6: `qa-containment-validation-execution` — @qa_guy**
+- [ ] **BLOCKED on: implementation (Task 5)**
+- [ ] Execute containment validation plan against live implementation
+- [ ] Verify all four failure modes produce distinct, named signals
+- [ ] Verify audit log is write-only from sandbox perspective
+- [ ] Verify abuse pattern detection signals fire correctly
+- [ ] @infra sign-off on observability surface before this closes
+- [ ] **Ship gate: implementation cannot ship until this task closes with explicit QA sign-off**

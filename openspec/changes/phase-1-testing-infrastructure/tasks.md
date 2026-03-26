@@ -106,10 +106,21 @@ Establish zero-to-working test infrastructure for the Polly iOS app. Currently: 
 - [ ] Voice transcript corpus: ≥10 transcribed sessions — Oral History
 
 ### Creative Code Skill Containment
-*Sequential gate chain — cannot skip steps under schedule pressure. Full chain in `phase-3-creative-systems/tasks.md` Creative Code Skill section.*
+*Full 6-task dependency chain in `phase-3-creative-systems/tasks.md`. Tasks mirrored here for @qa_guy tracking.*
 
-- [ ] **[BLOCKED: security-design-doc]** `security-design-doc` — @security_audit writes sandbox security design (boundary model, capability scope, I/O handling)
-- [ ] **[BLOCKED: security-review-signoff]** `security-review-signoff` — @security_audit signs off on sandbox implementation design; this is the gate for containment validation
-- [ ] **[BLOCKED: security-review-signoff]** `qa-containment-validation` — validate 4 named failure signals: `SANDBOX_ESCAPE`, `RESOURCE_EXHAUSTED`, `EXECUTION_TIMEOUT`, `INPUT_REJECTED`; each must be distinct and observable; silent failures are a defect
-- [ ] @infra loop-in required when writing signal/observability section of containment plan — observability is a joint @qa_guy + @infra concern
-- [ ] Ship gate: implementation eligible only after all three preceding tasks approved
+```
+security-design-doc (@security_audit)
+  → security-review-signoff (@security_audit)
+  → infra-observability-spec (@infra)
+  → qa-containment-validation-plan (@qa_guy)  ← blocked on BOTH above
+  → implementation (@backend)
+  → qa-containment-validation-execution (@qa_guy)
+  → ship gate
+```
+
+- [ ] `security-design-doc` — **@security_audit**; must include audit logging spec; design doc without it will not receive sign-off
+- [ ] `security-review-signoff` — **@security_audit**; written sign-off required; blocks QA plan start
+- [ ] `infra-observability-spec` — **@infra**; exact signal names, log field schemas, metric counters, health surface; **@qa_guy cannot write executable tests until this exists**
+- [ ] `qa-containment-validation-plan` — **@qa_guy**; BLOCKED on security-review-signoff + infra-observability-spec both approved; covers 4 named signals, silent failure defect check, test architecture decision (depends on violation routing answer from security-design-doc)
+- [ ] `qa-containment-validation-execution` — **@qa_guy**; BLOCKED on implementation; @infra sign-off on observability surface required before this closes
+- [ ] **Ship gate:** implementation cannot ship until qa-containment-validation-execution closes with explicit QA sign-off
