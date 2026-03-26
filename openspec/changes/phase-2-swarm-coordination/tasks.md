@@ -50,10 +50,11 @@ Group chats go from conversations to coordinated work sessions. Agents can be as
 - [ ] Configurable per-group: `fanOutPolicy: 'all' | 'mention-only' | 'coordinator'`
 
 ### Swarm Templates
-- [ ] "Build Team" template (code_architect + frontend + backend + qa_guy)
-- [ ] "Code Review" template (code_architect + security_audit + qa_guy)
-- [ ] "Architecture Review" template (code_architect + backend + researcher)
-- [ ] Template picker in group creation flow
+*Phase boundary: Phase 2 ships 3 built-in templates only (hardcoded). Custom template creation (user-defined) and template library are Phase 3 (`phase-3-swarm-structured`). Per `POLLY_IOS_SPEC.md §22.7`. Decision locked 2026-03-25.*
+- [ ] "Build Team" template (code_architect + frontend + backend + qa_guy) — built-in
+- [ ] "Code Review" template (code_architect + security_audit + qa_guy) — built-in
+- [ ] "Architecture Review" template (code_architect + backend + researcher) — built-in
+- [ ] Template picker in group creation flow (selects from built-in list only)
 
 ### Group Cost Controls (SWARM_COORDINATION_SPEC.md §9)
 - [ ] `GroupRoutingConfig` type: `groupDailyTokenLimit`, `fanOutPolicy`, `groupTierCap`, `showCostEstimate`

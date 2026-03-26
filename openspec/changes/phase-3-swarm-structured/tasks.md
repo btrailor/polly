@@ -36,8 +36,13 @@ Group chats acquire formal cognitive structure. The Liaison agent designs conver
 ### Coordinator Pre-Dispatch (Option B)
 - [ ] Separate `chat.send` to coordinator session before fan-out (hidden from group view)
 - [ ] Parse coordinator response for @mentions → dispatch only to mentioned agents
-- [ ] Fallback to `defaultResponder` if coordinator call fails or times out (2s timeout)
+- [ ] **Latency UX:** show "coordinator is thinking..." typing indicator during pre-dispatch call; user knows why there's a delay; indicator disappears when fan-out begins
+- [ ] Fallback to `defaultResponder` if coordinator call fails or times out (2s timeout); fallback is graceful, not an error state
 - [ ] Coordinator session accumulation handling (periodic context flush)
+
+### GroupPhaseState — Known Limitations
+- **Phase state is client-side only (MMKV).** If user switches devices mid-topology, the other device sees a freeform group chat — phase state is not restored. This is a documented Phase 3 limitation.
+- **Resolution path:** Phase 4+ @backend enhancement — gateway-side phase state persistence. Not a Phase 3 blocker.
 
 ### Per-Agent Augmentation
 - [ ] @mention-scoped context: `<context>` blocks injected only into @mentioned agent's session

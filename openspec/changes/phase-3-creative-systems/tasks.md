@@ -30,9 +30,10 @@ Liaison designs cognitive structures before conversations begin.
 ### Chorus Mode
 Parallel agent dispatch, no shared context, grid UI.
 
+- [ ] **⚠️ Phase 1 dependency check (before starting):** Verify `topology` field on message objects and `MultiPanelChatLayout` were shipped in Phase 1 — if not, Chorus requires Phase 1 refactor first; check with @frontend before beginning
 - [ ] `MultiPanelChatLayout` — topology-agnostic renderer (Phase 1 foundation needed from @frontend)
 - [ ] Message model `topology` field + `chorus_position: {row, col}` (Phase 1 architecture needed)
-- [ ] Parallel dispatch pipeline (no shared context between agents)
+- [ ] Parallel dispatch pipeline using existing fan-out with `activationMode: "always"` — **no gateway changes needed**
 - [ ] Grid UI: agents as rows, response units as columns (2-panel phone / full grid iPad)
 - [ ] Divergence detection: semantic similarity pass per column
 - [ ] Divergence token UI (cool neutral color — "pay attention", not error)

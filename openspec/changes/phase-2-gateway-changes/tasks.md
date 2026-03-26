@@ -63,4 +63,18 @@ These four are the push-security prerequisite. Nothing goes to production withou
 ```
 
 ## Done When
-All 14 tasks complete and verified. @backend confirms each wave. @security_audit signs off on wave 0.
+All 14 Phase 2 tasks complete and verified. @backend confirms each wave. @security_audit signs off on wave 0.
+
+---
+
+## Wave 4 — Phase 3 Unlocks
+*Listed here for @backend visibility. Owned separately; do not start until Phase 2 complete.*
+
+- [ ] #15 `knowledge_analogy` tool registration — blocks: Structural Analogy (`phase-3-cognitive-features`)
+- [ ] #16 `knowledge_dream` tool registration — blocks: Dream Logic (`phase-3-cognitive-features`)
+- [ ] #17 `knowledge_conversation_history` tool registration — blocks: Metacognitive Dashboard, EIS, Temporal Intelligence, Oral History; **@qa_guy** needs JSONL schema spec when this work begins (fixture generator is schema-driven)
+- [ ] #18 Index hook hot-reload support — blocks: all Phase 3 cognitive features that register hooks
+- [ ] #19 `vault_write` tool implementation — blocks: Obsidian write-back (`phase-3a-obsidian-write-back`)
+- [ ] #20 Notion Knowledge Skill adapter — blocks: Notion integration (`phase-3d-notion`)
+- [ ] #21 Creative Code Skill sandbox execution — blocks: Creative Code Skill (`phase-3-creative-systems`); **@security_audit** hard gate before design begins
+- **No gateway changes needed** for Chorus Mode (existing fan-out + `activationMode: "always"`) or phase transitions (client-side only)

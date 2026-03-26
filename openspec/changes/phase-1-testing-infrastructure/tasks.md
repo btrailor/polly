@@ -81,3 +81,30 @@ Establish zero-to-working test infrastructure for the Polly iOS app. Currently: 
 - Zero credential leaks (TEST-SEC-003 passing)
 - @qa_guy sign-off
 - @security_audit: TEST-SEC-003 confirmed in CI
+
+## Phase 3 Test Fixture Preparation
+*Start during Phase 2 parallel — don't wait for Phase 3. Fixtures needed before Phase 3B begins. Decision locked 2026-03-25 per @qa_guy.*
+
+### Schema-Driven Fixture Generator
+- [ ] `test-fixture-corpus-design` — **BLOCKED on @backend:** requires JSONL schema spec for `knowledge_conversation_history` format; @backend to deliver when Phase 3A gateway work begins (gateway-changes #17); fixture generator must be schema-driven (not a static blob)
+- [ ] Fixture generator: generates synthetic conversation history from schema; produces realistic `memory/YYYY-MM-DD.md` entries + JSONL corpus
+- [ ] Seed data: 30-day synthetic conversation history with known mental model usage patterns and known outcomes (for Metacognitive Dashboard validation)
+- [ ] @backend to confirm: does gateway already write conversation history anywhere, or is this net-new serialization? Answer determines how much of the format is speculative vs. verified
+
+### EIS Smoke Plan
+- [ ] `test-eis-smoke-plan` — not blocked on Phase 2 shipping; @qa_guy to start now
+- [ ] Define what "passing" looks like for EIS without full corpus (Phase 3A readiness gate)
+- [ ] Synthetic pattern injection test: manually inject known rhetorical pattern → confirm EIS fires flag
+- [ ] False positive threshold: EIS must not flag > 10% of benign conversation turns in smoke corpus
+- [ ] Outline the minimum fixture set needed before Phase 3A EIS work can begin
+
+### Phase 3 Test Fixtures
+- [ ] 30-day synthetic conversation history corpus (High effort — Metacognitive Dashboard, Temporal Intelligence, EIS) — BLOCKED on schema-driven generator
+- [ ] Evolving position corpus: same topics discussed differently across simulated months — Temporal Intelligence drift detection
+- [ ] Rhetorical pattern test set: ≥20 examples of common fallacies in conversation form — EIS pattern matching
+- [ ] Structural pattern test vault: ≥50 notes with known structural parallels across domains — Structural Analogy
+- [ ] Voice transcript corpus: ≥10 transcribed sessions — Oral History
+
+### Creative Code Skill Containment
+- [ ] Containment validation plan — @security_audit review is hard gate before sandbox is designed
+- [ ] Separate from security review: containment validation pass ("what does failure look like and is it detectable?") — @qa_guy scope explicitly before Phase 3D begins

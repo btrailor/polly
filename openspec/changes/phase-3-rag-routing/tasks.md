@@ -29,6 +29,7 @@ Routing becomes knowledge-aware. A DIRECT vault hit means a cheap local model is
 - [ ] Domain routing applied after RAGEvaluator, before ComplexityEvaluator
 
 ### Budget Tracking (SQLite)
+- [ ] **Migration:** one-time automatic migration of MMKV budget data to SQLite on first Phase 3 launch; MMKV budget keys deprecated after migration; migration script idempotent (safe to run twice)
 - [ ] Migrate MMKV budget tracking to SQLite `~/.polly/routing_decisions.db`
 - [ ] Daily reset via cron job
 - [ ] Budget warning events → iOS toast notification
@@ -40,7 +41,8 @@ Routing becomes knowledge-aware. A DIRECT vault hit means a cheap local model is
   - `continued` — user continued conversation
   - `switched_model` — user manually changed model after response
 - [ ] Frequency table: `query_type × model_tier → regeneration_rate`
-- [ ] If regeneration_rate > 30% for a type → bump default tier for that type
+- [ ] **Cold-start strategy:** hold default tier config until ≥50 data points accumulated per query type; show "learning your usage" indicator in routing debug view; prevent single-session data from triggering tier bumps
+- [ ] If regeneration_rate > 30% for a type AND ≥50 data points → bump default tier for that type
 
 ## Done when
 RAG hit → local model used. Augmentation depth tied to selected model. Domain routing active. Budget tracking in SQLite. Feedback loop logging.

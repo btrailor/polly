@@ -18,7 +18,8 @@ All features below require Phase 2 Knowledge Skill. Additional dependencies note
 Detects when rhetorical patterns that have bypassed Brett's critical faculties in the past recur in new contexts. Layer 6 prompt injection.
 
 - [ ] `rhetorical-structure-extractor` index hook registered at startup
-- [ ] Pattern library built from Contrarian session outcomes (starting vocabulary: `CL4R1T4S_RESEARCH.md`)
+- [ ] **Pattern library bootstrap:** Transform `CL4R1T4S_RESEARCH.md` → structured `pattern_library.json` (schema: `{id, name, description, signal_phrases[], example_contexts[], severity}`) — must complete before EIS can query
+- [ ] Pattern library seeded with ≥15 patterns from Contrarian session outcomes
 - [ ] `polly.epistemic.flags` gateway config key (runtime-updated)
 - [ ] Layer 6 injection into prompt assembly (request-scoped — confirm with @backend)
 - [ ] Flag presentation: legible (show pattern + why), never blocks
@@ -48,7 +49,7 @@ Explicit multi-path reasoning mode. Agent generates a tree of candidate reasonin
 - [ ] Tree of Thoughts reasoning mode implementation in agent SOUL baseline (Phase 3 activation)
 - [ ] `allowed_modes: ["tree_of_thoughts"]` gating — analytical agents (Code Architect, Strategist, Analyst, Data Scientist) + any agent where user explicitly enables
 - [ ] Routing integration: routing engine can request tree-of-thoughts mode for high-complexity queries (Tier 3+)
-- [ ] UI: collapsible reasoning tree display in chat bubble (shows candidate paths + evaluation) — @frontend
+- [ ] UI: **⚠️ @design_eng design review required before implementation** — reasoning tree (3–5 branches, 3 levels deep) does not fit in a standard chat bubble on mobile; needs a collapsible panel or drawer approach, not in-bubble tree; design spec must be written before this task starts — @frontend
 - [ ] Coordination with Metacognitive Dashboard: tree depth + branching factor logged as complexity signal
 
 ### Structural Analogy (`knowledge_analogy` tool)
@@ -75,17 +76,21 @@ Derives a map of the user's creative practices from vault structure and timestam
 
 - [ ] Data model: last_engaged, engagement_frequency (90-day histogram), depth_signal, cross_domain_links, dormancy_threshold_days
 - [ ] Derived from Knowledge Skill wikilink graph + file timestamps
-- [ ] Dormancy alert
-- [ ] Cross-pollination view
+- [ ] Dormancy alert: surfaces via Ambient Agent card when practice dormant > threshold
+- [ ] **Practice View (iOS):** dedicated view in agent detail or standalone screen — shows active practices, engagement histogram, dormancy warnings, cross-pollination events
+- [ ] Cross-pollination card: "You haven't connected [domain A] and [domain B] in 30 days — last time produced [note title]"
 - [ ] Feeds: Anti-Productivity (`ANTI_PRODUCTIVITY.md`), Conversation Architecture
 
-### Oral History
-Voice transcripts → longitudinal intellectual autobiography.
-
-- [ ] Voice transcript corpus ingestion (requires Phase 1 real audio recording)
-- [ ] Archivist agent annual synthesis pass
-- [ ] Output: readable intellectual autobiography sections
-- [ ] Integration with Cognitive Artifact export
+### Oral History — ⬛ Moved to phase-3d-oral-history
+*Heaviest dependency chain: requires voice Phase 2 transcripts + full cognitive corpus. Moved to 3D to unblock lighter cognitive features. Decision locked 2026-03-25.*
 
 ## Done when
-All 7 features shipped and integrated. Knowledge Skill consumer dependency table fully resolved. Cognitive Artifact export includes all layers.
+EIS, Metacognitive Dashboard, Temporal Intelligence, Structural Analogy, Dream Logic, Practice Layer, Tree of Thoughts shipped and integrated. Knowledge Skill consumer dependency table fully resolved. Oral History + full Cognitive Artifact export are phase-3d deliverables.
+
+## Build order (within this change)
+1. Practice Layer + Dream Logic (FAISS graph + distance-band — no new index)
+2. Structural Analogy (structural-pattern-tagger hook + taxonomy)
+3. EIS (rhetorical-structure-extractor hook + pattern library from CL4R1T4S_RESEARCH.md)
+4. Metacognitive Dashboard (requires knowledge_conversation_history tool from gateway-changes #17)
+5. Temporal Intelligence (separate position index + classifier filter)
+6. Tree of Thoughts (requires Metacognitive Dashboard)
