@@ -1,106 +1,148 @@
 # PROJECT_STATUS.md
 
-**Owner:** @code_architect (writes) — all agents read-only  
-**Updated:** 2026-03-25  
-**Branch:** development  
-**HEAD:** 200f308
+Living project status doc. @code_architect writes and maintains. All agents read-only.  
+Last updated: 2026-03-25 (commit `ba28f6c` → agent templates updated post-commit)  
+Branch: `development`
 
 ---
 
-## Current Phase
+## Current State
 
-**Phase 1 — Foundation** (in progress)
+### Phase 1 — iOS Foundation
+**Status:** 🔨 Spec complete. Implementation not started.
+
+The iOS app is a scaffold: ~450 lines TypeScript total. `chat.tsx` (216 lines) is the most substantive file. Gateway is not wired. `isConfigured` is hardcoded to `false`. Nothing functional ships until Phase 1 is implemented.
+
+**10 missing npm packages** (must install before any Phase 1 feature work begins):
+```
+expo-secure-store
+react-native-mmkv
+zustand
+@shopify/flash-list
+react-native-markdown-display
+lucide-react-native
+expo-keep-awake
+expo-audio
+expo-document-picker
+```
+Plus the gateway client library (to be confirmed with @backend).
+
+**Known violations in current scaffold:**
+- `polly-ios/app/(main)/chat.tsx` line 269: `🎤` emoji must be replaced with Lucide `Mic` icon per §18.3 — **not yet fixed**
+- `polly-ios/src/colors.ts`: duplicate file — superseded by theme system; **must be deleted** before sensibility work starts
+- `isConfigured` hardcoded `false` in app bootstrap — gateway never wired
+
+### Agent System
+**Status:** 🔨 Spec complete. Not yet running.
+
+- **43 agent templates:** all complete with full SOUL text + Prosodic Sensitivity
+- **8 were stub-marked in summary (incorrect):** Mirror, Interlocutor, Experimentalist, Translator, Librarian, Scaffolder, Estimator, Janitor — all have complete SOULs; the "stub" label was stale
+- **`autonomy_level` per-agent:** ✅ reference table added 2026-03-25 (this session)
+- **`allowed_modes` per-agent:** ✅ reference table added 2026-03-25 (this session)
+- **SOUL Baseline:** 6 blocks: Session Startup, Context Management, Blockers & Honesty, Memory Writes, Epistemological Commitments, Tool Use
+- **Domain Boundary Protocol:** ✅ added to SOUL Baseline footer 2026-03-25 (this session)
+- **Vault Write-Back protocol:** ✅ in SOUL Baseline (Phase 3 tool activation)
+- **`behavioral_contract_version`:** target 1.0 at Phase 3 per `AGENT_BEHAVIOR_CONTRACT.md §10`
 
 ---
 
-## What's Shipped
+## Spec Status
 
-| Item | Commit | Notes |
+| Spec | Status | Notes |
 |------|--------|-------|
-| Voice button components | 7c0d110 | VoiceButton, VoiceButtonActive, VoiceButtonIdle |
-| FIGMA_INTEGRATION.md | 7c0d110 | Phase 2 spec, root level |
-| MONOME_LAYER.md | 7c0d110 | Aesthetic/philosophical foundation |
-| INFLUENCE_GUIDE.md | 7c0d110 | Liz SDLC + Monome synthesis |
-| SPEC_INDEX.md | aa16bdf | Flat spec index, escalation triggers |
-| MASTER_ROADMAP.md (updated) | aa16bdf | Voice→Phase 1, Figma→Phase 2, index linked |
-| KNOWLEDGE_SKILL.md | 01133b7→955c414→d56d698 | Phase 2, Planned, @security_audit ✅ |
-| SKILLS_MARKETPLACE.md | 85922e3 | Phase 2, Draft, @security_audit review pending |
-| MCP_ADAPTER.md | 200f308 | Phase 2, Draft, @security_audit review required |
-| ASSET_STATE_MACHINE.md | 860801e | Phase 2 support, Draft (@backend) |
+| `POLLY_IOS_SPEC.md` | ✅ Authoritative | Full iOS feature spec — canonical source |
+| `POLLY_AGENT_TEMPLATES.md` | ✅ Authoritative | 43 agent templates; per-agent manifest table added 2026-03-25 |
+| `KNOWLEDGE_SKILL.md` | ✅ Written | Tool signatures, graph layer, conversation adapter, index_hooks, degradation paths |
+| `KNOWLEDGE_SERVICE_CONTRACTS.md` | ✅ Written | 5 tool contracts; §4 EIS freshness model pending @backend review |
+| `KNOWLEDGE_WRITE_PATH.md` | ✅ Written | 7 write paths, dedup thresholds, vault write-back protocol |
+| `ONBOARDING_SPEC.md` | ✅ Written | 11-phase OnboardingState machine, MMKV persisted, crash-resumable |
+| `MODEL_ROUTING_SPEC.md` | ✅ Written | 5 evaluators, 3 insertion options, all @backend questions answered |
+| `SWARM_COORDINATION_SPEC.md` | ✅ Written | All §8 gateway questions answered and locked |
+| `SENSIBILITY_SYSTEM_SPEC.md` | ✅ Written | Two-axis architecture; Reas default; 7 theme files Phase 1 |
+| `SECURITY_IMPLEMENTATION_SPEC.md` | ✅ Written | 50-item checklist, §7.10/§8.3 resolved, SECURE_STORE_KEYS (8 keys) |
+| `TESTING_AND_QA_SPEC.md` | ✅ Written | 55 test cases, LLM grading framework, CI workflow |
+| `AGENT_BEHAVIOR_CONTRACT.md` | ✅ Written | Tool surface by phase, autonomy levels, group chat behavioral contract, Ambient Agent spec |
+| `PHASE_2_GAP_ANALYSIS.md` | ✅ Written | 4 boundary conflicts resolved, 10 missing changes identified |
+| `PHASE_3_GAP_ANALYSIS.md` | ✅ Written | 3A/3B/3C/3D split, 7 missing changes identified, @backend Wave 4 tasks |
+| `SOMATIC_INTERFACE.md` | 📋 Specced | Phase 2 — prosodic engagement signal layer |
+| `VOICE_INTERACTION.md` | 🔨 In progress | Phase 1 voice requirements |
+| `COPY_VOICE.md` | 🔨 In progress | Voice design tokens + copy patterns |
+| `VOICE_BEHAVIOR_TESTS.md` | 🔨 In progress | QA test suite for voice |
+| `FIGMA_INTEGRATION.md` | 📋 Planned | Phase 2 |
+| `LOCKDOWN_MODE.md` | 📋 Planned | Phase 2 |
+| `DREAM_LOGIC.md` | 📋 Planned | Phase 3B |
+| `KNOWLEDGE_SKILL.md` | 📋 Planned | Phase 2 |
+| `COGNITIVE_ARTIFACT.md` | 📋 Planned | Phase 3D |
+| `ORAL_HISTORY.md` | ✅ Written | Post-mortem format spec complete |
+| `TEMPORAL_INTELLIGENCE.md` | 📋 Planned | Phase 3B |
+| `METACOGNITIVE_DASHBOARD.md` | 📋 Planned | Phase 3B |
+| `STRUCTURAL_ANALOGY.md` | 📋 Planned | Phase 3B |
+| `CREATIVE_CONSTRAINT_ENGINE.md` | 📋 Planned | Phase 3C |
+| `EPISTEMIC_IMMUNE_SYSTEM.md` | 📋 Planned | Phase 3B |
+| `PRACTICE_LAYER.md` | 📋 Planned | Phase 3B |
+| `CONVERSATION_ARCHITECTURE.md` | 📋 Planned | Phase 3C |
+| `CHORUS_MODE.md` | 📋 Planned | Phase 4 |
+| `ANTI_PRODUCTIVITY.md` | 📋 Planned | Phase 3 |
+| `CREATIVE_CODE_SKILL.md` | 📋 Planned | Phase 3C — 6-task gate chain required |
+| `SKILLS_MARKETPLACE.md` | 📋 Planned | Phase 2 |
+| `MCP_ADAPTER.md` | 📋 Planned | Phase 2 |
+| `DISTRIBUTED_NODES.md` | 📋 Planned | Phase 3 |
+| `TREE_OF_THOUGHTS.md` | 📋 Planned | Phase 3B — @design_eng mobile UI review required first |
 
 ---
 
-## Active Work (in flight right now)
+## OpenSpec Roadmap
 
-| Item | Owner | ETA | Status |
-|------|-------|-----|--------|
-| Token schema JSON | @design_eng | 4pm today | In progress |
-| QA workflow doc | @design_eng | 4pm today | In progress |
-| Structured output format (POLLY_AGENT_TEMPLATES.md) | @design_eng | 4pm today | In progress |
-| Staging view wireframe | @frontend | After @design_eng branch | Waiting on branch |
-| CL4R1T4S structured pass | @researcher | Async | In progress |
-| Push registration security fix | @backend | Pre-production gate | Queued |
-| SKILLS_MARKETPLACE.md security review | @security_audit | TBD | Queued |
-| MCP_ADAPTER.md security review | @security_audit | TBD | Queued |
+35 changes total. See `openspec/ROADMAP.md` for the full table.
 
----
+| Group | Changes | Status |
+|-------|---------|--------|
+| Phase 1 | #1 ios-foundation, #2 agent-system, #3 testing-infrastructure | 🔨 Spec complete, impl not started |
+| Phase 2 | #4–#22 (19 changes, incl. gateway-changes) | 📋 Specced |
+| Phase 3A | #23–#26 | 📋 Specced |
+| Phase 3B | #27 cognitive-features | 📋 Specced |
+| Phase 3C | #28–#29 | 📋 Specced |
+| Phase 3D | #30–#34 | 📋 Specced |
+| Phase 4 | #35 federation | 💡 Future |
 
-## Specs Status
-
-| Spec | Phase | Status | Blocking |
-|------|-------|--------|---------|
-| `KNOWLEDGE_SKILL.md` | 2 | 📋 Planned | Nothing — @security_audit ✅ |
-| `SKILLS_MARKETPLACE.md` | 2 | 📋 Draft | @security_audit review |
-| `MCP_ADAPTER.md` | 2 | 📋 Draft | @security_audit review, depends SKILLS_MARKETPLACE |
-| `ASSET_STATE_MACHINE.md` | 2 | 📋 Draft | @backend Q1/Q3 open |
-| `PROJECT_STATUS.md` | 1 | 📋 Draft | — |
-| `AGENT_BOOTSTRAP_DEV.md` | 1 | 📋 Draft | — |
-| `SKILLS_MARKETPLACE.md` | 2 | 📋 Planned | — |
-| `DISTRIBUTED_NODES.md` | 3 | 💡 Idea | Phase 3, not started |
-| `CREATIVE_CODE_SKILL.md` | 3 | 💡 Idea | Needs token schema + skill runner |
-| `TREE_OF_THOUGHTS.md` | 3 | 💡 Idea | Phase 3, not started |
-| `MCP_ADAPTER.md` | 2 | 📋 Planned | SKILLS_MARKETPLACE ✅ unblocked |
-
----
-
-## Open Blockers
-
-| Blocker | Owner | Impact |
-|---------|-------|--------|
-| SKILLS_MARKETPLACE.md open questions §9 (Q1: key rotation) | @security_audit | Blocking Verified tier implementation |
-| MCP_ADAPTER.md §12 Q1: Linux sandbox equivalent to sandbox-exec | @infra | Blocking non-macOS gateway support |
-| MCP_ADAPTER.md §12 Q2: static manifest inspection vs dry-run | @backend | Affects install-time linting path |
-| ASSET_STATE_MACHINE.md Q3: cross-skill asset sharing default | @backend | Minor, default=no agreed verbally |
-| **`useVoiceRecording` hook is scaffolded only** — no real audio recording | @frontend | VOICE_BEHAVIOR_TESTS.md (543 lines) can't run. Voice QA is blocked until real impl. |
-| **VOICE_INTERACTION.md REQ-VOICE-01 uses Swift APIs** (`UIApplication.shared.isIdleTimerDisabled`) | @frontend | Must be replaced with `expo-keep-awake`. Spec needs correction too. |
-| **`VoiceMicButton.tsx` line 269 uses emoji 🎤** instead of Lucide `Mic` icon | @frontend | Violates §18.3 Design Constitution. Will ship as emoji if not fixed. |
-| **`polly-ios/src/colors.ts` is a duplicate** of `src/theme/colors.ts` | @frontend | Maintenance hazard — wrong file will be edited. Delete `src/colors.ts`. |
-| **`PROFESSOR_STUDIES_MODE.md`** referenced in `chat.tsx` header but doesn't exist | Brett to confirm | Is this a planned spec or stale reference? |
-| **Vault access duality unspecced** — Phase 1 uses iOS expo-document-picker bookmarks; Phase 2 Knowledge Skill uses gateway filesystem reads. Separate vault paths, not acknowledged in spec. | @backend + @code_architect | Knowledge Skill spec needs a section on gateway vault path config. |
+**Critical path:** Phase 1 → `phase-2-push-security` (wave 0, pre-prod gate) → `phase-2-knowledge-skill` → Phase 3A → Phase 3B → Phase 3C/3D
 
 ---
 
 ## Git State
 
-- Branch: `development`
-- HEAD: `200f308`
-- Remote: `git@github.com:btrailor/polly.git`
-- Author: Brett Gershon <Brett.gershon@gmail.com> ✅
-- Clean: yes
+| Commit | Description |
+|--------|-------------|
+| `ba28f6c` | Creative Code Skill: lock sandbox audit write failure behavior and alert path |
+| `9c76b71` | Creative Code Skill: full 6-task dependency chain with named deliverables |
+| `b6e0bc8` | Creative Code Skill: sandbox audit failure table locked |
+| `ccc8876` | Apply PHASE_3_GAP_ANALYSIS: 7 new Phase 3 change dirs, ROADMAP 28→35 |
+| `f23084a` | Apply PHASE_2_GAP_ANALYSIS: 10 new Phase 2 change dirs, ROADMAP 18→28 |
+| `46edc73` | Four housekeeping fixes (chat.tsx, setup.sh.md, agent-system spec, ToT tasks) |
+| `e1e12b8` | Apply AGENT_BEHAVIOR_CONTRACT |
+| `0989ac9` | Apply TESTING_AND_QA_SPEC |
+| `0bc78c9` | Apply SECURITY_IMPLEMENTATION_SPEC |
+| `3584ded` | Apply SENSIBILITY_SYSTEM_SPEC |
 
 ---
 
-## Phase 1 Remaining (before Phase 2 begins)
+## Open Blockers
 
-- [ ] `AGENT_BOOTSTRAP_DEV.md` — write spec and implement bootstrap sequence
-- [ ] Phase 1 features from `MASTER_ROADMAP.md` — verify all items checked
-- [ ] Push registration security fix (@backend) — roadmap-required pre-production gate
+| Blocker | Owner | Blocks |
+|---------|-------|--------|
+| `KNOWLEDGE_SERVICE_CONTRACTS.md §4` — EIS flags freshness (session vs request scoped) | @backend | EIS implementation |
+| `phase-2-gateway-changes` blocking relationships sanity-check | @backend | Phase 2 sequencing confidence |
+| `knowledge_conversation_history` JSONL schema | @backend | @qa_guy fixture generator |
+| Gateway conversation history — net-new or existing serialization? | @backend | Fixture generator design |
+| `infra-observability-spec` — 4 signal schemas, metric counters, health surface | @infra | `qa-containment-validation-plan` |
+| `security-design-doc` — Creative Code Skill sandbox | @security_audit | Everything in Creative Code Skill gate chain |
+| Tree of Thoughts mobile UI design spec | @design_eng | Phase 3B ToT implementation |
+| `test-eis-smoke-plan` | @qa_guy | Phase 3A EIS readiness gate |
 
 ---
 
-## Notes
+## Pending (Code Architect)
 
-- `specs/` folder at repo root = archived legacy content. Never reference, never edit.
-- Live specs = root-level `.md` files only.
-- Code Architect owns writes to this file. All other agents read-only.
-- OpenSpec escalation trigger #2 hit (dependency chain: MCP_ADAPTER depends on SKILLS_MARKETPLACE). Trigger #4 hit (>8 specs from idea dump). Not blocking — both documented in SPEC_INDEX.md.
+- [ ] `SPEC_INDEX.md` update — 11 new specs not yet indexed
+- [ ] Phase 1 iOS implementation — install 10 missing packages, wire gateway, onboarding, state mgmt, DrawerPanel, msg list, audio, vault capture, mental models, group chat, all screen stubs
+- [ ] Lockdown Mode Phase 1 architectural hooks — @frontend + @backend agreement needed

@@ -88,6 +88,62 @@ The agent manifest governs which Knowledge Skill retrieval modes an agent can ac
 
 This field is declared in the agent manifest at creation time and updated when the Phase 3 upgrade is applied to an agent.
 
+### Per-Agent Manifest Values
+
+Complete reference table. All agents default `allowed_modes: ["search", "graph"]` at Phase 1–2; Phase 3 column shows what changes. Phase 3 `allowed_modes` values are additive (Phase 2 values remain).
+
+| Agent | `autonomy_level` | Phase 1–2 `allowed_modes` | Phase 3 additions |
+|-------|-----------------|--------------------------|-------------------|
+| 🖥️ Code Architect | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🖼️ Frontend Developer | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🏗️ Backend Architect | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🧪 QA Engineer | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🛡️ Security Auditor | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🔧 Infra Engineer | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| ♟️ The Strategist | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🔬 The Researcher | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| ⚡ The Contrarian | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🧠 The AI Expert | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🕸️ The Systems Thinker | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| ⚡ Design Engineer | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| ✍️ The Writer | `reactive` | `["search", "graph"]` | `["analogy", "dream"]` |
+| 🎧 Audio Producer | `reactive` | `["search", "graph"]` | `["analogy", "dream"]` |
+| 🗺️ The Cartographer | `reactive` | `["search", "graph"]` | `["analogy", "dream"]` |
+| 🧩 Product Thinker | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 📖 Narrative Architect | `reactive` | `["search", "graph"]` | `["analogy", "dream"]` |
+| 📋 Project Manager | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| ✂️ The Editor | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 📅 The Scheduler | `proactive` | `["search", "graph"]` | `["analogy"]` |
+| 📊 The Analyst | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| ⚙️ Ops Coordinator | `proactive` | `["search", "graph"]` | `["analogy"]` |
+| ⚖️ Legal Thinker | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🦉 The Philosopher | `reactive` | `["search", "graph"]` | `["analogy", "dream"]` |
+| 🎛️ Music Producer | `reactive` | `["search", "graph"]` | `["analogy", "dream"]` |
+| 🔭 Data Scientist | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🎓 The Educator | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🔮 The Futurist | `reactive` | `["search", "graph"]` | `["analogy", "dream"]` |
+| 😈 Devil's Advocate | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🌀 The Generalist | `reactive` | `["search", "graph"]` | `["analogy", "dream"]` |
+| 🌱 The Mentor | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🌉 The Liaison | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🗃️ The Archivist | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🪞 The Mirror | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🎭 The Interlocutor | `reactive` | `["search", "graph"]` | `["analogy", "dream"]` |
+| 🧪 The Experimentalist | `reactive` | `["search", "graph"]` | `["analogy", "dream"]` |
+| 🌐 The Translator | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 📚 The Librarian | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🏗️ The Scaffolder | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🧮 The Estimator | `reactive` | `["search", "graph"]` | `["analogy"]` |
+| 🧹 The Janitor | `autonomous` | `["search"]` | `["search"]` (no Phase 3 upgrade) |
+| 🌊 The Ambient Agent | `autonomous` | `["search"]` | `["search"]` (no Phase 3 upgrade) |
+
+**Notes:**
+- `dream` mode: Writer, Audio Producer, Cartographer, Narrative Architect, Philosopher, Music Producer, Futurist, Generalist, Interlocutor, Experimentalist — agents whose work involves associative/creative synthesis across domains
+- `analogy` only: all other non-system agents — structural pattern matching is broadly useful; associative drift is domain-specific
+- System agents (Janitor, Ambient): `search` only; `dream` and `analogy` are not appropriate for maintenance/monitoring roles; no Phase 3 upgrade path
+- `proactive`: Ops Coordinator + Scheduler only — they have `heartbeat_addendum` in their SOULs and are expected to surface findings without being asked
+- Total: 41 `reactive`, 2 `proactive`, 2 `autonomous`
+
 ### Standard Context Compression Block
 
 Every Polly agent SOUL includes the following standard block verbatim. It governs how the agent handles context limits — ensuring graceful degradation rather than silent failure.
@@ -286,6 +342,38 @@ When you produce a significant artifact — a plan, an analysis, a research summ
 - Content the user is already capturing elsewhere
 
 *Source: `KNOWLEDGE_WRITE_PATH.md §6.3`*
+
+---
+
+## Domain Boundary Protocol
+
+*(Always active — applies to all agents in all phases.)*
+
+You operate at three boundaries. Understanding where you are determines what you can and cannot do.
+
+**Your workspace** (`~/.openclaw/workspace-{your-id}/`):
+- Memory files (`memory/YYYY-MM-DD.md`): pre-authorized — write freely
+- Other workspace files: read-write with normal care
+- You cannot write to another agent's workspace
+
+**The user's vault** (Obsidian or other — requires explicit tool permission):
+- Phase 1–2: read-only via Knowledge Skill when available
+- Phase 3: `vault_write` tool required; always show preview + get confirmation; never write silently
+- You cannot write to the vault without `vault_write` in your `allowed_modes`
+
+**Gateway configuration** (`~/.openclaw/openclaw.json`, `polly.*` config namespace):
+- You do not touch gateway config directly
+- Config changes are made via `config.patch` RPC calls, not file writes
+- You cannot read API keys, credentials, or device tokens stored in gateway config
+
+**iOS client scope:**
+- The iOS client manages domains (`polly.domains` MMKV), sensibility (`polly.sensibility` MMKV), and connection state
+- You do not simulate, guess at, or override what the iOS client has set
+- User-declared domains are never overridden by your graph analysis
+
+**If you're unsure whether an action is in scope:** do not do it and ask. "I'd need to write to your vault to save this — want me to?" is always the right move when in doubt.
+
+*Source: `AGENT_BEHAVIOR_CONTRACT.md §5`*
 
 ### `suggested_models` Field
 
