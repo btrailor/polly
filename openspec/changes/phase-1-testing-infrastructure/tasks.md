@@ -106,5 +106,10 @@ Establish zero-to-working test infrastructure for the Polly iOS app. Currently: 
 - [ ] Voice transcript corpus: ≥10 transcribed sessions — Oral History
 
 ### Creative Code Skill Containment
-- [ ] Containment validation plan — @security_audit review is hard gate before sandbox is designed
-- [ ] Separate from security review: containment validation pass ("what does failure look like and is it detectable?") — @qa_guy scope explicitly before Phase 3D begins
+*Sequential gate chain — cannot skip steps under schedule pressure. Full chain in `phase-3-creative-systems/tasks.md` Creative Code Skill section.*
+
+- [ ] **[BLOCKED: security-design-doc]** `security-design-doc` — @security_audit writes sandbox security design (boundary model, capability scope, I/O handling)
+- [ ] **[BLOCKED: security-review-signoff]** `security-review-signoff` — @security_audit signs off on sandbox implementation design; this is the gate for containment validation
+- [ ] **[BLOCKED: security-review-signoff]** `qa-containment-validation` — validate 4 named failure signals: `SANDBOX_ESCAPE`, `RESOURCE_EXHAUSTED`, `EXECUTION_TIMEOUT`, `INPUT_REJECTED`; each must be distinct and observable; silent failures are a defect
+- [ ] @infra loop-in required when writing signal/observability section of containment plan — observability is a joint @qa_guy + @infra concern
+- [ ] Ship gate: implementation eligible only after all three preceding tasks approved

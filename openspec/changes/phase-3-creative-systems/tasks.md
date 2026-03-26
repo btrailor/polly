@@ -54,7 +54,25 @@ All features shipped. Chorus grid rendering on iPad. Creative Constraint Engine 
 ### Creative Code Skill (`CREATIVE_CODE_SKILL.md`)
 Sandboxed generative code execution — agents can write and run code as part of a creative workflow.
 
-- [ ] Depends on: skill runner (phase-2-skills-marketplace) + token schema
+**Hard-blocker dependency chain — these are sequential gates, not advisory ordering. A step cannot start until the prior step is in done/approved state. No exceptions under schedule pressure:**
+
+1. **[HARD GATE] `security-design-doc`** — @security_audit writes sandbox security design doc: boundary model, capability scope (filesystem, network, runtime), I/O handling spec. No implementation begins until this exists.
+2. **[HARD GATE] `security-review-signoff`** — @security_audit reviews sandbox implementation design and signs off in writing. Blocks step 3.
+3. **[HARD GATE] `qa-containment-validation`** — @qa_guy validates observable failure modes (see below). **Cannot enter "in progress" until `security-review-signoff` is approved.** Blocks step 4. @infra must be looped in for signal/observability section.
+4. **[SHIP GATE]** Implementation eligible only after steps 1–3 complete.
+
+**Containment Validation Requirements (@qa_guy scope — gateway-changes #21 prerequisite):**
+- Sandbox escape attempt → must produce distinct, named error signal (not a generic 500)
+- Resource exhaustion (CPU/memory ceiling hit) → must produce graceful degradation signal, not a hung request
+- Timeout breach → must produce explicit timeout signal with context, not a swallowed exception
+- Input rejection at sandbox boundary → must produce rejection signal distinguishable from execution failure
+- **Silent failures are a defect:** if two different failure modes produce the same observable output, that's an observability defect, not a logging gap — must be fixed before QA sign-off
+- @infra loop-in required for signal/observability spec section — "is this detectable" is only answerable knowing what instrumentation the gateway surfaces
+
+**Implementation tasks (start only after all 3 gates pass):**
 - [ ] Sandboxed execution environment (sandbox-exec, stdio-only IPC)
+- [ ] Capability scope: no network, no filesystem outside workspace, explicit memory ceiling
+- [ ] Four distinct named error signals: `SANDBOX_ESCAPE`, `RESOURCE_EXHAUSTED`, `EXECUTION_TIMEOUT`, `INPUT_REJECTED`
 - [ ] Token schema for structured code output
 - [ ] Agent manifest `allowed_modes` entry for code execution
+- [ ] Depends on: skill runner (phase-2-skills-marketplace) + token schema + gateway-changes #21
