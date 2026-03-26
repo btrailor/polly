@@ -236,11 +236,13 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] @backend: confirm 6 open questions in `MODEL_ROUTING_SPEC.md §9` before Phase 2
 
 ### Today Screen (§8)
+*Phase boundary: Phase 1 = display only (render items from gateway). CRUD moved to `phase-2-today-crud`. Decision locked 2026-03-25.*
 - [ ] Reminders list (cron.list integration)
 - [ ] Tasks list
 - [ ] Deadlines
 - [ ] Background process indicators
-- [ ] `aight_item` creation path (trigger, item, process types)
+- [ ] Item tap → detail view (read-only in Phase 1)
+- ~~`aight_item` creation path~~ — **moved to `phase-2-today-crud`**
 
 ### Group Chat — Phase 1 Foundation (SWARM_COORDINATION_SPEC.md §7 Phase 1)
 - [ ] Group creation UI (name + member selection)

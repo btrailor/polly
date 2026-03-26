@@ -45,10 +45,11 @@ Single service model. One FAISS HNSW index. All Phase 3 features consume via too
 - [ ] Library path config + file watcher
 
 ### Gateway — Conversation History Adapter
+*Phase boundary: watcher + indexing is Phase 2 foundation; query tool is Phase 3 (needs stable adapter first). Decision locked 2026-03-25.*
 - [ ] Memory file watcher (all agent `memory/YYYY-MM-DD.md`)
 - [ ] Section-header chunker (agent_id, date, section metadata)
 - [ ] Index in shared FAISS tagged `source: "conversation"`
-- [ ] `knowledge_conversation_history` tool (date + agent + section filters)
+- [ ] `knowledge_conversation_history` tool (date + agent + section filters) — **⬛ Phase 3** (move to phase-3-rag-routing)
 
 ### Gateway — Domain Taxonomy
 - [ ] Read `polly.knowledge.domain_seeds` from gateway config
@@ -90,12 +91,13 @@ Single service model. One FAISS HNSW index. All Phase 3 features consume via too
 - [ ] `manifest.json` Phase 1 export hook (@backend owns — `COGNITIVE_ARTIFACT.md §4`)
 
 ### Write Path Integration (KNOWLEDGE_WRITE_PATH.md Phase 2)
+*Phase boundary: Phase 2 vault writes are **user-initiated only** (quick capture promotion, conversation save). Agent write-back (`vault_write` tool) is **Phase 3 only**. Decision locked 2026-03-25.*
 - [ ] Promotion pipeline: inbox → organized note (promotion sheet UI: title, domain, tags, folder, maturity, links, preview)
 - [ ] `knowledge_dedup` tool implementation — semantic similarity check before write (see contracts §6.1)
 - [ ] Dedup defaults: quick-capture/share=0.85, promotion=0.80, conversation-save=0.75, write-back=0.70
 - [ ] Wikilink suggestions at promotion time: simple title matching against `knowledge_graph` note index
 - [ ] "Save conversation to vault" write path (long-press → Save to Vault)
-- [ ] `vault.write_complete` event emission from gateway write path — Knowledge Skill subscribes for incremental index (see contracts §6.2)
+- [ ] `vault.write_complete` event emission from gateway write path — Knowledge Skill subscribes for incremental index (see contracts §6.2; gateway-changes #10)
 - [ ] @backend: implement `vault.write_complete` event in gateway write path
 
 ## Done when

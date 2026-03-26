@@ -26,18 +26,28 @@ A native iOS app (React Native + Expo) connecting to a self-hosted OpenClaw gate
 | 4 | `phase-2-knowledge-skill` | 📋 Planned | Phase 1 complete |
 | 5 | `phase-2-skills-marketplace` | 📋 Planned | Phase 1 complete |
 | 6 | `phase-2-push-security` | ⚠️ Required pre-production | Phase 1 complete |
-| 7 | `phase-2-lockdown-mode` | 📋 Planned | Phase 1 + architectural hooks set in Phase 1 |
-| 8 | `phase-2-cognitive-artifact` | 📋 Planned | Phase 1 agent system complete |
-| 9 | `phase-2-model-routing` | 📋 Planned | Phase 1 complete (@backend 3 gateway changes required) |
-| 10 | `phase-2-swarm-coordination` | 📋 Planned | Phase 1 group chat foundation (@backend 2 gateway changes required) |
-| 11 | `phase-2-sensibility-behavior` | 📋 Planned | Phase 1 sensibility foundation complete |
-| 12 | `phase-2-figma-integration` | 📋 Planned | Phase 1 complete (low priority) |
-| 13 | `phase-3-cognitive-features` | 💡 Specced | Phase 2 Knowledge Skill |
-| 14 | `phase-3-creative-systems` | 💡 Specced | Phase 2 Knowledge Skill |
-| 15 | `phase-3-rag-routing` | 💡 Specced | Phase 2 Knowledge Skill + Phase 2 model-routing |
-| 16 | `phase-3-swarm-structured` | 💡 Specced | Phase 2 swarm-coordination + Phase 1 agent system (Liaison SOUL) |
-| 17 | `phase-3-sensibility-picker` | 💡 Specced | Phase 2 sensibility-behavior complete |
-| 18 | `phase-4-federation` | 💡 Future | Phase 3 complete |
+| 7 | `phase-2-gateway-changes` | ⚠️ @backend — all 14 tasks | Staged by wave; wave 0 = pre-prod gate |
+| 8 | `phase-2-push-notifications` | 📋 Planned | push-security + gateway #1 #2 |
+| 9 | `phase-2-voice-upgrade` | 📋 Planned | Phase 1 voice working |
+| 10 | `phase-2-vault-browser` | 📋 Planned | Phase 1 bookmark + knowledge-skill |
+| 11 | `phase-2-integrations` | 📋 Planned | Phase 1 settings |
+| 12 | `phase-2-gateway-discovery` | 📋 Planned | Phase 1 LAN WebSocket |
+| 13 | `phase-2-today-crud` | 📋 Planned | Phase 1 Today display |
+| 14 | `phase-2-image-attachments` | 📋 Planned | Phase 1 chat |
+| 15 | `phase-2-message-search` | 📋 Planned | Phase 1 message cache |
+| 16 | `phase-2-lockdown-mode` | 📋 Planned | Phase 1 + architectural hooks set in Phase 1 |
+| 17 | `phase-2-cognitive-artifact` | 📋 Planned | Phase 1 agent system complete |
+| 18 | `phase-2-model-routing` | 📋 Planned | Phase 1 complete (gateway-changes #7 #8 #9 required) |
+| 19 | `phase-2-swarm-coordination` | 📋 Planned | Phase 1 group chat foundation (gateway-changes #5 #6 required) |
+| 20 | `phase-2-sensibility-behavior` | 📋 Planned | Phase 1 sensibility foundation complete (gateway-changes #12) |
+| 21 | `phase-2-figma-integration` | 📋 Planned | Phase 1 complete (low priority) |
+| 22 | `phase-2-ipad-layout` | 📋 Planned | Phase 1 complete (low priority) |
+| 23 | `phase-3-cognitive-features` | 💡 Specced | Phase 2 Knowledge Skill |
+| 24 | `phase-3-creative-systems` | 💡 Specced | Phase 2 Knowledge Skill |
+| 25 | `phase-3-rag-routing` | 💡 Specced | Phase 2 Knowledge Skill + Phase 2 model-routing |
+| 26 | `phase-3-swarm-structured` | 💡 Specced | Phase 2 swarm-coordination + Phase 1 agent system (Liaison SOUL) |
+| 27 | `phase-3-sensibility-picker` | 💡 Specced | Phase 2 sensibility-behavior complete |
+| 28 | `phase-4-federation` | 💡 Future | Phase 3 complete |
 
 ## Domains (specs/)
 

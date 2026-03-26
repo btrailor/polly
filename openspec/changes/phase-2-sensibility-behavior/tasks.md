@@ -20,14 +20,11 @@ Selecting a sensibility changes how agents respond. The behavior injection pipel
 - [ ] On gateway connect: read `config.get polly.ios.aestheticStance`; compare to local MMKV `polly.sensibility`
 - [ ] If mismatch: show banner "Another device changed the sensibility to {name}. [Switch] [Keep Mine]"
 - [ ] "Switch" → update local MMKV; "Keep Mine" → re-patch gateway
-- [ ] @backend: investigate per-device config scoping (`polly.ios.aestheticStance.{deviceId}`) for Phase 2
+- [ ] @backend: investigate per-device config scoping (`polly.ios.aestheticStance.{deviceId}`) for Phase 2 (gateway-changes #12)
 
-### Structural Rules (Per-Agent)
-- [ ] `config.patch polly.ios.structuralMode.{agentId}` on structural mode change
-- [ ] Agent detail → Structural Mode picker (Option A from §6.1)
-- [ ] In-chat structural mode pill in augmentation row (Option B from §6.1)
-- [ ] Option B overrides Option A for that message
-- [ ] Structural rules injection text for all modes from `CREATIVE_CONSTRAINT_ENGINE.md`
+### Structural Rules — ⬛ Moved to Phase 3
+*`CREATIVE_CONSTRAINT_ENGINE.md` and `SENSIBILITY_SYSTEM_SPEC.md §7` both specify structural rules as Phase 3. Decision locked 2026-03-25.*
+*Structural mode picker, in-chat structural pill, structural rules injection → `phase-3-creative-systems`.*
 
 ## Done when
-Selecting Fidenza changes agent tone on the next message. Agent detail structural mode picker persists across sessions. Multi-client conflict banner appears when stances diverge.
+Selecting Fidenza changes agent tone on the next message. Aesthetic behavior injection (register, vocabulary, compression, artifact aesthetics) active. Multi-client conflict banner appears when stances diverge. **Structural rules not included — Phase 3.**
