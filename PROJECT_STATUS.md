@@ -135,7 +135,8 @@ Plus the gateway client library (to be confirmed with @backend).
 | `knowledge_conversation_history` JSONL schema | @backend | @qa_guy fixture generator |
 | Gateway conversation history — net-new or existing serialization? | @backend | Fixture generator design |
 | `infra-observability-spec` — 4 signal schemas, metric counters, health surface | @infra | `qa-containment-validation-plan` |
-| `security-design-doc` — Creative Code Skill sandbox | @security_audit | Everything in Creative Code Skill gate chain |
+| `security-design-doc` — Creative Code Skill sandbox (failure modes, capability scope, audit log spec, violation routing) | @security_audit | `infra-observability-spec` (failure mode enumeration) + entire Creative Code Skill gate chain |
+| Creative Code Skill implementation | @backend | `security-design-doc` → `security-review-signoff` → `infra-observability-spec` → `qa-containment-validation-plan` — all must close first |
 | Tree of Thoughts mobile UI design spec | @design_eng | Phase 3B ToT implementation |
 | `test-eis-smoke-plan` | @qa_guy | Phase 3A EIS readiness gate |
 

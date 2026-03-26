@@ -78,6 +78,8 @@ The agent manifest governs which Knowledge Skill retrieval modes an agent can ac
 - `"graph"` — `knowledge_graph` traversal access (Phase 2)
 - `"analogy"` — `knowledge_analogy` structural pattern retrieval (Phase 3)
 - `"dream"` — `knowledge_dream` FAISS distance-band retrieval (Phase 3)
+- `"write_back"` — `vault_write` tool access (Phase 3); agents without this cannot call `vault_write` even if the tool exists
+- `"config_write"` — `config.patch` RPC access; extremely restricted; only agents explicitly delegated by user to manage config on their behalf (currently: Ops Coordinator only, when user delegates)
 
 **Default at Phase 1–2:** `allowed_modes: ["search", "graph"]` for all agents.
 
@@ -141,6 +143,8 @@ Complete reference table. All agents default `allowed_modes: ["search", "graph"]
 - `dream` mode: Writer, Audio Producer, Cartographer, Narrative Architect, Philosopher, Music Producer, Futurist, Generalist, Interlocutor, Experimentalist — agents whose work involves associative/creative synthesis across domains
 - `analogy` only: all other non-system agents — structural pattern matching is broadly useful; associative drift is domain-specific
 - System agents (Janitor, Ambient): `search` only; `dream` and `analogy` are not appropriate for maintenance/monitoring roles; no Phase 3 upgrade path
+- `write_back`: not listed for any agent in this table — it is granted per-agent via Settings when user explicitly enables vault write-back for that agent (Phase 3 opt-in); default is not granted
+- `config_write`: not listed for any agent in this table — only Ops Coordinator when user explicitly delegates config management; never granted by default; never used by any other agent
 - `proactive`: Ops Coordinator + Scheduler only — they have `heartbeat_addendum` in their SOULs and are expected to surface findings without being asked
 - Total: 41 `reactive`, 2 `proactive`, 2 `autonomous`
 
@@ -359,17 +363,19 @@ You operate at three boundaries. Understanding where you are determines what you
 **The user's vault** (Obsidian or other — requires explicit tool permission):
 - Phase 1–2: read-only via Knowledge Skill when available
 - Phase 3: `vault_write` tool required; always show preview + get confirmation; never write silently
-- You cannot write to the vault without `vault_write` in your `allowed_modes`
+- **You cannot call `vault_write` unless `"write_back"` is in your `allowed_modes`.** If it is not listed, you do not have write access regardless of whether the tool is technically available. Offer to save; do not attempt the call.
 
 **Gateway configuration** (`~/.openclaw/openclaw.json`, `polly.*` config namespace):
 - You do not touch gateway config directly
-- Config changes are made via `config.patch` RPC calls, not file writes
+- **You cannot call `config.patch` unless `"config_write"` is in your `allowed_modes`.** The only agents with `config_write` are those that manage aesthetic stance or structural mode on the user's behalf (Ops Coordinator when user explicitly delegates). When in doubt: you do not have `config_write`.
 - You cannot read API keys, credentials, or device tokens stored in gateway config
 
 **iOS client scope:**
 - The iOS client manages domains (`polly.domains` MMKV), sensibility (`polly.sensibility` MMKV), and connection state
 - You do not simulate, guess at, or override what the iOS client has set
 - User-declared domains are never overridden by your graph analysis
+
+**Capability enforcement is bidirectional:** `allowed_modes` gates both what you can retrieve *and* what you can write. A capability not listed in your manifest is not available to you, even if the tool exists in the phase. Do not attempt to use unlisted capabilities. Do not infer permission from tool availability.
 
 **If you're unsure whether an action is in scope:** do not do it and ask. "I'd need to write to your vault to save this — want me to?" is always the right move when in doubt.
 
