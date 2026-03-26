@@ -74,10 +74,11 @@ security-design-doc (@security_audit)
   - Audit log is write-only from sandbox's perspective — sandbox process cannot suppress or modify its own entries
   - Separate write path from application logging; separate retention policy; not rotated on standard log schedule
   - Audit entry fields per signal type: timestamp, input hash, agent ID, execution context
-  - `SANDBOX_ESCAPE` entries: logged before error is returned to caller; caller signal may be generic; audit entry must not be
-  - `RESOURCE_EXHAUSTED` entries: log agent ID + input; repeated exhaustion from same agent = detectable pattern
-  - `INPUT_REJECTED` entries: log rejection reason + input fingerprint; flood of rejections = buggy client or boundary probing
-  - `EXECUTION_TIMEOUT` entries: log with agent context for abuse pattern detection
+  - `SANDBOX_ESCAPE` entries: logged before error is returned to caller; caller signal may be generic; audit entry must not be; **hard-abort if audit write fails**
+  - `RESOURCE_EXHAUSTED` entries: log agent ID + input; repeated exhaustion from same agent = detectable pattern; fail-open if audit write fails (alert via stderr + gateway status flag)
+  - `INPUT_REJECTED` entries: log rejection reason + input fingerprint; flood of rejections = buggy client or boundary probing; **hard-abort if audit write fails**
+  - `EXECUTION_TIMEOUT` entries: log with agent context for abuse pattern detection; fail-open if audit write fails (alert via stderr + gateway status flag)
+  - Alert path (stderr `[OPENCLAW-AUDIT-FAIL]` + gateway status flag) must be established before audit write is attempted — not after-the-fact
 - [ ] Violation event routing: who receives each signal type — skill caller, operator, or both? (determines @qa_guy test architecture — if operator-only, QA needs gateway-level test hooks, not skill API assertions)
 
 **Task 2: `security-review-signoff` — @security_audit**
@@ -86,12 +87,27 @@ security-design-doc (@security_audit)
 - [ ] Blocks: infra-observability-spec start (parallel), qa-containment-validation-plan start
 
 **Task 3: `infra-observability-spec` — @infra**
-- [ ] Runs parallel to or immediately after security-review-signoff
+- [ ] Runs parallel to or immediately after security-review-signoff; can be drafted while security design doc is in review
 - [ ] Four typed error responses (not generic 500s): `SANDBOX_ESCAPE`, `RESOURCE_EXHAUSTED`, `EXECUTION_TIMEOUT`, `INPUT_REJECTED`
 - [ ] Structured log entry schema for each signal: exact field names, types, required vs. optional
 - [ ] Metric counter definitions: increment on each failure mode
 - [ ] Health surface: sandbox process health check endpoint + format
-- [ ] Named deliverable — @qa_guy cannot write executable test cases until actual signal names, log field schemas, and metric counters are confirmed here; implicit assumptions = useless test suites
+- [ ] **Audit write failure behavior (locked — do not relitigate in code review):**
+
+| Event | Audit write failure behavior | Alert path |
+|-------|------------------------------|------------|
+| `SANDBOX_ESCAPE` | Hard-abort — sandbox does not proceed; signal not returned to caller | N/A (never reaches caller) |
+| `INPUT_REJECTED` | Hard-abort — input not processed; signal not returned to caller | N/A (never reaches caller) |
+| `RESOURCE_EXHAUSTED` | Fail-open — signal returned to caller; failure logged on best-effort | `stderr` `[OPENCLAW-AUDIT-FAIL]` + gateway status flag |
+| `EXECUTION_TIMEOUT` | Fail-open — signal returned to caller; failure logged on best-effort | `stderr` `[OPENCLAW-AUDIT-FAIL]` + gateway status flag |
+
+- [ ] **Alert path implementation (v0.1):**
+  - Primary: `stderr` write with prefix `[OPENCLAW-AUDIT-FAIL]` — survives application log failure, zero dependencies, shows up in any process supervisor
+  - Secondary: in-memory gateway status flag (optionally persisted to `~/.openclaw/gateway.status`) — surfaced by health check endpoint; operator/monitoring polls this
+  - Alert path must be established **before** audit write is attempted (fd + stderr handle ready at sandbox spawn time — not after-the-fact)
+  - Alert path must be pluggable for future surfaces (system tray, Aight alert, etc.) — design for extensibility at v0.1
+- [ ] **Audit log is a security artifact:** separate write path from application logging; separate retention policy; not rotated on standard log schedule; write-only from sandbox's perspective
+- [ ] Named deliverable — @qa_guy cannot write executable test cases until signal names, log field schemas, and metric counters are confirmed here; implicit assumptions = useless test suites
 
 **Task 4: `qa-containment-validation-plan` — @qa_guy**
 - [ ] **BLOCKED on: security-review-signoff (Task 2) AND infra-observability-spec (Task 3) — both required**
