@@ -12,6 +12,8 @@ module.exports = {
     '^expo-speech-recognition$': '<rootDir>/__mocks__/expo-speech-recognition.ts',
     '^expo-keep-awake$': '<rootDir>/__mocks__/expo-keep-awake.ts',
     '^@noble/ed25519$': '<rootDir>/__mocks__/@noble/ed25519.ts',
+    '^\.\./utils/mmkvEncryption$': '<rootDir>/__mocks__/mmkvEncryption.ts',
+    '^.*src/utils/mmkvEncryption$': '<rootDir>/__mocks__/mmkvEncryption.ts',
   },
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',

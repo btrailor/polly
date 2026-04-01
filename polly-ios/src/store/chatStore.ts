@@ -7,11 +7,12 @@
 
 import { create } from 'zustand';
 import { MMKV } from 'react-native-mmkv';
+import { getMMKVEncryptionKey } from '../utils/mmkvEncryption';
 import type { UIMessage } from 'expo-openclaw-chat';
 
 // ─── MMKV storage ─────────────────────────────────────────────────────────────
 
-const chatStorage = new MMKV({ id: 'chat-store' });
+const chatStorage = new MMKV({ id: 'chat-store', encryptionKey: getMMKVEncryptionKey() });
 
 function loadString(key: string, fallback: string): string {
   return chatStorage.getString(key) ?? fallback;
