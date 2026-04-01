@@ -24,6 +24,9 @@ Single source of truth for all spec documents. A spec doesn't officially exist u
 | `COPY_VOICE.md` | 1 | 🔨 In progress | Voice design tokens, state machine, copy patterns, accessibility |
 | `VOICE_BEHAVIOR_TESTS.md` | 1 | 🔨 In progress | QA test suite for voice interaction |
 | `PROFESSOR_STUDIES_MODE.md` | ? | ⚠️ Unresolved | Referenced in `chat.tsx` file header spec comment — no file exists, not yet indexed. Needs Brett to confirm: is this a planned spec or a stale reference to remove? |
+| `GESTURE_LAYER.md` | 2–3 | 📋 Planned | Vocal gesture system — recognizer, library, Builder agent, Apple platform integration (TellPollyIntent, OpenListeningIntent, Action Button) |
+| `AGENT_BUILDER.md` | 2–3 | 📋 Planned | Custom agent creation — Builder agent, manifest registration, gesture vocabulary integration, team membership |
+| `WARD.md` | 2–4 | 📋 Planned | Universal entry point — mic button behavior, Ward/Liaison dual-mode, routing protocol, Domain Ward scaling path |
 | `FIGMA_INTEGRATION.md` | 2 | 📋 Planned | Figma link-surfacing in chat; deep-link to boards from spec context |
 | `PROJECT_STATUS.md` | 1 | 📋 Draft | Living project status doc — cross-conversation memory for the dev team. @code_architect writes, all agents read-only. Tracks shipped items, active work, spec status, open blockers, git state. |
 | `AGENT_BOOTSTRAP_DEV.md` | 1 | 📋 Draft | Dev group chat bootstrap sequence — git state verify, PROJECT_STATUS read, spec file existence check, SPEC_INDEX read, declare ready. Agent-specific startup reads table. 5 hard rules. 6 failure modes prevented. |
@@ -121,4 +124,4 @@ Until then: add to this index, keep specs at root, update status as work moves.
 
 ---
 
-*Last updated: 2026-03-25 (evening — 11 specs added, 43 agent templates confirmed complete)*
+*Last updated: 2026-03-30 (GESTURE_LAYER, AGENT_BUILDER, WARD integrated — 3 new specs added)*

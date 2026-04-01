@@ -38,6 +38,25 @@ For full feature specs, see `POLLY_IOS_SPEC.md`. For agent/team definitions, see
 | Chat history search | Full-text search across sessions |
 | Accessibility | Full VoiceOver audit + fixes |
 | Group chat turn management | Gateway two-step dispatch (§22.5) |
+| **Gesture + Ward + Agent Builder** | Vocal gesture system, universal entry point, custom agent creation — see below |
+
+### Phase 2 Feature Cluster: Gesture + Ward + Agent Builder
+
+Three coordinated specs shipping together as a Phase 2 feature cluster:
+
+| Spec | What ships |
+|------|-----------|
+| `GESTURE_LAYER.md` | Gesture recognizer, built-in gesture library, Gesture screen UI, AppIntents (TellPollyIntent, OpenListeningIntent), Gesture Builder system agent, `## Gesture Vocabulary` sections in agent SOULs, TTS register profiles |
+| `WARD.md` | Mic button universal placement, Ward/Liaison dual-mode, Ward context assembly (compressed state summary), Ward routing protocol, solo mode behavioral rules |
+| `AGENT_BUILDER.md` | Agent Builder system agent, custom agent creation flow, manifest registration with `source: "user"`, gesture vocabulary registration during Builder conversation, team membership integration |
+
+**Dependencies (must be resolved before this cluster can ship):**
+- Phase 1 voice pipeline must be live — gesture recognizer and Ward routing both depend on voice transcription
+- Gesture Layer must activate before Ward receives invocations (gesture pre-computation runs first)
+- Agent Builder depends on Gesture Layer (custom agents register gesture vocabulary during Builder conversation)
+
+**Phase 1 pre-work (starts in Phase 1, before gesture layer exists):**
+- Gateway logs short utterances (≤ 8 words) with no gesture match to `gesture_candidate_log` — this is the only Phase 1 hook; see `GESTURE_LAYER.md` §14
 
 **Pre-Phase 2 gate:** Push registration security fix must ship before Phase 2 goes to production.
 

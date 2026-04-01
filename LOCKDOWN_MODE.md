@@ -271,6 +271,55 @@ Lazy re-encryption on next rebuild. Immediate re-encryption of a large FAISS ind
 
 ---
 
+## 14. Gesture Layer, Ward, and OpenListeningIntent Constraints
+
+*Added 2026-03-30. Cross-references: `GESTURE_LAYER.md` §13, `WARD.md` §12.*
+
+### 14.1 Gesture Recognition — Disabled in Lockdown Mode
+
+Gesture recognition is **disabled** in Lockdown Mode. Short utterances (≤ 8 words) route normally through the agent routing layer without a gesture recognizer pass.
+
+**Why:** Gesture patterns are behavioral metadata. A gesture library captures Brett's cognitive habits, domain activity, and working patterns. On a seized device, the gesture library and invocation log constitute a behavioral fingerprint that could be compelled as evidence.
+
+**Behavioral implications:**
+- Short utterances are not checked against the gesture library
+- The gesture invocation log is not written
+- Gesture candidate log is not written
+- The gesture screen is accessible but read-only (user can view their library; no recognition fires)
+
+### 14.2 Ward Context Injection — Stripped in Lockdown Mode
+
+Ward context injection is **disabled** in Lockdown Mode. When the Liaison/Ward is invoked in solo mode, it receives no Ward context block — no thread summaries, no gesture history, no domain context, no active team list.
+
+**Why:** The Ward context block is a behavioral fingerprint. It contains: active thread topic summaries (what Brett is thinking about), gesture invocation history (how Brett works), domain context (what domains Brett is active in), team configuration (Brett's organizational structure). All of these constitute cognitive activity metadata that could be compelled on a seized device.
+
+**Behavioral implications:**
+- The Ward falls back to a single clarifying question: "What do you want to work on?" This is the only acceptable prompt — it collects no prior context.
+- Routing intelligence is degraded. The Ward can no longer route intelligently to relevant threads; it routes to the most recently active thread or opens a new one.
+- This degradation is acceptable in Lockdown Mode — the threat surface (behavioral metadata) outweighs the convenience loss.
+
+### 14.3 OpenListeningIntent — No Auto-Mic in Lockdown Mode
+
+`OpenListeningIntent` opens Polly normally in Lockdown Mode. The mic **does not** start recording automatically.
+
+**Why:** Auto-mic activation via `OpenListeningIntent` (e.g., from the Action Button) is convenient but creates ambient recording risk if the device is unlocked by an adversary. In Lockdown Mode, the user must explicitly tap the mic button.
+
+**Behavioral implications:**
+- Action Button (if configured to `OpenListeningIntent`) opens Polly to the last active screen without auto-mic
+- Siri phrase "Tell Polly [phrase]" via `TellPollyIntent` is **not** disabled — it routes the phrase normally, bypassing the gesture recognizer (§14.1)
+- The mic button remains functional; it simply does not auto-activate
+
+### 14.4 Implementation Notes
+
+All three constraints are enforced by the **gateway** at the session level, not by the app:
+- Gesture recognition disabled: gateway skips the recognizer pass when `protection_level: lockdown` is active
+- Ward context injection disabled: gateway does not assemble or inject the Ward context block when `protection_level: lockdown` is active
+- OpenListeningIntent auto-mic: app-side enforcement — the deep link handler checks protection level before auto-activating the mic
+
+The app must not implement these as user-visible UI changes. Lockdown Mode is invisible by design (§3).
+
+---
+
 ## 13. Dependencies
 
 - iOS Data Protection Complete Protection — all file writes must specify `NSFileProtectionComplete` (@frontend, @backend)
@@ -282,7 +331,9 @@ Lazy re-encryption on next rebuild. Immediate re-encryption of a large FAISS ind
 - SOMATIC_INTERFACE.md — prosodic extraction disabled in Lockdown Mode (gateway-enforced)
 - EPISTEMIC_IMMUNE_SYSTEM.md — pattern library encrypted under separate key
 - METACOGNITIVE_DASHBOARD.md — dashboard data encrypted under separate key
+- GESTURE_LAYER.md — gesture recognition and invocation log disabled in Lockdown Mode (§14.1)
+- WARD.md — Ward context injection disabled in Lockdown Mode (§14.2)
 
 ---
 
-*Cross-references: PUSH_SECURITY_FIX.md, SOMATIC_INTERFACE.md, SKILLS_MARKETPLACE.md, EPISTEMIC_IMMUNE_SYSTEM.md, METACOGNITIVE_DASHBOARD.md, POLLY_IOS_SPEC.md §8.8*
+*Cross-references: PUSH_SECURITY_FIX.md, SOMATIC_INTERFACE.md, SKILLS_MARKETPLACE.md, EPISTEMIC_IMMUNE_SYSTEM.md, METACOGNITIVE_DASHBOARD.md, GESTURE_LAYER.md, WARD.md, POLLY_IOS_SPEC.md §8.8*

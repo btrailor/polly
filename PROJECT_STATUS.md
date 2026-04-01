@@ -65,6 +65,9 @@ Plus the gateway client library (to be confirmed with @backend).
 | `PHASE_2_GAP_ANALYSIS.md` | ✅ Written | 4 boundary conflicts resolved, 10 missing changes identified |
 | `PHASE_3_GAP_ANALYSIS.md` | ✅ Written | 3A/3B/3C/3D split, 7 missing changes identified, @backend Wave 4 tasks |
 | `SOMATIC_INTERFACE.md` | 📋 Specced | Phase 2 — prosodic engagement signal layer |
+| `GESTURE_LAYER.md` | 📋 Planned | Phase 2–3 — vocal gesture system (added 2026-03-30) |
+| `AGENT_BUILDER.md` | 📋 Planned | Phase 2–3 — custom agent creation (added 2026-03-30) |
+| `WARD.md` | 📋 Planned | Phase 2–4 — universal entry point + Liaison extension (added 2026-03-30) |
 | `VOICE_INTERACTION.md` | 🔨 In progress | Phase 1 voice requirements |
 | `COPY_VOICE.md` | 🔨 In progress | Voice design tokens + copy patterns |
 | `VOICE_BEHAVIOR_TESTS.md` | 🔨 In progress | QA test suite for voice |
@@ -139,11 +142,26 @@ Plus the gateway client library (to be confirmed with @backend).
 | Creative Code Skill implementation | @backend | `security-design-doc` → `security-review-signoff` → `infra-observability-spec` → `qa-containment-validation-plan` — all must close first |
 | Tree of Thoughts mobile UI design spec | @design_eng | Phase 3B ToT implementation |
 | `test-eis-smoke-plan` | @qa_guy | Phase 3A EIS readiness gate |
+| Gesture embedding model decision (`GESTURE_LAYER.md` §12 Q2) | @backend | Phase 2 gesture recognizer implementation |
+| Ward context assembly design proposal | @backend | Phase 2 Ward routing implementation |
+
+---
+
+## Open Questions — Pending Brett's Decision
+
+These questions must not be resolved unilaterally. Flag here, wait for Brett's input.
+
+| Question | Spec | What's at stake |
+|----------|------|-----------------|
+| Ward conversation persistence — do Ward ambient interactions create conversation threads? | `WARD.md` §11 Q1 | @backend session model design. Spec recommends no — validate against gateway session model before implementing. |
+| Gesture chaining — do gestures trigger sequences of behaviors? | `GESTURE_LAYER.md` §12 Q1 | Phase 3 gesture data model design. Do not implement assumptions. |
+| Agent + gesture sharing between Polly users — should the data model support this now? | `AGENT_BUILDER.md` §9 Q1 | Data model design decision. Easier to add now than retrofit. |
 
 ---
 
 ## Pending (Code Architect)
 
-- [ ] `SPEC_INDEX.md` update — 11 new specs not yet indexed
+- [ ] `SPEC_INDEX.md` update — 11 new specs not yet indexed (plus 3 new: GESTURE_LAYER, AGENT_BUILDER, WARD added 2026-03-30)
 - [ ] Phase 1 iOS implementation — install 10 missing packages, wire gateway, onboarding, state mgmt, DrawerPanel, msg list, audio, vault capture, mental models, group chat, all screen stubs
 - [ ] Lockdown Mode Phase 1 architectural hooks — @frontend + @backend agreement needed
+- [ ] **@backend Phase 1 hook (IMMEDIATE):** Add gesture candidate log to gateway message processing pipeline — short utterances (≤ 8 words) with no gesture match logged to `gesture_candidate_log`. See `PHASE_2_GAP_ANALYSIS.md` §6 and `GESTURE_LAYER.md` §14. Flag here when complete.

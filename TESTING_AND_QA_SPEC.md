@@ -562,6 +562,11 @@ All Phase 1 criteria plus:
 | LLM-graded SOUL compliance | 80% pass rate across all agents | @qa_guy |
 | @security_audit sign-off | Push fix + skills security model | @security_audit |
 | Coverage | ≥70% statements | @frontend |
+| Gesture recognizer: true positive rate | ≥ 90% on built-in gesture set | @qa_guy |
+| Ward routing: correct destination | ≥ 95% on unambiguous invocations | @qa_guy |
+| Disambiguation: correctly surfaced | 100% of ambiguous cases in test suite produce disambiguation card | @qa_guy |
+| No false positives | Normal conversational sentences (>8 words) never trigger gesture recognition — 0 false positives | @qa_guy |
+| AppIntents registration | TellPollyIntent and OpenListeningIntent register correctly and survive app restart | @frontend |
 
 ### Phase 3 Gate
 
@@ -576,7 +581,74 @@ All Phase 2 criteria plus:
 
 ---
 
-## 9. Build Order for Test Infrastructure
+## 9. Gesture Recognition Tests
+
+*Added 2026-03-30. Cross-reference: `GESTURE_LAYER.md` §4 (Recognition Pipeline).*
+
+Owner: @qa_guy  
+Phase: 2  
+Depends on: Gesture recognizer live, gesture library populated with built-in gestures
+
+### Test Cases
+
+| ID | Type | Input | Expected | Method |
+|----|------|-------|----------|--------|
+| TEST-GESTURE-001 | True positive | Known gesture phrase: "push back on that" | Gesture match (similarity ≥ 0.82), resolves to `the-contrarian`, gesture context block injected | Automated — mock recognizer |
+| TEST-GESTURE-002 | True positive variant | Phrase variation: "challenge that" (variant of push-back gesture) | Same gesture matched as TEST-GESTURE-001 (fuzzy match working) | Automated |
+| TEST-GESTURE-003 | Candidate band | Phrase similarity 0.65–0.81: "push back a little" | Disambiguation card surfaced — not auto-executed | Automated + UI verification |
+| TEST-GESTURE-004 | True negative — length | Normal conversational sentence (>8 words): "I was wondering what you think about this approach to the problem" | Gesture check not performed; routes normally to agent routing | Automated |
+| TEST-GESTURE-005 | True negative — low similarity | Short phrase, low similarity (<0.65): "let's see here" | No gesture match; routes normally; logged to gesture_candidate_log | Automated |
+| TEST-GESTURE-006 | Domain conflict | Gesture with domain override: "research this" in dev domain vs. non-dev domain | Dev domain → routes to Code Architect; non-dev domain → routes to The Researcher | Automated — mock domain context |
+| TEST-GESTURE-007 | Group context | Gesture invoked inside group chat: "push back on that" | Liaison routes to owning agent (The Contrarian); other agents receive brief notice | Integration — mock group chat |
+
+### Evaluation Method
+
+TEST-GESTURE-001, 002, 004, 005: fully automated. Mock recognizer returns similarity scores; assert routing outcome.  
+TEST-GESTURE-003: automated assertion that disambiguation card is surfaced; UI review confirms card content.  
+TEST-GESTURE-006: automated with mock domain context injection.  
+TEST-GESTURE-007: integration test against group chat session mock.
+
+---
+
+## 10. Ward Routing Tests
+
+*Added 2026-03-30. Cross-reference: `WARD.md` §7 (Routing Protocol).*
+
+Owner: @qa_guy  
+Phase: 2  
+Depends on: Ward routing live, Ward context assembly live
+
+### Test Cases
+
+| ID | Type | Scenario | Expected | Method |
+|----|------|---------|----------|--------|
+| TEST-WARD-001 | Ambient gesture | Recognized gesture, no active conversation | Gesture executes; no thread opened; minimal confirmation | Automated + session verification |
+| TEST-WARD-002 | Conversational routing — existing thread | Input matches active thread topic (≥ 0.75 relevance) | Ward routes to that thread; opens it; input delivered to active agent | Automated — mock Ward context |
+| TEST-WARD-003 | Conversational routing — new thread | Input has no matching active thread | Ward opens new conversation with best-matching agent | Automated |
+| TEST-WARD-004 | No gesture, active threads | No gesture match, active relevant thread exists | Relevant thread suggested / routed to | Automated — mock Ward context with threads |
+| TEST-WARD-005 | No gesture, no context | No gesture match, no active threads, minimal input | Ward waits silently — no generic prompt surfaced | Automated + assertion that no output is produced |
+| TEST-WARD-006 | Mode detection — solo | Ward invoked from outside any active conversation | Solo mode activated; Ward context injected | Automated — invocation context mock |
+| TEST-WARD-007 | Mode detection — group | Ward invoked from inside group chat | Group mode activated (Liaison behavior); Ward context NOT injected | Automated — invocation context mock |
+| TEST-WARD-008 | Disambiguation | Two threads with high relevance (both ≥ 0.75) | Ward asks exactly one disambiguation question; question names both threads | Automated + LLM-graded (question format) |
+
+### Anti-Assertions
+
+The following must NOT occur:
+
+- Ward produces "How can I help?" or "What would you like to talk about?" in Solo mode (TEST-WARD-005)
+- Ward opens a conversation thread when executing an ambient gesture (TEST-WARD-001)
+- Ward context is injected in Group mode (TEST-WARD-007)
+- Ward asks more than one question to resolve disambiguation (TEST-WARD-008)
+
+### Evaluation Method
+
+TEST-WARD-001 through 007: automated with mock invocation context and Ward context assembly mock.  
+TEST-WARD-005: assert zero output when no gesture and no content.  
+TEST-WARD-008: LLM-graded — confirm question is single, names both candidates, does not add options.
+
+---
+
+## 11. Build Order for Test Infrastructure
 
 | # | Task | Blocks | Effort |
 |---|------|--------|--------|
@@ -593,7 +665,7 @@ All Phase 2 criteria plus:
 
 ---
 
-## 10. Accepted Gaps
+## 12. Accepted Gaps
 
 | Gap | Why Accepted | Revisit When |
 |-----|-------------|-------------|

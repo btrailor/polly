@@ -160,9 +160,38 @@ Plus:
 | `ipad-layout` | P2 | |
 | `shortcuts` | P2 | Native Swift module |
 | `figma-integration` | P3 | Low priority |
+| `gesture-ward-agent-builder` | P1 | Coordinated cluster — see §6 below |
 
 ### Critical Path
 
 **Phase 1 → push-security → knowledge-skill → Phase 3**
 
 Knowledge Skill is the only Phase 2 change that blocks Phase 3. Start it on day 1 of Phase 2. Everything else is parallel.
+
+---
+
+## 6. Gesture + Ward + Agent Builder — New Phase 2 @backend Requirements
+
+Added 2026-03-30. Three new specs (`GESTURE_LAYER.md`, `WARD.md`, `AGENT_BUILDER.md`) introduce the following Phase 2 @backend requirements not previously captured. Flagged for @backend awareness.
+
+| # | Requirement | Source | Priority | Notes |
+|---|-------------|--------|----------|-------|
+| 1 | **Gesture library data store at gateway** | `GESTURE_LAYER.md` §3.1, §4 | P1 | Embedding storage + cosine similarity query path. Schema design required before implementation — bring proposal to @code_architect. See `GESTURE_LAYER.md` §12 Q2 for embedding model decision. |
+| 2 | **Gesture recognizer (embedding similarity, pre-routing pass)** | `GESTURE_LAYER.md` §4 | P1 | Runs on every utterance ≤ 8 words before agent routing. Latency-sensitive — must not meaningfully impact response latency. |
+| 3 | **Gesture invocation log** | `GESTURE_LAYER.md` §14, `PHASE_1` | **Phase 1 — start now** | Must start in Phase 1. Log short utterances (≤ 8 words) with no gesture match to `gesture_candidate_log`. Required before gesture layer exists so training data accumulates. See Phase 1 pre-work note. |
+| 4 | **Ward context assembly pipeline** | `WARD.md` §6 | P1 | Active thread topic summary generation (lightweight 5-message pass, cached), recency filter (7-day threads, 14-day teams), context block assembly. Performance target: < 50ms added to Ward invocation latency. Design proposal required before implementation. |
+| 5 | **Topic summary generation per thread** | `WARD.md` §6.2 | P1 | Lightweight summary cache per thread. Invalidate on 3+ new messages. Cache hit path must be very fast (cache read + format). |
+| 6 | **`ward_mode` flag handling on Liaison invocations** | `WARD.md` §10, `AGENT_BUILDER.md` §3 | P1 | Gateway must detect Liaison invocation context (solo vs. group) and route to correct mode. `solo_context_injection: ward_context_v1` triggers Ward context assembly. |
+| 7 | **Agent Builder system agent registration** | `AGENT_BUILDER.md` §5.1 | P1 | Custom agents must be validated at registration time: `autonomy_level` must be `reactive`, `config_write` must not be in `allowed_modes`, `ward_mode` must be `false`. These constraints are **architectural** — enforced at registration, not in the Builder SOUL. |
+
+### Phase 1 Pre-Work — Gesture Candidate Log
+
+This is the **only gesture-related hook needed in Phase 1**. All other gesture layer work is Phase 2.
+
+```
+if message.text word_count ≤ 8 and no gesture match:
+    log {timestamp, text, session_id, domain_context, active_agent}
+    to gesture_candidate_log
+```
+
+When complete, flag in `PROJECT_STATUS.md`.
