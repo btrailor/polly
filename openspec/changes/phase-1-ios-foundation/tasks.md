@@ -365,9 +365,9 @@ Phase 1 ships in Expo managed workflow with zero native modules **if @security_a
 
 *These items appear in `POLLY_IOS_SPEC.md §13 Phase 1` scope but were missing from tasks. Added via OpenSpec Task Coverage Audit.*
 
-- [ ] `[1A]` **IntegrationCard component + Settings → Integrations screen shell** — empty list state with "No integrations connected" message + IntegrationCard layout component. Phase 2 integrations (`phase-2-integrations`) gate on this shell existing. See `POLLY_IOS_SPEC.md §6.22`. — @frontend
-- [ ] `[1A]` **Brave Search API key config** — Settings → API Keys → Brave Search text input; stored in gateway config via `config.patch`. Enables web search tool for agents. Gateway passthrough — key is stored on gateway, not in app. — @frontend + @backend
-- [ ] `[1A]` **ElevenLabs API key config UI** — Settings → API Keys → ElevenLabs text input; stored in gateway config via `config.patch`. UI ships Phase 1; activation deferred to Phase 2 voice upgrade (`phase-2-voice-upgrade`). — @frontend
+- [x] `[1A]` **IntegrationCard component + Settings → Integrations screen shell** — shipped in `f270523`. — @frontend
+- [x] `[1A]` **Brave Search API key config** — shipped in `f270523`. — @frontend + @backend
+- [x] `[1A]` **ElevenLabs API key config UI** — shipped in `f270523`. — @frontend
 - [x] `[1A]` **EAS build pipeline** — `eas.json` full config (development/preview/production profiles), EAS Build setup, TestFlight distribution profile, CI trigger. Code signing is already tasked (line 116) but the pipeline around it is not. Required before first TestFlight build. — @infra + @code_architect
 
 ---
