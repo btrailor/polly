@@ -44,15 +44,15 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] `[1A]` **Rewrite PROJECT_STATUS.md** to reflect actual state: Phase 1 in progress, ~2200 lines scaffold, no gateway connection, no tests, dependencies not installed. — @code_architect
 
 ### Dependencies — Install Before Any Implementation
-- [ ] `[1A]` `expo-secure-store` — gateway credential storage
-- [ ] `[1A]` `react-native-mmkv` — fast local state persistence
-- [ ] `[1A]` `zustand` — state management
-- [ ] `[1A]` `@shopify/flash-list` — high-performance message list
-- [ ] `[1A]` `react-native-markdown-display` — markdown rendering in chat
-- [ ] `[1A]` `lucide-react-native` — icon system (design constitution)
-- [ ] `expo-keep-awake` — screen-on during voice recording
-- [ ] `expo-av` or `expo-audio` — real audio recording
-- [ ] `expo-document-picker` — vault security-scoped bookmarks
+- [x] `[1A]` `expo-secure-store` — gateway credential storage
+- [x] `[1A]` `react-native-mmkv` — fast local state persistence
+- [x] `[1A]` `zustand` — state management
+- [x] `[1A]` `@shopify/flash-list` — high-performance message list
+- [x] `[1A]` `react-native-markdown-display` — markdown rendering in chat
+- [x] `[1A]` `lucide-react-native` — icon system (design constitution)
+- [x] `expo-keep-awake` — screen-on during voice recording
+- [x] `expo-audio` — real audio recording
+- [x] `expo-document-picker` — vault security-scoped bookmarks
 - [ ] `expo-haptics` — haptic feedback throughout app
 - [ ] `expo-sqlite` — local message cache (offline support)
 - [ ] Gateway client library (`expo-openclaw-chat` or equivalent — confirm with @backend)
