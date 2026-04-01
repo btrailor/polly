@@ -59,6 +59,9 @@ Single source of truth for all spec documents. A spec doesn't officially exist u
 | `PHASE_3_GAP_ANALYSIS.md` | 3 | ✅ Written | Audit: 3A/3B/3C/3D split, 7 missing Phase 3 changes, @backend Wave 4 tasks. Archivist confirmed complete. |
 | `SKILLS_MARKETPLACE.md` | 2 | 📋 Planned | Skills Marketplace — trust tiers (Verified/Community/Blocked), install flow, curation model, gateway-level block enforcement, `data_destination` orthogonal manifest property, permission-adding update re-consent, blocklist (7-day staleness, fail-closed). @security_audit threat model: §6 complete (6 attack surfaces). 4 open questions. Must be resolved before MCP_ADAPTER.md. |
 | `MCP_ADAPTER.md` | 2 | 📋 Planned | MCP transport adapter for OpenClaw skill runner. stdio subprocess isolation via `sandbox-exec`, generated sandbox profiles, namespace scoping (mandatory), response sanitization, tool description linting (install + runtime), credential keychain interpolation, multi-skill isolation. HTTP/SSE deferred Phase 3. 4 open questions. @security_audit full review required. Refs: https://github.com/modelcontextprotocol/servers, https://github.com/slowmist/MCP-Security-Checklist |
+| `GESTURE_LAYER.md` | 2–3 | 📋 Planned | Vocal gesture system — recognizer, library, Builder agent, Apple platform integration (TellPollyIntent, OpenListeningIntent, Action Button) |
+| `AGENT_BUILDER.md` | 2–3 | 📋 Planned | Custom agent creation — Builder agent, manifest registration, gesture vocabulary integration, team membership |
+| `WARD.md` | 2–4 | 📋 Planned | Universal entry point — mic button behavior, Ward/Liaison dual-mode, routing protocol, Domain Ward scaling path |
 
 ---
 
@@ -121,4 +124,4 @@ Until then: add to this index, keep specs at root, update status as work moves.
 
 ---
 
-*Last updated: 2026-03-25 (evening — 11 specs added, 43 agent templates confirmed complete)*
+*Last updated: 2026-03-30 (Gesture Layer, Agent Builder, Ward specs added — 3 new specs indexed)*

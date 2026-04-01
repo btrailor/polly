@@ -603,3 +603,81 @@ All Phase 2 criteria plus:
 | Offline resilience | Offline behaviors not fully specced | Phase 2 |
 | Multi-device conflict | Edge case, low priority | Phase 3 |
 | Memory pressure / OOM | Requires real device under load | Phase 3 |
+
+---
+
+## 11. Gesture Recognition Tests
+
+*Added: 2026-03-30 per `GESTURE_LAYER.md` §4. Phase 2 test suite.*
+
+Reference: `GESTURE_LAYER.md` §4 (Recognition Pipeline).
+
+### Test Cases
+
+| ID | Name | Input | Expected | Notes |
+|----|------|-------|----------|-------|
+| TEST-GEST-001 | True positive — exact match | "push back" (3 words) | escalate-challenge gesture fires; similarity ≥ 0.82 | System gesture; default owner: The Contrarian |
+| TEST-GEST-002 | True positive — variant phrase | "go harder on this" (5 words) | Same gesture as TEST-GEST-001 fires; fuzzy match ≥ 0.82 | Confirms embedding similarity, not exact string match |
+| TEST-GEST-003 | Candidate band — disambiguation surfaced | Phrase with similarity 0.65–0.81 to existing gesture | Disambiguation card surfaced to user; gesture not executed | Disambiguation UI triggered, no silent execution |
+| TEST-GEST-004 | True negative — sentence too long | "I've been thinking about this problem for several days" (10 words) | No gesture check performed; routes to agent normally | Word count > 8 bypasses recognizer entirely |
+| TEST-GEST-005 | True negative — short phrase, low similarity | "orange basketball" (2 words) | Similarity < 0.65; routes normally; no gesture fired | Prevents false positives on unrelated short phrases |
+| TEST-GEST-006 | Domain conflict — correct owner resolved | "push back" in active Design domain | Routes to Design Engineer (domain override), not The Contrarian | Domain override in ownership map respected |
+| TEST-GEST-007 | Group context — Liaison routing | "push back" in active group chat | Liaison routes to correct owning agent per group override rules | Group mode routing path verified |
+| TEST-GEST-008 | No gesture in Lockdown Mode | "push back" with Lockdown Mode active | No gesture check; routes to agent normally | `polly.security.protectionLevel == lockdown` bypass verified |
+| TEST-GEST-009 | Candidate log written on miss | Short phrase (≤8 words) with similarity < 0.65 | Entry written to `gesture_candidate_log` with timestamp, text, session_id, domain_context, active_agent | Phase 1 logging hook verification |
+
+### LLM-Graded Gesture Behavior
+
+For LLM grading: after a gesture fires, the agent's next response must reflect the gesture's behavior without meta-commentary. Grading prompt:
+
+> "A gesture just fired for this agent: [gesture name] → [behavior]. Did the agent's response reflect this behavior without explaining that a gesture fired? Score: 1 (yes) or 0 (no). N=5 runs, threshold: 4/5."
+
+---
+
+## 12. Ward Routing Tests
+
+*Added: 2026-03-30 per `WARD.md` §7. Phase 2 test suite.*
+
+Reference: `WARD.md` §3 (Solo Mode Routing Protocol), §7 (Routing Protocol).
+
+### Test Cases
+
+| ID | Name | Scenario | Expected |
+|----|------|----------|----------|
+| TEST-WARD-001 | Ambient gesture — no thread | Gesture fires outside any conversation | Gesture executes; no new conversation thread opened |
+| TEST-WARD-002 | Conversational gesture — active thread | Gesture fires; relevant active thread exists | Routes to active thread; one-sentence routing note sent |
+| TEST-WARD-003 | Conversational gesture — no active thread | Gesture fires; no relevant thread exists | Opens new conversation with appropriate agent |
+| TEST-WARD-004 | No gesture — active threads | Utterance not a gesture; relevant thread exists | Suggests most relevant thread; does not open new |
+| TEST-WARD-005 | No gesture — no context | Utterance not a gesture; no active threads | Ward waits; no generic prompt ("How can I help?") produced |
+| TEST-WARD-006 | Solo mode detection | Ward invoked from outside any conversation | Compressed state summary injected; solo mode behavior active |
+| TEST-WARD-007 | Group mode detection | Liaison invoked from inside group chat | Group mode behavior active; no Ward context injected |
+| TEST-WARD-008 | Disambiguation — two candidate threads | Ambiguous utterance; two equally plausible threads | Single disambiguation question surfaced; only one question |
+| TEST-WARD-009 | Lockdown Mode — no context | Ward invoked with Lockdown Mode active | No compressed state summary; routing from utterance content only |
+| TEST-WARD-010 | Ward routing note delivered | Ward routes to active thread | Receiving agent acknowledges naturally; no meta-commentary about routing |
+
+### Ward Routing Evaluation
+
+Ward routing correctness is evaluated by checking:
+1. Correct mode selected (solo vs. group) — deterministic
+2. Correct destination (thread/agent/wait) — LLM-graded: "Given this context summary and utterance, did the Ward route to the correct destination? 1/0."
+3. No generic prompt produced — string check: response does not contain "How can I help" or similar
+4. Single disambiguation question when ambiguous — string check: exactly one question mark in disambiguation response
+
+---
+
+## 13. Phase 2 QA Gate — Additions
+
+*Added: 2026-03-30. Extends the Phase 2 gate in §8.*
+
+The Phase 2 QA gate now includes the following additional criteria for the Gesture + Ward + Agent Builder feature cluster:
+
+| Criteria | Metric | Owner |
+|---------|--------|-------|
+| Gesture recognizer — true positive rate | ≥ 90% on full built-in gesture set (TEST-GEST-001, 002) | @qa_guy |
+| Gesture recognizer — no false positives | Normal conversation sentences (>8 words) never trigger recognizer; all TEST-GEST-004 variants pass | @qa_guy |
+| Ward routing — correct destination | ≥ 95% on unambiguous invocations (TEST-WARD-001 through 007) | @qa_guy |
+| Ward disambiguation | Single question surfaced on all ambiguous test cases (TEST-WARD-008) | @qa_guy |
+| AppIntents registration | `TellPollyIntent` and `OpenListeningIntent` register correctly; survive app restart; `TellPollyIntent` routes to gesture recognizer on match | @frontend |
+| Gesture candidate log | Phase 1 hook verified: short utterances with no routing match produce log entries (TEST-GEST-009) | @backend |
+| Lockdown Mode gesture constraints | TEST-GEST-008, TEST-WARD-009 pass: gesture recognition disabled, Ward context stripped | @security_audit |
+| Custom agent security constraints | `config_write` and `ward_mode: true` cannot be set on `source: "user"` agents at gateway registration | @security_audit |

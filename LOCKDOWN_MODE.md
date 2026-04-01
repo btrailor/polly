@@ -280,9 +280,47 @@ Lazy re-encryption on next rebuild. Immediate re-encryption of a large FAISS ind
 - Duress PIN implementation (@backend — PBKDF2 + Secure Enclave key slot deletion on iOS; SecItemDelete on macOS gateway; no escrow, no recovery)
 - PUSH_SECURITY_FIX.md — APNs architecture (must be consistent with Lockdown Mode APNs block)
 - SOMATIC_INTERFACE.md — prosodic extraction disabled in Lockdown Mode (gateway-enforced)
+- GESTURE_LAYER.md — gesture recognition disabled in Lockdown Mode; Ward context injection stripped; `OpenListeningIntent` opens to normal chat (no auto-mic)
+- WARD.md — Ward context injection stripped in Lockdown Mode (no thread summaries, no gesture history, no domain context)
 - EPISTEMIC_IMMUNE_SYSTEM.md — pattern library encrypted under separate key
 - METACOGNITIVE_DASHBOARD.md — dashboard data encrypted under separate key
 
 ---
 
-*Cross-references: PUSH_SECURITY_FIX.md, SOMATIC_INTERFACE.md, SKILLS_MARKETPLACE.md, EPISTEMIC_IMMUNE_SYSTEM.md, METACOGNITIVE_DASHBOARD.md, POLLY_IOS_SPEC.md §8.8*
+## 14. Gesture Layer + Ward Lockdown Additions
+
+*Added: 2026-03-30 per `GESTURE_LAYER.md` §13 and `WARD.md` §11 Q2.*
+
+### 14.1 Gesture Recognition Disabled
+
+In Lockdown Mode, gesture recognition is **disabled**. Short utterances (≤8 words) pass through to normal agent routing without a gesture check. The gesture recognizer does not run.
+
+**Rationale:** The gesture invocation log records utterances alongside domain context and active agent — this is behavioral metadata that could be compelled on a seized device. Disabling gesture recognition eliminates both the recognition pass and the log entry.
+
+**Implementation:** Gateway checks `polly.security.protectionLevel` before running gesture recognizer. If `lockdown`, skip gesture pass entirely.
+
+### 14.2 Ward Context Injection Stripped
+
+In Lockdown Mode, the Ward/Liaison's compressed state summary injection is disabled. When the Liaison is invoked in solo mode (Ward), it receives no context block:
+- No active thread summaries
+- No recent gesture history  
+- No domain context
+- No active teams list
+
+**Behavioral implication:** The Ward in Lockdown Mode can only route based on the utterance content of the current invocation. It cannot route based on thread history or recent gesture patterns. This degraded routing is the correct behavior.
+
+**Rationale:** Thread summaries and gesture history are behavioral metadata. Even compressed summaries reveal patterns of activity that could be compelled on a seized device.
+
+**Implementation:** Gateway checks `polly.security.protectionLevel` before assembling Ward context block. If `lockdown`, omit the context block entirely. The `ward_context_v1` assembly pipeline is bypassed.
+
+### 14.3 OpenListeningIntent — No Auto-Mic in Lockdown Mode
+
+`OpenListeningIntent` (Action Button target, `polly://ward` deep link) opens Polly with mic immediately active in normal operation. In Lockdown Mode, it opens Polly normally without auto-activating the mic.
+
+**Rationale:** Auto-mic activation is a behavioral signal that Polly is in active use. Eliminating it reduces observability of usage patterns.
+
+**Implementation:** On app launch from `OpenListeningIntent`, check Lockdown Mode state before triggering mic. If Lockdown Mode active, open to home screen without mic activation.
+
+---
+
+*Cross-references: PUSH_SECURITY_FIX.md, SOMATIC_INTERFACE.md, SKILLS_MARKETPLACE.md, EPISTEMIC_IMMUNE_SYSTEM.md, METACOGNITIVE_DASHBOARD.md, GESTURE_LAYER.md, WARD.md, POLLY_IOS_SPEC.md §8.8*
