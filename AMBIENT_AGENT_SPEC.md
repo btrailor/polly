@@ -72,7 +72,7 @@ Each Polly card (observation instance) moves through the following states. State
 | State | Description | Opacity | Persistence |
 |-------|-------------|---------|-------------|
 | **QUEUED** | Trigger fired; a prior undismissed card is visible. Card is not yet rendered to Today view. | n/a | Until prior card dismissed |
-| **ACTIVE** | Card visible in Today view, full opacity. No user interaction yet. | 100% | Until user action or T3 auto-resolve |
+| **ACTIVE** | Card visible in Today view, full opacity. No user interaction yet. | 100% | Until user action (Phase 1: user × only) |
 | **ENGAGED** | User tapped → open or an action button. Card remains visible at reduced opacity while user explores. | 65% | Until explicit dismiss (×) |
 | **DISMISSED** | Terminal. User tapped ×. Card removed from Today view immediately. No re-queue. No re-surface. Stored as `dismissed` in observation log. | n/a | Permanent |
 
@@ -82,17 +82,17 @@ Each Polly card (observation instance) moves through the following states. State
 2. **ACTIVE → DISMISSED (direct):** User taps × without engaging. Observation log: `{ status: "dismissed", engaged: false }`.
 3. **ACTIVE → ENGAGED:** User taps → open or any action button. Observation log: `{ status: "engaged", engaged: true }`.
 4. **ENGAGED → DISMISSED:** User taps × after engaging. Observation log: `{ status: "dismissed", engaged: true }`.
-5. **T3 auto-resolve:** A T3 vault-health card in ACTIVE or ENGAGED state is automatically DISMISSED when its triggering condition is resolved (orphaned notes captured, quiet domain gets a new note). No user action needed.
+5. **T3 auto-resolve (PHASE 2 — NOT IMPLEMENTED IN PHASE 1):** The state machine architecturally supports a path where a T3 vault-health card in ACTIVE or ENGAGED state is automatically DISMISSED when its triggering condition resolves (orphaned notes captured, quiet domain gets a new note). This path is deferred — the backend detection and client-signal mechanism is non-trivial and does not gate Phase 1 ship. **Phase 1 scope: all dismissals are user-initiated (× tap) only.** Document as future enhancement; do not implement.
 6. **No reverse transitions.** DISMISSED is permanent. Nothing re-queues a dismissed observation.
 
 ### Implementation Notes for @backend + @frontend
 
 - The observation log must persist across sessions. Dismissed observations must survive app restart. **Persistence mechanism: `UserDefaults` with namespaced key `aight.polly.dismissedIDs`** (lightweight, fast reads on launch). Only escalate to SQLite if dismissed ID volume grows unexpectedly large — unlikely at normal Polly card volume. This is a hard requirement: if dismissed IDs are not persisted, cards can re-surface after app relaunch, breaking the terminal state guarantee.
 - **Eviction policy:** Cap the dismissed IDs store at **500 entries**; on app launch, evict entries older than **90 days** if the cap is approached. Do not evict blindly by age alone — evict oldest-first only when the 500 entry cap is hit. @frontend: do not leave this as an ad-hoc implementation decision; apply this policy explicitly.
-- **Dismissal scope (client-side vs. backend sync):** TBD pending @backend confirmation. If dismissal is purely client-side, UserDefaults is sufficient and cross-device sync is out of Phase 1 scope. If backend needs to know about dismissals (e.g., for cross-device consistency or T3 auto-resolve signaling), the persistence story changes — dismissed IDs would need to sync to backend state, and UserDefaults becomes a local cache only. @backend: answer needed before implementation phase opens.
+- **Dismissal scope — client-side only (by design, Phase 1):** Dismissal is purely client-side state. `aight.polly.dismissedIDs` / UserDefaults is the sole source of truth. The backend does not receive or store dismissal events. Deliberate Phase 1 decisions: (a) cross-device sync is out of scope — dismissed cards will re-surface after reinstall or on a new device, which is acceptable; (b) if T3 auto-resolve ships in Phase 2, the client handles re-show logic locally — no backend dismissal query needed. Do not add backend sync without a new design review.
 - The QUEUED state is invisible to the user — no UI indicator of queue depth (Design Decision Q4 in `AIGHT_POLLY_CARD.md`).
 - The 65% opacity for ENGAGED state is calibrated to **default body font + standard line height** — if font spec changes, re-validate (Context Note 2 in `AIGHT_POLLY_CARD.md`).
-- T3 auto-resolve requires the Ambient Agent backend to poll vault state and compare against active/seen T3 cards. Polling interval: aligned with existing vault health check cadence.
+- **T3 auto-resolve (PHASE 2 — not in Phase 1 scope):** The state machine architecturally supports backend polling to detect condition resolution and signal the client to auto-dismiss T3 cards. Deferred. Phase 1: all dismissals are user-initiated only.
 
 ---
 
