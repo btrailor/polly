@@ -113,7 +113,7 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] Static auth token storage in expo-secure-store (key: `polly.gateway.token`)
 - [ ] TOFU cert pinning: store TLS fingerprint on first verified connect (key: `polly.gateway.tlsFingerprint`)
 - [ ] WSS enforcement for Cloudflare Tunnel connections (never ws:// through tunnel)
-- [ ] EAS code signing enabled in `eas.json`
+- [x] EAS code signing enabled in `eas.json`
 - [ ] Version-pin `expo-openclaw-chat@0.2.3` (no caret)
 - [ ] `SECURE_STORE_KEYS` constant — enumerated, typed (SECURITY_IMPLEMENTATION_SPEC.md §4.1)
 - [ ] `sanitizeForLog()` function — strips credentials before any console.log or crash dump (§6.1)
@@ -368,7 +368,7 @@ Phase 1 ships in Expo managed workflow with zero native modules **if @security_a
 - [ ] `[1A]` **IntegrationCard component + Settings → Integrations screen shell** — empty list state with "No integrations connected" message + IntegrationCard layout component. Phase 2 integrations (`phase-2-integrations`) gate on this shell existing. See `POLLY_IOS_SPEC.md §6.22`. — @frontend
 - [ ] `[1A]` **Brave Search API key config** — Settings → API Keys → Brave Search text input; stored in gateway config via `config.patch`. Enables web search tool for agents. Gateway passthrough — key is stored on gateway, not in app. — @frontend + @backend
 - [ ] `[1A]` **ElevenLabs API key config UI** — Settings → API Keys → ElevenLabs text input; stored in gateway config via `config.patch`. UI ships Phase 1; activation deferred to Phase 2 voice upgrade (`phase-2-voice-upgrade`). — @frontend
-- [ ] `[1A]` **EAS build pipeline** — `eas.json` full config (development/preview/production profiles), EAS Build setup, TestFlight distribution profile, CI trigger. Code signing is already tasked (line 116) but the pipeline around it is not. Required before first TestFlight build. — @infra + @code_architect
+- [x] `[1A]` **EAS build pipeline** — `eas.json` full config (development/preview/production profiles), EAS Build setup, TestFlight distribution profile, CI trigger. Code signing is already tasked (line 116) but the pipeline around it is not. Required before first TestFlight build. — @infra + @code_architect
 
 ---
 
