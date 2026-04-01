@@ -305,7 +305,7 @@ React Native + Expo is correct and stays. Five areas require Swift native module
 
 ### Phase 1 Decision Required
 
-- [ ] **@security_audit: Keychain vs. Secure Enclave for device key (Phase 1 decision)** — Is `expo-secure-store` (Keychain) sufficient for Phase 1 Ed25519 device key storage, with Secure Enclave deferred to Lockdown Mode? If yes: no native module needed Phase 1. If no: a thin `PollyCrypto` native module wrapping `SecKeyCreateRandomKey` with `kSecAttrTokenIDSecureEnclave` is required Phase 1. **This decision blocks device key generation work.**
+- [ ] **@security_audit decision gate: Keychain vs. Secure Enclave for device key (Phase 1)** — Scope is narrow: this gate applies only to the Ed25519 **device key pair** (cryptographic signing key material). @security_audit standing position (2026-04-01): Secure Enclave is for crypto key material only — not a general-purpose store. Keychain (`expo-secure-store`) is the standard choice for tokens and auth-adjacent data. If Keychain is accepted for Phase 1 device key: no native module needed. If Secure Enclave required: thin `PollyCrypto` native module wrapping `SecKeyCreateRandomKey` with `kSecAttrTokenIDSecureEnclave`. **Note:** dismissed observation IDs (`aight.polly.dismissedIDs`) are NOT in scope here — UserDefaults is acceptable for those as long as IDs are opaque UUIDs (non-sensitive). Any future auth-adjacent data added to the Polly persistence layer triggers a new security review before ship.
 
 ### Phase 2 Native Modules (plan for, do not implement Phase 1)
 
