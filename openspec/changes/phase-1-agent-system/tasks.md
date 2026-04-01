@@ -58,8 +58,10 @@
 
 ### Somatic Interface
 - [x] Prosodic engagement state spec locked (`SOMATIC_INTERFACE.md`)
-- [ ] Gateway: `prosodics` nullable field on ALL message objects (not voice-gated) — @backend
-- [ ] iOS: client-side prosodic signal extraction from audio buffer — @frontend (Phase 1 deliverable, blocked on real audio recording)
+- [ ] Gateway: `prosodics` nullable field on ALL message objects (not voice-gated) — @backend (see `phase-1-gesture-layer`)
+- [ ] iOS: Phase 1 prosodic signal extraction — `speechRate` + `turnLengthWords` from transcript metadata — @frontend (see `phase-1-gesture-layer`)
+- [ ] iOS: Waveform orb ambient feedback states — @frontend (see `phase-1-gesture-layer`)
+- [ ] SOUL Baseline: add Prosodic Calibration block (6th block) — documents flowing/processing/struggling calibration; "never label the state to Brett" rule
 - [ ] iOS: `MultiPanelChatLayout` with topology-aware message data model — @frontend
 
 ### Bootstrap + Ops

@@ -80,3 +80,40 @@ Estimator, Librarian, Mirror, Janitor, Interlocutor, Scaffolder, Archivist, Ambi
 Dev Squad, Startup, Content Studio, Marketing, Life Team, Finance, App Launch, Learning, Home Ops, Research Lab, Decision Theater, Maker's Bench, Maintenance Crew, Signals Studio, Systems Design, Civic Workshop
 
 Source: `POLLY_AGENT_TEMPLATES.md` — Agent → Team Membership table is authoritative.
+
+---
+
+## Ward SOUL Design Principles
+
+*Source: `SPEC_INTEGRATION_BRIEFING.md`. Apply when writing or reviewing any spec that touches agent SOULs, entry point behavior, routing intelligence, or ambient system agents. SHOULD-level constraints (RFC 2119) unless marked MUST.*
+
+### 1. Silence is an active state, not a fallback
+List silence as a **first-class behavior with its own trigger conditions**. For routing agents: an agent that says nothing and routes correctly has done its job better than one that confirms aloud. The SOUL should tell the agent *why* silence is appropriate, not just when.
+
+### 2. Character lives in the register, not the content
+Express personality through **how** it speaks — concrete analogs over adjective lists. One vivid analog ("the fine dining waiter: present when needed, invisible when not") is worth more than six adjectives.
+
+### 3. Routing agents MUST prioritize invisibility
+**MUST: Routing agents MUST NOT narrate their routing decisions. The destination is the response.** Confirmations are almost always noise. One disambiguation question is the maximum before acting. "How can I help?" is prohibited for routing agents.
+
+### 4. Context temperature informs surfacing priority
+
+| Temperature | Definition | Surface priority |
+|-------------|-----------|-----------------|
+| `waiting` | Last exchange ended with open question | First |
+| `mid-task` | Thread interrupted, workflow in progress | Second |
+| `clean` | Thread reached natural stopping point | Last / not at all |
+
+Temperature computed by gateway from final exchange patterns and injected as a signal — agents read it, don't compute it.
+
+### 5. Transition moments are a distinct invocation type
+Do NOT ask "what would you like to do?" — DO surface the most contextually obvious next move once without pushing. If nothing obvious presents itself, wait. Transition = listening state, not prompting state.
+
+### 6. Memory for routing agents is logistical and observational
+Wide but shallow: knows the shape of everything, depth of nothing. Should record: active domains, standing practices, arrival patterns. Should NOT record: conversation content, decisions in other agents' threads.
+
+### 7. Duality in a single agent requires mode detection, not mode selection
+**MUST: The user MUST NOT select, configure, or name a mode.** The agent reads its invocation context and determines its own mode in the first step. Gateway delivers different context injection per invocation type.
+
+### 8. The Monome Principle applies to agent behavior, not just UX
+The default behavior path should be the shortest and most invisible path. Advanced behavior is triggered by context, not offered proactively. The depth is there — it should not announce itself.
