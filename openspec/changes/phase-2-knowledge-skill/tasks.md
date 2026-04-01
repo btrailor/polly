@@ -100,8 +100,7 @@ Single service model. One FAISS HNSW index. All Phase 3 features consume via too
 - [ ] `vault.write_complete` event emission from gateway write path — Knowledge Skill subscribes for incremental index (see contracts §6.2; gateway-changes #10)
 - [ ] @backend: implement `vault.write_complete` event in gateway write path
 
-### LLM-Selection Fallback for Low-Confidence FAISS Results (from CLAUDE_CODE_ARCHITECTURE_INSIGHTS.md §3.2)
-- [ ] When FAISS retrieval returns all results below ABSENT threshold (<0.45), fall back to LLM-based note selection: send note frontmatter/titles to Sonnet, ask it to select top 5 relevant notes by semantic understanding
+### LLM-Selection Fallback for Low-Confidence FAISS Results (from CLAUDE_CODE_ARCHITECTURE_INSIGHTS.md §3.2)- [ ] When FAISS retrieval returns all results below ABSENT threshold (<0.45), fall back to LLM-based note selection: send note frontmatter/titles to Sonnet, ask it to select top 5 relevant notes by semantic understanding
 - [ ] LLM fallback is a complement to FAISS, not a replacement — FAISS is primary path for all normal retrievals
 - [ ] @backend owns fallback path; threshold and model configurable in skill manifest
 
@@ -112,3 +111,11 @@ Single service model. One FAISS HNSW index. All Phase 3 features consume via too
 
 ## Done when
 All tasks checked. @security_audit sign-off. Filter chips working in chat. Vault + BookLore indexing on device. Promotion pipeline functional. Dedup tool live.
+
+---
+
+## Open Question: NAS as FAISS Index Host (from POLLY_WEB_ANALYSIS.md Q1)
+
+Should the FAISS index live on the NAS (high-capacity persistent NAS storage, served from NAS RAM) rather than the Mac Mini (low network latency)? For large vaults (10k+ notes), the NAS storage advantage may outweigh the latency cost. For smaller vaults, Mac Mini is clearly better.
+
+**Decision gate:** @backend to evaluate at Phase 4 planning based on: vault size at that point, update frequency vs. query frequency, measured NAS-to-gateway latency on Brett's LAN. Document decision in `KNOWLEDGE_SKILL.md` before Phase 4 infra work begins. This is not a Phase 2 concern — index lives on Mac Mini until Phase 4.
