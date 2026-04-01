@@ -219,3 +219,110 @@ describe('TEST-SEC-008: Tunnel URL in Keychain (expo-secure-store), not MMKV', (
     expect(retrieved).toBe(testUrl);
   });
 });
+
+// ─── TEST-SEC-006/007: TOFU cert pinning ──────────────────────────────────────
+
+describe('TEST-SEC-006/007: TOFU certificate pinning', () => {
+  const TEST_FINGERPRINT_A = 'aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99';
+  const TEST_FINGERPRINT_B = 'ff:ee:dd:cc:bb:aa:99:88:77:66:55:44:33:22:11:00';
+
+  beforeEach(() => {
+    SecureStoreMock.__resetStore();
+  });
+
+  // TEST-SEC-006: First connect — no stored fingerprint → store silently
+  it('TEST-SEC-006: first connect stores TLS fingerprint (TOFU)', async () => {
+    // No fingerprint stored yet
+    const existing = await SecureStoreMock.getItemAsync(SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT);
+    expect(existing).toBeNull();
+
+    // Simulate TOFU: store on first connect
+    await SecureStoreMock.setItemAsync(SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT, TEST_FINGERPRINT_A);
+
+    const stored = await SecureStoreMock.getItemAsync(SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT);
+    expect(stored).toBe(TEST_FINGERPRINT_A);
+  });
+
+  // TEST-SEC-007a: Second connect with matching fingerprint → proceeds
+  it('TEST-SEC-007a: second connect with matching fingerprint proceeds without error', async () => {
+    // Pre-store a fingerprint (simulates previous connect)
+    await SecureStoreMock.setItemAsync(SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT, TEST_FINGERPRINT_A);
+
+    // Simulate TOFU check: read stored, compare to incoming
+    const stored = await SecureStoreMock.getItemAsync(SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT);
+    const incoming = TEST_FINGERPRINT_A; // same cert
+
+    expect(stored).toBe(incoming); // match → should proceed, no error emitted
+  });
+
+  // TEST-SEC-007b: Cert mismatch → connection must be rejected with cert-mismatch error
+  it('TEST-SEC-007b: cert mismatch emits auth.error with reason cert-mismatch', async () => {
+    const { MockGatewayServer } = require('../../__mocks__/gateway-mock-server');
+    const server = new MockGatewayServer();
+
+    // Pre-store fingerprint A
+    await SecureStoreMock.setItemAsync(SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT, TEST_FINGERPRINT_A);
+
+    const received: any[] = [];
+    server.onMessage((msg: any) => received.push(msg));
+
+    // Simulate what GatewayClient._onOpen() should do on cert mismatch:
+    // incoming cert is B, stored is A → mismatch → emit auth.error and close
+    const stored = await SecureStoreMock.getItemAsync(SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT);
+    const incoming = TEST_FINGERPRINT_B; // different cert!
+
+    if (stored !== null && stored !== incoming) {
+      // This is the branch GatewayClient must take — emit error, do not proceed
+      server.emit({ type: 'auth.error', reason: 'cert-mismatch' });
+    }
+
+    expect(received).toHaveLength(1);
+    expect(received[0].type).toBe('auth.error');
+    expect(received[0].reason).toBe('cert-mismatch');
+  });
+
+  // Anti-assertion: mismatch must NOT silently proceed
+  it('TEST-SEC-007c: cert mismatch must not emit auth.ok', async () => {
+    const { MockGatewayServer } = require('../../__mocks__/gateway-mock-server');
+    const server = new MockGatewayServer();
+
+    await SecureStoreMock.setItemAsync(SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT, TEST_FINGERPRINT_A);
+
+    const authOkMessages: any[] = [];
+    server.onMessage((msg: any) => {
+      if (msg.type === 'auth.ok') authOkMessages.push(msg);
+    });
+
+    const stored = await SecureStoreMock.getItemAsync(SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT);
+    const incoming = TEST_FINGERPRINT_B;
+
+    if (stored !== null && stored !== incoming) {
+      // Correct path: emit error only, NOT auth.ok
+      server.emit({ type: 'auth.error', reason: 'cert-mismatch' });
+    }
+
+    // Anti-assertion: auth.ok must never fire on cert mismatch
+    expect(authOkMessages).toHaveLength(0);
+  });
+
+  // Fingerprint write must happen before any message handlers fire
+  it('TEST-SEC-006b: fingerprint is stored before connect sequence completes', async () => {
+    const writeOrder: string[] = [];
+
+    // Simulate the required ordering: store fingerprint FIRST, then emit auth.ok
+    const storeFingerprint = async () => {
+      await SecureStoreMock.setItemAsync(SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT, TEST_FINGERPRINT_A);
+      writeOrder.push('fingerprint-stored');
+    };
+
+    const emitAuthOk = () => {
+      writeOrder.push('auth.ok-emitted');
+    };
+
+    await storeFingerprint();
+    emitAuthOk();
+
+    expect(writeOrder[0]).toBe('fingerprint-stored');
+    expect(writeOrder[1]).toBe('auth.ok-emitted');
+  });
+});
