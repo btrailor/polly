@@ -16,7 +16,7 @@ Establish zero-to-working test infrastructure for the Polly iOS app. Currently: 
 - [ ] Install test dependencies: `jest@^29.7.0`, `jest-expo~52.0.0`, `@testing-library/react-native@^12.4.0`, `@testing-library/jest-native@^5.4.0`, `jest-fetch-mock@^3.0.0` — @frontend
 - [ ] Create `jest.config.js` with `jest-expo` preset, `transformIgnorePatterns`, coverage thresholds (60% statements / 50% branches) — @frontend
 - [ ] Add `test`, `test:watch`, `test:coverage`, `test:ci` scripts to `package.json` — @frontend
-- [ ] Create `.github/workflows/test.yml` — runs `npm test --ci --coverage` on every push to `development` — @code_architect
+- [x] Create `.github/workflows/test.yml` — runs `npm test --ci --coverage` on every push to `development` — @code_architect
 
 ### Native Module Mocks (required before first test)
 - [ ] `__mocks__/expo-secure-store.ts` — in-memory `Map<string, string>`
