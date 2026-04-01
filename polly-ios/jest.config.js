@@ -5,6 +5,7 @@ module.exports = {
     'node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?(-[a-z-]+)?|@expo(nent)?/.*|@shopify/flash-list|react-native-reanimated|react-native-gesture-handler|react-native-mmkv|lucide-react-native|zustand|expo-openclaw-chat|react-native-worklets|@noble)/)',
   ],
   moduleNameMapper: {
+    '^expo-crypto$': '<rootDir>/__mocks__/expo-crypto.ts',
     '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.ts',
     '^expo-haptics$': '<rootDir>/__mocks__/expo-haptics.ts',
     '^react-native-mmkv$': '<rootDir>/__mocks__/react-native-mmkv.ts',
