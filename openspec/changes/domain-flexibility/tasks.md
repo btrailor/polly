@@ -1,6 +1,8 @@
-# Domain Flexibility — Tasks
+# Phase 1: Domain Flexibility — Tasks
 
-**Status:** ✅ Spec edits complete  
+**Status:** ✅ Spec edits complete — P0 implementation pending  
+**Phase:** 1 — P0 tasks must ship before the mental model suggestion feature (§11.3)  
+**Gate:** Phase 1 iOS Foundation scaffold (MMKV available, `polly.domains` key writable)  
 **Source:** `DOMAIN_FLEXIBILITY_SPEC_REMEDIATION.md`
 
 ## P0 — Phase 1 (must ship before mental model suggestion feature)

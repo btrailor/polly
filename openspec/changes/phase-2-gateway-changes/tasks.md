@@ -95,3 +95,18 @@ All 14 Phase 2 tasks complete and verified. @backend confirms each wave. @securi
 - [ ] #20 Notion Knowledge Skill adapter — blocks: Notion integration (`phase-3d-notion`)
 - [ ] #21 Creative Code Skill sandbox execution — blocks: Creative Code Skill (`phase-3-creative-systems`); **@security_audit** hard gate before design begins
 - **No gateway changes needed** for Chorus Mode (existing fan-out + `activationMode: "always"`) or phase transitions (client-side only)
+
+---
+
+## Done When
+
+All Wave 1–3 items complete. Specifically:
+- WebSocket authenticated (Wave 1 #1) — @frontend can connect
+- Agent list, session create/send/receive, event stream working (Wave 1 #2–5)
+- vault_read + knowledge_search tools registered (Wave 2 #6–7) — Knowledge Skill unblocked
+- Prosodics field on all message objects (Wave 2 #8) — Gesture Layer Phase 1 unblocked
+- Model routing fields + provider pool scaffolding (Wave 2 #9–10) — Model Routing Phase 2 unblocked
+- Compaction infrastructure (Wave 3 #11–14) — context management unblocked
+- Wave 4 items (#15–21) tracked here but gated on Phase 2 complete; do not start Wave 4 until all Wave 1–3 shipped and confirmed by @qa_guy
+
+@backend declares gateway-changes complete when @qa_guy has run the gateway integration test suite (phase-1-testing-infrastructure) against all Wave 1–3 tools and sign-off is recorded in this file.
