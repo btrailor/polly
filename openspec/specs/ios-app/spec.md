@@ -176,3 +176,46 @@ Per provider shows: name, live headroom (e.g. "180/hr remaining"), available mod
 ### Routing Decision — "Why this model?" (Phase 2)
 
 Chat bubble footer tap → bottom sheet showing selected model, provider, routing reason, retrieval tier (Phase 3+), and fallback chain if applicable. Provider visible on tap but not prominently displayed in bubble.
+
+---
+
+## Figma Sync UI (Phase 3)
+
+*Full spec: `FIGMA_SYNC_SPEC.md`. Change set: `phase-3-figma-sync`. Prerequisite: `phase-2-figma-integration`.*
+
+### Settings → Integrations → Figma
+
+- PAT input field + [Validate] button (gateway calls `GET /v1/me` to confirm)
+- File URL input → gateway extracts file key
+- Webhook status indicator: registered / not registered / error + [Test Connection]
+- Auto-apply token updates toggle (default: off — review gate)
+- `figma-token-map.yaml` link to vault file for custom naming overrides
+
+### Sync Cards (all appear in Figma Sync section at top of Code Architect chat — not in non-dev contexts, not during voice)
+
+**Token sync card (Phase 3A):**
+```
+🎨 Figma Design Tokens — v47 available
+3 tokens changed:
+  • accent: #f0903b → #e8842a
+  • backgroundCard: #242424 → #252525
+  • shadowCard: blur 8 → blur 10
+[Preview diff]  [Apply to theme/]  [Dismiss]
+```
+Dismiss queues for later review (notification badge). Preview diff shows proposed `colors.ts` changes before writing.
+
+**Component spec card (Phase 3B):**
+```
+📐 Voice Button updated — v47
+1 variant added: loading state
+1 dimension changed: width 56 → 64pt
+[View spec]  [Open in Figma]  [Dismiss]
+```
+
+**Task card (Phase 3C — from Figma annotation):**
+```
+💬 Figma task from @design_eng
+"Pressed state animation wrong — should match waveform timing"
+→ Voice Button frame
+[Open task]  [Open in Figma]  [Dismiss]
+```
