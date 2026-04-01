@@ -25,8 +25,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": ""
-      }
+        "projectId": "85543a01-c4f8-4081-9492-b833b14a3f83"
+      },
+      "router": {}
     },
     "android": {
       "adaptiveIcon": {
@@ -39,6 +40,7 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "owner": "clarence_bojangles"
   }
 }

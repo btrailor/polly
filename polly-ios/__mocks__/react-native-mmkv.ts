@@ -44,3 +44,4 @@ class MMKVMock {
 }
 
 export const MMKV = jest.fn().mockImplementation(() => new MMKVMock());
+export const createMMKV = jest.fn().mockImplementation(() => new MMKVMock());

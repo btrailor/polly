@@ -6,6 +6,7 @@ module.exports = {
   ],
   moduleNameMapper: {
     '^expo-crypto$': '<rootDir>/__mocks__/expo-crypto.ts',
+    '^expo-openclaw-chat/src/core$': '<rootDir>/node_modules/expo-openclaw-chat/src/core/index.ts',
     '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.ts',
     '^expo-haptics$': '<rootDir>/__mocks__/expo-haptics.ts',
     '^react-native-mmkv$': '<rootDir>/__mocks__/react-native-mmkv.ts',
