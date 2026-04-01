@@ -168,6 +168,8 @@ A few open questions to resolve together:
 
 Four open questions from "Design Notes for @design_eng" above were resolved in group design review. These are locked decisions; do not reopen without a new design review pass.
 
+Four open questions from "Design Notes for @design_eng" above were resolved in group design review. These are locked decisions; do not reopen without a new design review pass.
+
 **Q1 — Tint color: Neutral (deferred to Aight dark mode palette)**
 The 🔮 emoji is the primary visual differentiator; the card tint is subtlety, not signal. Decision: use a 3–5% desaturated version of the app's primary surface color once the Aight dark mode palette is finalized. Until then, tint is deferred — do NOT hardcode a purple/indigo value. @frontend: treat this as a palette-locked token (`polly-card-bg-tint`) and bind it when the dark mode palette ships. If palette is still fluid at implementation time, check with @design_eng before picking a value.
 
@@ -179,6 +181,19 @@ Tapping "→ open" or an action button that opens a vault note presents a bottom
 
 **Q4 — Queue visibility: None (invisible queue)**
 When a second Polly card is queued behind an undismissed card, there is no UI indicator of the queue. No "1 more observation" badge, no counter, no hint. Consistent with the "ambient, not intrusive" principle. The queue is an implementation detail, not a user-visible concept. Users see one card when conditions trigger; they do not need to know a queue exists.
+
+---
+
+## Implementation Context Notes (for @frontend + @code_architect)
+
+**Context 1: Dark mode tint — palette lock status deferred**
+The Polly card background tint currently has no hardcoded value. This decision (Q1) defers tint specification to Aight's dark mode palette lock. @frontend: treat the tint as a token reference (`polly-card-bg-tint`) in your UIKit bindings. Do NOT hardcode a purple/indigo color. If the dark mode palette is still in flux at implementation time, check with @design_eng before picking a placeholder value. Once the palette is locked in Aight, we'll inject the token value into the Polly config.
+
+**Context 2: 65% opacity is calibrated for default body font + standard line height**
+The seen-state opacity (Q2) is set to exactly 65% and is calibrated to the **default body font + standard line height** used in the Today view card format. If the observation text font size or line height changes in a future design pass (smaller font, tighter leading, etc.), this opacity value must be re-validated — 65% may not maintain sufficient legibility at different typographic scales. @qa_guy: add a legibility check for the 65% seen-state rendering to the iOS component validation plan.
+
+**Context 3: Permanent dismiss, no re-queue behavior**
+Per the dismissal behavior spec (section "Dismissal Behavior"), when a user taps the × button to dismiss a Polly card, that observation is considered **completed** and **must not be re-queued**. The queue is an implementation detail invisible to the user. If a second Polly observation arrives while a card is undismissed, it queues invisibly; when the first card is dismissed, the second surfaces. Once dismissed, a card does not re-appear for the same trigger/observation — it is marked as "seen + dismissed" in the state machine. This enforces the "no guilt, no re-surfacing" design principle. @code_architect and @backend: this behavior must be reflected in the `AMBIENT_AGENT_SPEC.md` dismissal state machine (see section "Permanent dismiss, no re‑queue rule"). The state transition is: **active** → (on dismiss) → **dismissed** (terminal state, no re-queue).
 
 ---
 
