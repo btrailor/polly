@@ -2,7 +2,7 @@ module.exports = {
   preset: 'jest-expo',
   setupFilesAfterFramework: ['@testing-library/jest-native/extend-expect'],
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@shopify/flash-list|react-native-reanimated|react-native-gesture-handler|react-native-mmkv|lucide-react-native|zustand|expo-openclaw-chat)/)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?(-[a-z-]+)?|@expo(nent)?/.*|@shopify/flash-list|react-native-reanimated|react-native-gesture-handler|react-native-mmkv|lucide-react-native|zustand|expo-openclaw-chat|react-native-worklets|@noble)/)',
   ],
   moduleNameMapper: {
     '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.ts',
