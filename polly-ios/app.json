@@ -20,7 +20,8 @@
       "bundleIdentifier": "com.polly.ios",
       "infoPlist": {
         "NSAllowsLocalNetworking": true,
-        "NSFileProtectionComplete": true
+        "NSFileProtectionComplete": true,
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "extra": {
