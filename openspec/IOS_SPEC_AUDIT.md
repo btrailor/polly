@@ -15,7 +15,7 @@ The spec corpus is structurally sound. Three implementation blockers, four frict
 |-----------|---------|--------|
 | 1.1 expo-openclaw-chat API not verified | Blocker | Task added to `phase-1-ios-foundation/tasks.md` — explicit 30-min verification task before any gateway code |
 | 1.2 Phase 1 scope too large (~150 checkboxes) | Blocker | `phase-1-ios-foundation/tasks.md` restructured into 1A (Ship It) / 1B (Complete It) / 1C (Content) sub-phases |
-| 1.3 Onboarding bootstrap: baked key underspecified | Blocker | **Pending Brett's decision** — conversational (Gemini Flash baked key) vs. manual form-based for Phase 1A. See open question in `phase-1-ios-foundation/tasks.md` |
+| 1.3 Onboarding bootstrap: baked key underspecified | Blocker | **LOCKED: Gemini Flash baked key (Option A).** Google AI Studio project provisioning task + `expiresAtMs` + Manual mode fallback + `PollyOnboardingAgent` persona tasks added to `phase-1-ios-foundation/tasks.md` |
 | 2.1 openspec legacy spec files vs. current iOS specs | Friction | `openspec/DEPRECATED_NOTICE.md` added; `openspec/specs/` files marked legacy |
 | 2.2 10 stub agents + 43 missing allowed_modes + 43 missing suggested_prompts | Friction | Already tracked in `phase-1-agent-system/tasks.md` (updated this session). Pre-implementation priority note added. |
 | 2.3 Sensibility system three-way conflict | Friction | Phase 1A/1B split in sensibility tasks added |
