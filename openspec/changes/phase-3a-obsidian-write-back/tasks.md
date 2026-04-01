@@ -37,4 +37,26 @@ Agents can propose writing to the user's Obsidian vault. User must preview and c
 - [ ] User confirmation not required if user toggles "Auto-append daily notes" in Settings (explicit opt-in)
 
 ## Done When
-Agent can propose a vault write. User sees preview. User confirms → note written. Settings toggle per-agent. @security_audit sign-off on write isolation (agent can only write to vault, not gateway config or other agent workspaces).
+Agent can propose a vault write. User sees preview. User confirms → note written. Settings toggle per-agent. @security_audit sign-off on write isolation (agent can only write to vault, not gateway config or other agent workspaces). Household shared vault section indexed and accessible to scoped household nodes.
+
+---
+
+## Household Shared Vault Section (from POLLY_WEB_ANALYSIS.md §3.2)
+
+*The practical, immediately useful answer to "shared household memory." No new vector infrastructure — same FAISS index, same embedding pipeline, additional source section.*
+
+### Design
+- `/Household/` directory in Brett's Obsidian vault (or a separate household vault — Q3 from `HOUSEHOLD_NODES.md` §9 determines this)
+- Knowledge Skill indexes this section and tags chunks with `source: "household"`
+- Household nodes with `vault_sections: ["/Household"]` can retrieve from this section via `knowledge_search`
+- Nodes with `vault_write: true` can create notes in `/Household/` via the write-back skill
+- Content types: family schedules, shared recipes, school info, Wi-Fi passwords, household reference material
+
+### Tasks (@backend + @frontend)
+- [ ] Knowledge Skill: add `/Household/` as an indexed source section in the Obsidian adapter
+- [ ] Tag household-section chunks with `source: "household"` in FAISS index metadata
+- [ ] Capability scoping enforcement: `vault_sections` field on household node roles gates which Knowledge Skill sections are queryable
+- [ ] Partner node: read access to `/Household/` by default; write access opt-in
+- [ ] Child node: read access to `/Household/` by default (age-appropriate scoping per `HOUSEHOLD_NODES.md`); no write access by default
+- [ ] `HOUSEHOLD_NODES.md` update: document the shared vault section pattern, access tiers, and content guidelines (§15 or new section)
+- [ ] Resolve Q3 from `POLLY_WEB_ANALYSIS.md`: should household nodes search `/Household/` conversationally ("what's for dinner?") or only via explicit household skills? Document decision in `HOUSEHOLD_NODES.md`.
