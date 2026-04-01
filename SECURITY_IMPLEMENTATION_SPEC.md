@@ -91,22 +91,22 @@ But Lockdown Mode has zero representation in the Phase 1 task list as architectu
 
 ### 3.1 File Protection Class
 
-Every file Polly writes must use `NSFileProtectionComplete`. This is NOT the default on iOS. It must be specified per-file or per-directory.
+**✅ Decision locked 2026-04-01 (@security_audit investigation)**
 
-**Phase 1 implication:** When the local message cache (expo-sqlite), MMKV stores, or any other file is created, the file protection class must be set. If Phase 1 creates files with the default protection class and Phase 2+ tries to upgrade them, the upgrade requires deleting and recreating every file.
-
-```typescript
-// Every file write path must include:
-// expo-sqlite: set protection on the database file after creation
-// MMKV: investigate if MMKV supports NSFileProtectionComplete natively
-// Temp files: set protection before writing content
-
-// expo-file-system approach:
-await FileSystem.makeDirectoryAsync(dataDir, { intermediates: true });
-await FileSystem.setFileProtection(dataDir, FileSystem.FileProtection.COMPLETE);
+`NSFileProtectionComplete` is set as the **default protection class for the entire app sandbox** via `app.json`:
+```json
+"ios": { "infoPlist": { "NSFileProtectionComplete": true } }
 ```
+This covers MMKV, expo-sqlite, and all app-written files automatically at the iOS level. No per-file API calls needed.
 
-Investigation required: confirm MMKV natively supports `NSFileProtectionComplete`. If not, wrapper or alternative.
+**Investigation findings:**
+- `react-native-mmkv` v4.3.0: no native `NSFileProtectionComplete` support — writes to `documentsDirectory/mmkv/` with no protection class set. Content encryption via `encryptionKey` (AES-128) is separate and independent.
+- `expo-file-system` bundled with current Expo SDK: `setFileProtectionAsync` / `FileProtection` enum do NOT exist. Per-file API approach is not available.
+- `app.json` `infoPlist` approach is the correct solution — OS-level, no code required.
+
+**Defense in depth:** MMKV instances should also be initialized with an `encryptionKey` derived from a Keychain-stored value. This is content-level AES encryption in addition to OS file protection class.
+
+**`initStorageProtection()` is NOT needed.** Do not implement it.
 
 ### 3.2 Voice Audio Buffer Policy
 
