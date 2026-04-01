@@ -65,7 +65,7 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] No APNs dependency for core functionality — gateway connection must work without push (polling fallback required)
 
 ### Developer Bootstrap
-- [ ] `setup.sh` at repo root — prerequisite checks, dep install, gateway verify, .env.local creation (P0 — blocks all dev work)
+- [x] `setup.sh` at repo root — prerequisite checks, dep install, gateway verify, .env.local creation (P0 — blocks all dev work)
 - [ ] `polly-ios/package.json` updated with full Phase 1 dependency set (see `ONBOARDING_SPEC.md §2.2` for complete list)
 
 ### Onboarding — Manual Form (Phase 1A)
