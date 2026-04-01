@@ -32,7 +32,7 @@ This document:
 | Challenge-response signing | §3.3.1 | 1 | ❌ Not implemented. |
 | deviceToken caching + rotation | §8.1 | 1 | ❌ Not implemented. A TODO comment in index.tsx references expo-secure-store. |
 | Static auth token path | §3.3.2 | 1 | ❌ Not implemented. |
-| TOFU cert pinning | §8.3 | 1 | ❌ Not implemented. |
+| TOFU cert pinning | §8.3 | 1 | ✅ Implemented (`9d60a58`). Application-layer only (Phase 1A): gateway sends fingerprint in `auth.ok` payload; `GatewayClient._storeTofuFingerprintIfNeeded()` stores on first connect, verifies on subsequent. **Phase 2 gap:** full TLS inspection (independently computing fingerprint from TLS handshake) requires a native module — deferred. |
 | Biometric lock (Face ID/Touch ID) | §8.7, §4.8 | 2 | ❌ Not implemented. expo-local-authentication not installed. |
 | Session timeout + re-auth | §8.7, §4.8 | 2 | ❌ Not implemented. |
 | Device registration cap (10 max) | §8.6 M2 | 2 | ❌ Not implemented. |
