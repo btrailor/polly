@@ -2260,7 +2260,7 @@ The Ambient Agent has no conversational mode — it does not receive messages, o
 
 ## New Team Templates (2026-03-25 idea dump)
 
-Eight new team templates added. Format matches existing team templates. All referenced agents now have full SOUL templates — `# stub — template pending` markers below are stale and should be ignored.
+Eight new team templates added. Format matches existing team templates. All referenced agents now have full SOUL templates — `` markers below are stale and should be ignored.
 
 ---
 
@@ -2280,7 +2280,7 @@ agents:
   - the-scheduler
   - the-researcher
   - the-analyst
-  - the-estimator        # stub — template pending
+  - the-estimator
   - ops-coordinator
   - legal-thinker
 group_chats:
@@ -2312,8 +2312,8 @@ agents:
   - data-scientist
   - the-contrarian
   - the-writer
-  - the-librarian        # stub — template pending
-  - the-experimentalist  # stub — template pending
+  - the-librarian
+  - the-experimentalist
 group_chats:
   - name: "Lab Bench"
     members: [the-researcher, the-analyst, the-philosopher]
@@ -2347,7 +2347,7 @@ agents:
   - devils-advocate
   - the-philosopher
   - the-systems-thinker
-  - the-mirror           # stub — template pending
+  - the-mirror
   - the-mentor
 group_chats:
   - name: "The Chamber"
@@ -2387,7 +2387,7 @@ agents:
   - the-systems-thinker
   - the-researcher
   - design-engineer
-  - the-experimentalist  # stub — template pending
+  - the-experimentalist
 group_chats:
   - name: "The Bench"
     members: [code-architect, audio-producer, infra-engineer]
@@ -2422,8 +2422,8 @@ description: >
 agents:
   - the-mentor
   - the-scheduler
-  - the-janitor          # stub — template pending
-  - the-mirror           # stub — template pending
+  - the-janitor
+  - the-mirror
   - the-generalist
 group_chats:
   - name: "Check-In"
@@ -2454,7 +2454,7 @@ agents:
   - audio-producer
   - music-producer
   - code-architect
-  - the-experimentalist  # stub — template pending
+  - the-experimentalist
   - design-engineer
   - the-philosopher
 group_chats:
@@ -2494,7 +2494,7 @@ agents:
   - the-contrarian
   - infra-engineer
   - the-cartographer
-  - the-experimentalist  # stub — template pending
+  - the-experimentalist
 group_chats:
   - name: "Whiteboard"
     members: [the-systems-thinker, the-cartographer, the-strategist]
@@ -2530,7 +2530,7 @@ agents:
   - legal-thinker
   - the-philosopher
   - the-analyst
-  - the-translator       # stub — template pending
+  - the-translator
   - ops-coordinator
 group_chats:
   - name: "Strategy Table"
