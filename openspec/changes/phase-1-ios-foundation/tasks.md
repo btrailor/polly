@@ -39,7 +39,7 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 ## Tasks
 
 ### Pre-Implementation — Do Before Writing Any Code
-- [ ] `[1A]` **Verify `expo-openclaw-chat@0.2.3` API surface** (est. 30 min): `npm install expo-openclaw-chat@0.2.3` in `polly-ios`, open package in `node_modules`, verify every interface the spec assumes exports: `ChatEngine.send()`, `GatewayClient.connectionState`, `UIMessage`, `ChatMessageContent[]`. Document any delta from spec in this file. This task blocks all gateway client code. — @frontend + @code_architect
+- [x] `[1A]` **Verify `expo-openclaw-chat@0.2.3` API surface** (est. 30 min): `npm install expo-openclaw-chat@0.2.3` in `polly-ios`, open package in `node_modules`, verify every interface the spec assumes exports: `ChatEngine.send()`, `GatewayClient.connectionState`, `UIMessage`, `ChatMessageContent[]`. Document any delta from spec in this file. This task blocks all gateway client code. — @frontend + @code_architect
 - [ ] `[1A]` **Investigate NSFileProtectionComplete for MMKV + expo-sqlite** (est. 1 hr): Create a minimal Expo test project, write a file with `NSFileProtectionComplete`, verify both libraries respect it. Document findings in `SECURITY_IMPLEMENTATION_SPEC.md §Lockdown Hooks`. If either library doesn't support it, design workaround before Phase 1 code is written. — @frontend + @security_audit
 - [ ] `[1A]` **Rewrite PROJECT_STATUS.md** to reflect actual state: Phase 1 in progress, ~2200 lines scaffold, no gateway connection, no tests, dependencies not installed. — @code_architect
 
