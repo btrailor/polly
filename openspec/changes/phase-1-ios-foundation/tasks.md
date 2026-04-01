@@ -361,5 +361,24 @@ Phase 1 ships in Expo managed workflow with zero native modules **if @security_a
 
 ---
 
+## Integration & Build Infrastructure (from §13 Phase 1 — added 2026-04-01)
+
+*These items appear in `POLLY_IOS_SPEC.md §13 Phase 1` scope but were missing from tasks. Added via OpenSpec Task Coverage Audit.*
+
+- [ ] `[1A]` **IntegrationCard component + Settings → Integrations screen shell** — empty list state with "No integrations connected" message + IntegrationCard layout component. Phase 2 integrations (`phase-2-integrations`) gate on this shell existing. See `POLLY_IOS_SPEC.md §6.22`. — @frontend
+- [ ] `[1A]` **Brave Search API key config** — Settings → API Keys → Brave Search text input; stored in gateway config via `config.patch`. Enables web search tool for agents. Gateway passthrough — key is stored on gateway, not in app. — @frontend + @backend
+- [ ] `[1A]` **ElevenLabs API key config UI** — Settings → API Keys → ElevenLabs text input; stored in gateway config via `config.patch`. UI ships Phase 1; activation deferred to Phase 2 voice upgrade (`phase-2-voice-upgrade`). — @frontend
+- [ ] `[1A]` **EAS build pipeline** — `eas.json` full config (development/preview/production profiles), EAS Build setup, TestFlight distribution profile, CI trigger. Code signing is already tasked (line 116) but the pipeline around it is not. Required before first TestFlight build. — @infra + @code_architect
+
+---
+
+## Cognitive Artifact Phase 1 Hook (from COGNITIVE_ARTIFACT.md — added 2026-04-01)
+
+*One-time schema decision that `COGNITIVE_ARTIFACT.md` says is not retrofittable. Must be made Phase 1 before any export format is established.*
+
+- [ ] `[1A]` **Define `manifest.json` export schema** — `layers` field with declared-but-empty layer slots + schema version field. This is a format versioning decision from `COGNITIVE_ARTIFACT.md §4`: the schema must declare layers from day one so Phase 2+ additions are additive, not breaking. @backend — one-time 30-min decision, document chosen schema in `COGNITIVE_ARTIFACT.md §4`. See also `phase-2-knowledge-skill/tasks.md` line 91 which references this hook.
+
+---
+
 ## Done when
 All P0 tasks checked. App is functionally usable end-to-end: gateway connects, onboarding works, chat sends/receives with streaming, stop generation works, cached messages load offline, voice records real audio, drawer navigation works, Today view shows items. @qa_guy sign-off.
