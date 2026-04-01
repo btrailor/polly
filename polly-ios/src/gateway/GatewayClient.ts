@@ -135,6 +135,25 @@ export class GatewayClient {
   }
 
   /**
+   * Patch a gateway config key with a value.
+   * Throws if not connected.
+   */
+  configPatch(patches: Record<string, unknown>): void {
+    if (!this.ws || useConnectionStore.getState().status !== 'connected') {
+      throw new Error('GatewayClient.configPatch() called while not connected');
+    }
+    for (const [key, value] of Object.entries(patches)) {
+      this.ws.send(
+        JSON.stringify({
+          type: 'config.patch',
+          key,
+          value,
+        })
+      );
+    }
+  }
+
+  /**
    * Register a handler for incoming gateway messages.
    * Silent replies (NO_REPLY, HEARTBEAT_OK) are filtered before handlers fire.
    */
@@ -301,7 +320,6 @@ export class GatewayClient {
       })
     );
   }
-}
 
   /**
    * TOFU (Trust On First Use) cert pinning.
@@ -361,6 +379,7 @@ export class GatewayClient {
     this.tofuVerified = false;
     console.log('[GatewayClient] TOFU fingerprint cleared');
   }
+}
 
 // Singleton — one client for the app lifetime
 export const gatewayClient = new GatewayClient();
