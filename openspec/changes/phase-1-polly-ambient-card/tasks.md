@@ -67,6 +67,8 @@
 - [ ] Legibility check: ENGAGED state (65% opacity) at `fontSize:17/lineHeight:22` — pass/fail baseline
 - [ ] Re-validate opacity if font spec changes (must be explicitly retested)
 - [ ] Rapid dismiss sequence: user burns through queued backlog — verify no jank in DISMISSED → ACTIVE transition
+- [ ] FIFO ordering: multiple queued cards surface in `createdAt` order on sequential dismissals
+- [ ] Dedup on enqueue: same `observationId` delivered twice → queue contains it once only
 - [ ] Dismissed card does not re-surface after: (a) explicit dismiss, (b) app restart, (c) reinstall (expect re-surface on reinstall — acceptable per spec)
 - [ ] Max 1 active card enforced — no stacking
 - [ ] Queue invisible — no UI indicator of depth under any condition
@@ -85,9 +87,15 @@ On dismissal (× tap), the next queued card surfaces **immediately** — no wait
 ```
 DISMISSED event fires
   → client checks queue
-  → queue non-empty: surface next card immediately (FIFO)
+  → queue non-empty: surface next card immediately (FIFO by createdAt)
   → queue empty: card layer goes dormant until next trigger evaluation
 ```
+
+**Queue ordering:** Client-side, FIFO by `createdAt`. Backend delivers observations; it does not manage queue ordering or expiration post-delivery. Once delivered, the client owns surfacing order.
+
+**Dedup on enqueue (required):** If the backend delivers the same `observationId` twice (network retry, etc.), the client MUST deduplicate before enqueue — queue contains each observation ID at most once. Check `observationId` against both the active card, the pending queue, and the dismissed IDs store before enqueuing.
+
+**Expired observations (Phase 1: no TTL):** Phase 1 observations have no TTL — all queued items surface eventually. If a TTL field is added in a future phase, the client must skip expired items on dequeue rather than surfacing a stale card. @frontend: write the dequeue path to handle a TTL check (even if it's a no-op in Phase 1) so it's not a retrofit.
 
 ---
 
