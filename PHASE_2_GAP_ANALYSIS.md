@@ -166,3 +166,40 @@ Plus:
 **Phase 1 → push-security → knowledge-skill → Phase 3**
 
 Knowledge Skill is the only Phase 2 change that blocks Phase 3. Start it on day 1 of Phase 2. Everything else is parallel.
+
+---
+
+## 6. Conversational Onboarding (`conversational-onboarding`)
+
+**Source:** `IOS_SPEC_AUDIT.md §1.3` — decision 2026-04-01  
+**Priority:** P2 (high value, not a blocker)  
+**Depends on:** Phase 1A complete (manual form onboarding working)
+
+### What It Is
+Replace the Phase 1A manual form onboarding with a conversational experience powered by a Gemini Flash API key baked into the app bundle. The user's first interaction with Polly is a chat — `PollyOnboardingAgent` explains the app, walks them through OpenClaw installation, and guides them to their first gateway connection.
+
+### Why Phase 2 (Not Phase 1)
+Phase 1A priority is getting a TestFlight build in hand fast. The manual form is fully functional and zero-dependency. Conversational onboarding requires provisioning a Google AI Studio project, baking a key, and writing a persona — meaningful pre-flight overhead that shouldn't block the first build.
+
+### Implementation Requirements
+- **Pre-build provisioning (one-time — @code_architect):**
+  - Provision dedicated Google AI Studio project for Polly onboarding bootstrap
+  - Configure hard rate limits (requests/day + tokens/day) — key economically useless for abuse
+  - Generate API key scoped to this project only
+  - Add to `.env.local` template as `POLLY_BOOTSTRAP_GEMINI_KEY`
+  - Set `expiresAtMs` build-time constant: 12 months from build date
+- **Implementation (@frontend):**
+  - Bootstrap key loaded from build-time env constant (not runtime fetch)
+  - `expiresAtMs` check: `Date.now() < expiresAtMs` → conversational; else → fall back to Phase 1A manual form
+  - `PollyOnboardingAgent` SOUL baked in: knows OpenClaw install steps, common errors, Mac-specific quirks
+  - Gemini Flash API called directly from client (gateway doesn't exist yet during onboarding)
+  - Bootstrap conversations NOT persisted — cleared on onboarding complete
+  - Agent steps aside cleanly on gateway connect: "All done — switching to your full setup now"
+  - `PollyOnboardingAgent` NOT visible post-onboarding — no agent list entry, no access post-setup
+  - EAS OTA rotation path documented in release runbook (new key + updated `expiresAtMs` every ~12 months)
+- **Security:**
+  - IPA extraction risk accepted and documented in `POLLY_IOS_SPEC.md §20.4` — no further mitigation required
+  - Free-tier key = low abuse ceiling; rate limits = additional ceiling
+
+### "Done When"
+User opens Polly fresh, is greeted by `PollyOnboardingAgent` in a chat interface, completes setup conversationally, and lands in the main chat with their first agent ready. Manual form fallback works when key is expired or offline.

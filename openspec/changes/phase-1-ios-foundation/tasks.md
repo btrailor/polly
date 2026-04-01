@@ -16,8 +16,8 @@ Tasks below are annotated `[1A]`, `[1B]`, or `[1C]`.
 
 ---
 
-> **Onboarding Phase 1A: LOCKED — Conversational (Gemini Flash baked key)**  
-> Bootstrap model: Gemini Flash via Google AI Studio free-tier key baked into app bundle. `expiresAtMs` TTL enforced client-side. Manual mode fallback if expired or no network. See `POLLY_IOS_SPEC.md §20.4` for full flow + IPA extraction risk decision. See tasks below under "Onboarding Bootstrap."
+> **Onboarding Phase 1A: LOCKED — Manual form (Option B). Decision: 2026-04-01.**  
+> Phase 1A onboarding is a standard form: gateway URL entry → auth token entry → test connection → done. No baked API key. No conversational layer. Conversational onboarding (Gemini Flash `PollyOnboardingAgent`) is a Phase 2 enhancement — see `PHASE_2_GAP_ANALYSIS.md §conversational-onboarding`.
 
 ---
 
@@ -68,25 +68,18 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] `setup.sh` at repo root — prerequisite checks, dep install, gateway verify, .env.local creation (P0 — blocks all dev work)
 - [ ] `polly-ios/package.json` updated with full Phase 1 dependency set (see `ONBOARDING_SPEC.md §2.2` for complete list)
 
-### Onboarding Bootstrap — Baked Gemini Flash Key (`POLLY_IOS_SPEC.md §20.4`)
+### Onboarding — Manual Form (Phase 1A)
 
-**Pre-build provisioning (one-time — @code_architect owns):**
-- [ ] Provision Google AI Studio project dedicated to Polly onboarding bootstrap (separate from any personal Google AI account)
-- [ ] Configure hard rate limits on project: requests/day and tokens/day that make key economically useless for abuse at scale (document chosen limits in `SECURITY_IMPLEMENTATION_SPEC.md`)
-- [ ] Generate API key scoped to this project only
-- [ ] Add to `.env.local` template as `POLLY_BOOTSTRAP_GEMINI_KEY` — document in `setup.sh`
-- [ ] Set `expiresAtMs` build-time constant: 12 months from first TestFlight build; rotate via EAS OTA update (document rotation process in release runbook, not app UI)
-- [ ] Accept and document IPA extraction risk decision (already in `POLLY_IOS_SPEC.md §20.4 ⚠️` — no further action, just implement with eyes open)
+> **Decision 2026-04-01:** Phase 1A onboarding is a manual form. No baked API key. No conversational layer. Conversational onboarding deferred to Phase 2.
 
 **Implementation tasks (@frontend):**
-- [ ] Bootstrap key loaded from build-time env constant (not fetched at runtime)
-- [ ] `expiresAtMs` check at onboarding start: `Date.now() < expiresAtMs` → use Gemini; else → fall through to Manual mode
-- [ ] Manual mode fallback: static instructional screens (URL entry → token entry → test connection) — no conversational layer; minimum viable path to gateway connection
-- [ ] `PollyOnboardingAgent` system prompt baked into app (see `POLLY_IOS_SPEC.md §20.4`) — knows OpenClaw install steps, common errors, Mac-specific instructions
-- [ ] Bootstrap uses Gemini Flash API directly from client (not via gateway — gateway doesn't exist yet during onboarding)
-- [ ] Bootstrap conversations NOT persisted — cleared on onboarding complete
-- [ ] Bootstrap model steps aside cleanly on gateway connection: "All done — I'm switching to your full agent setup now"
-- [ ] `PollyOnboardingAgent` persona NOT available after onboarding — does not appear in agent list, not accessible post-setup
+- [ ] Welcome/splash screen with Polly branding and "Get Started" CTA
+- [ ] Screen 1 — Gateway URL entry: text input, validate URL format, "What's this?" help link to OpenClaw install docs
+- [ ] Screen 2 — Auth token entry: secure text input, "Where do I find this?" inline tip pointing to OpenClaw settings
+- [ ] Screen 3 — Test connection: connect attempt with spinner → success (green) or failure (error message + retry)
+- [ ] On success: `OnboardingState.complete = true` persisted to MMKV → navigate to main chat
+- [ ] Error states: unreachable host, auth rejected, timeout — each with specific guidance copy
+- [ ] No network state: graceful message, retry when online
 
 ### Onboarding — State Machine + Flow (`ONBOARDING_SPEC.md`)
 - [ ] `OnboardingState` interface + MMKV persistence (11 phases: welcome → complete)

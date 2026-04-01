@@ -15,7 +15,7 @@ The spec corpus is structurally sound. Three implementation blockers, four frict
 |-----------|---------|--------|
 | 1.1 expo-openclaw-chat API not verified | Blocker | Task added to `phase-1-ios-foundation/tasks.md` — explicit 30-min verification task before any gateway code |
 | 1.2 Phase 1 scope too large (~150 checkboxes) | Blocker | `phase-1-ios-foundation/tasks.md` restructured into 1A (Ship It) / 1B (Complete It) / 1C (Content) sub-phases |
-| 1.3 Onboarding bootstrap: baked key underspecified | Blocker | **LOCKED: Gemini Flash baked key (Option A).** Google AI Studio project provisioning task + `expiresAtMs` + Manual mode fallback + `PollyOnboardingAgent` persona tasks added to `phase-1-ios-foundation/tasks.md` |
+| 1.3 Onboarding bootstrap: baked key underspecified | Blocker | **LOCKED: Option B — Manual form for Phase 1A.** Gateway URL + auth token entry as standard form screens. Conversational onboarding (Gemini Flash baked key, `PollyOnboardingAgent`) deferred to Phase 2. See `PHASE_2_GAP_ANALYSIS.md` §conversational-onboarding. Decision: 2026-04-01. |
 | 2.1 openspec legacy spec files vs. current iOS specs | Friction | `openspec/DEPRECATED_NOTICE.md` added; `openspec/specs/` files marked legacy |
 | 2.2 10 stub agents + 43 missing allowed_modes + 43 missing suggested_prompts | Friction | Already tracked in `phase-1-agent-system/tasks.md` (updated this session). Pre-implementation priority note added. |
 | 2.3 Sensibility system three-way conflict | Friction | Phase 1A/1B split in sensibility tasks added |
@@ -30,8 +30,5 @@ The spec corpus is structurally sound. Three implementation blockers, four frict
 
 ## Open Question Pending Brett's Decision
 
-**Onboarding Phase 1A (Audit item 1.3):**  
-- Option A: Conversational onboarding (baked Gemini Flash key, expiresAtMs TTL) — requires provisioning Google AI Studio project + baking key before first TestFlight build  
-- Option B: Manual form-based onboarding (gateway URL + auth token entry as a standard form, no conversational layer) — simpler, faster to ship, conversational onboarding deferred to Phase 2  
-
-Brett's call. Either way, Phase 1A TestFlight build cannot ship without resolving this.
+**Onboarding decision — LOCKED 2026-04-01:**
+Phase 1A uses Option B (manual form). Option A (conversational, Gemini Flash baked key) is specced for Phase 2 — see `PHASE_2_GAP_ANALYSIS.md` §conversational-onboarding.
