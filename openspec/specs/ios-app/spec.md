@@ -63,3 +63,84 @@ No gateway client library (`expo-openclaw-chat` or equivalent) installed.
 - Icons: Lucide only (`lucide-react-native`) — not yet installed
 - Colors: `src/theme/colors.ts` tokens only
 - Typography: system font stack only
+
+---
+
+## Polly Card — "Polly noticed…"
+
+*Full source: `AIGHT_POLLY_CARD.md`. Behavioral spec: `openspec/specs/agent-system/ambient-agent.md`. Change set: `phase-1-polly-ambient-card`.*
+
+### Card Anatomy
+
+```
+┌─────────────────────────────────────────────┐
+│  🔮  Polly noticed…              [dismiss ×] │
+│                                              │
+│  [Observation — 1-2 sentences, specific]     │
+│                                              │
+│  [Action button — optional]   [→ open]       │
+└─────────────────────────────────────────────┘
+```
+
+Header always "Polly noticed…" — no variation. 🔮 fixed. Dismiss × top-right.
+
+### Today View Placement
+
+```
+TODAY
+──────────────────────────────
+⏰  Reminders
+──────────────────────────────
+✅  Tasks
+──────────────────────────────
+🔮  Polly noticed…   ← this section
+──────────────────────────────
+⚡  Background processes
+──────────────────────────────
+```
+
+Section hidden entirely when no card present — no empty state, no placeholder.
+
+### Locked Design Decisions
+
+| # | Decision | Locked Value |
+|---|----------|-------------|
+| Q1 | Background tint | Token `polly-card-bg-tint` — deferred to dark mode palette lock. No hardcoded color. |
+| Q2 | Engaged-state opacity | **65%** — calibrated to default body font + standard line height. Must re-validate if font spec changes. |
+| Q3 | Vault note open behavior | **Bottom sheet only.** Inline expand explicitly rejected (scroll collision). |
+| Q4 | Queue visibility | **None.** No badge, counter, or "1 more" indicator under any condition. |
+
+### Visual Behavior
+
+- Background: `polly-card-bg-tint` token (3–5% desaturated primary surface) — bind token, do not hardcode
+- Cards appear silently on Today view refresh — no animation entry that demands attention
+- ENGAGED state (user tapped → open): 65% opacity, animated
+- DISMISSED: card removed from Today view immediately
+
+### Dismissal Behavior
+
+- **Permanent dismiss:** × tap removes card. Not re-queued. Not archived. Terminal.
+- **Engage then dismiss:** Card goes to 65% ENGAGED state on → open; explicit × still required to dismiss.
+- **Session persistence:** Undismissed cards survive app restart. They do not expire on time schedule.
+- **T3 exception (Phase 2 only):** Vault health cards auto-dismiss when condition resolves. Not Phase 1.
+
+### First-Run Inline Explanation
+
+One-time only. Inline below first-ever card body — not a modal, not a tutorial:
+
+> *Polly surfaces connections and observations when they're genuinely useful. Cards appear rarely and on purpose.*
+
+Auto-removes when that first card is dismissed. Never shown again.
+
+### Notification Constraints (hard rules)
+
+- No push notifications — ever
+- No app icon badge
+- No sounds or haptics on card appearance
+
+### Implementation Requirements
+
+- `[BLOCKED: phase-1-today-crud]` — Today view scaffold required first
+- Observation IDs MUST be opaque UUIDs (security requirement)
+- `aight.polly.dismissedIDs` AsyncStorage key: dismissed ID array only, eviction policy enforced on launch (cap 500, oldest-first, 90-day guidance)
+- Defensive reads on the dismissed store — must not throw on corrupt/missing key
