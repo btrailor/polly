@@ -7,11 +7,12 @@
  *   - Key stored in Keychain via expo-secure-store
  *   - Sign-out must wipe this key (via signOut() in auth utils)
  *
- * Usage:
- *   const key = await getOrCreateMMKVKey();
- *   const storage = new MMKV({ id: 'polly-chat', encryptionKey: key });
+ * Usage (async, during bootstrap):
+ *   await getOrCreateMMKVKey();
  *
- * All MMKV instances in the app must go through this function.
+ * Usage (sync, after bootstrap):
+ *   const storage = new MMKV({ id: 'polly-chat', encryptionKey: getMMKVEncryptionKey() });
+ *
  * Never create a bare MMKV({ id }) without an encryptionKey.
  */
 
@@ -20,23 +21,21 @@ import * as Crypto from 'expo-crypto';
 import { SECURE_STORE_KEYS } from '../constants/secureStoreKeys';
 import { sanitizeForLog } from './sanitizeForLog';
 
+// Module-level cache — populated by getOrCreateMMKVKey() during bootstrap
+let _cachedKey: string | null = null;
+
 /**
- * Get the MMKV encryption key from Keychain, generating it on first call.
- *
- * - First launch: generates 32 random bytes, hex-encodes, stores in Keychain
- * - Subsequent launches: reads from Keychain
- * - Sign-out: caller must delete SECURE_STORE_KEYS.MMKV_ENCRYPTION_KEY from Keychain
- *
- * @throws if Keychain read/write fails (storage error — should surface to user)
+ * Get or generate the MMKV encryption key. Call once during app bootstrap
+ * before any MMKV instance is created. Idempotent.
  */
 export async function getOrCreateMMKVKey(): Promise<string> {
   try {
     const existing = await SecureStore.getItemAsync(SECURE_STORE_KEYS.MMKV_ENCRYPTION_KEY);
     if (existing) {
+      _cachedKey = existing;
       return existing;
     }
 
-    // Generate 32 cryptographically random bytes (256-bit AES key)
     const randomBytes = Crypto.getRandomBytes(32);
     const hexKey = Array.from(randomBytes)
       .map((b) => b.toString(16).padStart(2, '0'))
@@ -44,10 +43,9 @@ export async function getOrCreateMMKVKey(): Promise<string> {
 
     await SecureStore.setItemAsync(SECURE_STORE_KEYS.MMKV_ENCRYPTION_KEY, hexKey);
     console.log('[mmkvEncryption] MMKV encryption key generated and stored');
-
+    _cachedKey = hexKey;
     return hexKey;
   } catch (err) {
-    // This is fatal — if we can't access Keychain we can't safely open MMKV
     console.error('[mmkvEncryption] Failed to get/create MMKV key:', sanitizeForLog(err));
     throw new Error(
       'Failed to initialize secure storage. Your device Keychain may be unavailable.'
@@ -56,13 +54,26 @@ export async function getOrCreateMMKVKey(): Promise<string> {
 }
 
 /**
- * Wipe the MMKV encryption key from Keychain.
- * Call this as part of sign-out — after this, all MMKV data is unreadable.
- * The MMKV files themselves must also be deleted (handled by sign-out flow).
+ * Synchronous accessor — only valid after getOrCreateMMKVKey() has resolved.
+ * Used by store initializers which run synchronously after bootstrap completes.
+ */
+export function getMMKVEncryptionKey(): string {
+  if (!_cachedKey) {
+    throw new Error(
+      '[mmkvEncryption] Key not initialized — call getOrCreateMMKVKey() in app bootstrap first'
+    );
+  }
+  return _cachedKey;
+}
+
+/**
+ * Wipe the MMKV encryption key. Call during sign-out full wipe.
+ * After this, MMKV data is unreadable until a new key is generated.
  */
 export async function wipeMMKVKey(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(SECURE_STORE_KEYS.MMKV_ENCRYPTION_KEY);
+    _cachedKey = null;
     console.log('[mmkvEncryption] MMKV encryption key wiped');
   } catch (err) {
     console.error('[mmkvEncryption] Failed to wipe MMKV key:', sanitizeForLog(err));

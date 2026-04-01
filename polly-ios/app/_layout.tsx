@@ -4,7 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useEffect } from 'react';
 import { ensureDeviceKeypair } from '../src/auth/deviceAuth';
-import { getOrCreateMMKVKey } from '../src/auth/mmkvEncryption';
+import { getOrCreateMMKVKey } from '../src/utils/mmkvEncryption';
 
 export default function RootLayout() {
   // Ensure device keypair is generated on cold start before any onboarding logic runs.
