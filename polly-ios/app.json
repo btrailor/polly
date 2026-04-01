@@ -7,7 +7,9 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "scheme": "polly",
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router"
+    ],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -17,7 +19,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.polly.ios",
       "infoPlist": {
-        "NSAllowsLocalNetworking": true
+        "NSAllowsLocalNetworking": true,
+        "NSFileProtectionComplete": true
       }
     },
     "extra": {
