@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.polly.ios"
+      "bundleIdentifier": "com.polly.ios",
+      "infoPlist": {
+        "NSAllowsLocalNetworking": true
+      }
     },
     "extra": {
       "eas": {
