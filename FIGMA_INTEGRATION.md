@@ -9,7 +9,7 @@
 
 Polly integrates with Figma to surface design prototypes directly in conversation. When a design spec is complete, the user can view the related mockup or prototype in the Figma iOS app without leaving Polly.
 
-**Figma is an optional integration.** The user connects their account in Settings → Integrations (see `INTEGRATION_ONBOARDING.md` for the standard flow). Once connected, Polly surfaces Figma prototypes contextually. If not connected, a warm prompt offers to set it up.
+**Figma is an optional integration.** The user connects their account in Settings → Integrations (standard integrations flow — `INTEGRATION_ONBOARDING.md` referenced here does not exist; see `POLLY_IOS_SPEC.md §integrations` for connection flow). Once connected, Polly surfaces Figma prototypes contextually. If not connected, a warm prompt offers to set it up.
 
 This is a **Polly → Figma** integration (link surfacing), not a **Figma → Polly** integration (API read). The Figma file is the source of truth; Polly just makes it easy to access.
 

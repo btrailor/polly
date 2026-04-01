@@ -1,6 +1,6 @@
 # POLLY AGENT TEMPLATES
-*33 templates across 6 categories + 2 pinned slots + 10 agent stubs pending full templates*
-*Last updated: 2026-03-25*
+*43 templates across 6 categories + 2 pinned slots — all SOUL templates complete*
+*Last updated: 2026-04-01 — 10 previously stubbed agents now have full SOULs (Archivist, Mirror, Interlocutor, Experimentalist, Translator, Librarian, Scaffolder, Estimator, Janitor, Ambient Agent). `suggested_prompts` field pending on all 43 agents (Phase 1C content task).*
 
 > **Phase deployment note (@researcher B-R4):** These templates are written to be fully functional as **solo agents in Phase 1**, not just as swarm participants. The `one_question_frame`, `soul`, and `suggested_models` fields are all meaningful in a single-agent conversation. Swarm-specific behavior (tag-based context injection, multi-agent turn protocols from §22/§23) is additive — it activates when a swarm is configured, but does not affect solo use. Any template that only makes sense in a swarm context is explicitly marked `swarm_only: true` in its metadata. All others are solo-first.
 
@@ -2260,7 +2260,7 @@ The Ambient Agent has no conversational mode — it does not receive messages, o
 
 ## New Team Templates (2026-03-25 idea dump)
 
-Eight new team templates added. Format matches existing team templates. New agents referenced but not yet fully templated are marked `# stub — template pending`.
+Eight new team templates added. Format matches existing team templates. All referenced agents now have full SOUL templates — `# stub — template pending` markers below are stale and should be ignored.
 
 ---
 

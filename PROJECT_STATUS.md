@@ -35,8 +35,8 @@ Plus the gateway client library (to be confirmed with @backend).
 ### Agent System
 **Status:** 🔨 Spec complete. Not yet running.
 
-- **43 agent templates:** all complete with full SOUL text + Prosodic Sensitivity
-- **8 were stub-marked in summary (incorrect):** Mirror, Interlocutor, Experimentalist, Translator, Librarian, Scaffolder, Estimator, Janitor — all have complete SOULs; the "stub" label was stale
+- **43 agent templates:** all complete with full SOUL text + Prosodic Sensitivity *(confirmed clean 2026-04-01 — all 10 previously stub-marked agents have full SOULs; stale stub markers in team templates section are cosmetic only)*
+- **`suggested_prompts` field:** ⚠️ NOT YET WRITTEN — pending Phase 1C content work (3–4 prompts per agent × 43 agents)
 - **`autonomy_level` per-agent:** ✅ reference table added 2026-03-25 (this session)
 - **`allowed_modes` per-agent:** ✅ reference table added 2026-03-25 (this session)
 - **SOUL Baseline:** 6 blocks: Session Startup, Context Management, Blockers & Honesty, Memory Writes, Epistemological Commitments, Tool Use

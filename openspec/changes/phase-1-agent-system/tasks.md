@@ -6,13 +6,13 @@
 
 ## What Actually Exists Right Now
 
-- `POLLY_AGENT_TEMPLATES.md` — large file with substantial spec content, but mixed state:
+- `POLLY_AGENT_TEMPLATES.md` — 43 complete SOUL templates *(updated 2026-04-01)*:
   - Standard SOUL Baseline: written and complete (5 blocks)
   - Agent manifest + Sensibility schemas: defined in prose/JSON snippets, not per-agent fields
-  - 33 "established" agents: have full SOUL templates with Prosodic Sensitivity sections
-  - 10 new agents (Estimator, Librarian, Mirror, Janitor, Interlocutor, Scaffolder, Archivist, Ambient, Experimentalist, Translator): exist only as stubs in `## Agent Stubs — Templates Pending` section — no SOUL templates written
-  - `allowed_modes`: documented in schema section only — not written per-agent in any manifest block
+  - All 43 agents: have full SOUL templates with Prosodic Sensitivity sections — including all 10 previously stubbed agents (Estimator, Librarian, Mirror, Janitor, Interlocutor, Scaffolder, Archivist, Ambient, Experimentalist, Translator)
+  - `allowed_modes`: documented in schema section with Phase 1–2 defaults and Phase 3 additions per agent
   - Team Membership table: 16 teams × all 43 agents — complete
+  - ⚠️ `suggested_prompts` field: NOT YET WRITTEN on any of the 43 agents — this is the remaining content task
 - `SOMATIC_INTERFACE.md` — prosodic engagement state spec: written
 - `AGENT_BOOTSTRAP_DEV.md` — bootstrap sequence and hard rules: written
 - `PROJECT_STATUS.md` — exists but was aspirational, not accurate
