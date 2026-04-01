@@ -14,6 +14,11 @@ const STRING_PATTERNS: RegExp[] = [
   /"privateKey":\s*"[^"]+"/g,
   /"password":\s*"[^"]+"/g,
   /"tlsFingerprint":\s*"[^"]+"/g,
+  /"tunnelUrl":\s*"[^"]+"/g,
+  /"sendKey":\s*"[^"]+"/g,
+  /"apnsToken":\s*"[^"]+"/g,
+  /"vaultBookmark":\s*"[^"]+"/g,
+  /https?:\/\/[a-zA-Z0-9-]+\.cfargotunnel\.com\/[^\s"']*/g,
 ];
 
 /**
