@@ -1,281 +1,202 @@
 /**
- * DrawerPanel — Custom animated drawer (§6.24)
- *
- * Uses Animated + PanGestureHandler from react-native-gesture-handler.
- * NOT @react-navigation/drawer — spec requirement.
- *
- * Opens: swipe right from left edge
- * Closes: swipe left or tap overlay
+ * DrawerPanel Gesture Layer
+ * 
+ * Animated drawer with PanGestureHandler for swipe-to-open/close.
+ * Slides from left edge, ~80% screen width.
+ * 
+ * Usage:
+ *   const [drawerOpen, setDrawerOpen] = useState(false);
+ *   return <DrawerPanel open={drawerOpen} onToggle={setDrawerOpen}>
+ *     <DrawerContent />
+ *   </DrawerPanel>
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
-  Animated,
-  Dimensions,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
+  Animated,
+  Pressable,
+  Dimensions,
+  StyleSheet,
+  GestureResponderEvent,
 } from 'react-native';
 import {
-  GestureHandlerRootView,
   PanGestureHandler,
   PanGestureHandlerGestureEvent,
-  State,
+  GestureHandlerRootView,
 } from 'react-native-gesture-handler';
-import { Users, MessageSquare } from 'lucide-react-native';
-import { colors, spacing, layout, typography } from '../theme/colors';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface DrawerAgent {
-  id: string;
-  name: string;
-}
-
-export interface DrawerPanelProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSelectAgent: (id: string) => void;
-  activeAgentId: string;
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
+import { useTheme } from '../theme/context';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-// TODO: iPad adaptive layout — on iPad this should be a fixed 320pt sidebar, not 80% width
-const DRAWER_WIDTH = SCREEN_WIDTH * 0.8;
+const DRAWER_WIDTH = SCREEN_WIDTH * 0.8; // 80% of screen
+const SWIPE_THRESHOLD = 50; // px to trigger open/close
+const ANIMATION_DURATION = 300; // ms
 
-const SWIPE_THRESHOLD = 50; // px to commit open/close
-const OVERLAY_MAX_OPACITY = 0.5;
+interface DrawerPanelProps {
+  /** Whether drawer is open */
+  open: boolean;
 
-// Phase 1A placeholder agents
-const PLACEHOLDER_AGENTS: DrawerAgent[] = [
-  { id: 'assistant', name: 'Assistant' },
-  { id: 'researcher', name: 'Researcher' },
-  { id: 'writer', name: 'Writer' },
-];
+  /** Callback when drawer should toggle */
+  onToggle: (open: boolean) => void;
 
-// ─── DrawerPanel ──────────────────────────────────────────────────────────────
+  /** Drawer content (team header, agent list, etc.) */
+  children: React.ReactNode;
 
-export default function DrawerPanel({
-  isOpen,
-  onClose,
-  onSelectAgent,
-  activeAgentId,
-}: DrawerPanelProps) {
-  const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
-  const overlayOpacity = useRef(new Animated.Value(0)).current;
+  /** Optional: custom drawer width (default: 80% of screen) */
+  width?: number;
+}
 
-  // Derive overlay opacity from translateX
-  const overlayOpacityDerived = translateX.interpolate({
-    inputRange: [-DRAWER_WIDTH, 0],
-    outputRange: [0, OVERLAY_MAX_OPACITY],
-    extrapolate: 'clamp',
-  });
+export const DrawerPanel: React.FC<DrawerPanelProps> = ({
+  open,
+  onToggle,
+  children,
+  width = DRAWER_WIDTH,
+}) => {
+  const theme = useTheme();
 
-  useEffect(() => {
-    Animated.timing(translateX, {
-      toValue: isOpen ? 0 : -DRAWER_WIDTH,
-      duration: 280,
-      useNativeDriver: true,
-    }).start();
-  }, [isOpen, translateX]);
+  // Animation values
+  const translateX = useRef(new Animated.Value(open ? 0 : -width)).current;
+  const overlayOpacity = useRef(new Animated.Value(open ? 0.5 : 0)).current;
 
-  // ─── Gesture handler ──────────────────────────────────────────────────────
+  // Pan gesture state
+  const panX = useRef(0);
 
-  const onGestureEvent = Animated.event(
-    [{ nativeEvent: { translationX: translateX } }],
-    { useNativeDriver: true }
+  /**
+   * Animate to target position (open or closed)
+   */
+  const animateTo = (targetOpen: boolean) => {
+    const targetTranslateX = targetOpen ? 0 : -width;
+    const targetOpacity = targetOpen ? 0.5 : 0;
+
+    Animated.parallel([
+      Animated.timing(translateX, {
+        toValue: targetTranslateX,
+        duration: ANIMATION_DURATION,
+        useNativeDriver: false,
+      }),
+      Animated.timing(overlayOpacity, {
+        toValue: targetOpacity,
+        duration: ANIMATION_DURATION,
+        useNativeDriver: false,
+      }),
+    ]).start(() => {
+      if (!targetOpen) {
+        // Reset pan tracking when fully closed
+        panX.current = 0;
+      }
+    });
+
+    onToggle(targetOpen);
+  };
+
+  /**
+   * Handle pan gesture (swipe left/right)
+   */
+  const onPanGestureEvent = Animated.event(
+    [
+      {
+        nativeEvent: {
+          translationX: translateX,
+        },
+      },
+    ],
+    { useNativeDriver: false }
   );
 
-  const onHandlerStateChange = (event: PanGestureHandlerGestureEvent) => {
-    if (event.nativeEvent.state === State.END) {
-      const { translationX, velocityX } = event.nativeEvent;
-      const currentBase = isOpen ? 0 : -DRAWER_WIDTH;
-      const projected = currentBase + translationX;
+  const onPanHandlerStateChange = (event: PanGestureHandlerGestureEvent) => {
+    const { translationX, velocityX } = event.nativeEvent;
+    panX.current = translationX;
 
-      const shouldOpen =
-        projected > -DRAWER_WIDTH + SWIPE_THRESHOLD || velocityX > 500;
+    // Determine if we should open or close based on gesture
+    const shouldOpen =
+      translationX > SWIPE_THRESHOLD || // Swiped right past threshold
+      velocityX > 500; // Quick swipe right
 
-      if (shouldOpen) {
-        Animated.timing(translateX, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }).start();
-      } else {
-        Animated.timing(translateX, {
-          toValue: -DRAWER_WIDTH,
-          duration: 200,
-          useNativeDriver: true,
-        }).start(() => {
-          if (isOpen) onClose();
-        });
-      }
+    const shouldClose =
+      translationX < -SWIPE_THRESHOLD || // Swiped left past threshold
+      velocityX < -500; // Quick swipe left
+
+    if (shouldOpen && !open) {
+      animateTo(true);
+    } else if (shouldClose && open) {
+      animateTo(false);
+    } else {
+      // Snap back to current state
+      animateTo(open);
     }
   };
 
-  // Don't render at all when fully closed and not animating
-  if (!isOpen) {
-    // Still render but invisible so gesture can detect swipe-from-edge
-    // (handled by parent via hamburger or edge swipe area)
-    return null;
-  }
+  // Update animation when `open` prop changes
+  useEffect(() => {
+    animateTo(open);
+  }, [open]);
+
+  const styles = StyleSheet.create({
+    container: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 999,
+      pointerEvents: open ? 'auto' : 'none',
+    },
+    drawerAnimated: {
+      width,
+      height: '100%',
+      backgroundColor: theme.bgPrimary,
+      shadowColor: theme.textPrimary,
+      shadowOffset: { width: 2, height: 0 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 5, // Android shadow
+    },
+    overlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: '#000',
+      zIndex: -1,
+    },
+  });
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      {/* Overlay */}
+    <GestureHandlerRootView style={styles.container}>
+      {/* Animated overlay */}
       <Animated.View
-        style={[styles.overlay, { opacity: overlayOpacityDerived }]}
-        pointerEvents={isOpen ? 'auto' : 'none'}
+        style={[
+          styles.overlay,
+          {
+            opacity: overlayOpacity,
+            pointerEvents: open ? 'auto' : 'none',
+          },
+        ]}
       >
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Pressable
+          style={{ flex: 1 }}
+          onPress={() => onToggle(false)}
+          accessible={false}
+        />
       </Animated.View>
 
-      {/* Drawer panel */}
+      {/* Drawer with pan gesture */}
       <PanGestureHandler
-        onGestureEvent={onGestureEvent}
-        onHandlerStateChange={onHandlerStateChange}
-        activeOffsetX={[-10, 10]}
+        onGestureEvent={onPanGestureEvent}
+        onHandlerStateChange={onPanHandlerStateChange}
       >
         <Animated.View
           style={[
-            styles.drawer,
-            { width: DRAWER_WIDTH, transform: [{ translateX }] },
+            styles.drawerAnimated,
+            {
+              transform: [{ translateX }],
+            },
           ]}
         >
-          {/* Team name */}
-          <View style={styles.teamHeader}>
-            <Users size={18} color={colors.accent} />
-            <Text style={styles.teamName}>My Team</Text>
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* Agents section */}
-          <Text style={styles.sectionLabel}>AGENTS</Text>
-          <ScrollView style={styles.agentList} showsVerticalScrollIndicator={false}>
-            {PLACEHOLDER_AGENTS.map((agent) => {
-              const isActive = agent.id === activeAgentId;
-              return (
-                <TouchableOpacity
-                  key={agent.id}
-                  style={[styles.agentRow, isActive && styles.agentRowActive]}
-                  onPress={() => onSelectAgent(agent.id)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.agentDot, isActive && styles.agentDotActive]} />
-                  <Text style={[styles.agentName, isActive && styles.agentNameActive]}>
-                    {agent.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          <View style={styles.divider} />
-
-          {/* TODAY section */}
-          <Text style={styles.sectionLabel}>TODAY</Text>
-          <View style={styles.emptySessionsContainer}>
-            <MessageSquare size={20} color={colors.textSecondary} style={styles.emptyIcon} />
-            <Text style={styles.emptySessionsText}>No recent sessions</Text>
-          </View>
+          {children}
         </Animated.View>
       </PanGestureHandler>
-    </View>
+    </GestureHandlerRootView>
   );
-}
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#000000',
-  },
-  drawer: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: colors.bgSecondary,
-    borderRightWidth: layout.borderDefault,
-    borderRightColor: colors.bgBorder,
-    paddingTop: 60, // safe area placeholder
-    paddingBottom: spacing.spacing6,
-  },
-  teamHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.spacing4,
-    paddingVertical: spacing.spacing3,
-    gap: spacing.spacing2,
-  },
-  teamName: {
-    ...typography.headline,
-    color: colors.textPrimary,
-  },
-  divider: {
-    height: layout.borderThin,
-    backgroundColor: colors.bgBorder,
-    marginHorizontal: spacing.spacing4,
-    marginVertical: spacing.spacing2,
-  },
-  sectionLabel: {
-    ...typography.caption1,
-    color: colors.textSecondary,
-    letterSpacing: 0.8,
-    paddingHorizontal: spacing.spacing4,
-    paddingTop: spacing.spacing2,
-    paddingBottom: spacing.spacing1,
-  },
-  agentList: {
-    flex: 1,
-    paddingHorizontal: spacing.spacing2,
-  },
-  agentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: layout.listRowCompact,
-    paddingHorizontal: spacing.spacing3,
-    borderRadius: layout.cornerRadiusMedium,
-    gap: spacing.spacing2,
-    marginVertical: 2,
-  },
-  agentRowActive: {
-    backgroundColor: colors.bgBorder,
-  },
-  agentDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.textSecondary,
-  },
-  agentDotActive: {
-    backgroundColor: colors.accent,
-  },
-  agentName: {
-    ...typography.callout,
-    color: colors.textSecondary,
-  },
-  agentNameActive: {
-    color: colors.textPrimary,
-  },
-  emptySessionsContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.spacing6,
-    gap: spacing.spacing2,
-  },
-  emptyIcon: {
-    opacity: 0.4,
-  },
-  emptySessionsText: {
-    ...typography.footnote,
-    color: colors.textSecondary,
-  },
-});
+};
