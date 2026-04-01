@@ -20,6 +20,7 @@
     "@shopify/flash-list": "^2.0.2",
     "expo": "~55.0.8",
     "expo-audio": "~55.0.9",
+    "expo-crypto": "^55.0.10",
     "expo-document-picker": "~55.0.9",
     "expo-haptics": "~55.0.9",
     "expo-keep-awake": "~55.0.4",
