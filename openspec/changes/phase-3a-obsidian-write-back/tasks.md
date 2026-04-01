@@ -60,3 +60,14 @@ Agent can propose a vault write. User sees preview. User confirms → note writt
 - [ ] Child node: read access to `/Household/` by default (age-appropriate scoping per `HOUSEHOLD_NODES.md`); no write access by default
 - [ ] `HOUSEHOLD_NODES.md` update: document the shared vault section pattern, access tiers, and content guidelines (§15 or new section)
 - [ ] Resolve Q3 from `POLLY_WEB_ANALYSIS.md`: should household nodes search `/Household/` conversationally ("what's for dinner?") or only via explicit household skills? Document decision in `HOUSEHOLD_NODES.md`.
+
+---
+
+## Cross-Reference: web_import (from phase-2-web-fetch)
+
+`web_import` (Phase 3A) composes `web_crawl` + `web_fetch` + `vault_write` into a single agent-callable vault import pipeline. It is gated on this change set shipping (`vault_write` tool + write-back infrastructure).
+
+- `vault_write` tool (gateway-changes #19) is the hard dependency for `web_import`
+- `web_import` is scoped to the Librarian agent only (batch vault writes require structured judgment)
+- Two confirmation gates before any writes: scope selection + note preview (neither skippable)
+- Full spec in `phase-2-web-fetch/tasks.md`

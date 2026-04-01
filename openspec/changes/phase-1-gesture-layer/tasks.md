@@ -1,15 +1,11 @@
-# Phase 1: Gesture Layer (Somatic Interface)
+# Phase 1: Gesture Layer — Somatic / Prosodic Interface
 
 **Status:** 🔨 In progress  
 **Gate:** Real audio recording working (Expo AV or expo-speech-recognition)  
-**Spec source:** `SOMATIC_INTERFACE.md`, `GESTURE_LAYER.md`  
+**Spec source:** `SOMATIC_INTERFACE.md`, `GESTURE_LAYER.md` §§4.3, 9 (prosodics only)  
 **Owners:** @frontend (iOS signal extraction, UI state), @backend (prosodics schema, gateway field)
 
-## What This Is
-
-The Gesture Layer is Polly's somatic/prosodic interface — the dimension of communication beyond words. Voice carries metadata (pace, pause, volume variance, hesitation patterns) that reveals cognitive state. This spec translates those signals into UI feedback and agent context.
-
-**Design principle:** Prosodic signals should feel like Polly is listening, not like Polly is analyzing. The UI response is subtle and ambient — never diagnostic labels, never clinical.
+> **Scope note:** This change set covers Phase 1 only — prosodic signal extraction and the `prosodics` message field. The full Phase 2 Vocal Gesture System (recognition pipeline, gesture library, Builder agent, Audible Voice Mode, AppIntents) is in `phase-2-gesture-layer`.
 
 ---
 
