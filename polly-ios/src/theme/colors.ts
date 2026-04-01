@@ -39,6 +39,16 @@ export const colors = {
   info: '#2563eb',      // Info, neutral actions
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Polly Card
+  // Token: pollyCardBgTint — deferred to Aight dark mode palette lock.
+  // Do NOT hardcode a purple/indigo value. This is a 3–5% desaturated
+  // version of bgSecondary once the palette ships.
+  // Fallback: bgSecondary at ~3% blue-shifted. REPLACE at palette lock.
+  // @design_eng: inject final value here when dark mode palette is locked.
+  // ─────────────────────────────────────────────────────────────────────────
+  pollyCardBgTint: '#0d1426',   // Placeholder — REPLACE at Aight dark mode palette lock
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Domain Colors (Agent domains, visual categorization)
   // ─────────────────────────────────────────────────────────────────────────
   sigils: '#2563eb',    // Code (blue)
