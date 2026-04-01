@@ -52,7 +52,7 @@ Each Polly card (observation instance) moves through the following states. State
          │         │                                  │
   [T3 auto-        ▼                                  ▼
   resolve]  ┌─────────────────────┐   ┌──────────────────────┐
-            │     DISMISSED       │   │       SEEN           │
+            │     DISMISSED       │   │      ENGAGED         │
             │  (TERMINAL)         │   │  (65% opacity;       │
             │  Card removed from  │   │   user engaged but   │
             │  Today view.        │   │   not yet dismissed) │
@@ -73,23 +73,23 @@ Each Polly card (observation instance) moves through the following states. State
 |-------|-------------|---------|-------------|
 | **QUEUED** | Trigger fired; a prior undismissed card is visible. Card is not yet rendered to Today view. | n/a | Until prior card dismissed |
 | **ACTIVE** | Card visible in Today view, full opacity. No user interaction yet. | 100% | Until user action or T3 auto-resolve |
-| **SEEN** | User tapped → open or an action button. Card remains visible at reduced opacity while user explores. | 65% | Until explicit dismiss (×) |
+| **ENGAGED** | User tapped → open or an action button. Card remains visible at reduced opacity while user explores. | 65% | Until explicit dismiss (×) |
 | **DISMISSED** | Terminal. User tapped ×. Card removed from Today view immediately. No re-queue. No re-surface. Stored as `dismissed` in observation log. | n/a | Permanent |
 
 ### Transition Rules
 
 1. **QUEUED → ACTIVE:** Only one card may be ACTIVE at a time. When the current ACTIVE card enters DISMISSED, the oldest QUEUED card becomes ACTIVE.
 2. **ACTIVE → DISMISSED (direct):** User taps × without engaging. Observation log: `{ status: "dismissed", engaged: false }`.
-3. **ACTIVE → SEEN:** User taps → open or any action button. Observation log: `{ status: "seen", engaged: true }`.
-4. **SEEN → DISMISSED:** User taps × after engaging. Observation log: `{ status: "dismissed", engaged: true }`.
-5. **T3 auto-resolve:** A T3 vault-health card in ACTIVE or SEEN state is automatically DISMISSED when its triggering condition is resolved (orphaned notes captured, quiet domain gets a new note). No user action needed.
+3. **ACTIVE → ENGAGED:** User taps → open or any action button. Observation log: `{ status: "engaged", engaged: true }`.
+4. **ENGAGED → DISMISSED:** User taps × after engaging. Observation log: `{ status: "dismissed", engaged: true }`.
+5. **T3 auto-resolve:** A T3 vault-health card in ACTIVE or ENGAGED state is automatically DISMISSED when its triggering condition is resolved (orphaned notes captured, quiet domain gets a new note). No user action needed.
 6. **No reverse transitions.** DISMISSED is permanent. Nothing re-queues a dismissed observation.
 
 ### Implementation Notes for @backend + @frontend
 
-- The observation log must persist across sessions. Dismissed observations must survive app restart.
+- The observation log must persist across sessions. Dismissed observations must survive app restart. **Persistence mechanism: `UserDefaults` with namespaced key `aight.polly.dismissedIDs`** (lightweight, fast reads on launch). Only escalate to SQLite if dismissed ID volume grows unexpectedly large — unlikely at normal Polly card volume. This is a hard requirement: if dismissed IDs are not persisted, cards can re-surface after app relaunch, breaking the terminal state guarantee.
 - The QUEUED state is invisible to the user — no UI indicator of queue depth (Design Decision Q4 in `AIGHT_POLLY_CARD.md`).
-- The 65% opacity for SEEN state is calibrated to **default body font + standard line height** — if font spec changes, re-validate (Context Note 2 in `AIGHT_POLLY_CARD.md`).
+- The 65% opacity for ENGAGED state is calibrated to **default body font + standard line height** — if font spec changes, re-validate (Context Note 2 in `AIGHT_POLLY_CARD.md`).
 - T3 auto-resolve requires the Ambient Agent backend to poll vault state and compare against active/seen T3 cards. Polling interval: aligned with existing vault health check cadence.
 
 ---
