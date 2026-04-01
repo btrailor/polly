@@ -392,6 +392,8 @@ Metacognitive Dashboard detects cognitive pattern → agent activates complement
 - Save custom compositions as named sensibilities
 - Export/import sensibility JSON
 - Domain-triggered auto-switching (Sigils → Reas, Signals → Fidenza, etc.)
+
+  > **NOTE:** The auto-switching logic reads `default_sensibility` from the matched `UserDomain` record (see `POLLY_IOS_SPEC.md §20.3`). The examples above (Sigils → Reas, etc.) reflect the original design author's personal domain-to-sensibility configuration — they are not app defaults. Default starter domains ship with sensible `default_sensibility` values; users may change them in Settings → Domains.
 - Decoupled visual/behavioral control
 - Routing engine learns per-sensibility token consumption (~Phase 4 refinement)
 

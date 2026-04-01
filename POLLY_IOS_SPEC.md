@@ -4294,17 +4294,13 @@ Agent templates may declare a `suggested_models` list (see `POLLY_AGENT_TEMPLATE
 
 #### Client-Side Domain Activation
 
-The domain badge (§11.2) is wired to the mental model selector as a soft suggestion layer:
+The domain badge (§11.2) is wired to the mental model selector as a soft suggestion layer.
 
-| Domain Badge | Suggested Models |
-|---|---|
-| Scrolls (writing/notes) | `freire_pedagogy`, `constraint_as_meaning`, `async_first` |
-| Sigils (code) | `first_principles`, `systems_thinking`, `reverse_engineering` |
-| Signals (audio) | `instruments_over_tracks`, `constraint_as_meaning` |
-| Glyphs (design) | `instruments_over_tracks`, `chestertons_fence`, `inversion` |
-| Grids (systems/data) | `systems_thinking`, `second_order_effects`, `chestertons_fence` |
+When a domain is detected, the 🧠 nav icon shows a subtle badge dot. Opening the sheet surfaces the domain-suggested mental models at the top of the list under a **"Suggested for [Domain]"** section header, above the full list. No model is auto-activated — the user always taps to apply.
 
-When a domain is detected, the 🧠 nav icon shows a subtle badge dot. Opening the sheet surfaces the domain-suggested models at the top of the list under a **"Suggested for [Domain]"** section header, above the full list. No model is auto-activated — the user always taps to apply.
+**Dynamic suggestion behavior:** The suggestion sheet reads `suggested_mental_models` from the `UserDomain` record matched to the active session's detected domain (see §20.3). There is no hardcoded name-keyed lookup table — suggestions are entirely data-driven. Users who configure their own domains get suggestions from whatever values they (or the default starter data) supply in `suggested_mental_models`.
+
+> **NOTE:** The default starter domains pre-populated at first run include sensible `suggested_mental_models` values as a starting point. These defaults happen to reflect the original design author's personal domain taxonomy (Sigils/Signals/Scrolls/Glyphs/Grids). They are user data, not app logic — users may edit or replace them freely in Settings → Domains.
 
 **Priority order when both agent suggestions and domain suggestions are present:** agent suggestions appear first, then domain suggestions, then the full list. Duplicates are deduplicated (shown once, in the higher-priority slot).
 
@@ -5860,6 +5856,8 @@ interface UserDomain {
   icon: string;         // Lucide icon name
   keywords: string[];   // for client-side auto-detection
   order: number;
+  suggested_mental_models?: string[];  // mental model IDs to surface when this domain is active (§11.3)
+  default_sensibility?: string;        // sensibility ID to auto-switch to when domain detected (Phase 4, §SENSIBILITY)
 }
 ```
 

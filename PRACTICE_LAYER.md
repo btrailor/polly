@@ -20,6 +20,8 @@ The Practice Layer derives almost entirely from data that already exists in the 
 
 A practice is a domain of ongoing creative or intellectual engagement represented in the vault. Examples from Brett's context: Glyphs (type design), SuperCollider (synthesis programming), norns/monome (live performance), systems thinking, writing.
 
+> **NOTE:** Domain names used as examples throughout this document (Glyphs, Sigils, Signals, Scrolls, Grids, etc.) reflect the original design author's personal domain taxonomy stored in `UserDomain[]` (MMKV key `polly.domains`). The Practice Layer is agnostic to domain names — it operates on whatever `UserDomain` records the user has configured. No behavior is keyed to specific domain name strings.
+
 Practices are identified from the vault — not declared by the user. The Practice Layer reads the domain taxonomy that Brett has implicitly built through tagging and wikilinks. Domains emerge from the vault structure; they are not imposed externally.
 
 **Practice ≠ Skill.** A skill can be learned and mastered. A practice is something you return to. You don't "finish" SuperCollider. You engage with it over years, with varying depth and frequency. The Practice Layer tracks that engagement.
