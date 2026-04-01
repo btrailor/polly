@@ -38,6 +38,26 @@ For full feature specs, see `POLLY_IOS_SPEC.md`. For agent/team definitions, see
 | Chat history search | Full-text search across sessions |
 | Accessibility | Full VoiceOver audit + fixes |
 | Group chat turn management | Gateway two-step dispatch (§22.5) |
+| **Gesture + Ward + Agent Builder** | Vocal gesture system, universal mic button entry point (Ward/Liaison dual-mode), custom agent creation. Coordinated feature cluster — see below. |
+
+### Gesture + Ward + Agent Builder Feature Cluster
+
+Three interdependent Phase 2 features that must ship together:
+
+| Spec | What ships |
+|------|-----------|
+| `GESTURE_LAYER.md` | Gesture recognizer (embedding similarity, pre-routing), gesture library, Gesture Builder system agent, `TellPollyIntent` + `OpenListeningIntent` Apple platform intents, Action Button onboarding suggestion |
+| `WARD.md` | Universal mic button behavior, Ward/Liaison dual-mode (solo context injection, compressed state summary), routing protocol |
+| `AGENT_BUILDER.md` | Agent Builder system agent, custom agent manifest registration, gesture vocabulary integration during creation |
+
+**Dependencies (must be resolved in this order):**
+
+1. Phase 1 voice pipeline must be live (voice transcription, mic button, gateway audio path)
+2. Gesture pre-computation pipeline must run before Ward receives invocation (`GESTURE_LAYER.md` §4)
+3. Gesture Layer must be live before Agent Builder gesture vocabulary integration works (`AGENT_BUILDER.md` §4.4)
+4. Phase 1 gesture candidate log must start in Phase 1 — see `GESTURE_LAYER.md` §4.3
+
+**Phase 1 prerequisite (immediate):** Add the gesture candidate log hook to the Phase 1 gateway message pipeline. Short utterances (≤ 8 words) with no routing match are logged for future gesture suggestion engine use. This is the only Phase 1 action required for this cluster.
 
 **Pre-Phase 2 gate:** Push registration security fix must ship before Phase 2 goes to production.
 

@@ -65,6 +65,9 @@ Plus the gateway client library (to be confirmed with @backend).
 | `PHASE_2_GAP_ANALYSIS.md` | ✅ Written | 4 boundary conflicts resolved, 10 missing changes identified |
 | `PHASE_3_GAP_ANALYSIS.md` | ✅ Written | 3A/3B/3C/3D split, 7 missing changes identified, @backend Wave 4 tasks |
 | `SOMATIC_INTERFACE.md` | 📋 Specced | Phase 2 — prosodic engagement signal layer |
+| `GESTURE_LAYER.md` | 📋 Planned | Phase 2–3 — vocal gesture system; recognizer, library, Gesture Builder, Apple platform intents |
+| `AGENT_BUILDER.md` | 📋 Planned | Phase 2–3 — custom agent creation system; Builder agent, manifest registration |
+| `WARD.md` | 📋 Planned | Phase 2–4 — universal entry point; Ward/Liaison dual-mode, routing protocol |
 | `VOICE_INTERACTION.md` | 🔨 In progress | Phase 1 voice requirements |
 | `COPY_VOICE.md` | 🔨 In progress | Voice design tokens + copy patterns |
 | `VOICE_BEHAVIOR_TESTS.md` | 🔨 In progress | QA test suite for voice |
@@ -142,8 +145,21 @@ Plus the gateway client library (to be confirmed with @backend).
 
 ---
 
+## Open Questions (Pending Brett's Decision)
+
+Do not implement assumptions on these. Flag them here and wait for Brett's input.
+
+| Question | Spec Reference | Impact |
+|----------|---------------|--------|
+| **Ward conversation persistence:** Do Ward ambient gesture executions create conversation threads? Spec recommends no — but validate against gateway session model. | `WARD.md` §11 Q1 | Affects gateway session model design for Phase 2 |
+| **Gesture chaining:** Does Brett want gestures that trigger sequences of behaviors (e.g., "save and switch" → save + open new)? | `GESTURE_LAYER.md` §12 Q1 | Affects gesture data model complexity |
+| **Agent + gesture sharing:** Does Brett want the data model to support sharing custom agents and gestures between Polly users in the future? Affects manifest schema (shared ID namespace, author field). | `AGENT_BUILDER.md` §9 Q1 | Affects `agent.register` RPC schema design |
+
+---
+
 ## Pending (Code Architect)
 
-- [ ] `SPEC_INDEX.md` update — 11 new specs not yet indexed
+- [ ] `SPEC_INDEX.md` update — 11 new specs not yet indexed (partially resolved: Gesture Layer, Agent Builder, Ward now indexed 2026-03-30)
 - [ ] Phase 1 iOS implementation — install 10 missing packages, wire gateway, onboarding, state mgmt, DrawerPanel, msg list, audio, vault capture, mental models, group chat, all screen stubs
 - [ ] Lockdown Mode Phase 1 architectural hooks — @frontend + @backend agreement needed
+- [ ] **Phase 1 immediate (@backend):** Add gesture candidate log hook to Phase 1 gateway message pipeline (see `PHASE_2_GAP_ANALYSIS.md` §6, item #17) — log short utterances ≤8 words with no routing match to `gesture_candidate_log`

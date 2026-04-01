@@ -166,3 +166,36 @@ Plus:
 **Phase 1 → push-security → knowledge-skill → Phase 3**
 
 Knowledge Skill is the only Phase 2 change that blocks Phase 3. Start it on day 1 of Phase 2. Everything else is parallel.
+
+---
+
+## 6. Gesture + Ward + Agent Builder — Phase 2 @backend Requirements (2026-03-30)
+
+Three new specs (`GESTURE_LAYER.md`, `WARD.md`, `AGENT_BUILDER.md`) introduce the following Phase 2 @backend requirements not previously captured. Added to `phase-2-gateway-changes` scope.
+
+| # | Requirement | Phase | Source | Blocks |
+|---|-------------|-------|--------|--------|
+| 15 | Gesture library data store at gateway | 2 | `GESTURE_LAYER.md` §3 | Gesture recognizer |
+| 16 | Gesture recognizer (embedding similarity, pre-routing pass on all ≤8-word utterances) | 2 | `GESTURE_LAYER.md` §4 | Ward routing |
+| 17 | Gesture invocation log (must start Phase 1 — log short utterances ≤8 words with no routing match) | **1** | `GESTURE_LAYER.md` §4.3 | Gesture suggestion engine (Phase 3) |
+| 18 | Ward context assembly (active thread summaries, recency filtering, <50ms latency target) | 2 | `WARD.md` §6 | Ward routing |
+| 19 | Topic summary generation per thread (lightweight 5-message pass, cached, invalidate on new message) | 2 | `WARD.md` §6.2 | Ward context assembly |
+| 20 | `ward_mode` flag handling on Liaison invocations (inject compressed state summary when `ward_mode: true`) | 2 | `WARD.md` §9 | Ward solo mode |
+| 21 | Agent Builder system agent registration + `agent.register` RPC extension | 2 | `AGENT_BUILDER.md` §6 | Custom agent creation |
+| 22 | Custom agent registration constraint enforcement at gateway (architectural, not behavioral) | 2 | `AGENT_BUILDER.md` §6 | Security — `config_write` / `ward_mode` constraints |
+
+**Phase 1 immediate action (item #17):** The gesture invocation log must start in Phase 1. This is a small addition to the Phase 1 gateway message processing pipeline:
+
+```
+if message.text word_count ≤ 8 and no gesture match:
+    log {timestamp, text, session_id, domain_context, active_agent}
+    to gesture_candidate_log
+```
+
+No other gesture layer work is Phase 1. This is the only hook needed now. Flag in `PROJECT_STATUS.md` when complete.
+
+**Design decisions required before implementation (bring to @code_architect):**
+- Embedding model for gesture recognizer: confirm `nomic-embed-text:latest` via Ollama is sufficient for short-phrase similarity at gateway latency (see `GESTURE_LAYER.md` §12 Q2)
+- Gesture library schema proposal (see `GESTURE_LAYER.md` §3.1 for tuple definition)
+- Ward context assembly pipeline design (see `WARD.md` §6 for spec)
+- Ward conversation persistence: do ambient gesture executions create threads? (see `WARD.md` §11 Q1 — open question pending Brett's decision; do not implement assumptions)
