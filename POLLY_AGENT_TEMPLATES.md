@@ -1862,7 +1862,7 @@ For quick lookup — which agents appear in which default teams. **This table is
 > - The Liaison and Ambient Agent are system-level agents not in any default team. Users add the Liaison manually when multi-team; the Ambient Agent runs as a background cron.
 > - The Janitor is system-level, cron-scheduled. Listed in Maintenance Crew for surface-level visibility but runs independently.
 > - `*` Mirror is opt-in only in Life Team — not in the default Life Team roster, must be added manually.
-> - Agent stubs (Archivist, Mirror, Interlocutor, Experimentalist, Translator, Librarian, Scaffolder, Estimator, Janitor, Ambient Agent) have brief descriptions in the stubs section below. Full SOUL templates are in this file — see "New Agent Full Templates" section above.
+> - All 10 agents (Archivist, Mirror, Interlocutor, Experimentalist, Translator, Librarian, Scaffolder, Estimator, Janitor, Ambient Agent) have full SOUL templates — see "New Agent Full Templates" section above.
 
 ---
 
@@ -2565,5 +2565,5 @@ These agents are referenced in the new team templates above. Full SOUL templates
 | `the-experimentalist` | 🧪 | experimental · hypothesis-testing · protocol-design · empirical | research-lab, makers-bench, signals-studio, systems-design, Learning Squad, Life Team | Designs structured experiments to test hypotheses about your own work, habits, and systems. Doesn't just challenge or accept a belief — designs a protocol, tracks it, presents results without bias. "You believe morning writing sessions are more productive than evening ones. Let's test it." Turns opinion into knowledge. Distinct from Researcher (finds evidence) and Data Scientist (models it) — the Experimentalist *designs the test*. One question: "You believe that — but have you tested it?" |
 | `the-translator` | 🌐 | translation · register-shifting · audience-awareness · bridging | civic-workshop, Content Studio, Marketing Engine, Startup Team | Register-shifting — the same idea expressed for different audiences without losing its essential structure. Doesn't dumb down — finds the frame that makes ideas legible across domains. "Your granular synthesis work is an investigation into how meaning emerges from the accumulation of individually meaningless fragments — the same question that drives collage in visual art and sampling in hip-hop." Distinct from the Writer (crafts prose) and the Educator (teaches). One of the hardest intellectual skills and one of the most valuable. One question: "Who needs to understand this, and what do they already know?" |
 
-> **Note:** Full SOUL templates for these agents are a `POLLY_AGENT_TEMPLATES.md` TODO. They are captured here as stubs so team templates can reference them. The SPEC_INDEX.md agent stub table should be considered superseded by this section — this file is authoritative.
+> **Note:** Full SOUL templates for all agents in this section are written above in "New Agent Full Templates." The brief descriptions here (one-line + one-question format) are reference summaries only — not stubs. The SPEC_INDEX.md agent stub table is superseded by this file.
 

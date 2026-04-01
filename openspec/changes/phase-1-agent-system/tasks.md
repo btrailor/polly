@@ -49,16 +49,16 @@
 
 Owner: @design_eng (SOUL voice + register profile). @code_architect reviews manifest fields (`allowed_modes`, `autonomy_level`) for each.
 
-- [ ] The Estimator — write full SOUL template + Prosodic Sensitivity section + `autonomy_level` + `allowed_modes`
-- [ ] The Librarian — write full SOUL template + Prosodic Sensitivity section + `autonomy_level: "reactive"` + `allowed_modes: ["web_import", "vault_write"]` — **PRIORITY: blocks web_import (Phase 3A)**
-- [ ] The Mirror — write full SOUL template + Prosodic Sensitivity section + `autonomy_level` + `allowed_modes`
-- [ ] The Janitor — write full SOUL template + `autonomy_level: "proactive"` + `allowed_modes` — system agent, proactive maintenance behaviors
-- [ ] The Interlocutor — write full SOUL template + Prosodic Sensitivity section + `autonomy_level` + `allowed_modes`
-- [ ] The Scaffolder — write full SOUL template + Prosodic Sensitivity section + `autonomy_level` + `allowed_modes`
-- [ ] The Archivist — write full SOUL template + Prosodic Sensitivity section + `autonomy_level: "proactive"` + `allowed_modes`
-- [ ] The Ambient Agent — write full SOUL template; document explicitly as non-conversational (no Prosodic profile); `autonomy_level: "proactive"`; no `## Prosodic Calibration` section
-- [ ] The Experimentalist — write full SOUL template + Prosodic Sensitivity section + `autonomy_level` + `allowed_modes`
-- [ ] The Translator — write full SOUL template + Prosodic Sensitivity section + `autonomy_level` + `allowed_modes`
+- [x] The Estimator — write full SOUL template + Prosodic Sensitivity section + `autonomy_level` + `allowed_modes`
+- [x] The Librarian — write full SOUL template + Prosodic Sensitivity section + `autonomy_level: "reactive"` + `allowed_modes: ["web_import", "vault_write"]` — **PRIORITY: blocks web_import (Phase 3A)**
+- [x] The Mirror — write full SOUL template + Prosodic Sensitivity section + `autonomy_level` + `allowed_modes`
+- [x] The Janitor — write full SOUL template + `autonomy_level: "proactive"` + `allowed_modes` — system agent, proactive maintenance behaviors
+- [x] The Interlocutor — write full SOUL template + Prosodic Sensitivity section + `autonomy_level` + `allowed_modes`
+- [x] The Scaffolder — write full SOUL template + Prosodic Sensitivity section + `autonomy_level` + `allowed_modes`
+- [x] The Archivist — write full SOUL template + Prosodic Sensitivity section + `autonomy_level: "proactive"` + `allowed_modes`
+- [x] The Ambient Agent — write full SOUL template; document explicitly as non-conversational (no Prosodic profile); `autonomy_level: "proactive"`; no `## Prosodic Calibration` section
+- [x] The Experimentalist — write full SOUL template + Prosodic Sensitivity section + `autonomy_level` + `allowed_modes`
+- [x] The Translator — write full SOUL template + Prosodic Sensitivity section + `autonomy_level` + `allowed_modes`
 
 ### Team Rosters
 - [x] 16 team templates defined
