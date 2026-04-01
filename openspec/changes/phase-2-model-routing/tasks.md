@@ -55,3 +55,52 @@ Polly routes messages automatically based on query complexity, context size, and
 
 ## Done when
 Auto-routing working end-to-end. Complexity classifier routes simple queries to local models. Voice messages capped at Tier 1. Routing reason visible on tap. Budget guard active. @backend gateway changes shipped.
+
+---
+
+## Additions from DYNAMIC_PROVIDER_POOL_ROUTING.md
+
+### Updated Evaluator Chain (with PoolEvaluator + DomainEvaluator)
+
+The full evaluator chain in order (Phase 2 + Phase 3 additions noted):
+
+```
+[PoolEvaluator]         ← Phase 2 (new, first in chain) — assembles PoolCandidate[]
+[OverrideEvaluator]     ← Phase 1/2 (existing) — user pinned model
+[VoiceEvaluator]        ← Phase 2 (existing) — filter pool to maxTier, prefer low-latency
+[ConstraintEvaluator]   ← Phase 2 (existing) — filter by context window
+[RAGEvaluator]          ← Phase 3 — DIRECT/ADJACENT/ABSENT → pool tier filter
+[ComplexityEvaluator]   ← Phase 2 (existing) — filter by maxComplexity
+[DomainEvaluator]       ← Phase 3 (new) — promote domain-specialist models
+[Resolver]              ← Picks highest-ranked candidate satisfying all constraints
+[BudgetGuard]           ← Phase 2 (existing) — paid tier hard limit
+[FallbackGuard]         ← Phase 2 (rewritten) — provider-first, then tier
+```
+
+DomainEvaluator (Phase 3): extracted from Phase 3 RAG routing — detects domain from RAG `domain` field or keyword heuristics, promotes domain-specialist models within their tier. See `phase-3-rag-routing`.
+
+### Per-Agent Routing Overrides — Three-Layer Model
+
+Layer 1 (all users): Single model dropdown in agent edit screen: Polly Routing profiles (Free-First / Quality-First / Privacy-Only) OR Pin to specific model. Pinned model bypasses pool entirely.
+
+Layer 2 (power users): "Customize Routing for This Agent" — collapsed disclosure under model selector. Options: preferred tier (local / free cloud / quality), domain specialty (forces DomainEvaluator to treat agent as belonging to that domain), budget cap (daily token/cost limit per agent).
+
+Layer 3 (Settings → Models → Domain Routing): System-wide domain taxonomy connected to model preferences. Per domain: local model preference, free cloud preference, paid cloud preference — all default to "auto" (pool decides). Domain data model extended with `DomainRoutingPreferences`: `local?: string`, `freeCloud?: string | string[]`, `paidCloud?: string`.
+
+Override resolution order:
+1. Agent pinned to specific model → use it, pool bypassed
+2. Agent has per-agent routing preferences → pass to PoolEvaluator
+3. PoolEvaluator assembles candidates (respects agent preferences + global policy + provider health)
+4. RAGEvaluator detects domain → check domain routing preferences
+
+Storage: `AgentRoutingOverride` in gateway config `polly.routing.agents.{agentId}` via `config.patch`. Domain routing preferences in gateway config `polly.routing.domains`.
+
+### Tasks — Phase 2 Additions
+
+- [ ] Per-agent routing override data model (`AgentRoutingOverride`) in gateway config
+- [ ] Agent edit screen: Layer 1 model selector (Polly Routing profiles + pin to specific model)
+- [ ] Agent edit screen: Layer 2 "Customize Routing" disclosure section (preferred tier, domain specialty, budget cap per agent)
+- [ ] Settings → Models → Domain Routing screen (Layer 3): per-domain model preferences, all default "auto"
+- [ ] Domain detail editor: keywords for auto-detection + model preferences per tier
+- [ ] Domain taxonomy migration decision: MMKV → gateway config `polly.domains` (consistency with routing prefs); keep MMKV as read cache
+- [ ] Override resolution order implemented in Resolver

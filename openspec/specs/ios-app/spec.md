@@ -144,3 +144,35 @@ Auto-removes when that first card is dismissed. Never shown again.
 - Observation IDs MUST be opaque UUIDs (security requirement)
 - `aight.polly.dismissedIDs` AsyncStorage key: dismissed ID array only, eviction policy enforced on launch (cap 500, oldest-first, 90-day guidance)
 - Defensive reads on the dismissed store — must not throw on corrupt/missing key
+
+---
+
+## Provider Pool & Model Routing UI
+
+*Full spec: `DYNAMIC_PROVIDER_POOL_ROUTING.md`. Change sets: `phase-2-provider-pool`, `phase-2-model-routing`, `phase-3-rag-routing`.*
+
+### Settings → Models → Providers
+
+Grouped list of all registered providers. Sections: Local / Free–Unlimited / Free–Frontier Tiers / Free–Credits / Included / Paid.
+
+Per provider shows: name, live headroom (e.g. "180/hr remaining"), available model count, privacy warning badge (⚠️) for `may-train` / `will-train` providers, enable/disable toggle.
+
+**Pool status card** (bottom of screen): free models available, local models available, estimated daily free capacity, used today (all free), paid today ($0.00).
+
+**Routing policy selector:** Free-First (default) / Quality-First / Local-Only / Privacy-Only.
+
+### Add Provider Flow
+
+[+ Add Provider] → grouped picker by type (Free Unlimited / Free Frontier Tier / Free Credits / Local / Paid / Custom OpenAI-Compatible). Each card shows what's free and the catch (training policy, rate limits, credit expiry). Provider-specific instructions inline. Privacy warning shown at add time for training-enabled providers. API key stored in Secure Store.
+
+### Agent Model Selector — Three-Layer Progressive Disclosure
+
+**Layer 1 (all users):** Single dropdown in agent edit screen. Two sections: "Polly Routing" (Free-First / Quality-First / Privacy-Only profiles) and "Pin to Model" (specific model list with free/local/paid labels). Pinned model bypasses pool entirely; shows `[pinned]` indicator.
+
+**Layer 2 (power users):** "Customize Routing for This Agent" — collapsed disclosure that appears when a Polly Routing profile is selected. Options: preferred tier (local / free cloud / quality), domain specialty (forces DomainEvaluator), per-agent budget cap (daily token/cost limit).
+
+**Layer 3 (Settings → Models → Domain Routing):** Per-domain model preferences. Each domain shows local / free cloud / paid cloud preference, all defaulting to "auto." Domain detail editor includes keywords for auto-detection and model overrides per tier.
+
+### Routing Decision — "Why this model?" (Phase 2)
+
+Chat bubble footer tap → bottom sheet showing selected model, provider, routing reason, retrieval tier (Phase 3+), and fallback chain if applicable. Provider visible on tap but not prominently displayed in bubble.
