@@ -59,7 +59,7 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 
 ### Lockdown Mode — Phase 1 Architectural Hooks (LOCKDOWN_MODE.md)
 *Full Lockdown Mode ships Phase 2, but these architectural decisions are not retrofittable. Must be designed now.*
-- [ ] File storage model: all session files use iOS `NSFileProtectionComplete` (Complete Protection class) — @backend + @frontend agree on path
+- [x] File storage model: all session files use iOS `NSFileProtectionComplete` (Complete Protection class) — @backend + @frontend agree on path
 - [ ] Voice buffer policy: voice audio never written to disk — buffers memory-only only. `useVoiceRecording.ts` must enforce this from the start.
 - [ ] Secure Enclave key path: document where gateway encryption key will live (Secure Enclave vs. Keychain) — @backend decision, must be locked in Phase 1 before any credential storage is implemented
 - [ ] No APNs dependency for core functionality — gateway connection must work without push (polling fallback required)
@@ -124,7 +124,7 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 
 ### Lockdown Mode Phase 1 Hooks (SECURITY_IMPLEMENTATION_SPEC.md §3 — not retrofittable)
 - [ ] Investigate `NSFileProtectionComplete` support for MMKV + expo-sqlite (document findings)
-- [ ] Set file protection class `NSFileProtectionComplete` on all data directories at app init
+- [x] Set file protection class `NSFileProtectionComplete` on all data directories at app init
 - [ ] Voice audio: confirm memory-only buffer in chosen audio library — no temp file writes (§3.2)
 - [ ] `persistent: boolean` field on SessionRecord and message cache schema (default `true`) (§3.3)
 
