@@ -63,6 +63,8 @@ export class GatewayClient {
   private authToken: string | null = null;
   /** Whether we've already emitted the initial config.patch for protectionLevel */
   private protectionLevelPatched = false;
+  /** Whether TOFU fingerprint has been stored this session */
+  private tofuVerified = false;
 
   // ─── Public API ─────────────────────────────────────────────────────────────
 
@@ -196,6 +198,7 @@ export class GatewayClient {
       this.reconnectAttempt = 0;
       console.log('[GatewayClient] Authenticated ✓');
       this._patchProtectionLevelIfNeeded();
+      this._storeTofuFingerprintIfNeeded(message);
       return;
     }
 
@@ -299,6 +302,65 @@ export class GatewayClient {
     );
   }
 }
+
+  /**
+   * TOFU (Trust On First Use) cert pinning.
+   *
+   * On first verified connect: if auth.ok includes a tlsFingerprint, store it.
+   * On subsequent connects: verify the stored fingerprint matches.
+   * If mismatch → set status 'failed', surface error, do not proceed.
+   *
+   * Note: React Native's WebSocket API doesn't expose TLS fingerprints directly.
+   * The gateway sends its fingerprint in the auth.ok payload. This is a
+   * server-asserted value — full TLS inspection requires a native module (Phase 2).
+   * For Phase 1A this provides TOFU at the application layer.
+   */
+  private async _storeTofuFingerprintIfNeeded(authOkMessage: GatewayMessage): Promise<void> {
+    const incomingFingerprint = authOkMessage.tlsFingerprint as string | undefined;
+    if (!incomingFingerprint) return; // gateway didn't send one — skip
+
+    try {
+      const stored = await SecureStore.getItemAsync(SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT);
+
+      if (!stored) {
+        // First connect — store and trust
+        await SecureStore.setItemAsync(
+          SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT,
+          incomingFingerprint
+        );
+        console.log('[GatewayClient] TOFU: fingerprint stored on first connect');
+        this.tofuVerified = true;
+        return;
+      }
+
+      if (stored !== incomingFingerprint) {
+        // Fingerprint mismatch — possible MITM
+        console.error('[GatewayClient] TOFU: fingerprint mismatch — possible MITM attack');
+        useConnectionStore.getState().setStatus('failed');
+        useConnectionStore.getState().setError(
+          'Gateway certificate changed unexpectedly. If you changed your gateway setup, go to Settings → Your Gateway → Reset Connection to re-trust.'
+        );
+        this.shouldReconnect = false;
+        this.ws?.close();
+        return;
+      }
+
+      // Fingerprint matches — all good
+      this.tofuVerified = true;
+    } catch (err) {
+      console.error('[GatewayClient] TOFU store error:', sanitizeForLog(err));
+    }
+  }
+
+  /**
+   * Clear stored TOFU fingerprint — called from Settings → Reset Connection.
+   * Required when user intentionally reconfigures their gateway.
+   */
+  async clearTofuFingerprint(): Promise<void> {
+    await SecureStore.deleteItemAsync(SECURE_STORE_KEYS.GATEWAY_TLS_FINGERPRINT);
+    this.tofuVerified = false;
+    console.log('[GatewayClient] TOFU fingerprint cleared');
+  }
 
 // Singleton — one client for the app lifetime
 export const gatewayClient = new GatewayClient();
