@@ -114,6 +114,7 @@ Steps 5–10 are covered by §20.4. Steps 1–4 and 11 were previously unspecced
 7. Gateway URL entry + connection test
    ↓
 8. Auth token entry + TOFU cert pinning
+   > **Conditional:** The cert verification screen only appears when the connection URL uses `wss://` (Cloudflare Tunnel or user-configured TLS). For `ws://` connections (LAN, Tailscale), this step is **skipped entirely** — no TLS cert exists to pin. Implementation must gate this screen on `url.startsWith('wss://')`. See `SECURITY_IMPLEMENTATION_SPEC.md §8.3` and `§7.10`.
    ↓
 9. [GATEWAY CONNECTED] → Post-connection verification (§3.4 below)
    ↓

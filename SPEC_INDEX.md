@@ -122,3 +122,25 @@ Until then: add to this index, keep specs at root, update status as work moves.
 ---
 
 *Last updated: 2026-03-25 (evening — 11 specs added, 43 agent templates confirmed complete)*
+
+---
+
+## Orphaned Files — Added to Index (from IOS_SPEC_AUDIT.md §3.1)
+
+*These files existed on disk but were not indexed. Added 2026-04-01.*
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `AIGHT_POLLY_CARD.md` | Source material for Polly Card spec — design decisions Q1–Q4 + context notes | ✅ Fully incorporated into `openspec/changes/phase-1-polly-ambient-card/` |
+| `AMBIENT_AGENT_SPEC.md` | Comprehensive ambient agent behavioral spec — dismissal state machine, trigger taxonomy, persistence | ✅ Incorporated into `openspec/specs/agent-system/ambient-agent.md` |
+| `POLLY_CARD_CONSTRAINT_MAP.md` | Design constraint analysis (spec → UIKit bindings) | ✅ Reference doc — no implementation actions |
+| `PUSH_SECURITY_FIX.md` | Security audit pre-production gates C1 (unauthenticated push registration) + C2 (cleartext sendKey) | ⚠️ Active — must ship before Phase 2 production users (`phase-2-push-security` gates on this) |
+| `ASSET_STATE_MACHINE.md` | Asset/media state machine spec | 📋 Not yet indexed in change sets — needs review |
+
+## Missing Files Referenced in Specs
+
+| Reference | Location | Status |
+|-----------|---------|--------|
+| `PROFESSOR_STUDIES_MODE.md` | `chat.tsx` header comment + SPEC_INDEX §unresolved | ⚠️ Stale reference — no file exists. Pending Brett's decision: planned spec or remove reference? |
+| `VAULT_RAG_SKILL.md` | SPEC_INDEX §48 | 🗑️ Superseded by `KNOWLEDGE_SKILL.md` — remove references |
+| `INTEGRATION_ONBOARDING.md` | `FIGMA_INTEGRATION.md` | ⚠️ Referenced but doesn't exist — create stub or remove reference |

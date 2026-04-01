@@ -4,6 +4,24 @@
 **Gate:** None — first phase  
 **Spec source:** `POLLY_IOS_SPEC.md`, `VOICE_INTERACTION.md`, `COPY_VOICE.md`, `VOICE_BEHAVIOR_TESTS.md`, `ONBOARDING_SPEC.md`
 
+## Phase Sub-Sequencing (from IOS_SPEC_AUDIT.md §1.2)
+
+Phase 1 is split into three tracks to prevent "everything at once, nothing ships" failure mode.
+
+- **Phase 1A — Ship It** (~40 tasks): Gateway connection, onboarding (URL + token entry), chat send/receive with streaming, agent switcher, drawer nav, basic settings. Done when: I can chat with an agent from my phone via TestFlight.
+- **Phase 1B — Complete It** (~60 tasks): Voice, group chat foundation, quick capture, mental models, sensibility migration, model routing UI, Polly Card, remaining tests. Gates on 1A complete.
+- **Phase 1C — Content** (~25 tasks): 10 stub agent SOUL templates, `allowed_modes` + `autonomy_level` + `suggested_prompts` per all 43 agents. Parallel track — no code dependency, can start immediately.
+
+Tasks below are annotated `[1A]`, `[1B]`, or `[1C]`.
+
+---
+
+> **⚠️ Open Question (Audit §1.3) — Brett's decision required before 1A build:**  
+> **Onboarding Phase 1A:** Conversational (baked Gemini Flash key, expiresAtMs TTL — requires provisioning Google AI Studio project) or **manual form-based** (gateway URL + auth token as standard form, conversational onboarding deferred to Phase 2)?  
+> Option B (manual form) is recommended: simpler, faster to first TestFlight, no key provisioning required.
+
+---
+
 ## What Actually Exists Right Now
 
 - Expo Router file structure with screen stubs (most are 13-line placeholder views)
@@ -21,13 +39,18 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 
 ## Tasks
 
+### Pre-Implementation — Do Before Writing Any Code
+- [ ] `[1A]` **Verify `expo-openclaw-chat@0.2.3` API surface** (est. 30 min): `npm install expo-openclaw-chat@0.2.3` in `polly-ios`, open package in `node_modules`, verify every interface the spec assumes exports: `ChatEngine.send()`, `GatewayClient.connectionState`, `UIMessage`, `ChatMessageContent[]`. Document any delta from spec in this file. This task blocks all gateway client code. — @frontend + @code_architect
+- [ ] `[1A]` **Investigate NSFileProtectionComplete for MMKV + expo-sqlite** (est. 1 hr): Create a minimal Expo test project, write a file with `NSFileProtectionComplete`, verify both libraries respect it. Document findings in `SECURITY_IMPLEMENTATION_SPEC.md §Lockdown Hooks`. If either library doesn't support it, design workaround before Phase 1 code is written. — @frontend + @security_audit
+- [ ] `[1A]` **Rewrite PROJECT_STATUS.md** to reflect actual state: Phase 1 in progress, ~2200 lines scaffold, no gateway connection, no tests, dependencies not installed. — @code_architect
+
 ### Dependencies — Install Before Any Implementation
-- [ ] `expo-secure-store` — gateway credential storage
-- [ ] `react-native-mmkv` — fast local state persistence
-- [ ] `zustand` — state management
-- [ ] `@shopify/flash-list` — high-performance message list
-- [ ] `react-native-markdown-display` — markdown rendering in chat
-- [ ] `lucide-react-native` — icon system (design constitution)
+- [ ] `[1A]` `expo-secure-store` — gateway credential storage
+- [ ] `[1A]` `react-native-mmkv` — fast local state persistence
+- [ ] `[1A]` `zustand` — state management
+- [ ] `[1A]` `@shopify/flash-list` — high-performance message list
+- [ ] `[1A]` `react-native-markdown-display` — markdown rendering in chat
+- [ ] `[1A]` `lucide-react-native` — icon system (design constitution)
 - [ ] `expo-keep-awake` — screen-on during voice recording
 - [ ] `expo-av` or `expo-audio` — real audio recording
 - [ ] `expo-document-picker` — vault security-scoped bookmarks
@@ -245,6 +268,7 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - ~~`aight_item` creation path~~ — **moved to `phase-2-today-crud`**
 
 ### Group Chat — Phase 1 Foundation (SWARM_COORDINATION_SPEC.md §7 Phase 1)
+- [ ] **[CRITICAL] Group context injection** — On every agent RPC send in a group session, compose a `[Recent messages]` header block with all prior messages formatted as `**@agentname:** message text`. This is client-side composition; OpenClaw does NOT provide it. Without this, agents in group chats cannot see each other's messages and group chat is non-functional. See `SWARM_COORDINATION_SPEC.md §2 "What OpenClaw Actually Provides"` for exact format. — @frontend
 - [ ] Group creation UI (name + member selection)
 - [ ] Fan-out via `agent` RPC with `groupId`
 - [ ] Multi-agent message rendering: agent label, accent color, @mention highlighting

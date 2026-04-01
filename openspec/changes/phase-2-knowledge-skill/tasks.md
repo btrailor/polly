@@ -119,3 +119,19 @@ All tasks checked. @security_audit sign-off. Filter chips working in chat. Vault
 Should the FAISS index live on the NAS (high-capacity persistent NAS storage, served from NAS RAM) rather than the Mac Mini (low network latency)? For large vaults (10k+ notes), the NAS storage advantage may outweigh the latency cost. For smaller vaults, Mac Mini is clearly better.
 
 **Decision gate:** @backend to evaluate at Phase 4 planning based on: vault size at that point, update frequency vs. query frequency, measured NAS-to-gateway latency on Brett's LAN. Document decision in `KNOWLEDGE_SKILL.md` before Phase 4 infra work begins. This is not a Phase 2 concern — index lives on Mac Mini until Phase 4.
+
+---
+
+## Skill Runner Compatibility (from IOS_SPEC_AUDIT.md §2.5)
+
+The Knowledge Skill runs on the gateway machine as a Python service (BGE-large-en via sentence-transformers + PyTorch). This requires verifying that OpenClaw's skill runner can invoke Python skills.
+
+**Investigation required before Phase 2 starts (owner: @backend):**
+
+- [ ] Verify: does OpenClaw's skill runner support Python skills natively, or is it Node-only?
+- [ ] If Python-native: document the invocation pattern (subprocess? venv? system Python?)
+- [ ] If Node-only (likely): spec the sidecar pattern — Knowledge Skill runs as a Python HTTP/stdio sidecar that OpenClaw calls via skill adapter. The `SALVAGE_AUDIT.md` already recommends this pattern for the four stateful systems (curriculum, mental models, DualValidator, RollingContext).
+- [ ] Define the minimal viable MVP: `knowledge_search` tool only (no graph layer, no conversation history), FAISS flat index (not HNSW). What's the minimum Python stack to ship that? (Likely: `faiss-cpu`, `sentence-transformers`, `flask` or `fastapi` for HTTP adapter — no PyTorch GPU required on Mac Mini CPU)
+- [ ] @backend documents findings in `KNOWLEDGE_SKILL.md` as a new "Skill Runner Compatibility" section before Phase 2 implementation begins
+
+**Fallback position if sidecar is needed:** The HTTP sidecar pattern is well-understood. It does not change the tool signatures (`knowledge_search`, `knowledge_graph`, etc.) — the adapter layer is transparent to agents. Implementation complexity is moderate. Not a blocker — just needs to be designed before coding starts.
