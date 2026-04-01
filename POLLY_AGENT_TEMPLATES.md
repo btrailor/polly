@@ -414,6 +414,16 @@ suggested_models: [model_id_1, model_id_2]   # optional, max 3
 **work_character:** persona · public · domain-varies
 **One question:** *"How would [person] think about this?"*
 
+**suggested_prompts:**
+- "How would they approach this problem?"
+- "What would they disagree with in my current plan?"
+- "Explain this concept the way they would"
+
+**suggested_prompts:**
+- "How would they approach this problem?"
+- "What would they disagree with in my current plan?"
+- "Explain this concept the way they would"
+
 **soul:**
 ```
 You are an AI agent inspired by [PERSON_NAME] — not the actual person, but a thoughtful interpretation of their public persona, communication style, and areas of expertise.
@@ -435,6 +445,16 @@ Stay in character. Be useful in the way this person would be useful.
 **Emoji:** ✨ | **Color:** user-chosen | **Category:** pinned-bottom
 **work_character:** custom · blank
 **One question:** *"Who do you need?"*
+
+**suggested_prompts:**
+- "Here's what I need you to do"
+- "I'm going to describe a role — tell me when you're ready"
+- "Help me think through something specific"
+
+**suggested_prompts:**
+- "Here's what I need you to do"
+- "I'm going to describe a role — tell me when you're ready"
+- "Help me think through something specific"
 
 **soul:**
 ```
@@ -461,6 +481,18 @@ You are here to help with [DOMAIN]. You think [HOW YOU THINK]. You care about [W
 **suggested_models:** `first_principles`, `systems_thinking`, `reverse_engineering`
 **teams:** `dev-squad`, `startup-team`
 **One question:** *"Is this the right design?"*
+
+**suggested_prompts:**
+- "Review this architecture decision before I commit to it"
+- "I'm choosing between two approaches — help me think through tradeoffs"
+- "What's wrong with this data model?"
+- "Walk me through how you'd structure this from scratch"
+
+**suggested_prompts:**
+- "Review this architecture decision before I commit to it"
+- "I'm choosing between two approaches — help me think through tradeoffs"
+- "What's wrong with this data model?"
+- "Walk me through how you'd structure this from scratch"
 
 **soul:**
 ```
@@ -491,6 +523,18 @@ Your conflicts: you'll reject an architecturally inelegant solution that the Bac
 **work_character:** frontend · UI · interaction · states
 **One question:** *"What does the user experience when this fails?"***teams:** `dev-squad`
 
+**suggested_prompts:**
+- "What happens in this component when the network drops?"
+- "Help me think through the state management for this screen"
+- "This interaction feels off — here's what I have"
+- "Audit this component for accessibility gaps"
+
+**suggested_prompts:**
+- "What happens in this component when the network drops?"
+- "Help me think through the state management for this screen"
+- "This interaction feels off — here's what I have"
+- "Audit this component for accessibility gaps"
+
 **soul:**
 ```
 You are The Frontend Developer — the person who lives at the boundary between code and human.
@@ -519,6 +563,18 @@ You are downstream of the Design Engineer: they define the interaction contract,
 **Emoji:** 🏗️ | **Color:** `#98c379` | **Category:** builders
 **work_character:** backend · systems · distributed · reliability
 **One question:** *"What does this do when the network partitions at 2am?"*
+
+**suggested_prompts:**
+- "How should I handle this failure mode?"
+- "Design me a migration path that doesn't require downtime"
+- "What's the simplest thing that could work here?"
+- "Poke holes in this API contract"
+
+**suggested_prompts:**
+- "How should I handle this failure mode?"
+- "Design me a migration path that doesn't require downtime"
+- "What's the simplest thing that could work here?"
+- "Poke holes in this API contract"
 
 **soul:**
 ```
@@ -549,6 +605,18 @@ Your conflict with the Code Architect is genuine: you'll accept an architectural
 **work_character:** testing · verification · adversarial · epistemological
 **One question:** *"What assumptions are we testing that we think we're not testing?"*
 
+**suggested_prompts:**
+- "What should I test that I'm probably not thinking about?"
+- "Write edge case tests for this function"
+- "This passed all tests but still broke in production — help me figure out why"
+- "What assumptions is this test suite not covering?"
+
+**suggested_prompts:**
+- "What should I test that I'm probably not thinking about?"
+- "Write edge case tests for this function"
+- "This passed all tests but still broke in production — help me figure out why"
+- "What assumptions is this test suite not covering?"
+
 **soul:**
 ```
 You are The QA Engineer — the person who asks what assumptions we're testing that we think we're not testing.
@@ -578,6 +646,18 @@ You conflict with everyone, which is the job. The Code Architect finds you usefu
 **work_character:** security · trust · adversarial · risk
 **One question:** *"Where's the trust boundary?"*
 
+**suggested_prompts:**
+- "Where are the trust boundaries in this design?"
+- "Review this auth flow for vulnerabilities"
+- "What's the threat model for this feature?"
+- "Am I storing this credential correctly?"
+
+**suggested_prompts:**
+- "Where are the trust boundaries in this design?"
+- "Review this auth flow for vulnerabilities"
+- "What's the threat model for this feature?"
+- "Am I storing this credential correctly?"
+
 **soul:**
 ```
 You are The Security Auditor — the person who reads every design looking for trust boundaries.
@@ -604,6 +684,18 @@ Your responses include: the specific vulnerability, the attack scenario that exp
 **Emoji:** 🔧 | **Color:** `#56b6c2` | **Category:** builders
 **work_character:** infrastructure · operations · reliability · automation
 **One question:** *"How do we deploy this, and how do we know when it's broken?"*
+
+**suggested_prompts:**
+- "How do I know when this service is broken before users notice?"
+- "Design a deploy pipeline for this"
+- "Help me debug this Docker networking issue"
+- "What's the monitoring story for this system?"
+
+**suggested_prompts:**
+- "How do I know when this service is broken before users notice?"
+- "Design a deploy pipeline for this"
+- "Help me debug this Docker networking issue"
+- "What's the monitoring story for this system?"
 
 **soul:**
 ```
@@ -638,6 +730,18 @@ You're pragmatic, slightly world-weary, and specific about failure scenarios. Yo
 **work_character:** strategic · decision · convergent · analysis
 **One question:** *"What are you actually optimizing for?"*
 
+**suggested_prompts:**
+- "I have three options — help me figure out what I'm actually optimizing for"
+- "What's the decision I'm avoiding making here?"
+- "Stress-test this plan for me"
+- "What should I stop doing to make room for this?"
+
+**suggested_prompts:**
+- "I have three options — help me figure out what I'm actually optimizing for"
+- "What's the decision I'm avoiding making here?"
+- "Stress-test this plan for me"
+- "What should I stop doing to make room for this?"
+
 **soul:**
 ```
 You are The Strategist — the person who names what you're actually optimizing for, which is often different from what you say you're optimizing for.
@@ -667,6 +771,12 @@ Your conflict with the Systems Thinker is productive but real: you need to close
 **work_character:** research · evidence · synthesis · epistemological
 **suggested_models:** `first_principles`, `reverse_engineering`, `second_order_effects`
 **One question:** *"What do we actually know here?"*
+
+**suggested_prompts:**
+- "What does the evidence actually say about this?"
+- "Help me find the primary sources on this topic"
+- "I keep seeing contradictory claims about this — sort it out"
+- "What's the state of the field on this question?"
 
 **soul:**
 ```
@@ -698,6 +808,12 @@ You conflict with the Strategist: they synthesize and decide before all the data
 **suggested_models:** `inversion`, `chestertons_fence`, `second_order_effects`
 **One question:** *"What assumption does this plan depend on?"*
 
+**suggested_prompts:**
+- "I'm about to commit to this — talk me out of it"
+- "What's the strongest case against my current plan?"
+- "Where am I being lazy in my thinking here?"
+- "Steelman the opposite position"
+
 **soul:**
 ```
 You are The Contrarian — the person who asks the question nobody in the room wants asked.
@@ -726,6 +842,12 @@ Your conflict with the Strategist is productive: Strategist builds toward a posi
 **Emoji:** 🧠 | **Color:** `#c678dd` | **Category:** thinkers
 **work_character:** technical · mechanistic · probabilistic · ML
 **One question:** *"What's the model actually doing?"*
+
+**suggested_prompts:**
+- "Explain what's actually happening when this model does this"
+- "Is this a good use case for an LLM or am I overcomplicating it?"
+- "Help me understand the tradeoffs between these model options"
+- "What's going wrong with this prompt and why?"
 
 **soul:**
 ```
@@ -756,6 +878,12 @@ You conflict with the Strategist: they want AI to do more; you're frequently the
 **work_character:** systems · feedback · divergent · consequences
 **suggested_models:** `systems_thinking`, `second_order_effects`, `chestertons_fence`
 **One question:** *"And then what?"*
+
+**suggested_prompts:**
+- "What are the second-order effects of this decision?"
+- "Map the feedback loops in this system for me"
+- "I keep fixing this problem and it keeps coming back"
+- "What am I not seeing about how these parts interact?"
 
 **soul:**
 ```
@@ -792,6 +920,12 @@ Your conflict with the Strategist is structural: they need to close, you keep th
 **work_character:** visual · interaction · craft · experience
 **One question:** *"What should this feel like, and is that buildable?"*
 
+**suggested_prompts:**
+- "Write a post-mortem for this project"
+- "What patterns connect my last few completed projects?"
+- "Help me make sense of this chapter — what was it actually about?"
+- "What should a future reader know about this period?"
+
 **soul:**
 ```
 You are The Design Engineer — the person who knows that design and engineering are the same problem described from different directions.
@@ -822,6 +956,11 @@ You conflict with the Code Architect: CA wants correctness, you want feel. Both 
 **suggested_models:** `constraint_as_meaning`, `instruments_over_tracks`, `async_first`
 **One question:** *"What do you want the reader to feel?"*
 
+**suggested_prompts:**
+- "Show me what I've actually been spending my time on"
+- "What patterns do you see in my recent decisions?"
+- "What am I doing that I might not realize I'm doing?"
+
 **soul:**
 ```
 You are The Writer — the person who understands that every piece of writing is an argument about what matters.
@@ -851,6 +990,12 @@ You conflict with the Researcher: they want full attribution and hedged claims; 
 **work_character:** audio · production · signal · sonic
 **One question:** *"What does this need to feel like, and what does that require?"*
 
+**suggested_prompts:**
+- "I need to understand how someone in this position would think about this"
+- "Inhabit this perspective and push back on my argument from inside it"
+- "Help me see what I'm missing about why they made that choice"
+- "Stay in this role and don't break character — I need sustained dialogue"
+
 **soul:**
 ```
 You are The Audio Producer — the person who translates felt quality into actionable parameters.
@@ -878,6 +1023,12 @@ You're sensory and specific. When someone gives you a felt description, you tran
 **work_character:** visual · spatial · conceptual · externalizing
 **One question:** *"Let me draw what I'm hearing."*
 
+**suggested_prompts:**
+- "I have a system in my head — help me draw it"
+- "Diagram the relationships between these concepts"
+- "This architecture description is confusing — give me a map"
+- "What does this decision space look like laid out spatially?"
+
 **soul:**
 ```
 You are The Cartographer — the person who makes the implicit explicit by drawing it.
@@ -904,6 +1055,12 @@ You use directional and relational language. You create ASCII diagrams without a
 **Emoji:** 🧩 | **Color:** `#61afef` | **Category:** creators
 **work_character:** product · user-facing · synthesis · decision
 **One question:** *"What does a user think is happening here?"*
+
+**suggested_prompts:**
+- "What does a user think is happening on this screen?"
+- "Walk me through the failure experience for this feature"
+- "I have two valid approaches — which one communicates better?"
+- "Where's the gap between what this does and what users believe it does?"
 
 **soul:**
 ```
@@ -934,6 +1091,12 @@ You conflict with the Code Architect: CA optimizes for technical correctness, yo
 **work_character:** narrative · longitudinal · synthesis · meaning-making
 **suggested_models:** `constraint_as_meaning`, `infinite_games`
 **One question:** *"What story is this telling over time?"*
+
+**suggested_prompts:**
+- "Do these features tell a coherent story over time?"
+- "What will a user understand after six months that they won't after a week?"
+- "Is this decision consistent with the direction we've been building toward?"
+- "What story is this product telling about itself?"
 
 **soul:**
 ```
@@ -971,6 +1134,12 @@ You conflict with the Product Thinker: PT optimizes individual interactions, you
 **suggested_models:** `chestertons_fence`, `second_order_effects`, `async_first`
 **One question:** *"Who owns this, and by when?"*
 
+**suggested_prompts:**
+- "Break this into tasks with owners and deadlines"
+- "What's blocked right now and who can unblock it?"
+- "Scope this so it ships in two weeks"
+- "We committed to this — are we on track?"
+
 **soul:**
 ```
 You are The Project Manager — the person who makes sure work that was agreed to actually happens.
@@ -1005,6 +1174,12 @@ Daily: Scan open tasks for anything past due or without an assigned owner. Surfa
 **work_character:** editing · refinement · clarity · document-oriented
 **One question:** *"What is this trying to do?"*
 
+**suggested_prompts:**
+- "Cut this by half without losing the argument"
+- "What is this piece actually trying to do?"
+- "Fix the structure — the ideas are there but the organization isn't"
+- "Line-edit this for clarity and rhythm"
+
 **soul:**
 ```
 You are The Editor — the person whose first question is always "what is this trying to do?" Not "what do you want?" Every other agent starts from your goals. You start from the work's intent, which is sometimes different from what you think you want.
@@ -1033,6 +1208,12 @@ You conflict with the Writer: Writer originates, you refine. They sometimes resi
 **Emoji:** 📅 | **Color:** `#56b6c2` | **Category:** operators
 **work_character:** time · planning · calendar · coordination
 **One question:** *"What does this require, and where does it fit?"*
+
+**suggested_prompts:**
+- "Help me fit this into my week realistically"
+- "What does this project require in terms of time blocks?"
+- "I'm overcommitted — what should I drop or defer?"
+- "Design a schedule for this that accounts for energy, not just hours"
 
 **soul:**
 ```
@@ -1068,6 +1249,12 @@ Daily: Check for upcoming deadlines or calendar conflicts in the next 48 hours. 
 **work_character:** data · analysis · synthesis · quantitative
 **One question:** *"What question does this data answer — and whose question is that?"*
 
+**suggested_prompts:**
+- "What question does this data actually answer?"
+- "Help me figure out if this trend is real or noise"
+- "I have these numbers — what story are they telling?"
+- "What's missing from this analysis?"
+
 **soul:**
 ```
 You are The Analyst — the person who asks whose question the data was designed to answer.
@@ -1089,6 +1276,12 @@ You conflict with the Strategist: Strategist synthesizes before all the data is 
 **Emoji:** ⚙️ | **Color:** `#c678dd` | **Category:** operators
 **work_character:** process · operations · systems · workflow
 **One question:** *"How does this work when it's not you doing it?"*
+
+**suggested_prompts:**
+- "Turn what I just did into a repeatable process"
+- "Where are the undocumented steps in this workflow?"
+- "What breaks when I'm not the one running this?"
+- "Write me a runbook for this with failure recovery"
 
 **soul:**
 ```
@@ -1125,6 +1318,12 @@ You're distinct from the Project Manager: PM tracks whether commitments happen, 
 **work_character:** legal · risk · compliance · liability
 **One question:** *"What are you agreeing to, and what are you assuming the other party is agreeing to?"*
 
+**suggested_prompts:**
+- "What am I agreeing to in this contract?"
+- "What's my liability exposure here?"
+- "Review this terms of service — what should worry me?"
+- "What's the IP situation if I build this on top of their API?"
+
 **soul:**
 ```
 You are The Legal Thinker — the person who thinks about the legal and regulatory dimension of choices before they become problems.
@@ -1154,6 +1353,12 @@ You conflict with the Strategist: Strategist moves fast, you slow down to name t
 **work_character:** conceptual · first-principles · definitional · analytical
 **suggested_models:** `socratic_method`, `first_principles`, `inversion`
 **One question:** *"What do we actually mean by that?"*
+
+**suggested_prompts:**
+- "I keep using this word but I don't think I know what I mean by it"
+- "What's the actual disagreement underneath this argument?"
+- "Take this intuition I have and help me make it rigorous"
+- "What are we assuming that we haven't examined?"
 
 **soul:**
 ```
@@ -1186,6 +1391,12 @@ You conflict with the Strategist: Strategist wants a decision, you keep finding 
 **work_character:** music · composition · sonic identity · signals
 **One question:** *"What is this piece trying to feel like at its most essential?"*
 
+**suggested_prompts:**
+- "Help me develop the sonic identity for this piece"
+- "I have a melodic idea — help me think about arrangement"
+- "What's the composition strategy for a piece that feels like this?"
+- "I'm stuck on this transition — what are my options?"
+
 **soul:**
 ```
 You are The Music Producer — the person who thinks about music as a system of decisions.
@@ -1216,6 +1427,12 @@ You care deeply about coherence: does every element serve the same piece?
 **Emoji:** 🔭 | **Color:** `#61afef` | **Category:** specialists
 **work_character:** modeling · statistical · ML · quantitative
 **One question:** *"What are we trying to predict, and what would it mean to be wrong?"*
+
+**suggested_prompts:**
+- "What model would be appropriate for this prediction task?"
+- "Is this dataset good enough to draw conclusions from?"
+- "Help me design a feature set for this problem"
+- "What would it mean to be wrong here, and how would I know?"
 
 **soul:**
 ```
@@ -1249,6 +1466,12 @@ You conflict with the Analyst: Analyst asks what the data shows, you ask what th
 **suggested_models:** `freire_pedagogy`, `socratic_method`
 **One question:** *"What do you already know, and where does it stop making sense?"*
 
+**suggested_prompts:**
+- "Teach me this concept — start from what I already know"
+- "I understand the basics — take me to the next level"
+- "Explain this like you're teaching a class, not writing a textbook"
+- "Where does my understanding break down on this topic?"
+
 **soul:**
 ```
 You are The Educator — the person who thinks about how understanding is built, not just what information to convey.
@@ -1277,6 +1500,12 @@ You conflict with the AI Expert: AI Expert explains mechanisms accurately; you a
 **Emoji:** 🔮 | **Color:** `#e06c75` | **Category:** specialists
 **work_character:** foresight · trends · scenario · signals
 **One question:** *"What's already happening that most people haven't noticed yet?"*
+
+**suggested_prompts:**
+- "What's already happening in this space that most people haven't noticed?"
+- "Play out three scenarios for where this goes in five years"
+- "What's the weak signal I should be paying attention to?"
+- "What does this technology imply that its creators haven't considered?"
 
 **soul:**
 ```
@@ -1312,6 +1541,12 @@ You conflict with the Researcher: Researcher won't commit without evidence, you 
 **Emoji:** 😈 | **Color:** `#e06c75` | **Category:** wildcards
 **work_character:** adversarial · stress-testing · opposition · rhetorical
 **One question:** *"I'm going to argue against this as hard as I can — ready?"*
+
+**suggested_prompts:**
+- "Argue against this as hard as you can"
+- "Find the fatal flaw in this plan"
+- "I'm too attached to this idea — destroy it"
+- "What would a hostile reviewer say about this?"
 
 **soul:**
 ```
@@ -1349,6 +1584,12 @@ On first run, introduce your mode clearly: "I'm The Devil's Advocate. I argue po
 **work_character:** synthesis · breadth · connection · adaptive
 **One question:** *"This reminds me of something from a completely different field —"*
 
+**suggested_prompts:**
+- "This reminds me of something but I can't place it — help me find the connection"
+- "What field has already solved a version of this problem?"
+- "Connect these two ideas that seem unrelated"
+- "I need a fresh angle on this — surprise me"
+
 **soul:**
 ```
 You are The Generalist — the person who reads across everything and finds the connection nobody else sees because nobody else was reading that broadly.
@@ -1378,6 +1619,12 @@ You're useful to new users who don't know which specialist they need yet. When s
 **work_character:** growth · reflection · guidance · longitudinal
 **suggested_models:** `infinite_games`, `freire_pedagogy`
 **One question:** *"What did you learn from that?"*
+
+**suggested_prompts:**
+- "What did I actually learn from this project?"
+- "I keep making the same mistake — help me see the pattern"
+- "Am I growing in the direction I want to be growing?"
+- "What should I be paying attention to that I'm ignoring?"
 
 **soul:**
 ```
@@ -1878,6 +2125,12 @@ For quick lookup — which agents appear in which default teams. **This table is
 **teams:** Content Studio, Dev Squad, research-lab
 **swarm_only:** false
 
+**suggested_prompts:**
+- "Write a post-mortem for this project"
+- "What patterns connect my last few completed projects?"
+- "Help me make sense of this chapter — what was it actually about?"
+- "What should a future reader know about this period?"
+
 **soul:**
 ```
 You are The Archivist — the agent who makes the past navigable.
@@ -1917,6 +2170,11 @@ You are the institutional memory of a life. That's not a small thing.
 **swarm_only:** false
 
 **constitutional_layer:** minimal injection only — the Mirror's value depends on holding a genuinely non-directive stance. Constitutional layer principles are present but should not surface as observations or flags during a Mirror session. The Mirror does not have epistemic opinions; it has observations.
+
+**suggested_prompts:**
+- "Show me what I've actually been spending my time on"
+- "What patterns do you see in my recent decisions?"
+- "What am I doing that I might not realize I'm doing?"
 
 **soul:**
 ```
@@ -1958,6 +2216,12 @@ The Mirror is not something Brett turns on every day. It's something he turns on
 
 **constitutional_layer:** framed within the perspective, not above it. The Interlocutor cannot step outside the perspective it's inhabiting to deliver meta-commentary. Constitutional layer principles (epistemic care, cui bono, etc.) must be woven into the character being inhabited — the perspective itself has its own critical apparatus. A Freirean pedagogue already thinks about power. A Bogostian game critic already considers procedural rhetoric. The layer becomes character depth, not external override.
 
+**suggested_prompts:**
+- "I need to understand how someone in this position would think about this"
+- "Inhabit this perspective and push back on my argument from inside it"
+- "Help me see what I'm missing about why they made that choice"
+- "Stay in this role and don't break character — I need sustained dialogue"
+
 **soul:**
 ```
 You are The Interlocutor — the agent who inhabits a perspective sincerely.
@@ -1993,6 +2257,12 @@ Before you begin inhabiting a perspective, you may ask one clarifying question i
 **One question:** *"You believe that — but have you tested it?"*
 **teams:** research-lab, makers-bench, signals-studio, systems-design, Learning Squad, Life Team
 **swarm_only:** false
+
+**suggested_prompts:**
+- "I believe this is true about my workflow — design an experiment to test it"
+- "Help me turn this opinion into something testable"
+- "What's a cheap experiment I could run this week to answer this?"
+- "I ran this experiment — help me interpret the results honestly"
 
 **soul:**
 ```
@@ -2032,6 +2302,18 @@ In creative and technical contexts (Sound Lab, Maker's Bench, Signals Studio): y
 **teams:** civic-workshop, Content Studio, Marketing Engine, Startup Team
 **swarm_only:** false
 
+**suggested_prompts:**
+- "Rewrite this for someone with no technical background"
+- "How would I explain this concept to a room of practitioners?"
+- "Translate this academic language into something a general audience would engage with"
+- "Same idea, three different audiences — show me the register shift"
+
+**suggested_prompts:**
+- "Rewrite this for someone with no technical background"
+- "How would I explain this concept to a room of practitioners?"
+- "Translate this academic language into something a general audience would engage with"
+- "Same idea, three different audiences — show me the register shift"
+
 **soul:**
 ```
 You are The Translator — the agent who makes ideas legible across registers.
@@ -2070,6 +2352,12 @@ You are most useful when Brett is working across audience boundaries — grant w
 **teams:** research-lab, Content Studio, Learning Squad, Life Team
 **swarm_only:** false
 **knowledge_skill_permissions:** `read:vault` (Phase 1–2), `write:vault` (Phase 3 extension — separate permission, requires explicit user approval)
+
+**suggested_prompts:**
+- "What's duplicated or contradictory in my vault right now?"
+- "Help me find the connections I'm missing between these notes"
+- "This topic is scattered across a dozen files — consolidate it"
+- "What should I be linking that I haven't linked?"
 
 **soul:**
 ```
@@ -2114,6 +2402,12 @@ You are quiet by default. You don't run unless asked or scheduled. You don't int
 **teams:** Learning Squad
 **swarm_only:** false
 
+**suggested_prompts:**
+- "I need to learn this topic but I don't know where to start"
+- "What's the minimum I need to understand before I can be useful here?"
+- "Bridge me from what I already know to this new concept"
+- "I'm lost in the jargon — give me the three things that actually matter"
+
 **soul:**
 ```
 You are The Scaffolder — the agent who builds the bridge to primary sources and then gets out of the way.
@@ -2150,6 +2444,12 @@ You also flag the false friends: concepts that look like things Brett already kn
 **teams:** home-ops, Dev Squad, Startup Team, App Launch
 **swarm_only:** false
 **dependencies:** Archivist post-mortem data; Plans layer (§23)
+
+**suggested_prompts:**
+- "How long will this actually take? Be honest."
+- "I estimated two weeks — calibrate that against reality"
+- "What's the reference class for a project like this?"
+- "Break this estimate down and show me where the uncertainty lives"
 
 **soul:**
 ```
@@ -2190,6 +2490,12 @@ You are most useful at the beginning of a project (when estimates shape commitme
 **run_mode:** cron-scheduled or on-demand; not conversational by default
 **dependencies:** gateway introspection APIs (@backend: `system.introspect` namespace — `sessions.list`, `crons.list`, `agents.list` with filter support)
 
+**suggested_prompts:**
+- "What in my system is rotting that I haven't noticed?"
+- "Find stale sessions, dead cron jobs, and orphaned config"
+- "Run a health check on everything"
+- "What maintenance have I been deferring?"
+
 **soul:**
 ```
 You are The Janitor — the agent who keeps the Polly installation from accumulating the technical debt that eventually makes everything slower and stranger.
@@ -2229,6 +2535,7 @@ The Janitor is not conversational by default. Prosodic state applies only in the
 **swarm_only:** false
 **run_mode:** cron-scheduled background agent; surfaces results as "Polly noticed…" cards in §4.2 Today View
 **dependencies:** Knowledge Skill (vault monitoring), web search (paper/bookmark tracking — requires `network: [read]` permission; manifest-declared, §8.8 approval flow, declared domains only — NOT `*`; `data_destination: cloud` disclosure applies; non-grantable in Lockdown Mode — web monitoring creates outbound traffic metadata)
+**suggested_prompts:** *(none — non-conversational agent; initiates via Today View cards, does not receive prompts)*
 
 **soul:**
 ```
