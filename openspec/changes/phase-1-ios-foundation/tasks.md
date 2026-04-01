@@ -95,14 +95,14 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 
 - [ ] `expo-secure-store` integration — read/write gateway URL + auth token
 - [ ] Wire `app/index.tsx` gateway check to actual secure store (remove `isConfigured = false` hardcode)
-- [ ] WebSocket client: connect, authenticate, session management
-- [ ] Reconnect logic with exponential backoff
+- [x] WebSocket client: connect, authenticate, session management
+- [x] Reconnect logic with exponential backoff
 - [ ] Connection state store (Zustand or MMKV): connected/reconnecting/failed
 - [ ] Gateway health indicator in UI
-- [ ] Per-agent session key construction: `agent:<agentId>:main` format (§3.7)
-- [ ] Idempotency key on every send — prevents duplicate messages on retry (§3.5)
-- [ ] `NO_REPLY` / `HEARTBEAT_OK` silent reply filtering — never render these in chat (§3.6)
-- [ ] `NSAllowsLocalNetworking` in `Info.plist` — required for LAN WebSocket (§3.14)
+- [x] Per-agent session key construction: `agent:<agentId>:main` format (§3.7)
+- [x] Idempotency key on every send — prevents duplicate messages on retry (§3.5)
+- [x] `NO_REPLY` / `HEARTBEAT_OK` silent reply filtering — never render these in chat (§3.6)
+- [x] `NSAllowsLocalNetworking` in `Info.plist` — required for LAN WebSocket (§3.14)
 
 ### Authentication + Credential Security (SECURITY_IMPLEMENTATION_SPEC.md §8 Phase 1)
 - [ ] Install `@noble/ed25519` and `@noble/hashes` (in addition to expo-secure-store)
@@ -111,16 +111,16 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] Challenge-response signing for WebSocket auth (§3.3.1)
 - [ ] deviceToken storage + rotation via expo-secure-store (key: `polly.device.token`)
 - [ ] Static auth token storage in expo-secure-store (key: `polly.gateway.token`)
-- [ ] TOFU cert pinning: store TLS fingerprint on first verified connect (key: `polly.gateway.tlsFingerprint`)
+- [x] TOFU cert pinning: store TLS fingerprint on first verified connect (key: `polly.gateway.tlsFingerprint`)
 - [ ] WSS enforcement for Cloudflare Tunnel connections (never ws:// through tunnel)
 - [x] EAS code signing enabled in `eas.json`
 - [ ] Version-pin `expo-openclaw-chat@0.2.3` (no caret)
-- [ ] `SECURE_STORE_KEYS` constant — enumerated, typed (SECURITY_IMPLEMENTATION_SPEC.md §4.1)
-- [ ] `sanitizeForLog()` function — strips credentials before any console.log or crash dump (§6.1)
+- [x] `SECURE_STORE_KEYS` constant — enumerated, typed (SECURITY_IMPLEMENTATION_SPEC.md §4.1)
+- [x] `sanitizeForLog()` function — strips credentials before any console.log or crash dump (§6.1)
 - [ ] Sign-out function with complete key inventory + MMKV clear + SQLite clear (§4.1)
 - [ ] Sign-out action in Settings → Your Gateway (separate from Reset — §4.2)
 - [ ] Deep link parameter validation (session keys, onboarding deep links — §6.4)
-- [ ] `polly.security.protectionLevel: "standard"` in initial config.patch (@backend task #14)
+- [x] `polly.security.protectionLevel: "standard"` in initial config.patch (@backend task #14)
 
 ### Lockdown Mode Phase 1 Hooks (SECURITY_IMPLEMENTATION_SPEC.md §3 — not retrofittable)
 - [ ] Investigate `NSFileProtectionComplete` support for MMKV + expo-sqlite (document findings)
@@ -376,7 +376,7 @@ Phase 1 ships in Expo managed workflow with zero native modules **if @security_a
 
 *One-time schema decision that `COGNITIVE_ARTIFACT.md` says is not retrofittable. Must be made Phase 1 before any export format is established.*
 
-- [ ] `[1A]` **Define `manifest.json` export schema** — `layers` field with declared-but-empty layer slots + schema version field. This is a format versioning decision from `COGNITIVE_ARTIFACT.md §4`: the schema must declare layers from day one so Phase 2+ additions are additive, not breaking. @backend — one-time 30-min decision, document chosen schema in `COGNITIVE_ARTIFACT.md §4`. See also `phase-2-knowledge-skill/tasks.md` line 91 which references this hook.
+- [x] `[1A]` **Define `manifest.json` export schema** — `layers` field with declared-but-empty layer slots + schema version field. This is a format versioning decision from `COGNITIVE_ARTIFACT.md §4`: the schema must declare layers from day one so Phase 2+ additions are additive, not breaking. @backend — one-time 30-min decision, document chosen schema in `COGNITIVE_ARTIFACT.md §4`. See also `phase-2-knowledge-skill/tasks.md` line 91 which references this hook.
 
 ---
 
