@@ -297,5 +297,33 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 ## iPad
 Phase 1 target is iPhone. iPad renders phone layout at full width — acceptable. Navigation architecture must not paint itself into a phone-only corner (split-view sidebar is Phase 2). Add `// TODO: iPad adaptive layout` markers at drawer and chat layout.
 
+---
+
+## Native Module Boundaries (from CLAUDE_CODE_ARCHITECTURE_INSIGHTS.md §5)
+
+React Native + Expo is correct and stays. Five areas require Swift native modules — plan for Expo config plugin or bare workflow transition at Phase 1→2 boundary, not mid-Phase-2.
+
+### Phase 1 Decision Required
+
+- [ ] **@security_audit: Keychain vs. Secure Enclave for device key (Phase 1 decision)** — Is `expo-secure-store` (Keychain) sufficient for Phase 1 Ed25519 device key storage, with Secure Enclave deferred to Lockdown Mode? If yes: no native module needed Phase 1. If no: a thin `PollyCrypto` native module wrapping `SecKeyCreateRandomKey` with `kSecAttrTokenIDSecureEnclave` is required Phase 1. **This decision blocks device key generation work.**
+
+### Phase 2 Native Modules (plan for, do not implement Phase 1)
+
+| Module | Purpose | Blocking? | Fallback |
+|--------|---------|-----------|---------|
+| `PollyAudioAnalyzer` | Prosodic metadata extraction (speech_rate, pause_p95_ms, volume_variance, turn_length_words) from AVAudioEngine PCM frames — cannot be done through expo-speech-recognition alone | No — prosodics are optional enrichment | Send transcript without prosodic metadata |
+| `PollyIntents` | App Intents / Shortcuts (TellPollyIntent, OpenListeningIntent, Action Button binding). Note: `expo-app-intents` does not exist as of March 2026 — evaluate community module, custom Expo config plugin, or bare workflow. @frontend must evaluate during Phase 1 planning. | No — in-app shortcuts work without Siri/Action Button | In-app shortcuts only |
+| `PollyBackground` | BGTaskScheduler for Ambient Agent periodic wake-ups. Evaluate `expo-background-task` first — if insufficient, thin native wrapper. | No — Ambient Agent is Phase 2+ | No background surfacing; active-session only |
+
+### Phase 3+ Native Modules (defer evaluation)
+
+- EventKit (calendar/reminders for Administrator workflow) — `expo-calendar` may be sufficient; evaluate at Phase 3 planning
+
+### Key Takeaway
+
+Phase 1 ships in Expo managed workflow with zero native modules **if @security_audit accepts Keychain-only for device key.** All Phase 2 native modules are architecturally simple — thin Swift bridges exposing 1-3 functions each.
+
+---
+
 ## Done when
 All P0 tasks checked. App is functionally usable end-to-end: gateway connects, onboarding works, chat sends/receives with streaming, stop generation works, cached messages load offline, voice records real audio, drawer navigation works, Today view shows items. @qa_guy sign-off.

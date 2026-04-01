@@ -34,3 +34,13 @@ No lower layer overrides a higher one. Absent layers are omitted entirely.
 ## Open Item
 
 @backend: `KNOWLEDGE_SERVICE_CONTRACTS.md §4` — confirm session-scoped vs. request-scoped read for Layer 6 (EIS flags) before Phase 3.
+
+## Memory Architecture Notes
+
+**Two-tier pattern (validated):** USER.md (always-loaded) + Knowledge Skill (per-query) is the correct architecture. This matches production patterns in comparable systems.
+
+**USER.md cap guidance:** Current soft cap is 500 words (~50 lines). Production data suggests a hard cap of ~150 lines / 25KB is appropriate headroom before token budget pressure. Consider raising the soft cap or converting to a hard cap at ~150 lines. Do not change without @backend review of context window budget model.
+
+**LLM-selection fallback:** For low-confidence FAISS results (all results below ABSENT threshold), an LLM-based selection fallback (send note frontmatter/titles to Sonnet, select top 5) may outperform vector search for small vaults. FAISS remains primary. See `phase-2-knowledge-skill` tasks for implementation details.
+
+**Session-end extraction pattern:** Memory extraction at session end MUST use a forked agent (copy of session sharing prompt cache), not a separate LLM call with conversation pasted as input. The fork preserves SOUL, mental models, and domain context — all relevant to what facts are worth extracting. See `phase-2-knowledge-skill` tasks and `KNOWLEDGE_WRITE_PATH.md §7`.

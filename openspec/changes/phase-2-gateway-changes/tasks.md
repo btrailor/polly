@@ -67,6 +67,23 @@ All 14 Phase 2 tasks complete and verified. @backend confirms each wave. @securi
 
 ---
 
+## Wave 2.5 — Context Management (from CLAUDE_CODE_ARCHITECTURE_INSIGHTS.md §4)
+
+- [ ] **Post-compact restoration:** After conversation compaction/summarization, gateway MUST re-inject: (a) active agent SOUL (always), (b) active mental models, (c) most recently referenced vault notes (up to 5, from Knowledge Skill access log), (d) active WorkflowSession state if one is in progress. Without this, agents forget context after compaction. @backend owns.
+- [ ] **Proactive compaction:** Gateway tracks context window budget and compacts *before* hitting the limit. Do NOT implement reactive compaction (prompt-too-long error → retroactive compact) — that's a symptom of insufficient budget tracking.
+- [ ] **Token budget reference points** (empirical from production deployments — starting point, not gospel; adjust per model tier and context window):
+
+  | Budget | Reference value |
+  |--------|----------------|
+  | Compaction summary max | 20,000 tokens |
+  | Post-compact vault note restoration | 50,000 tokens total, 5,000 per note |
+  | Post-compact SOUL + mental model re-injection | 25,000 tokens |
+  | USER.md hard cap | ~150 lines / 25,000 bytes |
+
+  Note: local models have smaller context windows than frontier models — tune budgets per routing tier.
+
+---
+
 ## Wave 4 — Phase 3 Unlocks
 *Listed here for @backend visibility. Owned separately; do not start until Phase 2 complete.*
 

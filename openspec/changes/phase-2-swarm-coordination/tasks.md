@@ -66,5 +66,17 @@ Group chats go from conversations to coordinated work sessions. Agents can be as
 - [ ] Summarize-and-inject for long group conversations (1–2 sentence summary per agent contribution)
 - [ ] Threshold: summarize when group context exceeds 40k tokens
 
+### Ward — Coordinator as System Prompt (from CLAUDE_CODE_ARCHITECTURE_INSIGHTS.md §2.1)
+- [ ] Implement Ward as a SOUL mode / system prompt configuration on the gateway — no separate Ward service needed for Phase 2
+- [ ] Add `coordinator_mode` flag to session model on @backend; when active, session's system prompt includes Ward coordination instructions
+- [ ] `coordinator_mode` activates automatically when gateway detects: (a) ambiguous routing (multiple agents could handle the request), or (b) explicit group chat invocation
+- [ ] When `coordinator_mode` is inactive (common case), session routes directly to target agent — Ward overhead is zero on unambiguous requests
+- [ ] This aligns with Ward's "invisibility" goal: silent when routing is unambiguous
+
+### Per-Session Scratchpad (from CLAUDE_CODE_ARCHITECTURE_INSIGHTS.md §2.3)
+- [ ] Gateway provides a flat key-value per-session scratchpad any agent in the session can read/write — no schema, no cross-session persistence
+- [ ] This is the Phase 2 lightweight solution for cross-agent context sharing; the full canonical store (structured, persistent, cross-session) remains Phase 3+
+- [ ] @backend owns scratchpad namespace design and read/write tool exposure
+
 ## Done when
 Task tracking end-to-end: coordinator writes task, agents claim, update, and complete. Task board reflects real-time state via signals. Cost estimate shown before large fan-outs. @backend gateway questions answered.

@@ -100,5 +100,15 @@ Single service model. One FAISS HNSW index. All Phase 3 features consume via too
 - [ ] `vault.write_complete` event emission from gateway write path — Knowledge Skill subscribes for incremental index (see contracts §6.2; gateway-changes #10)
 - [ ] @backend: implement `vault.write_complete` event in gateway write path
 
+### LLM-Selection Fallback for Low-Confidence FAISS Results (from CLAUDE_CODE_ARCHITECTURE_INSIGHTS.md §3.2)
+- [ ] When FAISS retrieval returns all results below ABSENT threshold (<0.45), fall back to LLM-based note selection: send note frontmatter/titles to Sonnet, ask it to select top 5 relevant notes by semantic understanding
+- [ ] LLM fallback is a complement to FAISS, not a replacement — FAISS is primary path for all normal retrievals
+- [ ] @backend owns fallback path; threshold and model configurable in skill manifest
+
+### Session-End Memory Extraction — Forked Agent Pattern (from CLAUDE_CODE_ARCHITECTURE_INSIGHTS.md §3.3)
+- [ ] Write path #7 (session-end extraction in `KNOWLEDGE_WRITE_PATH.md`): implement extraction as a forked agent — a copy of the session that shares the prompt cache, sees full conversation context (system prompt, tools, all turns, active SOUL)
+- [ ] Do NOT pass conversation as plain input to a separate LLM call — the fork preserves domain context, mental models, and agent SOUL, which inform what facts are worth extracting
+- [ ] @backend owns fork mechanism; @code_architect to update `KNOWLEDGE_WRITE_PATH.md §7` with this pattern
+
 ## Done when
 All tasks checked. @security_audit sign-off. Filter chips working in chat. Vault + BookLore indexing on device. Promotion pipeline functional. Dedup tool live.

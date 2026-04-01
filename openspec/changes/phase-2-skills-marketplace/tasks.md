@@ -33,6 +33,19 @@ Let users discover and install skills from ClawHub. First-party skills (Knowledg
 - [ ] Cross-skill asset sharing default: no (locked per verbal agreement)
 - [ ] Asset eviction policy on skill uninstall
 
+### Skill Manifest — Conditional Activation (from CLAUDE_CODE_ARCHITECTURE_INSIGHTS.md §1.1)
+- [ ] Add `activation_conditions` field to skill manifest schema in `SKILLS_MARKETPLACE.md`
+- [ ] Supported condition types: `vault_path_patterns` (gitignore-style, activates when matching path touched), `domain_match` (activates when user is in specified Sigils domain), `agent_match` (activates when specific agent is active), `manual` (always active — default if field absent)
+- [ ] Skills with `activation_conditions` are registered but not loaded into tool list until condition fires
+- [ ] Backward-compatible: skills with no `activation_conditions` behave as today (always active)
+- [ ] @backend owns manifest schema change + lazy-load activation logic
+
+### MCP Trust Boundary (from CLAUDE_CODE_ARCHITECTURE_INSIGHTS.md §1.2)
+- [ ] MCP-sourced skills MUST NOT have shell execution access — add hard block in `MCP_ADAPTER.md §6` threat model
+- [ ] MCP-sourced skills MUST NOT perform vault writes without explicit per-invocation user confirmation
+- [ ] MCP skills default to Community trust tier — document this explicitly in both `MCP_ADAPTER.md` and `SKILLS_MARKETPLACE.md`
+- [ ] Trust tier → capability mapping: Verified = full local trust, Community = no shell + no write without confirmation, Blocked = rejected at gateway
+
 ### iOS — ClawHub Browser
 - [ ] Skill discovery UI (Verified / Community filter)
 - [ ] Trust tier badge + data destination callout (separate, per design)
