@@ -20,25 +20,37 @@ The monome grid analogy is architecturally precise. Each agent is a voice. Voice
 ## Gesture Data Model (@code_architect)
 
 ```typescript
-interface Gesture {
+// GestureDefinition — shareable, no user-specific fields, safe for Phase 3+ export/sharing
+interface GestureDefinition {
   id: string;                          // UUID, opaque
-  name: string;                        // display name
+  name: string;
   type: 'mode' | 'invocation' | 'transition' | 'system';
-  trigger_phrases: string[];           // semantic seeds (not exact strings)
-  behavior: GestureBehavior;
-  scope: 'any' | string | 'solo_only' | 'group_only';  // string = domain name
-  owner: string;                       // agent ID (default owner)
-  domain_overrides?: Record<string, string>;  // domain → agentId
-  group_overrides?: Record<string, string>;   // groupId → agentId
-  sensitivity?: 1 | 2 | 3 | 4 | 5;    // threshold tuning (default 3)
+  trigger_phrases: string[];           // semantic seeds for fuzzy matching
+  behavior: GestureBehavior;          // Phase 2 Builder writes single tool_invocations only (chaining deferred to Phase 3)
+  scope: 'any' | string | 'solo_only' | 'group_only';
+  source: 'built-in' | 'user';
+  embedding?: number[];               // computed at creation; excluded from share bundles
+}
+
+// GestureUserConfig — local overrides, not portable
+interface GestureUserConfig {
+  gesture_id: string;
+  owner: string;                       // default owner agent ID
+  domain_overrides?: Record<string, string>;
+  group_overrides?: Record<string, string>;
+  sensitivity?: 1 | 2 | 3 | 4 | 5;
   prosodic_amplifier?: ProsodicAmplifier;
-  source: 'built-in' | 'user';        // built-ins shadowable but not deletable
   usage_stats: {
     invocation_count: number;
     last_used: string | null;
     last_owner_at_use: string | null;
   };
-  embedding?: number[];               // computed at creation, updated on phrase add
+}
+
+// Gateway stores both merged; share bundles export GestureDefinition only
+interface GestureLibraryEntry {
+  definition: GestureDefinition;
+  config: GestureUserConfig;
 }
 
 interface GestureBehavior {
@@ -46,7 +58,7 @@ interface GestureBehavior {
   mode?: string;
   retrieval_policy?: 'none' | 'normal' | 'broad';
   response_register?: 'concise' | 'normal' | 'thorough';
-  tool_invocations?: string[];       // e.g. ["vault_write", "knowledge_search"]
+  tool_invocations?: string[];       // Phase 2: single-item arrays only; chaining (multi-item) deferred to Phase 3
 }
 
 interface ProsodicAmplifier {
@@ -55,7 +67,7 @@ interface ProsodicAmplifier {
 }
 ```
 
-- [ ] `@code_architect`: Define Gesture + GestureBehavior + ProsodicAmplifier schemas (above)
+- [ ] `@code_architect`: Define GestureDefinition + GestureUserConfig + GestureLibraryEntry + GestureBehavior + ProsodicAmplifier schemas (above)
 - [ ] `@code_architect`: Integrate gesture_vocabulary into agent manifest schema (alongside `allowed_modes`, `autonomy_level`)
 - [ ] `@code_architect`: Liaison gesture routing protocol — group chat ownership resolution algorithm (domain overrides → group overrides → default owner → disambiguation card)
 
@@ -288,11 +300,11 @@ Q1: **Threshold calibration** — 0.82 / 0.65 defaults need dogfooding. @qa_guy 
 
 Q2: **Embedding model** — What model generates gesture embeddings at gateway? Must be fast + locally hosted (runs on every short message). Candidate: `nomic-embed-text:latest` via Ollama. @backend confirms sufficiency for short-phrase semantic similarity.
 
-Q3: **Gesture chaining** — Can a gesture trigger a sequence of behaviors? Data model supports it via `tool_invocations: []` — no additional architecture needed. Needs Builder UI support + QA. Brett's decision on whether to surface this in Phase 2 Builder or defer.
+Q3: **Gesture chaining** — **LOCKED: Deferred to Phase 3.** Phase 2 Builder supports single-behavior gestures only. Data model already supports chaining via `tool_invocations: []` — no migration needed when Phase 3 surfaces it. Builder UI shows "chaining coming later" note. Reduces Phase 2 QA surface (no partial execution failure modes).
 
 Q4: **Cross-instance portability** — Phase 2: no sync (library lives at one gateway). Phase 3 Federated Collaboration: library is part of cognitive artifact export. Design deferred.
 
-Q5: **Gesture sharing** — Phase 3+ community feature. Data model must not preclude it: avoid user-specific fields in gesture definitions that would prevent portability.
+Q5: **Gesture sharing** — **LOCKED: Portability constraint enforced now.** Phase 2 `Gesture` schema splits into `gesture_definition` (shareable: trigger phrases, behavior, type, scope) and `user_config` (local: owner overrides, sensitivity tuning, usage stats). No sharing UI in Phase 2 — this is a data model constraint only. Prevents migration cost when community sharing ships in Phase 3+. @code_architect to update Gesture interface accordingly.
 
 ---
 
