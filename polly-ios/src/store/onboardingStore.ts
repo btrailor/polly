@@ -9,12 +9,12 @@
  */
 
 import { create } from 'zustand';
-import { createMMKV } from 'react-native-mmkv';
+import { MMKV } from 'react-native-mmkv';
 import { getMMKVEncryptionKey } from '../utils/mmkvEncryption';
 
 const MMKV_KEY = 'polly.onboarding.state';
 
-const storage = createMMKV({ id: 'polly-onboarding', encryptionKey: getMMKVEncryptionKey() });
+const storage = new MMKV({ id: 'polly-onboarding', encryptionKey: getMMKVEncryptionKey() });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types

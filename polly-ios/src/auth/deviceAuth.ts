@@ -10,11 +10,11 @@
 import * as SecureStore from 'expo-secure-store';
 import { keygenAsync, getPublicKeyAsync, signAsync } from '@noble/ed25519';
 import { sha256 } from '@noble/hashes/sha2';
-import { createMMKV } from 'react-native-mmkv';
+import { MMKV } from 'react-native-mmkv';
 import { SECURE_STORE_KEYS } from '../constants/secureStoreKeys';
 import { sanitizeForLog } from '../utils/sanitizeForLog';
 
-const authStore = createMMKV({ id: 'polly.auth' });
+const authStore = new MMKV({ id: 'polly.auth' });
 
 // ─── Hex helpers (no Buffer dependency) ──────────────────────────────────────
 
