@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Override root gitignore — commit lock file so EAS build server gets pinned deps
+!package-lock.json
