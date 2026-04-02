@@ -1,13 +1,14 @@
-// Mock mmkvEncryption — returns a deterministic test key
-// Prevents getMMKVEncryptionKey() from throwing in test environments
-// where initMMKVEncryptionKey() hasn't been called.
+// Mock src/utils/mmkvEncryption — returns a fixed test key synchronously
+// Eliminates the bootstrap requirement for unit tests of stores
 
-export const TEST_MMKV_KEY = 'test-mmkv-encryption-key-32-bytes-hex';
+export const getOrCreateMMKVKey = jest.fn(async (): Promise<string> => {
+  return 'a'.repeat(64);
+});
 
-export async function initMMKVEncryptionKey(): Promise<void> {
-  // no-op in tests
-}
+export const getMMKVEncryptionKey = jest.fn((): string => {
+  return 'a'.repeat(64);
+});
 
-export function getMMKVEncryptionKey(): string {
-  return TEST_MMKV_KEY;
-}
+export const wipeMMKVKey = jest.fn(async (): Promise<void> => {});
+
+export const clearMMKVKey = jest.fn(async (): Promise<void> => {});

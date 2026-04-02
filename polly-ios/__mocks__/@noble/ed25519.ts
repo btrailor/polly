@@ -1,30 +1,63 @@
-// Mock @noble/ed25519 — deterministic test keypair (fixed seed)
-// Using a known fixed seed so test signatures are reproducible
+// Mock @noble/ed25519 — deterministic, counter-based for test isolation
 
-const TEST_PRIVATE_KEY = new Uint8Array(32).fill(0x42); // 0x42 * 32
-const TEST_PUBLIC_KEY = new Uint8Array(32).fill(0x77);  // deterministic "public key"
-const TEST_SIGNATURE = new Uint8Array(64).fill(0xab);   // deterministic signature
+let _callCount = 0;
 
-export const getPublicKey = jest.fn((_privateKey: Uint8Array): Uint8Array => {
-  return TEST_PUBLIC_KEY;
+// ─── Fixed test constants (used by security tests) ────────────────────────────
+export const __TEST_PRIVATE_KEY = new Uint8Array(32).fill(0x42);
+// Public key derived by XOR 0x55 (same as getPublicKey impl below)
+export const __TEST_PUBLIC_KEY = new Uint8Array(32).fill(0x42 ^ 0x55);
+export const __TEST_SIGNATURE = new Uint8Array(64).fill(0xab);
+
+// ─── Core functions ───────────────────────────────────────────────────────────
+
+export const getPublicKey = jest.fn((privateKey?: Uint8Array): Uint8Array => {
+  const key = privateKey ?? __TEST_PRIVATE_KEY;
+  const pub = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) pub[i] = key[i]! ^ 0x55;
+  return pub;
+});
+
+export const getPublicKeyAsync = jest.fn(async (privateKey?: Uint8Array): Promise<Uint8Array> => {
+  const key = privateKey ?? __TEST_PRIVATE_KEY;
+  const pub = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) pub[i] = key[i]! ^ 0x55;
+  return pub;
+});
+
+export const keygenAsync = jest.fn(async (): Promise<Uint8Array> => {
+  _callCount++;
+  // Each call returns unique bytes so keypair regeneration tests work
+  return new Uint8Array(32).fill(_callCount % 256);
+});
+
+export const keygen = jest.fn((): Uint8Array => {
+  _callCount++;
+  return new Uint8Array(32).fill(_callCount % 256);
+});
+
+export const signAsync = jest.fn(async (
+  message: Uint8Array | string,
+  privateKey: Uint8Array
+): Promise<Uint8Array> => {
+  const msg = typeof message === 'string' ? message : Array.from(message).join(',');
+  const sig = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) {
+    sig[i] = (msg.charCodeAt(i % msg.length) ^ (privateKey[i % 32] ?? 0) + i) % 256;
+  }
+  return sig;
 });
 
 export const sign = jest.fn(async (
-  _message: Uint8Array | string,
-  _privateKey: Uint8Array
+  message: Uint8Array | string,
+  privateKey: Uint8Array
 ): Promise<Uint8Array> => {
-  return TEST_SIGNATURE;
+  return signAsync(message, privateKey);
 });
 
-export const verify = jest.fn(async (
-  _signature: Uint8Array,
-  _message: Uint8Array | string,
-  _publicKey: Uint8Array
-): Promise<boolean> => {
-  return true;
-});
+export const verify = jest.fn(async (): Promise<boolean> => true);
+export const verifyAsync = jest.fn(async (): Promise<boolean> => true);
 
-// Test helpers for accessing fixed values
-export const __TEST_PRIVATE_KEY = TEST_PRIVATE_KEY;
-export const __TEST_PUBLIC_KEY = TEST_PUBLIC_KEY;
-export const __TEST_SIGNATURE = TEST_SIGNATURE;
+export const utils = { randomPrivateKey: () => new Uint8Array(32).fill(0x42) };
+
+// ─── Test helpers ─────────────────────────────────────────────────────────────
+export const __resetCallCount = () => { _callCount = 0; };

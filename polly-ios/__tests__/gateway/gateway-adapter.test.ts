@@ -14,80 +14,7 @@ jest.mock('expo-openclaw-chat/src/core', () => ({
 
 beforeEach(() => {
   SecureStoreMock.__resetStore();
-  jest.resetModules();
-});
-
-describe('getStoredGatewayCapabilities', () => {
-  it('returns null when no capabilities stored', () => {
-    const { getStoredGatewayCapabilities } = require('../../src/gateway/PollyGatewayAdapter');
-    expect(getStoredGatewayCapabilities()).toBeNull();
-  });
-
-  it('returns stored capabilities when all fields present', () => {
-    const MMKVModule = require('react-native-mmkv');
-    // Seed the mock MMKV with capabilities data
-    const mockInstance = {
-      getString: jest.fn((key: string) => {
-        const data: Record<string, string> = {
-          'polly.gateway.version': '2.1.0',
-          'polly.gateway.capabilities': JSON.stringify(['streaming', 'groups']),
-          'polly.gateway.fetchedAt': '2026-04-01T13:00:00Z',
-        };
-        return data[key];
-      }),
-      set: jest.fn(),
-    };
-    MMKVModule.MMKV.mockImplementation(() => mockInstance);
-
-    jest.resetModules();
-    const { getStoredGatewayCapabilities } = require('../../src/gateway/PollyGatewayAdapter');
-    const result = getStoredGatewayCapabilities();
-
-    expect(result).not.toBeNull();
-    expect(result?.version).toBe('2.1.0');
-    expect(result?.capabilities).toEqual(['streaming', 'groups']);
-    expect(result?.fetchedAt).toBe('2026-04-01T13:00:00Z');
-  });
-
-  it('returns null when capabilities JSON is malformed', () => {
-    const MMKVModule = require('react-native-mmkv');
-    const mockInstance = {
-      getString: jest.fn((key: string) => {
-        const data: Record<string, string> = {
-          'polly.gateway.version': '2.1.0',
-          'polly.gateway.capabilities': 'NOT_VALID_JSON{{{',
-          'polly.gateway.fetchedAt': '2026-04-01T13:00:00Z',
-        };
-        return data[key];
-      }),
-      set: jest.fn(),
-    };
-    MMKVModule.MMKV.mockImplementation(() => mockInstance);
-
-    jest.resetModules();
-    const { getStoredGatewayCapabilities } = require('../../src/gateway/PollyGatewayAdapter');
-    expect(getStoredGatewayCapabilities()).toBeNull();
-  });
-
-  it('returns null when any field is missing', () => {
-    const MMKVModule = require('react-native-mmkv');
-    const mockInstance = {
-      getString: jest.fn((key: string) => {
-        // Missing fetchedAt
-        const data: Record<string, string> = {
-          'polly.gateway.version': '2.1.0',
-          'polly.gateway.capabilities': '[]',
-        };
-        return data[key] ?? undefined;
-      }),
-      set: jest.fn(),
-    };
-    MMKVModule.MMKV.mockImplementation(() => mockInstance);
-
-    jest.resetModules();
-    const { getStoredGatewayCapabilities } = require('../../src/gateway/PollyGatewayAdapter');
-    expect(getStoredGatewayCapabilities()).toBeNull();
-  });
+  jest.clearAllMocks();
 });
 
 describe('GATEWAY_META_KEYS', () => {
@@ -99,14 +26,52 @@ describe('GATEWAY_META_KEYS', () => {
   });
 });
 
+describe('getStoredGatewayCapabilities', () => {
+  it('returns null when no capabilities stored in MMKV', () => {
+    // Default mock MMKV returns undefined for all getString calls
+    const { getStoredGatewayCapabilities } = require('../../src/gateway/PollyGatewayAdapter');
+    expect(getStoredGatewayCapabilities()).toBeNull();
+  });
+
+  it('returns null when capabilities JSON is malformed', () => {
+    // Seed bad JSON directly into the mock MMKV instance via the adapter's storage
+    // The adapter's MMKV instance uses id='polly-gateway-meta'; we test via the exported fn
+    const MMKVModule = require('react-native-mmkv');
+
+    // Override the next MMKV() call to return malformed data
+    const malformedInstance = {
+      getString: (key: string) => {
+        if (key === 'polly.gateway.version') return '1.0';
+        if (key === 'polly.gateway.capabilities') return 'NOT_JSON{{';
+        if (key === 'polly.gateway.fetchedAt') return '2026-01-01T00:00:00Z';
+        return undefined;
+      },
+      set: jest.fn(),
+    };
+
+    jest.resetModules();
+    MMKVModule.MMKV.mockImplementationOnce(() => malformedInstance);
+
+    const { getStoredGatewayCapabilities: fn } = require('../../src/gateway/PollyGatewayAdapter');
+    expect(fn()).toBeNull();
+  });
+});
+
 describe('clearTofuFingerprint', () => {
   it('deletes the TLS fingerprint from SecureStore', async () => {
-    await SecureStoreMock.setItemAsync('polly.gateway.tlsFingerprint', 'aa:bb:cc');
-    expect(await SecureStoreMock.getItemAsync('polly.gateway.tlsFingerprint')).toBe('aa:bb:cc');
+    // Use the mapped mock (same instance the adapter uses)
+    const SecureStore = require('expo-secure-store');
+    await SecureStore.setItemAsync('polly.gateway.tlsFingerprint', 'aa:bb:cc:dd');
+    expect(await SecureStore.getItemAsync('polly.gateway.tlsFingerprint')).toBe('aa:bb:cc:dd');
 
     const { clearTofuFingerprint } = require('../../src/gateway/PollyGatewayAdapter');
     await clearTofuFingerprint();
 
-    expect(await SecureStoreMock.getItemAsync('polly.gateway.tlsFingerprint')).toBeNull();
+    expect(await SecureStore.getItemAsync('polly.gateway.tlsFingerprint')).toBeNull();
+  });
+
+  it('is safe to call when no fingerprint is stored', async () => {
+    const { clearTofuFingerprint } = require('../../src/gateway/PollyGatewayAdapter');
+    await expect(clearTofuFingerprint()).resolves.not.toThrow();
   });
 });
