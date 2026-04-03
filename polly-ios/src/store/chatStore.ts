@@ -71,19 +71,22 @@ const DEFAULT_AGENT_ID = 'polly';
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
-const initialAgentId = loadString('activeAgentId', DEFAULT_AGENT_ID);
-const initialSessionKey = `agent:${initialAgentId}:main`;
+export const useChatStore = create<ChatState>((set, get) => {
+  // Defaults only — MMKV reads are deferred until after bootstrap via
+  // initChatStore(). This ensures getOrCreateMMKVKey() has run first.
+  const initialAgentId = DEFAULT_AGENT_ID;
+  const initialSessionKey = `agent:${initialAgentId}:main`;
 
-export const useChatStore = create<ChatState>((set, get) => ({
+  return {
   messages: [],
   isStreaming: false,
 
   activeAgentId: initialAgentId,
   sessionKey: initialSessionKey,
 
-  lastActiveSessionKey: loadString('lastActiveSessionKey', initialSessionKey),
+  lastActiveSessionKey: initialSessionKey,
 
-  draftText: loadObject<Record<string, string>>('draftText', {}),
+  draftText: {},
 
   // ─── Actions ────────────────────────────────────────────────────────────────
 
@@ -124,4 +127,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   getDraft: (sessionKey) => get().draftText[sessionKey] ?? '',
-}));
+  };
+});
+
+/**
+ * Call this once after getOrCreateMMKVKey() has run in app bootstrap.
+ * Hydrates the store with any persisted MMKV values.
+ */
+export function initChatStore() {
+  const agentId = loadString('activeAgentId', DEFAULT_AGENT_ID);
+  const sessionKey = `agent:${agentId}:main`;
+  useChatStore.setState({
+    activeAgentId: agentId,
+    sessionKey,
+    lastActiveSessionKey: loadString('lastActiveSessionKey', sessionKey),
+    draftText: loadObject<Record<string, string>>('draftText', {}),
+  });
+}

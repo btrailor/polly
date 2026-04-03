@@ -34,7 +34,13 @@ import { useConnectionStore } from '../store/connectionStore';
 
 // ─── MMKV for non-sensitive gateway metadata ──────────────────────────────────
 
-const gatewayMetaStorage = new MMKV({ id: 'polly-gateway-meta' });
+let _gatewayMetaStorage: MMKV | null = null;
+const gatewayMetaStorage = new Proxy({} as MMKV, {
+  get(_t, prop) {
+    if (!_gatewayMetaStorage) _gatewayMetaStorage = new MMKV({ id: 'polly-gateway-meta' });
+    return (_gatewayMetaStorage as any)[prop];
+  },
+});
 
 export const GATEWAY_META_KEYS = {
   VERSION: 'polly.gateway.version',

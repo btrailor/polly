@@ -87,11 +87,10 @@ function saveToMMKV(state: OnboardingState): void {
 // Store
 // ─────────────────────────────────────────────────────────────────────────────
 
-const persisted = loadFromMMKV();
-
 export const useOnboardingStore = create<OnboardingStore>((set) => ({
-  // Initial state — loaded from MMKV on startup
-  ...persisted,
+  // Initial state — loaded from MMKV lazily inside the store creator so
+  // module-level import doesn't call getMMKVEncryptionKey() before bootstrap.
+  ...loadFromMMKV(),
 
   setGatewayUrl: (url: string) =>
     set((prev) => {

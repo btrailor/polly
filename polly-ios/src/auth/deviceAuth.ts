@@ -8,13 +8,24 @@
  */
 
 import * as SecureStore from 'expo-secure-store';
-import { keygenAsync, getPublicKeyAsync, signAsync } from '@noble/ed25519';
+import * as ed from '@noble/ed25519';
+import { sha512 } from '@noble/hashes/sha2';
 import { sha256 } from '@noble/hashes/sha2';
 import { MMKV } from 'react-native-mmkv';
 import { SECURE_STORE_KEYS } from '../constants/secureStoreKeys';
 import { sanitizeForLog } from '../utils/sanitizeForLog';
 
-const authStore = new MMKV({ id: 'polly.auth' });
+// Configure noble/ed25519 to use sync sha512 from @noble/hashes
+// This avoids the crypto.subtle dependency (not available in Hermes/RN)
+ed.etc.sha512Sync = (...msgs) => sha512(...msgs);
+
+const { signAsync, keygenAsync } = ed;
+
+let _authStore: MMKV | null = null;
+function getAuthStore(): MMKV {
+  if (!_authStore) _authStore = new MMKV({ id: 'polly.auth' });
+  return _authStore;
+}
 
 // ─── Hex helpers (no Buffer dependency) ──────────────────────────────────────
 
@@ -49,22 +60,22 @@ export async function ensureDeviceKeypair(): Promise<{
 
     if (existingPrivHex) {
       const privBytes = hexToBytes(existingPrivHex);
-      const pubBytes = await getPublicKeyAsync(privBytes);
+      const pubBytes = ed.getPublicKey(privBytes);
       const pubHex = bytesToHex(pubBytes);
       const deviceId = bytesToHex(sha256(pubBytes));
-      authStore.set('deviceId', deviceId);
+      getAuthStore().set('deviceId', deviceId);
       return { publicKeyHex: pubHex, deviceId };
     }
 
-    // First launch — generate new keypair
-    const privBytes = await keygenAsync();
-    const pubBytes = await getPublicKeyAsync(privBytes);
+    // First launch — generate new keypair using sync API (no crypto.subtle needed)
+    const privBytes = ed.utils.randomSecretKey();
+    const pubBytes = ed.getPublicKey(privBytes);
     const privHex = bytesToHex(privBytes);
     const pubHex = bytesToHex(pubBytes);
     const deviceId = bytesToHex(sha256(pubBytes));
 
     await SecureStore.setItemAsync(SECURE_STORE_KEYS.DEVICE_PRIVATE_KEY, privHex);
-    authStore.set('deviceId', deviceId);
+    getAuthStore().set('deviceId', deviceId);
 
     // Safe to log public info only
     console.log('[deviceAuth] keypair generated', sanitizeForLog({ deviceId, pubHex }));
@@ -95,7 +106,7 @@ export async function signChallenge(challenge: string): Promise<string> {
  * Returns null if keypair hasn't been generated yet.
  */
 export function getDeviceId(): string | undefined {
-  return authStore.getString('deviceId');
+  return getAuthStore().getString('deviceId');
 }
 
 /**
@@ -103,5 +114,5 @@ export function getDeviceId(): string | undefined {
  */
 export async function clearDeviceKeypair(): Promise<void> {
   await SecureStore.deleteItemAsync(SECURE_STORE_KEYS.DEVICE_PRIVATE_KEY);
-  authStore.delete('deviceId');
+  getAuthStore().delete('deviceId');
 }

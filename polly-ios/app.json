@@ -50,6 +50,7 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "owner": "clarence_bojangles"
+    "owner": "clarence_bojangles",
+    "newArchEnabled": true
   }
 }

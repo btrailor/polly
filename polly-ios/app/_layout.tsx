@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useEffect, useState } from 'react';
 import { ensureDeviceKeypair } from '../src/auth/deviceAuth';
 import { getOrCreateMMKVKey } from '../src/utils/mmkvEncryption';
+import { initChatStore } from '../src/store/chatStore';
 
 export default function RootLayout() {
   // Gate rendering until MMKV encryption key is bootstrapped.
@@ -14,7 +15,10 @@ export default function RootLayout() {
 
   useEffect(() => {
     getOrCreateMMKVKey()
-      .then(() => ensureDeviceKeypair())
+      .then(() => {
+        initChatStore(); // hydrate store with persisted values now that key is ready
+        return ensureDeviceKeypair();
+      })
       .catch((e) => {
         // eslint-disable-next-line no-console
         console.error('[RootLayout] bootstrap failed:', e);
