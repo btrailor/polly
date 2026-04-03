@@ -2,8 +2,8 @@
 import { Redirect } from 'expo-router';
 import { readOnboardingComplete } from '../src/store/onboardingStore';
 
-const isConfigured = readOnboardingComplete();
-
 export default function Index() {
+  const isConfigured = readOnboardingComplete();
   return <Redirect href={isConfigured ? '/(main)/chat' : '/onboarding'} />;
 }
+
