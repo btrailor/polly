@@ -42,6 +42,12 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "owner": "clarence_bojangles"
+    "owner": "clarence_bojangles",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/85543a01-c4f8-4081-9492-b833b14a3f83"
+    }
   }
 }
