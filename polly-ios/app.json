@@ -8,7 +8,14 @@
     "userInterfaceStyle": "dark",
     "scheme": "polly",
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Polly needs microphone access for voice messages."
+        }
+      ],
+      "expo-secure-store"
     ],
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -21,7 +28,8 @@
       "infoPlist": {
         "NSAllowsLocalNetworking": true,
         "NSFileProtectionComplete": true,
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "Polly needs microphone access for voice messages."
       }
     },
     "extra": {
