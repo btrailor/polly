@@ -12,14 +12,22 @@ import type { UIMessage } from 'expo-openclaw-chat';
 
 // ─── MMKV storage ─────────────────────────────────────────────────────────────
 
-const chatStorage = new MMKV({ id: 'chat-store', encryptionKey: getMMKVEncryptionKey() });
+// Lazy singleton — not instantiated until first access so the encryption key
+// has time to be bootstrapped by getOrCreateMMKVKey() before any store reads.
+let _chatStorage: MMKV | null = null;
+function getChatStorage(): MMKV {
+  if (!_chatStorage) {
+    _chatStorage = new MMKV({ id: 'chat-store', encryptionKey: getMMKVEncryptionKey() });
+  }
+  return _chatStorage;
+}
 
 function loadString(key: string, fallback: string): string {
-  return chatStorage.getString(key) ?? fallback;
+  return getChatStorage().getString(key) ?? fallback;
 }
 
 function loadObject<T>(key: string, fallback: T): T {
-  const raw = chatStorage.getString(key);
+  const raw = getChatStorage().getString(key);
   if (!raw) return fallback;
   try {
     return JSON.parse(raw) as T;
@@ -97,21 +105,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setActiveAgent: (agentId) => {
     const sessionKey = `agent:${agentId}:main`;
-    chatStorage.set('activeAgentId', agentId);
-    chatStorage.set('lastActiveSessionKey', sessionKey);
+    getChatStorage().set('activeAgentId', agentId);
+    getChatStorage().set('lastActiveSessionKey', sessionKey);
     set({ activeAgentId: agentId, sessionKey, lastActiveSessionKey: sessionKey });
   },
 
   setDraft: (sessionKey, text) => {
     const draft = { ...get().draftText, [sessionKey]: text };
-    chatStorage.set('draftText', JSON.stringify(draft));
+    getChatStorage().set('draftText', JSON.stringify(draft));
     set({ draftText: draft });
   },
 
   clearDraft: (sessionKey) => {
     const draft = { ...get().draftText };
     delete draft[sessionKey];
-    chatStorage.set('draftText', JSON.stringify(draft));
+    getChatStorage().set('draftText', JSON.stringify(draft));
     set({ draftText: draft });
   },
 

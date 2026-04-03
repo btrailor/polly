@@ -14,7 +14,15 @@ import { getMMKVEncryptionKey } from '../utils/mmkvEncryption';
 
 const MMKV_KEY = 'polly.onboarding.state';
 
-const storage = new MMKV({ id: 'polly-onboarding', encryptionKey: getMMKVEncryptionKey() });
+// Lazy singleton — not instantiated until first access so the encryption key
+// has time to be bootstrapped by getOrCreateMMKVKey() before any store reads.
+let _storage: MMKV | null = null;
+function getStorage(): MMKV {
+  if (!_storage) {
+    _storage = new MMKV({ id: 'polly-onboarding', encryptionKey: getMMKVEncryptionKey() });
+  }
+  return _storage;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -53,7 +61,7 @@ const DEFAULT_STATE: OnboardingState = {
 
 function loadFromMMKV(): OnboardingState {
   try {
-    const raw = storage.getString(MMKV_KEY);
+    const raw = getStorage().getString(MMKV_KEY);
     if (!raw) return DEFAULT_STATE;
     const parsed = JSON.parse(raw) as Partial<OnboardingState>;
     return {
@@ -69,7 +77,7 @@ function loadFromMMKV(): OnboardingState {
 
 function saveToMMKV(state: OnboardingState): void {
   try {
-    storage.set(MMKV_KEY, JSON.stringify(state));
+    getStorage().set(MMKV_KEY, JSON.stringify(state));
   } catch {
     // Non-fatal — don't crash if storage unavailable
   }
@@ -124,7 +132,7 @@ export const useOnboardingStore = create<OnboardingStore>((set) => ({
 
 export function readOnboardingComplete(): boolean {
   try {
-    const raw = storage.getString(MMKV_KEY);
+    const raw = getStorage().getString(MMKV_KEY);
     if (!raw) return false;
     const parsed = JSON.parse(raw) as Partial<OnboardingState>;
     return parsed.isComplete === true;
