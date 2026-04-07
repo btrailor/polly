@@ -122,7 +122,12 @@ Everything else (Today, Settings, Agents, Shortcuts, Moltbook, Usage) is a 13-li
 - [ ] Deep link parameter validation (session keys, onboarding deep links — §6.4)
 - [x] `polly.security.protectionLevel: "standard"` in initial config.patch (@backend task #14)
 
-### Lockdown Mode Phase 1 Hooks (SECURITY_IMPLEMENTATION_SPEC.md §3 — not retrofittable)
+### Household Nodes — Phase 1 Hooks (HOUSEHOLD_NODES.md §9.2 — not retrofittable)
+*Phase 4 ships household multi-user support. Two fields must be added in Phase 1 to avoid a protocol version bump later. Zero behaviour change.*
+- [ ] `[1A]` **@backend: add `principal` to `sessions.create` response** — `{ id: "owner", display_name: "Owner", role: "owner" }`. Non-breaking addition. iOS client ignores it until Phase 4. Required in gateway before Phase 4 gateway work begins.
+- [ ] `[1A]` **@frontend: store `principal_id` from session init** — After every successful session create/restore, write `response.principal.id` (or default `"owner"` if absent) to MMKV key `polly.session.principalId`. No UI. No routing logic. Just persist it so Phase 4 UI can read it.
+
+
 - [ ] Investigate `NSFileProtectionComplete` support for MMKV + expo-sqlite (document findings)
 - [x] Set file protection class `NSFileProtectionComplete` on all data directories at app init
 - [ ] Voice audio: confirm memory-only buffer in chosen audio library — no temp file writes (§3.2)
